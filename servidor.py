@@ -113,7 +113,12 @@ def nombre_de(k):
 def clasificar_local(img):
     feats = caracteristicas(img)
     proba = clf.predict_proba(feats)[0]
-    ranking = sorted(zip(clases, (float(p) for p in proba)), key=lambda x: -x[1])
+    # pliega las clases sinónimas del modelo a su categoría canónica (max score)
+    agg = {}
+    for k, p in zip(clases, proba):
+        ck = verificador.FOLD.get(k, k)
+        agg[ck] = max(agg.get(ck, 0.0), float(p))
+    ranking = sorted(agg.items(), key=lambda x: -x[1])
     fmt = lambda lst: [{"key": k, "nombre": nombre_de(k), "score": round(s, 4)}
                        for k, s in lst]
     predichas = [p for p in ranking if p[1] >= UMBRAL] or ranking[:1]
@@ -137,7 +142,8 @@ app = FastAPI(title="Ojo Urbano")
 
 @app.get("/salud")
 def salud():
-    return {"ok": True, "clases": clases,
+    canonicas = sorted({verificador.FOLD.get(k, k) for k in clases})
+    return {"ok": True, "clases": canonicas,
             "verificacion": verificador.disponible(),
             "verificadores": verificador.VERIFICADORES,
             "arbitro": verificador.ARBITRO or None}
@@ -167,9 +173,11 @@ async def clasificar(file: UploadFile = File(...), verificar: str = "auto"):
                                 for p in local["predichas"] if p["key"] != "sin_problema"],
                  "en_duda": []}
 
-    gravedades = [c["gravedad"] for c in final["categorias"] if c.get("gravedad")]
+    problemas = [c for c in final["categorias"]
+                 if c["key"] not in verificador.PRESENCIA]
+    gravedades = [c["gravedad"] for c in problemas if c.get("gravedad")]
     final["gravedad_maxima"] = max(gravedades) if gravedades else None
-    final["sin_problema"] = not final["categorias"]
+    final["sin_problema"] = not problemas
     return JSONResponse({"modelo_local": local, "verificacion": veri, "final": final})
 
 

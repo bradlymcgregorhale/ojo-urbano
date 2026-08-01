@@ -24,8 +24,24 @@ import urllib.error
 import urllib.request
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# Sinónimos que se pliegan a una categoría canónica en TODA la API: el modelo
+# local fue entrenado con estas clases pero la salida siempre usa la canónica.
+FOLD = {
+    "retiro_objetos": "retiro_muebles",
+    "recoleccion_voluminosos": "retiro_muebles",
+    "recoleccion_restos_obra": "retiro_escombros",
+    "recoleccion_verdes": "retiro_poda",
+    "diseminado": "recoleccion",
+}
+
+# Claves de PRESENCIA: indican que un contenedor se ve en la foto, no que haya
+# un problema. No cuentan para sin_problema ni para la gravedad máxima.
+PRESENCIA = {"contenedor_secos", "contenedor_humedos_lateral",
+             "contenedor_humedos_bilateral"}
+
 VERIFICADORES = [m.strip() for m in os.environ.get(
-    "VERIFICADORES", "moonshotai/kimi-k2.5,qwen/qwen3-vl-8b-instruct").split(",") if m.strip()]
+    "VERIFICADORES", "qwen/qwen3-vl-235b-a22b-instruct,moonshotai/kimi-k2.6").split(",") if m.strip()]
 ARBITRO = os.environ.get("ARBITRO", "deepseek/deepseek-v4-flash").strip()
 TIMEOUT = int(os.environ.get("VERIFICADOR_TIMEOUT", "120"))
 LADO_MAX = 1024  # la foto se reduce a este lado máximo antes de enviarla
@@ -89,21 +105,58 @@ def _extraer_json(texto):
 
 
 def _prompt_verificador(categorias):
-    lineas = "\n".join(f"- {k}: {v['nombre']}" for k, v in categorias.items()
-                       if k != "sin_problema")
-    return (
-        "Sos un inspector de incidencias urbanas. Mirá la foto y decidí qué "
-        "problemas hay, usando SOLO estas categorías (clave: descripción):\n"
-        f"{lineas}\n\n"
-        "Reglas:\n"
-        "- Reportá únicamente lo que se ve con certeza en la foto; ante la duda, omití la categoría.\n"
-        "- Una foto puede tener varias categorías (una por problema visible).\n"
-        "- gravedad: 1 (mínima) a 5 (muy grave) para cada categoría.\n"
-        "- Si no hay ningún problema, devolvé la lista vacía y sin_problema en true.\n\n"
-        "Respondé SOLO con JSON válido, sin texto adicional:\n"
-        '{"categorias": [{"key": "...", "gravedad": 1-5, "evidencia": "qué se ve"}], '
-        '"sin_problema": true|false}'
-    )
+    restantes = "\n".join(
+        f"- {k}: {v['nombre']}" for k, v in categorias.items()
+        if k not in _RUBRICA_KEYS and k != "sin_problema" and k not in FOLD)
+    return _RUBRICA.replace("{RESTANTES}", restantes)
+
+
+# Rúbrica detallada por categoría, calibrada contra fotos reales etiquetadas a
+# mano. Las claves deben existir en categorias.json.
+_RUBRICA_KEYS = {
+    "retiro_muebles", "retiro_escombros", "recoleccion", "barrido",
+    "retiro_poda", "destape_sumidero", "reparacion_vereda", "nivelacion_tapa",
+    "situacion_calle", "manteros", "contenedor_secos",
+    "contenedor_humedos_lateral", "contenedor_humedos_bilateral",
+    "reparacion_contenedor", "contenedor_desbordado", "vaciado_contenedor",
+    "vaciado_cesto", "reparacion_cesto",
+}
+
+_RUBRICA = """Sos un verificador experto de reportes de higiene urbana en la vía pública. Mirá la foto adjunta (puede ser de noche/oscura; prestá atención a objetos voluminosos como muebles, estanterías o cajones delante o al lado de un contenedor) y reportá los problemas visibles.
+
+Categorías y criterios (usá SOLO estas claves):
+
+- retiro_muebles: CUALQUIER objeto voluminoso descartado: muebles, electrodomésticos, colchones, puertas, ventanas, estanterías, tablas/tablones/placas de madera o melamina, caños/tubos/hierros/rejas/chatarra (aunque salgan de una refacción), sanitarios, valijas descartadas. Si ves con claridad cualquier objeto voluminoso descartado (incluida una sola tabla de madera), reportalo. Exige un objeto RÍGIDO identificable: el cartón, la ropa/textiles y las bolsas de basura (llenas o vacías, sueltas o apiladas) NUNCA son voluminosos, van a recoleccion (o a retiro_escombros si son la pila densa de obra descrita abajo). NO cuentan la mercadería ni el mobiliario EN USO de un vendedor, ni objetos en uso.
+- retiro_escombros: material INERTE Y SUELTO de obra o refacción; el cascote. Reportalo solo ante evidencia CLARA: escombros o cascotes visibles, ladrillos, baldosas/cerámicos rotos, cemento o revoque, arena de obra; bolsas de material de construcción etiquetadas (cemento, cal). Que algo venga de una obra NO lo hace escombros: un OBJETO ENTERO (caños, hierros, rejas, maderas/tablones, puertas, ventanas, sanitarios) es un voluminoso = retiro_muebles, NO escombros. TAMBIÉN: una PILA ORDENADA de muchas bolsas llenas, pesadas y del mismo tipo (bolsas de arpillera apiladas contra una pared o contenedor, con forma tensa de contenido denso) es escombros embolsados; en ese caso NO es recoleccion. NO lo uses por baldes genéricos, pocas bolsas de basura común, muebles, madera de mueble, cartones o basura domiciliaria variada.
+- recoleccion: basura DOMICILIARIA suelta en el piso, típicamente alrededor de un contenedor: bolsas de residuos sueltas, cajas de cartón descartadas, papeles desparramados, envoltorios, botellas, envases. Una bolsa o caja sola SÍ cuenta (con gravedad 1-2); NO cuenta una botella suelta o basurita chica entre las hojas (eso es solo barrido). El cartón y la ropa/textiles son basura común, NUNCA voluminosos. Si la basura visible es material de obra es escombros, NO recoleccion. Muebles u objetos voluminosos SOLOS no son recoleccion: exige basura común además.
+- barrido: acumulación de material fino y liviano para BARRER, sobre todo hojas secas, ramitas, tierra o polvo, juntada en el cordón o la vereda. Si PREDOMINAN las hojas, reportá barrido aunque haya basurita mezclada (y si esa basura mezclada es grande o abundante, reportá TAMBIÉN recoleccion). No lo uses cuando lo que predomina es basura suelta o bolsas.
+- retiro_poda: ramas, troncos o restos de poda/jardinería acumulados.
+- destape_sumidero: un sumidero o alcantarilla TAPADO, obstruido o desbordado (NO si solo se ve la rejilla sin problema).
+- reparacion_vereda: la vereda claramente ROTA: baldosas partidas, faltantes, levantadas o hundidas, visibles con nitidez. NO si la vereda solo está sucia, mojada, cubierta de hojas o con desgaste normal. Si el hueco es RECTANGULAR con MARCO metálico es nivelacion_tapa, NO reparacion_vereda.
+- nivelacion_tapa: una TAPA de empresa de servicio público (agua/luz/gas/teléfono) rota, hundida o FALTANTE: hueco RECTANGULAR con marco o borde METÁLICO prolijo en la vereda o la calle. Señal típica: objetos metidos en el hueco (cajones, tablas, conos, sillas) como advertencia; esos objetos NO son voluminosos descartados, no los reportes como retiro_muebles.
+- situacion_calle: una persona claramente viviendo en la calle: alguien durmiendo o instalado con colchón ARMADO como cama, refugio o pertenencias habitadas. NO es un colchón o mueble descartado sin nadie. Una persona parada revolviendo un contenedor junto a colchones/mantas desparramados NO está "instalada"; eso es descarte (retiro_muebles, y recoleccion si hay textiles desparramados en cantidad).
+- manteros: un puesto informal con mercadería nueva exhibida para la venta en el piso, sobre una manta, mesa o lona.
+- contenedor_secos [PRESENCIA]: se ve un contenedor municipal inequívocamente VERDE (reciclables). Los contenedores negros, grises o gris oscuro NO son secos.
+- contenedor_humedos_lateral [PRESENCIA]: se ve un contenedor de húmedos NEGRO o gris OSCURO con POSTES metálicos VERTICALES en los costados (el brazo del camión los toma para izarlo). Cuerpo plástico grande redondeado.
+- contenedor_humedos_bilateral [PRESENCIA]: se ve un contenedor de húmedos gris CLARO (a veces dos tonos), cuerpo RECTANGULAR de paredes laterales PLANAS y techo abovedado, SIN postes metálicos. Si tiene postes verticales es LATERAL, no bilateral; reportá solo UNO de los dos tipos de húmedos.
+- reparacion_contenedor: un contenedor VOLCADO (acostado, dado vuelta) o visiblemente ROTO/vandalizado/quemado (tapa desprendida, pedal roto, cuerpo agrietado). Un contenedor volcado siempre va acá. Un contenedor parado y en buen estado NO.
+- contenedor_desbordado: el contenedor mismo REBALSA por su boca, con residuos sobresaliendo por encima. La basura en el piso alrededor NO lo hace desbordado (eso es recoleccion).
+- vaciado_contenedor: contenedor lleno que necesita vaciado (residuos visibles hasta la boca), sin llegar a rebalsar.
+- vaciado_cesto: un cesto papelero (canasto chico sobre poste) desbordado o lleno.
+- reparacion_cesto: TODO problema físico de un cesto papelero: roto, caído, desprendido, colgando, o la base/soporte sin canasto montado. Un cesto sano y en su lugar NO.
+
+Otras categorías posibles (reportalas solo con evidencia clara):
+{RESTANTES}
+
+Gravedad por categoría (no aplica a las claves [PRESENCIA]): 1 mínima (apenas presente, incidental) · 2 leve · 3 alta · 4 grave · 5 muy grave. Calibración para recoleccion (sé exigente): 1-2 = una bolsa sola o poca basura aislada; 3 = basura claramente presente pero acotada (algunas cajas y restos junto al contenedor); 4 = mucha basura variada ocupando un área notable; 5 = acumulación masiva cubriendo la vereda.
+
+Reglas finales:
+- Reportá únicamente lo que se ve con certeza; ante la duda, omití la categoría.
+- Una foto puede tener varias categorías (una por problema visible; las claves [PRESENCIA] se reportan siempre que el contenedor se vea, haya problema o no, con gravedad 1).
+- Si no hay ningún problema, devolvé sin_problema en true, aunque reportes claves [PRESENCIA] por contenedores visibles sanos: una calle limpia con un contenedor parado y en buen estado sigue siendo sin_problema true. Un contenedor volcado, roto o desbordado sí ES un problema.
+
+Respondé SOLO con JSON válido, sin texto adicional ni markdown:
+{"categorias": [{"key": "...", "gravedad": 1-5, "evidencia": "qué se ve, máx 10 palabras"}], "sin_problema": true|false}"""
 
 
 def _verificar_uno(modelo, data_url, categorias):
@@ -113,8 +166,13 @@ def _verificar_uno(modelo, data_url, categorias):
             {"type": "image_url", "image_url": {"url": data_url}},
         ]}])
         veredicto = _extraer_json(contenido)
-        vistas = [c for c in veredicto.get("categorias", [])
-                  if isinstance(c, dict) and c.get("key") in categorias]
+        vistas = []
+        for c in veredicto.get("categorias", []):
+            if not isinstance(c, dict):
+                continue
+            c["key"] = FOLD.get(c.get("key"), c.get("key"))
+            if c["key"] in categorias and c["key"] not in {v["key"] for v in vistas}:
+                vistas.append(c)
         return {"modelo": modelo, "ok": True, "categorias": vistas,
                 "sin_problema": bool(veredicto.get("sin_problema"))}
     except (urllib.error.URLError, ValueError, KeyError, json.JSONDecodeError, OSError) as e:
@@ -134,8 +192,13 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias):
         f"Probabilidades del modelo local (entrenado con miles de fotos reales): {json.dumps(probas, ensure_ascii=False)}\n\n"
         f"Veredictos de los modelos de visión: {json.dumps(veredictos, ensure_ascii=False)}\n\n"
         f"Categorías en disputa: {json.dumps(sorted(disputadas), ensure_ascii=False)}\n\n"
-        "Confirmá una categoría solo si la evidencia citada es concreta o la probabilidad "
-        "local es alta; ante la duda, rechazala. Respondé SOLO con JSON:\n"
+        "Criterio: confirmá una categoría de un modelo de visión solo si su evidencia citada "
+        "es concreta y coherente con lo que reportaron los demás. Si una categoría la reporta "
+        "SOLO el modelo local y ninguno de los dos modelos de visión la vio al mirar la foto, "
+        "rechazala aunque la probabilidad local sea alta, salvo que la evidencia de los "
+        "verificadores describa lo mismo con otras palabras. Categorías que nombran el mismo "
+        "objeto físico ya reportado por consenso no deben duplicarse: rechazá la redundante. "
+        "Ante la duda, rechazá. Respondé SOLO con JSON:\n"
         '{"decisiones": [{"key": "...", "veredicto": "confirmar"|"rechazar", "motivo": "..."}]}'
     )
     try:
@@ -175,6 +238,23 @@ def verificar(img, categorias, prediccion_local):
                 grav[k] = max(grav.get(k, 0), min(5, max(1, int(c.get("gravedad", 1)))))
             except (TypeError, ValueError):
                 grav.setdefault(k, 1)
+
+    # Un contenedor de húmedos es lateral O bilateral, nunca ambos. Los modelos
+    # de visión confunden el subtipo seguido; el modelo local es el experto acá,
+    # así que sus votos deciden el subtipo y los votos VLM del otro subtipo
+    # cuentan como "hay un contenedor de húmedos".
+    grises = {"contenedor_humedos_lateral", "contenedor_humedos_bilateral"}
+    vistos = grises & set(fuentes)
+    if len(vistos) > 1:
+        local_gris = next((p["key"] for p in prediccion_local["predichas"]
+                           if p["key"] in grises), None)
+        elegido = local_gris or max(vistos, key=lambda k: len(fuentes[k]))
+        for otro in vistos - {elegido}:
+            for f in fuentes.pop(otro):
+                if f not in fuentes[elegido]:
+                    fuentes[elegido].append(f)
+            if otro in grav:
+                grav[elegido] = max(grav.get(elegido, 0), grav.pop(otro))
 
     activos = [v for v in veredictos if v.get("ok")]
     confirmadas = {k for k, f in fuentes.items() if len(f) >= 2}

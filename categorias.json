@@ -1,36 +1,118 @@
 {
-  "recoleccion": { "nombre": "Recolección de residuos", "grupo": "Residuos" },
-  "diseminado": { "nombre": "Residuos diseminados en la vía pública", "grupo": "Residuos" },
-  "barrido": { "nombre": "Mejora de barrido", "grupo": "Residuos" },
-  "retiro_escombros": { "nombre": "Retiro de escombros / restos de obra", "grupo": "Residuos" },
-  "recoleccion_restos_obra": { "nombre": "Recolección de restos de obra", "grupo": "Residuos" },
-  "retiro_muebles": { "nombre": "Retiro de muebles y electrodomésticos en desuso", "grupo": "Residuos" },
-  "retiro_objetos": { "nombre": "Retiro de objetos en desuso", "grupo": "Residuos" },
-  "recoleccion_voluminosos": { "nombre": "Recolección de residuos voluminosos", "grupo": "Residuos" },
-  "retiro_poda": { "nombre": "Retiro de restos de poda o jardinería", "grupo": "Residuos" },
-  "recoleccion_verdes": { "nombre": "Recolección de restos verdes (poda)", "grupo": "Residuos" },
-  "acopio_recuperadores": { "nombre": "Acopio de recuperadores urbanos en espacio público", "grupo": "Residuos" },
-  "vaciado_contenedor": { "nombre": "Vaciado de contenedor", "grupo": "Contenedores" },
-  "contenedor_desbordado": { "nombre": "Contenedor sobrecargado / desbordado", "grupo": "Contenedores" },
-  "reparacion_contenedor": { "nombre": "Reparación de contenedor", "grupo": "Contenedores" },
-  "contenedor_humedos_lateral": { "nombre": "Contenedor de húmedos, carga lateral (gris/negro)", "grupo": "Contenedores" },
-  "contenedor_humedos_bilateral": { "nombre": "Contenedor de húmedos, carga bilateral (gris/negro)", "grupo": "Contenedores" },
-  "contenedor_secos": { "nombre": "Contenedor de reciclables / secos (verde)", "grupo": "Contenedores" },
-  "vaciado_cesto": { "nombre": "Vaciado de cesto papelero", "grupo": "Cestos papeleros" },
-  "reparacion_cesto": { "nombre": "Reparación de cesto papelero", "grupo": "Cestos papeleros" },
-  "manteros": { "nombre": "Vendedores ambulantes en la vía pública", "grupo": "Ocupación de vía pública" },
-  "obstruccion": { "nombre": "Obstrucción de calle / vereda", "grupo": "Ocupación de vía pública" },
-  "ocupacion_comercial": { "nombre": "Ocupación de vereda por local comercial", "grupo": "Ocupación de vía pública" },
-  "ocupacion_gastronomica": { "nombre": "Ocupación de vereda por área gastronómica", "grupo": "Ocupación de vía pública" },
-  "reparacion_bache": { "nombre": "Reparación de bache en calle", "grupo": "Infraestructura" },
-  "reparacion_vereda": { "nombre": "Reparación de vereda", "grupo": "Infraestructura" },
-  "reparacion_cordon": { "nombre": "Reparación / construcción de cordón de vereda", "grupo": "Infraestructura" },
-  "nivelacion_tapa": { "nombre": "Nivelación de tapa de servicio público en vereda", "grupo": "Infraestructura" },
-  "destape_sumidero": { "nombre": "Destape de sumidero / alcantarilla", "grupo": "Infraestructura" },
-  "retiro_afiches": { "nombre": "Retiro de afiches y/o pasacalles", "grupo": "Infraestructura" },
-  "plantacion_arbol": { "nombre": "Plantación de árbol", "grupo": "Arbolado" },
-  "problemas_arbolado": { "nombre": "Problemas con el arbolado urbano", "grupo": "Arbolado" },
-  "vehiculo_abandonado": { "nombre": "Remoción de vehículo abandonado", "grupo": "Vehículos" },
-  "situacion_calle": { "nombre": "Personas en situación de calle", "grupo": "Otros" },
-  "sin_problema": { "nombre": "Sin problema identificable", "grupo": "Otros" }
+  "recoleccion": {
+    "nombre": "Recolección de residuos / residuos fuera del contenedor",
+    "grupo": "Residuos"
+  },
+  "barrido": {
+    "nombre": "Mejora de barrido",
+    "grupo": "Residuos"
+  },
+  "retiro_escombros": {
+    "nombre": "Retiro de escombros / restos de obra",
+    "grupo": "Residuos"
+  },
+  "retiro_muebles": {
+    "nombre": "Retiro de residuos voluminosos (muebles, electrodomésticos y objetos en desuso)",
+    "grupo": "Residuos"
+  },
+  "retiro_poda": {
+    "nombre": "Retiro de restos de poda o jardinería",
+    "grupo": "Residuos"
+  },
+  "acopio_recuperadores": {
+    "nombre": "Acopio de recuperadores urbanos en espacio público",
+    "grupo": "Residuos"
+  },
+  "vaciado_contenedor": {
+    "nombre": "Vaciado de contenedor",
+    "grupo": "Contenedores"
+  },
+  "contenedor_desbordado": {
+    "nombre": "Contenedor sobrecargado / desbordado",
+    "grupo": "Contenedores"
+  },
+  "reparacion_contenedor": {
+    "nombre": "Reparación de contenedor",
+    "grupo": "Contenedores"
+  },
+  "contenedor_humedos_lateral": {
+    "nombre": "Contenedor de húmedos, carga lateral (oscuro, con postes de izado)",
+    "grupo": "Contenedores"
+  },
+  "contenedor_humedos_bilateral": {
+    "nombre": "Contenedor de húmedos, carga bilateral (gris claro, sin postes)",
+    "grupo": "Contenedores"
+  },
+  "contenedor_secos": {
+    "nombre": "Contenedor de reciclables / secos (verde)",
+    "grupo": "Contenedores"
+  },
+  "vaciado_cesto": {
+    "nombre": "Vaciado de cesto papelero",
+    "grupo": "Cestos papeleros"
+  },
+  "reparacion_cesto": {
+    "nombre": "Reparación de cesto papelero",
+    "grupo": "Cestos papeleros"
+  },
+  "manteros": {
+    "nombre": "Vendedores ambulantes en la vía pública",
+    "grupo": "Ocupación de vía pública"
+  },
+  "obstruccion": {
+    "nombre": "Obstrucción de calle / vereda",
+    "grupo": "Ocupación de vía pública"
+  },
+  "ocupacion_comercial": {
+    "nombre": "Ocupación de vereda por local comercial",
+    "grupo": "Ocupación de vía pública"
+  },
+  "ocupacion_gastronomica": {
+    "nombre": "Ocupación de vereda por área gastronómica",
+    "grupo": "Ocupación de vía pública"
+  },
+  "reparacion_bache": {
+    "nombre": "Reparación de bache en calle",
+    "grupo": "Infraestructura"
+  },
+  "reparacion_vereda": {
+    "nombre": "Reparación de vereda",
+    "grupo": "Infraestructura"
+  },
+  "reparacion_cordon": {
+    "nombre": "Reparación / construcción de cordón de vereda",
+    "grupo": "Infraestructura"
+  },
+  "nivelacion_tapa": {
+    "nombre": "Nivelación de tapa de servicio público en vereda",
+    "grupo": "Infraestructura"
+  },
+  "destape_sumidero": {
+    "nombre": "Destape de sumidero / alcantarilla",
+    "grupo": "Infraestructura"
+  },
+  "retiro_afiches": {
+    "nombre": "Retiro de afiches y/o pasacalles",
+    "grupo": "Infraestructura"
+  },
+  "plantacion_arbol": {
+    "nombre": "Plantación de árbol",
+    "grupo": "Arbolado"
+  },
+  "problemas_arbolado": {
+    "nombre": "Problemas con el arbolado urbano",
+    "grupo": "Arbolado"
+  },
+  "vehiculo_abandonado": {
+    "nombre": "Remoción de vehículo abandonado",
+    "grupo": "Vehículos"
+  },
+  "situacion_calle": {
+    "nombre": "Personas en situación de calle",
+    "grupo": "Otros"
+  },
+  "sin_problema": {
+    "nombre": "Sin problema identificable",
+    "grupo": "Otros"
+  }
 }
