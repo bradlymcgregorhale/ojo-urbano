@@ -89,7 +89,11 @@ def siglip_vec(img):
         _siglip["model"] = AutoModel.from_pretrained(nombre).to(dev).eval()
     with _siglip["torch"].no_grad():
         inp = _siglip["proc"](images=img, return_tensors="pt").to(_siglip["dev"])
-        v = _siglip["model"].get_image_features(**inp)[0].cpu().numpy().astype(np.float32)
+        v = _siglip["model"].get_image_features(**inp)
+        # transformers >= 5 devuelve un ModelOutput; antes, el tensor directo
+        if not _siglip["torch"].is_tensor(v):
+            v = v.pooler_output
+        v = v[0].cpu().numpy().astype(np.float32)
     return v / (np.linalg.norm(v) + 1e-8)
 
 
