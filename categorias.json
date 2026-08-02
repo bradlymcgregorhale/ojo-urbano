@@ -139,6 +139,10 @@
     "nombre": "Plantación de árbol",
     "grupo": "Arbolado"
   },
+  "poda_arbol": {
+    "nombre": "Poda de árbol / despeje de luminaria o semáforo",
+    "grupo": "Arbolado"
+  },
   "problemas_arbolado": {
     "nombre": "Problemas con el arbolado urbano",
     "grupo": "Arbolado"
