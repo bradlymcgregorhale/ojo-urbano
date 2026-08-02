@@ -32,7 +32,7 @@ if _env.exists():
 import joblib
 import numpy as np
 import uvicorn
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from PIL import Image
 from sentence_transformers import SentenceTransformer
@@ -150,18 +150,20 @@ def salud():
 
 
 @app.post("/clasificar")
-async def clasificar(file: UploadFile = File(...), verificar: str = "auto"):
+async def clasificar(file: UploadFile = File(...), verificar: str = "auto",
+                     contexto: str = Form("")):
     try:
         img = Image.open(io.BytesIO(await file.read())).convert("RGB")
     except Exception:
         raise HTTPException(400, "no pude leer la imagen")
 
+    contexto = (contexto or "").strip()[:500]
     local = clasificar_local(img)
     activar = (verificador.disponible() if verificar == "auto"
                else verificar not in ("0", "false", "no"))
 
     if activar and verificador.disponible():
-        veri = verificador.verificar(img, CATEGORIAS, local)
+        veri = verificador.verificar(img, CATEGORIAS, local, contexto)
         final = {"categorias": veri["confirmadas"], "en_duda": veri["en_duda"],
                  "descripcion": veri["descripcion"]}
     else:
@@ -209,6 +211,9 @@ PAGINA = """<!DOCTYPE html>
   #drop:hover,#drop.over{border-color:var(--ink);background:var(--soft)}
   #drop p{margin:6px 0;color:var(--muted)}
   #drop strong{color:var(--ink)}
+  #ctx{width:100%;margin-top:10px;padding:9px 11px;border:1px solid var(--line2);
+       border-radius:8px;font:inherit;background:var(--surface);color:var(--ink)}
+  #ctx::placeholder{color:var(--muted2)}
   .grid{display:grid;grid-template-columns:300px minmax(0,1fr);gap:22px;margin-top:22px;align-items:start}
   #preview{width:100%;border-radius:8px;border:1px solid var(--line);background:#111;display:none}
   .res{display:none;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:18px}
@@ -255,6 +260,8 @@ PAGINA = """<!DOCTYPE html>
     <p>JPG / PNG / WEBP</p>
     <input id="file" type="file" accept="image/*" hidden>
   </div>
+  <input id="ctx" type="text" maxlength="500"
+         placeholder="Contexto vecinal (opcional): contá qué pasa en la foto antes de subirla">
   <div class="err" id="err"></div>
   <div class="espera" id="espera">Analizando… la verificación con modelos de visión puede tardar hasta un minuto.</div>
   <div class="grid">
@@ -270,7 +277,7 @@ PAGINA = """<!DOCTYPE html>
 
   <div class="api">
     <h2>API</h2>
-    <div class="endpoint"><b>POST</b> <span id="ep"></span> · multipart/form-data, campo <b>file</b> · ?verificar=auto|1|0</div>
+    <div class="endpoint"><b>POST</b> <span id="ep"></span> · multipart/form-data, campo <b>file</b> · campo opcional <b>contexto</b> · ?verificar=auto|1|0</div>
     <div class="tabs" id="tabs">
       <button class="tab active" data-l="curl">curl</button>
       <button class="tab" data-l="python">Python</button>
@@ -290,9 +297,9 @@ const $=s=>document.querySelector(s);
 const O=location.origin;
 $('#ep').textContent=O+'/clasificar';
 const SNIP={
- curl:`curl -s -F "file=@foto.jpg" ${O}/clasificar`,
- python:`import requests\n\nwith open("foto.jpg", "rb") as f:\n    r = requests.post("${O}/clasificar", files={"file": f})\ndata = r.json()\nprint(data["final"]["descripcion"])\nfor c in data["final"]["categorias"]:\n    print(c["key"], c["gravedad"], c["fuentes"])`,
- js:`const fd = new FormData();\nfd.append("file", fileInput.files[0]);\nconst res = await fetch("${O}/clasificar", { method: "POST", body: fd });\nconst data = await res.json();\nconsole.log(data.final.categorias);`
+ curl:`curl -s -F "file=@foto.jpg" -F "contexto=vidrios rotos en la vereda" ${O}/clasificar`,
+ python:`import requests\n\nwith open("foto.jpg", "rb") as f:\n    r = requests.post("${O}/clasificar", files={"file": f},\n                      data={"contexto": "vidrios rotos en la vereda"})\ndata = r.json()\nprint(data["final"]["descripcion"])\nfor c in data["final"]["categorias"]:\n    print(c["key"], c["gravedad"], c["fuentes"])`,
+ js:`const fd = new FormData();\nfd.append("file", fileInput.files[0]);\nfd.append("contexto", "vidrios rotos en la vereda"); // opcional\nconst res = await fetch("${O}/clasificar", { method: "POST", body: fd });\nconst data = await res.json();\nconsole.log(data.final.categorias);`
 };
 ['curl','python','js'].forEach(l=>$('#code-'+l).textContent=SNIP[l]);
 $('#tabs').onclick=e=>{const b=e.target.closest('.tab');if(!b)return;
@@ -321,6 +328,7 @@ function enviar(f){
   $('#json').textContent='// analizando…';
   const img=$('#preview');img.src=URL.createObjectURL(f);img.style.display='block';
   const fd=new FormData();fd.append('file',f);
+  const ctx=$('#ctx').value.trim();if(ctx)fd.append('contexto',ctx);
   fetch('/clasificar',{method:'POST',body:fd,signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error('no pude leer la imagen');return r.json()})
    .then(d=>{
      $('#espera').style.display='none';$('#res').style.display='block';
