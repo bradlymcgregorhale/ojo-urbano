@@ -1,7 +1,7 @@
 """Verificación cruzada de clasificaciones con modelos de visión vía OpenRouter.
 
-El modelo local propone categorías; dos modelos de visión (por defecto Kimi y
-Qwen3-VL) miran la foto de forma independiente. Una categoría queda confirmada
+El modelo local propone categorías; dos modelos de visión (por defecto GPT-5
+mini y Gemini Flash Lite) miran la foto de forma independiente. Una categoría queda confirmada
 cuando la reportan al menos 2 de las 3 fuentes (modelo local + 2 verificadores).
 Las categorías con una sola fuente van a un árbitro de texto (por defecto
 DeepSeek), que lee ambos veredictos y las probabilidades del modelo local y
@@ -53,7 +53,7 @@ PRESENCIA = {"contenedor_secos", "contenedor_humedos_lateral",
              "contenedor_humedos_bilateral"}
 
 VERIFICADORES = [m.strip() for m in os.environ.get(
-    "VERIFICADORES", "qwen/qwen3-vl-235b-a22b-instruct,moonshotai/kimi-k2.6").split(",") if m.strip()]
+    "VERIFICADORES", "openai/gpt-5-mini,google/gemini-3.5-flash-lite").split(",") if m.strip()]
 ARBITRO = os.environ.get("ARBITRO", "deepseek/deepseek-v4-flash").strip()
 TIMEOUT = int(os.environ.get("VERIFICADOR_TIMEOUT", "120"))
 LADO_MAX = 1024  # la foto se reduce a este lado máximo antes de enviarla
