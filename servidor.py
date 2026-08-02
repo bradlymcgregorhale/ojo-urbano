@@ -316,6 +316,9 @@ function enviar(f){
   if(ctrl)ctrl.abort();
   ctrl=new AbortController();
   $('#err').textContent='';$('#espera').style.display='block';
+  $('#res').style.display='none';$('#cats').innerHTML='';$('#bars').innerHTML='';
+  $('#estado').textContent='';$('#desc').textContent='';$('#desc').style.display='none';
+  $('#json').textContent='// analizando…';
   const img=$('#preview');img.src=URL.createObjectURL(f);img.style.display='block';
   const fd=new FormData();fd.append('file',f);
   fetch('/clasificar',{method:'POST',body:fd,signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error('no pude leer la imagen');return r.json()})
