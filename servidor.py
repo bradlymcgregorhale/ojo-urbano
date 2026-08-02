@@ -211,9 +211,10 @@ PAGINA = """<!DOCTYPE html>
   #drop:hover,#drop.over{border-color:var(--ink);background:var(--soft)}
   #drop p{margin:6px 0;color:var(--muted)}
   #drop strong{color:var(--ink)}
-  #ctx{width:100%;margin-top:10px;padding:9px 11px;border:1px solid var(--line2);
+  #ctx{width:100%;margin-top:18px;padding:9px 11px;border:1px solid var(--line2);
        border-radius:8px;font:inherit;background:var(--surface);color:var(--ink)}
   #ctx::placeholder{color:var(--muted2)}
+  #ctx + #drop{margin-top:10px}
   .grid{display:grid;grid-template-columns:300px minmax(0,1fr);gap:22px;margin-top:22px;align-items:start}
   #preview{width:100%;border-radius:8px;border:1px solid var(--line);background:#111;display:none}
   .res{display:none;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:18px}
@@ -255,13 +256,13 @@ PAGINA = """<!DOCTYPE html>
     <div class="sub">Modelo propio + verificación cruzada por IA vía OpenRouter.</div>
   </header>
   <span id="modechip" class="mode">cargando…</span>
+  <input id="ctx" type="text" maxlength="500"
+         placeholder="Contexto vecinal (opcional): contá qué pasa en la foto antes de subirla">
   <div id="drop">
     <p><strong>Arrastrá una foto acá</strong> o hacé clic para elegir</p>
     <p>JPG / PNG / WEBP</p>
     <input id="file" type="file" accept="image/*" hidden>
   </div>
-  <input id="ctx" type="text" maxlength="500"
-         placeholder="Contexto vecinal (opcional): contá qué pasa en la foto antes de subirla">
   <div class="err" id="err"></div>
   <div class="espera" id="espera">Analizando… la verificación con modelos de visión puede tardar hasta un minuto.</div>
   <div class="grid">
