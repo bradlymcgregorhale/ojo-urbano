@@ -1,11 +1,13 @@
 # Ojo Urbano
 
-API local para clasificar fotos de incidencias urbanas: residuos en la vía pública, escombros, muebles abandonados, contenedores y cestos en mal estado, baches, veredas rotas, vehículos abandonados y más (29 categorías canónicas, ver [`categorias.json`](categorias.json)).
+API local para clasificar fotos de incidencias urbanas: residuos en la vía pública, escombros, muebles abandonados, contenedores y cestos en mal estado, baches, veredas rotas, vehículos abandonados o mal estacionados y más (39 categorías canónicas, ver [`categorias.json`](categorias.json)).
 
 Combina dos capas:
 
 1. **Modelo propio, gratis y local.** Embeddings de imagen (CLIP + DINOv2 + SigLIP2, todos open source) con un cabezal de regresión logística multi-etiqueta entrenado con miles de fotos callejeras reales etiquetadas a mano, más un regresor de gravedad (1 a 5). Corre 100% en tu máquina, sin ninguna API paga. Las clases sinónimas del modelo se pliegan a una categoría canónica (por ejemplo, todo objeto voluminoso descartado sale como `retiro_muebles`).
 2. **Verificación cruzada por IA (opcional).** Con una clave de [OpenRouter](https://openrouter.ai), dos modelos de visión (por defecto **Qwen3-VL 235B** y **Kimi k2.6**) analizan la foto de forma independiente siguiendo una rúbrica detallada por categoría, calibrada contra fotos reales. Una categoría queda confirmada cuando la reportan al menos 2 de las 3 fuentes; las que tienen una sola fuente van a un **árbitro** de texto (por defecto **DeepSeek**) que lee los veredictos y las probabilidades del modelo local y decide. El subtipo de contenedor de húmedos (lateral vs bilateral) siempre lo decide el modelo local, que es más preciso ahí que los modelos de visión. El costo por foto es de fracciones de centavo.
+
+   Algunas categorías (por ejemplo `vehiculo_mal_estacionado` o `columna_poste_cable`) no existen en el modelo local: las detectan solo los modelos de visión, y quedan confirmadas cuando ambos las reportan (2 de 3 fuentes). Con un solo reporte van al árbitro, como cualquier otra disputa.
 
    Cada verificador devuelve además una **descripción** breve de la foto dentro de su misma respuesta, y la API entrega en `final.descripcion` una descripción consolidada que respalda las categorías confirmadas: la redacta el árbitro cuando ya interviene por una disputa, y si no hay disputa se elige la descripción del verificador que más coincide con el resultado final. Todo sin llamadas extra: el conteo de llamadas por foto no cambia.
 

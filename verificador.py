@@ -125,7 +125,9 @@ _RUBRICA_KEYS = {
     "situacion_calle", "manteros", "contenedor_secos",
     "contenedor_humedos_lateral", "contenedor_humedos_bilateral",
     "reparacion_contenedor", "contenedor_desbordado", "vaciado_contenedor",
-    "vaciado_cesto", "reparacion_cesto",
+    "vaciado_cesto", "reparacion_cesto", "vehiculo_mal_estacionado",
+    "columna_poste_cable", "reposicion_contenedor", "lavado_contenedor",
+    "puesto_diarios", "puesto_flores",
 }
 
 _RUBRICA = """Sos un verificador experto de reportes de higiene urbana en la vía pública. Mirá la foto adjunta (puede ser de noche/oscura; prestá atención a objetos voluminosos como muebles, estanterías o cajones delante o al lado de un contenedor) y reportá los problemas visibles.
@@ -145,7 +147,13 @@ Categorías y criterios (usá SOLO estas claves):
 - contenedor_secos [PRESENCIA]: se ve un contenedor municipal inequívocamente VERDE (reciclables). Los contenedores negros, grises o gris oscuro NO son secos.
 - contenedor_humedos_lateral [PRESENCIA]: se ve un contenedor de húmedos con POSTES o montantes metálicos VERTICALES en los costados (el brazo del camión los toma para izarlo). Suele ser negro o gris oscuro, cuerpo plástico grande redondeado.
 - contenedor_humedos_bilateral [PRESENCIA]: se ve un contenedor de húmedos SIN postes metálicos: cuerpo RECTANGULAR de paredes laterales PLANAS y techo abovedado, gris (claro o dos tonos). El discriminador NO es el color sino los POSTES: si el contenedor NO tiene postes verticales metálicos en los costados es BILATERAL, aunque el gris se vea oscuro o sucio; si los tiene es LATERAL. Reportá solo UNO de los dos tipos de húmedos.
-- reparacion_contenedor: un contenedor VOLCADO (acostado, dado vuelta) o visiblemente ROTO/vandalizado/quemado (tapa desprendida, pedal roto, cuerpo agrietado). Un contenedor volcado siempre va acá. Un contenedor parado y en buen estado NO.
+- reparacion_contenedor: un contenedor visiblemente ROTO/vandalizado/quemado (tapa desprendida, pedal roto, cuerpo agrietado o derretido), esté parado o volcado. Un contenedor VOLCADO pero sin daños visibles NO va acá: es reposicion_contenedor. Un contenedor parado y en buen estado NO.
+- reposicion_contenedor: un contenedor CAÍDO o VOLCADO (acostado, dado vuelta, corrido al medio de la calle) SIN daños visibles: solo hay que volver a pararlo o ubicarlo. Si además está roto, quemado o vandalizado es reparacion_contenedor, no esto.
+- lavado_contenedor: un contenedor en su lugar pero visiblemente MUY sucio por fuera: chorreaduras, mugre incrustada, suciedad notoria que pide lavado. NO por grafitis, calcomanías ni desgaste normal del color.
+- vehiculo_mal_estacionado: un vehículo estacionado o detenido donde está PROHIBIDO: sobre una ciclovía/bicisenda (carril demarcado, típicamente entre franjas amarillas), sobre la vereda o senda peatonal, bloqueando una rampa de accesibilidad o una esquina/ochava, o junto a cartelería de "No estacionar". Señal fuerte: las ruedas pisan la demarcación de la ciclovía o el vehículo está arriba de la vereda. Cuenta aunque el vehículo esté operando (un camión de reparto detenido sobre la ciclovía SÍ es infracción); un vehículo estacionado normal junto al cordón NO. Si el vehículo se ve abandonado (muy deteriorado, sucio, ruedas desinfladas) es vehiculo_abandonado.
+- columna_poste_cable: una columna, un poste o cables de servicios AÚN INSTALADOS y con problemas: cables colgando, sueltos o cortados a baja altura; poste o columna inclinado, roto o deteriorado. Un poste o caño SUELTO tirado en el piso como descarte es retiro_muebles, NO esto.
+- puesto_diarios: un kiosco o puesto de venta de diarios y revistas en la vía pública abandonado, muy deteriorado u obstruyendo el paso. Un puesto operando con normalidad NO.
+- puesto_flores: lo mismo que puesto_diarios pero para un puesto de venta de flores.
 - contenedor_desbordado: el contenedor mismo REBALSA por su boca, con residuos sobresaliendo por encima. La basura en el piso alrededor NO lo hace desbordado (eso es recoleccion).
 - vaciado_contenedor: contenedor lleno que necesita vaciado (residuos visibles hasta la boca), sin llegar a rebalsar.
 - vaciado_cesto: un cesto papelero (canasto chico sobre poste) desbordado o lleno.
