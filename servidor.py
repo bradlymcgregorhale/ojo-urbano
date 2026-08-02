@@ -17,6 +17,7 @@ La primera ejecución descarga los modelos de embeddings (varios GB).
 """
 import io
 import json
+import math
 import os
 from pathlib import Path
 
@@ -126,7 +127,8 @@ def clasificar_local(img):
     gravedad = None
     if sev_model is not None:
         raw = float(sev_model.predict(feats)[0])
-        gravedad = {"value": int(min(GRAV_MAX, max(1, round(raw)))), "raw": round(raw, 2)}
+        # piso, no redondeo: 2.51 es gravedad 2, no 3
+        gravedad = {"value": int(min(GRAV_MAX, max(1, math.floor(raw)))), "raw": round(raw, 2)}
 
     return {
         "predichas": fmt(predichas),
