@@ -305,15 +305,20 @@ fetch('/salud').then(r=>r.json()).then(h=>{
     :'solo modelo local (sin OPENROUTER_API_KEY)';});
 const drop=$('#drop'),file=$('#file');
 drop.onclick=()=>file.click();
-['dragover','dragenter'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('over')}));
-['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('over')}));
-drop.addEventListener('drop',ev=>{if(ev.dataTransfer.files[0])enviar(ev.dataTransfer.files[0])});
-file.addEventListener('change',()=>{if(file.files[0])enviar(file.files[0])});
+// Toda la página acepta drop: si la segunda foto cae fuera del recuadro (por
+// ejemplo sobre el resultado), el navegador ya no navega al archivo.
+['dragover','dragenter'].forEach(e=>document.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('over')}));
+['dragleave','drop'].forEach(e=>document.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('over')}));
+document.addEventListener('drop',ev=>{if(ev.dataTransfer.files[0])enviar(ev.dataTransfer.files[0])});
+file.addEventListener('change',()=>{if(file.files[0]){enviar(file.files[0]);file.value='';}});
+let ctrl=null;
 function enviar(f){
+  if(ctrl)ctrl.abort();
+  ctrl=new AbortController();
   $('#err').textContent='';$('#espera').style.display='block';
   const img=$('#preview');img.src=URL.createObjectURL(f);img.style.display='block';
   const fd=new FormData();fd.append('file',f);
-  fetch('/clasificar',{method:'POST',body:fd}).then(r=>{if(!r.ok)throw new Error('no pude leer la imagen');return r.json()})
+  fetch('/clasificar',{method:'POST',body:fd,signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error('no pude leer la imagen');return r.json()})
    .then(d=>{
      $('#espera').style.display='none';$('#res').style.display='block';
      const fin=d.final;
@@ -331,7 +336,8 @@ function enviar(f){
        <div class="row"><div class="name"><span>${t.nombre}</span><span class="pct">${Math.round(t.score*100)}%</span></div>
        <div class="track"><i style="width:${Math.max(2,Math.round(t.score*100))}%"></i></div></div>`).join('');
      $('#json').textContent=JSON.stringify(d,null,2);
-   }).catch(e=>{$('#espera').style.display='none';$('#err').textContent=e.message});
+   }).catch(e=>{if(e.name==='AbortError')return;
+     $('#espera').style.display='none';$('#err').textContent=e.message});
 }
 </script></body></html>"""
 
