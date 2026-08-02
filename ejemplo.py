@@ -23,6 +23,8 @@ else:
         print(f"{c['key']:30s} gravedad={c['gravedad']} fuentes={', '.join(c['fuentes'])}")
 if final["en_duda"]:
     print("En duda:", ", ".join(final["en_duda"]))
+if final.get("descripcion"):
+    print("Descripción:", final["descripcion"])
 
 veri = data["verificacion"]
 print("Verificación:", "activa" if veri.get("activa") else f"inactiva ({veri.get('motivo')})")

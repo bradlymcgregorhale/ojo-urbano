@@ -7,6 +7,12 @@ Las categorías con una sola fuente van a un árbitro de texto (por defecto
 DeepSeek), que lee ambos veredictos y las probabilidades del modelo local y
 decide. Sin árbitro configurado, quedan marcadas "en_duda".
 
+Cada verificador devuelve además una descripción breve de la foto dentro de su
+misma respuesta (sin llamadas extra). La descripción final consolidada la
+redacta el árbitro cuando ya tiene que intervenir por una disputa; si no hay
+disputa, se elige localmente la descripción del verificador que más coincide
+con las categorías finales. El conteo de llamadas por foto no cambia.
+
 Config por variables de entorno (ver .env.example):
     OPENROUTER_API_KEY   requerida para verificar; sin ella la API responde
                          solo con el modelo local.
@@ -151,12 +157,13 @@ Otras categorías posibles (reportalas solo con evidencia clara):
 Gravedad por categoría (no aplica a las claves [PRESENCIA]): 1 mínima (apenas presente, incidental) · 2 leve · 3 alta · 4 grave · 5 muy grave. Calibración para recoleccion (sé exigente): 1-2 = una bolsa sola o poca basura aislada; 3 = basura claramente presente pero acotada (algunas cajas y restos junto al contenedor); 4 = mucha basura variada ocupando un área notable; 5 = acumulación masiva cubriendo la vereda.
 
 Reglas finales:
+- En "descripcion" contá en 1 o 2 frases qué se ve en la foto: la escena, los objetos principales y su estado, coherente con las categorías que reportás.
 - Reportá únicamente lo que se ve con certeza; ante la duda, omití la categoría.
 - Una foto puede tener varias categorías (una por problema visible; las claves [PRESENCIA] se reportan siempre que el contenedor se vea, haya problema o no, con gravedad 1).
 - Si no hay ningún problema, devolvé sin_problema en true, aunque reportes claves [PRESENCIA] por contenedores visibles sanos: una calle limpia con un contenedor parado y en buen estado sigue siendo sin_problema true. Un contenedor volcado, roto o desbordado sí ES un problema.
 
 Respondé SOLO con JSON válido, sin texto adicional ni markdown:
-{"categorias": [{"key": "...", "gravedad": 1-5, "evidencia": "qué se ve, máx 10 palabras"}], "sin_problema": true|false}"""
+{"categorias": [{"key": "...", "gravedad": 1-5, "evidencia": "qué se ve, máx 10 palabras"}], "sin_problema": true|false, "descripcion": "1-2 frases sobre qué se ve en la foto"}"""
 
 
 def _verificar_uno(modelo, data_url, categorias):
@@ -174,13 +181,18 @@ def _verificar_uno(modelo, data_url, categorias):
             if c["key"] in categorias and c["key"] not in {v["key"] for v in vistas}:
                 vistas.append(c)
         return {"modelo": modelo, "ok": True, "categorias": vistas,
-                "sin_problema": bool(veredicto.get("sin_problema"))}
+                "sin_problema": bool(veredicto.get("sin_problema")),
+                "descripcion": str(veredicto.get("descripcion") or "").strip()}
     except (urllib.error.URLError, ValueError, KeyError, json.JSONDecodeError, OSError) as e:
         return {"modelo": modelo, "ok": False, "error": str(e)[:200]}
 
 
-def _arbitrar(disputadas, veredictos, probabilidades, categorias):
-    """El árbitro (modelo de texto) decide las categorías con una sola fuente."""
+def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas):
+    """El árbitro (modelo de texto) decide las categorías con una sola fuente.
+
+    En la misma llamada redacta la descripción final consolidada de la foto,
+    a partir de las descripciones de los verificadores (sin llamadas extra).
+    """
     if not ARBITRO:
         return None
     probas = {p["key"]: p["score"] for p in probabilidades[:12]}
@@ -191,6 +203,7 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias):
         f"Categorías (clave: nombre): {json.dumps({k: v['nombre'] for k, v in categorias.items()}, ensure_ascii=False)}\n\n"
         f"Probabilidades del modelo local (entrenado con miles de fotos reales): {json.dumps(probas, ensure_ascii=False)}\n\n"
         f"Veredictos de los modelos de visión: {json.dumps(veredictos, ensure_ascii=False)}\n\n"
+        f"Categorías ya confirmadas por consenso: {json.dumps(sorted(consensuadas), ensure_ascii=False)}\n\n"
         f"Categorías en disputa: {json.dumps(sorted(disputadas), ensure_ascii=False)}\n\n"
         "Criterio: confirmá una categoría de un modelo de visión solo si su evidencia citada "
         "es concreta y coherente con lo que reportaron los demás. Si una categoría la reporta "
@@ -198,15 +211,21 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias):
         "rechazala aunque la probabilidad local sea alta, salvo que la evidencia de los "
         "verificadores describa lo mismo con otras palabras. Categorías que nombran el mismo "
         "objeto físico ya reportado por consenso no deben duplicarse: rechazá la redundante. "
-        "Ante la duda, rechazá. Respondé SOLO con JSON:\n"
-        '{"decisiones": [{"key": "...", "veredicto": "confirmar"|"rechazar", "motivo": "..."}]}'
+        "Ante la duda, rechazá.\n\n"
+        'Además, redactá "descripcion": 1 a 3 frases en español que describan la foto '
+        "integrando las descripciones y evidencias de los dos modelos de visión, y que "
+        "respalden las categorías confirmadas (las de consenso más las que confirmes acá). "
+        "No inventes detalles que ninguna fuente haya mencionado.\n\n"
+        "Respondé SOLO con JSON:\n"
+        '{"decisiones": [{"key": "...", "veredicto": "confirmar"|"rechazar", "motivo": "..."}], "descripcion": "..."}'
     )
     try:
         contenido = _llamar(ARBITRO, [{"role": "user", "content": prompt}])
         data = _extraer_json(contenido)
         decisiones = [d for d in data.get("decisiones", [])
                       if isinstance(d, dict) and d.get("key") in disputadas]
-        return {"modelo": ARBITRO, "ok": True, "decisiones": decisiones}
+        return {"modelo": ARBITRO, "ok": True, "decisiones": decisiones,
+                "descripcion": str(data.get("descripcion") or "").strip()}
     except (urllib.error.URLError, ValueError, KeyError, json.JSONDecodeError, OSError) as e:
         return {"modelo": ARBITRO, "ok": False, "error": str(e)[:200]}
 
@@ -263,7 +282,8 @@ def verificar(img, categorias, prediccion_local):
     arbitro = None
     en_duda = []
     if disputadas and activos:
-        arbitro = _arbitrar(disputadas, activos, prediccion_local["probabilidades"], categorias)
+        arbitro = _arbitrar(disputadas, activos, prediccion_local["probabilidades"],
+                            categorias, confirmadas)
         if arbitro and arbitro.get("ok"):
             decididas = set()
             for d in arbitro["decisiones"]:
@@ -287,10 +307,31 @@ def verificar(img, categorias, prediccion_local):
             "fuentes": fuentes.get(k, []),
         })
 
+    # Descripción final consolidada, siempre sin llamadas extra: la redacta el
+    # árbitro si ya intervino; si no, se elige la descripción del verificador
+    # que más coincide con las categorías finales (a igual coincidencia, la
+    # más detallada).
+    descripcion, descripcion_fuente = None, None
+    if arbitro and arbitro.get("ok") and arbitro.get("descripcion"):
+        descripcion, descripcion_fuente = arbitro["descripcion"], ARBITRO
+    else:
+        mejor = None
+        for v in activos:
+            if not v.get("descripcion"):
+                continue
+            clave = (len({c["key"] for c in v["categorias"]} & confirmadas),
+                     len(v["descripcion"]))
+            if mejor is None or clave > mejor[0]:
+                mejor = (clave, v)
+        if mejor:
+            descripcion, descripcion_fuente = mejor[1]["descripcion"], mejor[1]["modelo"]
+
     return {
         "activa": True,
         "verificadores": veredictos,
         "arbitro": arbitro,
         "confirmadas": finales,
         "en_duda": en_duda,
+        "descripcion": descripcion,
+        "descripcion_fuente": descripcion_fuente,
     }

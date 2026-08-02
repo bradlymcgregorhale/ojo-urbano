@@ -162,16 +162,17 @@ async def clasificar(file: UploadFile = File(...), verificar: str = "auto"):
 
     if activar and verificador.disponible():
         veri = verificador.verificar(img, CATEGORIAS, local)
-        final = {"categorias": veri["confirmadas"], "en_duda": veri["en_duda"]}
+        final = {"categorias": veri["confirmadas"], "en_duda": veri["en_duda"],
+                 "descripcion": veri["descripcion"]}
     else:
-        motivo = ("desactivada por parámetro" if not activar
-                  else "falta OPENROUTER_API_KEY")
+        motivo = ("falta OPENROUTER_API_KEY" if not verificador.disponible()
+                  else "desactivada por parámetro")
         veri = {"activa": False, "motivo": motivo}
         final = {"categorias": [{"key": p["key"], "nombre": p["nombre"],
                                  "gravedad": (local["gravedad"] or {}).get("value"),
                                  "fuentes": ["modelo_local"]}
                                 for p in local["predichas"] if p["key"] != "sin_problema"],
-                 "en_duda": []}
+                 "en_duda": [], "descripcion": None}
 
     problemas = [c for c in final["categorias"]
                  if c["key"] not in verificador.PRESENCIA]
@@ -216,6 +217,8 @@ PAGINA = """<!DOCTYPE html>
   .cat{border:1px solid var(--line2);border-radius:8px;background:var(--soft);padding:8px 12px}
   .cat b{display:block;font-size:14px}
   .cat span{font-size:12px;color:var(--muted)}
+  .desc{display:none;font-size:13.5px;background:var(--soft);border:1px solid var(--line);
+        border-radius:8px;padding:10px 12px;margin-bottom:14px}
   .estado{font-size:12.5px;color:var(--muted);margin-bottom:14px}
   .row{margin:9px 0}
   .row .name{display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px}
@@ -259,6 +262,7 @@ PAGINA = """<!DOCTYPE html>
     <div class="res" id="res">
       <h2>Resultado</h2>
       <div class="cats" id="cats"></div>
+      <div class="desc" id="desc"></div>
       <div class="estado" id="estado"></div>
       <div id="bars"></div>
     </div>
@@ -287,7 +291,7 @@ const O=location.origin;
 $('#ep').textContent=O+'/clasificar';
 const SNIP={
  curl:`curl -s -F "file=@foto.jpg" ${O}/clasificar`,
- python:`import requests\n\nwith open("foto.jpg", "rb") as f:\n    r = requests.post("${O}/clasificar", files={"file": f})\ndata = r.json()\nfor c in data["final"]["categorias"]:\n    print(c["key"], c["gravedad"], c["fuentes"])`,
+ python:`import requests\n\nwith open("foto.jpg", "rb") as f:\n    r = requests.post("${O}/clasificar", files={"file": f})\ndata = r.json()\nprint(data["final"]["descripcion"])\nfor c in data["final"]["categorias"]:\n    print(c["key"], c["gravedad"], c["fuentes"])`,
  js:`const fd = new FormData();\nfd.append("file", fileInput.files[0]);\nconst res = await fetch("${O}/clasificar", { method: "POST", body: fd });\nconst data = await res.json();\nconsole.log(data.final.categorias);`
 };
 ['curl','python','js'].forEach(l=>$('#code-'+l).textContent=SNIP[l]);
@@ -316,6 +320,8 @@ function enviar(f){
      $('#cats').innerHTML=fin.sin_problema
        ?'<div class="cat"><b>Sin problema identificable</b></div>'
        :fin.categorias.map(c=>`<div class="cat"><b>${c.nombre}</b><span>gravedad ${c.gravedad??'—'} · ${c.fuentes.length} fuente${c.fuentes.length>1?'s':''}</span></div>`).join('');
+     const desc=$('#desc');desc.textContent=fin.descripcion||'';
+     desc.style.display=fin.descripcion?'block':'none';
      const v=d.verificacion;
      $('#estado').textContent=v.activa
        ?'Verificado por '+v.verificadores.filter(x=>x.ok).map(x=>x.modelo).join(' y ')

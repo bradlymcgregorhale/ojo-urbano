@@ -7,6 +7,8 @@ Combina dos capas:
 1. **Modelo propio, gratis y local.** Embeddings de imagen (CLIP + DINOv2 + SigLIP2, todos open source) con un cabezal de regresión logística multi-etiqueta entrenado con miles de fotos callejeras reales etiquetadas a mano, más un regresor de gravedad (1 a 5). Corre 100% en tu máquina, sin ninguna API paga. Las clases sinónimas del modelo se pliegan a una categoría canónica (por ejemplo, todo objeto voluminoso descartado sale como `retiro_muebles`).
 2. **Verificación cruzada por IA (opcional).** Con una clave de [OpenRouter](https://openrouter.ai), dos modelos de visión (por defecto **Qwen3-VL 235B** y **Kimi k2.6**) analizan la foto de forma independiente siguiendo una rúbrica detallada por categoría, calibrada contra fotos reales. Una categoría queda confirmada cuando la reportan al menos 2 de las 3 fuentes; las que tienen una sola fuente van a un **árbitro** de texto (por defecto **DeepSeek**) que lee los veredictos y las probabilidades del modelo local y decide. El subtipo de contenedor de húmedos (lateral vs bilateral) siempre lo decide el modelo local, que es más preciso ahí que los modelos de visión. El costo por foto es de fracciones de centavo.
 
+   Cada verificador devuelve además una **descripción** breve de la foto dentro de su misma respuesta, y la API entrega en `final.descripcion` una descripción consolidada que respalda las categorías confirmadas: la redacta el árbitro cuando ya interviene por una disputa, y si no hay disputa se elige la descripción del verificador que más coincide con el resultado final. Todo sin llamadas extra: el conteo de llamadas por foto no cambia.
+
 ## Instalación
 
 ```bash
@@ -45,11 +47,16 @@ Respuesta (resumida):
   "verificacion": {
     "activa": true,
     "verificadores": [
-      { "modelo": "moonshotai/kimi-k2.5", "ok": true, "categorias": [ ... ] },
-      { "modelo": "qwen/qwen3-vl-8b-instruct", "ok": true, "categorias": [ ... ] }
+      { "modelo": "moonshotai/kimi-k2.5", "ok": true, "categorias": [ ... ],
+        "descripcion": "Bolsas de residuos y cajas apiladas junto a un contenedor negro." },
+      { "modelo": "qwen/qwen3-vl-8b-instruct", "ok": true, "categorias": [ ... ],
+        "descripcion": "Vereda con basura domiciliaria acumulada al pie de un contenedor." }
     ],
-    "arbitro": { "modelo": "deepseek/deepseek-v4-flash", "ok": true, "decisiones": [ ... ] },
-    "en_duda": []
+    "arbitro": { "modelo": "deepseek/deepseek-v4-flash", "ok": true, "decisiones": [ ... ],
+                 "descripcion": "..." },
+    "en_duda": [],
+    "descripcion": "Bolsas de residuos y cajas de cartón acumuladas en la vereda junto a un contenedor negro de húmedos.",
+    "descripcion_fuente": "deepseek/deepseek-v4-flash"
   },
   "final": {
     "categorias": [
@@ -57,13 +64,14 @@ Respuesta (resumida):
         "fuentes": ["modelo_local", "moonshotai/kimi-k2.5", "qwen/qwen3-vl-8b-instruct"] }
     ],
     "en_duda": [],
+    "descripcion": "Bolsas de residuos y cajas de cartón acumuladas en la vereda junto a un contenedor negro de húmedos.",
     "gravedad_maxima": 3,
     "sin_problema": false
   }
 }
 ```
 
-`final.categorias` es el veredicto consolidado; `fuentes` dice quién vio cada problema. Una foto puede tener varias categorías a la vez (una por problema visible).
+`final.categorias` es el veredicto consolidado; `fuentes` dice quién vio cada problema. Una foto puede tener varias categorías a la vez (una por problema visible). `final.descripcion` describe la foto respaldando esas categorías (`verificacion.descripcion_fuente` dice quién la redactó); es `null` cuando la verificación no corre.
 
 ### `GET /salud`
 
