@@ -1,6 +1,6 @@
 # Ojo Urbano
 
-API local para clasificar fotos de incidencias urbanas: residuos en la vía pública, escombros, muebles abandonados, contenedores y cestos en mal estado, baches, veredas rotas, vehículos abandonados o mal estacionados y más (40 categorías canónicas, ver [`categorias.json`](categorias.json)).
+API local para clasificar fotos de incidencias urbanas: residuos en la vía pública, escombros, muebles abandonados, contenedores y cestos en mal estado, baches, veredas rotas, vehículos abandonados o mal estacionados, plagas y más (41 categorías canónicas, ver [`categorias.json`](categorias.json)).
 
 Combina dos capas:
 
@@ -30,7 +30,7 @@ La primera ejecución descarga los modelos de embeddings (varios GB, una sola ve
 
 ### `POST /clasificar`
 
-`multipart/form-data` con el campo `file`. Campo opcional `contexto` ("contexto vecinal"): texto de quien reporta, que los modelos de visión y el árbitro usan como pista para interpretar la foto; nunca como evidencia (se reporta solo lo que la foto muestra, máx. 500 caracteres). Parámetro opcional `verificar`: `auto` (default: verifica si hay clave), `1` (forzar), `0` (solo modelo local).
+`multipart/form-data` con el campo `file`. Campo opcional `contexto` ("contexto vecinal"): texto de quien reporta, que los modelos de visión y el árbitro usan como pista para interpretar la foto; nunca como evidencia (se reporta solo lo que la foto muestra, máx. 500 caracteres). Las categorías que el contexto describe pero la foto no confirma vuelven aparte en `final.categorias_contexto` (por ejemplo, "hay ratas por todos lados" devuelve `desratizacion` ahí aunque no se vea ninguna rata); no cuentan para `gravedad_maxima` ni `sin_problema`. Parámetro opcional `verificar`: `auto` (default: verifica si hay clave), `1` (forzar), `0` (solo modelo local).
 
 ```bash
 curl -s -F "file=@foto.jpg" -F "contexto=vidrios rotos en la vereda" http://127.0.0.1:8080/clasificar

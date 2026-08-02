@@ -165,6 +165,7 @@ async def clasificar(file: UploadFile = File(...), verificar: str = "auto",
     if activar and verificador.disponible():
         veri = verificador.verificar(img, CATEGORIAS, local, contexto)
         final = {"categorias": veri["confirmadas"], "en_duda": veri["en_duda"],
+                 "categorias_contexto": veri["categorias_contexto"],
                  "descripcion": veri["descripcion"]}
     else:
         motivo = ("falta OPENROUTER_API_KEY" if not verificador.disponible()
@@ -174,7 +175,7 @@ async def clasificar(file: UploadFile = File(...), verificar: str = "auto",
                                  "gravedad": (local["gravedad"] or {}).get("value"),
                                  "fuentes": ["modelo_local"]}
                                 for p in local["predichas"] if p["key"] != "sin_problema"],
-                 "en_duda": [], "descripcion": None}
+                 "en_duda": [], "categorias_contexto": [], "descripcion": None}
 
     problemas = [c for c in final["categorias"]
                  if c["key"] not in verificador.PRESENCIA]
@@ -334,9 +335,10 @@ function enviar(f){
    .then(d=>{
      $('#espera').style.display='none';$('#res').style.display='block';
      const fin=d.final;
-     $('#cats').innerHTML=fin.sin_problema
-       ?'<div class="cat"><b>Sin problema identificable</b></div>'
-       :fin.categorias.map(c=>`<div class="cat"><b>${c.nombre}</b><span>gravedad ${c.gravedad??'—'} · ${c.fuentes.length} fuente${c.fuentes.length>1?'s':''}</span></div>`).join('');
+     const ctxChips=(fin.categorias_contexto||[]).map(c=>`<div class="cat"><b>${c.nombre}</b><span>según el contexto vecinal (no visible en la foto)</span></div>`).join('');
+     $('#cats').innerHTML=(fin.sin_problema
+       ?'<div class="cat"><b>Sin problema identificable en la foto</b></div>'
+       :fin.categorias.map(c=>`<div class="cat"><b>${c.nombre}</b><span>gravedad ${c.gravedad??'—'} · ${c.fuentes.length} fuente${c.fuentes.length>1?'s':''}</span></div>`).join(''))+ctxChips;
      const desc=$('#desc');desc.textContent=fin.descripcion||'';
      desc.style.display=fin.descripcion?'block':'none';
      const v=d.verificacion;

@@ -151,6 +151,10 @@
     "nombre": "Vehículo mal estacionado (ciclovía, vereda, rampa u ochava)",
     "grupo": "Vehículos"
   },
+  "desratizacion": {
+    "nombre": "Desratización / control de plagas en la vía pública",
+    "grupo": "Otros"
+  },
   "situacion_calle": {
     "nombre": "Personas en situación de calle",
     "grupo": "Otros"
