@@ -204,41 +204,62 @@ PAGINA = """<!DOCTYPE html>
   .masthead{margin-bottom:20px;padding-bottom:22px;border-bottom:1px solid var(--line)}
   h1{font-size:19px;letter-spacing:.14em;margin:0}
   .tagline{margin-top:3px;color:var(--muted);font-size:13px;font-weight:700}
-  .sub{color:var(--muted2);font-size:13px;margin-top:5px}
+  .sub{color:var(--muted2);font-size:13px;margin-top:5px;max-width:620px}
   .mode{display:inline-block;font-size:12px;padding:3px 10px;border-radius:20px;
         border:1px solid var(--line2);background:var(--surface);color:var(--muted)}
-  #drop{margin-top:18px;border:1px dashed var(--line2);border-radius:8px;background:var(--surface);
-        padding:44px 20px;text-align:center;cursor:pointer;transition:.15s}
-  #drop:hover,#drop.over{border-color:var(--ink);background:var(--soft)}
-  #drop p{margin:6px 0;color:var(--muted)}
-  #drop strong{color:var(--ink)}
-  #ctx{width:100%;margin-top:18px;padding:9px 11px;border:1px solid var(--line2);
+  .ctxlabel{display:block;margin-top:18px;font-size:12px;text-transform:uppercase;
+            letter-spacing:.07em;color:var(--muted);font-weight:700}
+  #ctx{width:100%;margin-top:6px;padding:9px 11px;border:1px solid var(--line2);
        border-radius:8px;font:inherit;background:var(--surface);color:var(--ink)}
   #ctx::placeholder{color:var(--muted2)}
-  #ctx + #drop{margin-top:10px}
+  .ctxhint{font-size:12px;color:var(--muted2);margin-top:4px}
+  #drop{margin-top:12px;border:1px dashed var(--line2);border-radius:8px;background:var(--surface);
+        padding:36px 20px;text-align:center;cursor:pointer;transition:.15s}
+  #drop:hover,#drop:focus-visible,#drop.over{border-color:var(--ink);background:var(--soft);outline:none}
+  #drop p{margin:6px 0;color:var(--muted)}
+  #drop strong{color:var(--ink)}
   .grid{display:grid;grid-template-columns:300px minmax(0,1fr);gap:22px;margin-top:22px;align-items:start}
   #preview{width:100%;border-radius:8px;border:1px solid var(--line);background:#111;display:none}
+  .espera{display:none;border:1px solid var(--line);border-radius:8px;background:var(--surface);
+          padding:16px 18px;gap:14px;align-items:flex-start}
+  .espera b{font-size:14px}
+  .esptxt{font-size:12.5px;color:var(--muted);margin-top:3px}
+  .spin{width:18px;height:18px;border:2px solid var(--line2);border-top-color:var(--ink);
+        border-radius:50%;flex:none;margin-top:2px;animation:gira .8s linear infinite}
+  @keyframes gira{to{transform:rotate(360deg)}}
   .res{display:none;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:18px}
   .res h2{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:0 0 10px}
-  .cats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .res h3{font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:16px 0 7px}
+  .concl{font-size:14.5px;font-weight:600;margin-bottom:12px}
+  .cats{display:flex;flex-wrap:wrap;gap:8px}
   .cat{border:1px solid var(--line2);border-radius:8px;background:var(--soft);padding:8px 12px}
   .cat b{display:block;font-size:14px}
   .cat span{font-size:12px;color:var(--muted)}
-  .desc{display:none;font-size:13.5px;background:var(--soft);border:1px solid var(--line);
-        border-radius:8px;padding:10px 12px;margin-bottom:14px}
-  .estado{font-size:12.5px;color:var(--muted);margin-bottom:14px}
+  .cat.ctx{border-style:dashed;background:var(--surface)}
+  .desc{font-size:13.5px;background:var(--soft);border:1px solid var(--line);
+        border-radius:8px;padding:10px 12px}
+  .mini{font-size:12px;color:var(--muted2);margin-top:6px}
+  .estado{font-size:12.5px;color:var(--muted);margin:8px 0}
+  .voto{font-size:12.5px;color:var(--muted);margin:3px 0}
+  .voto b{color:var(--ink);font-weight:600}
   .row{margin:9px 0}
   .row .name{display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px}
   .row .name .pct{color:var(--muted)}
   .track{height:8px;background:var(--bar);border-radius:999px;overflow:hidden}
   .track>i{display:block;height:100%;background:var(--ink);border-radius:999px}
   .row:not(:first-child) .track>i{background:#747474}
-  .err{font-size:13px;font-weight:700;margin-top:10px}
-  .espera{display:none;margin-top:14px;color:var(--muted);font-size:13px}
-  .api{margin-top:30px;border-top:1px solid var(--line);padding-top:22px}
-  .api h2{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:0 0 8px}
+  .err{display:none;font-size:13px;font-weight:600;margin-top:12px;border:1px solid var(--line2);
+       border-radius:8px;background:var(--surface);padding:10px 12px}
+  details.det{margin-top:18px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+  details.det>summary{cursor:pointer;padding:10px 14px;font-size:13px;font-weight:600;color:var(--muted);
+       list-style-position:inside}
+  details.det[open]>summary{border-bottom:1px solid var(--line);color:var(--ink)}
+  details.det>.detbody{padding:14px}
+  .res details.det{margin-top:16px}
+  .res details.det>.detbody{padding:12px 14px}
   .endpoint{font:13px ui-monospace,Menlo,monospace;background:var(--surface);
-            border:1px solid var(--line);border-radius:8px;padding:8px 11px;margin-bottom:14px}
+            border:1px solid var(--line);border-radius:8px;padding:8px 11px;margin-bottom:10px}
+  .apinote{font-size:12.5px;color:var(--muted);margin-bottom:12px}
   .tabs{display:flex;gap:6px;margin-bottom:8px}
   .tab{padding:5px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);
        cursor:pointer;font:13px inherit;color:var(--muted)}
@@ -247,57 +268,117 @@ PAGINA = """<!DOCTYPE html>
        font:12.5px/1.55 ui-monospace,Menlo,monospace;margin:0}
   pre.code{display:none}
   pre.code.active{display:block}
-  .json-wrap{margin-top:20px}
+  .copybtn{font:12px inherit;border:1px solid var(--line2);border-radius:6px;background:var(--surface);
+       color:var(--muted);padding:4px 10px;cursor:pointer;margin-bottom:8px}
+  .copybtn:hover{color:var(--ink);border-color:var(--ink)}
   @media(max-width:700px){.grid{grid-template-columns:1fr}}
 </style></head>
 <body><div class="wrap">
   <header class="masthead">
     <h1>OJO URBANO</h1>
     <div class="tagline">Reconocimiento visual de incidencias urbanas</div>
-    <div class="sub">Modelo propio + verificación cruzada por IA vía OpenRouter.</div>
+    <div class="sub">Subí una foto de un problema en la vía pública (basura fuera del contenedor, muebles
+      abandonados, veredas rotas, vehículos sobre la ciclovía) y el sistema identifica qué reporte
+      corresponde. La foto y el contexto se envían a modelos de IA de terceros vía OpenRouter para la
+      verificación cruzada.</div>
   </header>
   <span id="modechip" class="mode">cargando…</span>
+
+  <label class="ctxlabel" for="ctx">Contexto vecinal (opcional)</label>
   <input id="ctx" type="text" maxlength="500"
-         placeholder="Contexto vecinal (opcional): contá qué pasa en la foto antes de subirla">
-  <div id="drop">
+         placeholder="Contá algo que quizá no se vea en la foto, p. ej. «todo huele mal» o «hay ratas»">
+  <div class="ctxhint">Sirve de pista para interpretar la foto y para sugerir reportes. Lo que no se vea
+    en la foto vuelve como sugerencia aparte, nunca como confirmación. Escribilo antes de soltar la foto.</div>
+
+  <div id="drop" role="button" tabindex="0" aria-label="Elegir una foto para analizar">
     <p><strong>Arrastrá una foto acá</strong> o hacé clic para elegir</p>
-    <p>JPG / PNG / WEBP</p>
+    <p>JPG / PNG / WEBP · el análisis arranca al soltarla</p>
     <input id="file" type="file" accept="image/*" hidden>
   </div>
   <div class="err" id="err"></div>
-  <div class="espera" id="espera">Analizando… la verificación con modelos de visión puede tardar hasta un minuto.</div>
+
   <div class="grid">
-    <img id="preview" alt="">
-    <div class="res" id="res">
-      <h2>Resultado</h2>
-      <div class="cats" id="cats"></div>
-      <div class="desc" id="desc"></div>
-      <div class="estado" id="estado"></div>
-      <div id="bars"></div>
+    <img id="preview" alt="Foto subida">
+    <div>
+      <div class="espera" id="espera" aria-live="polite">
+        <div class="spin" aria-hidden="true"></div>
+        <div>
+          <b>Analizando la foto</b>
+          <div class="esptxt">Modelo local + verificación cruzada con dos modelos de visión.
+            Suele tardar entre 20 y 60 segundos.</div>
+          <div class="esptxt" id="elapsed">0 s</div>
+        </div>
+      </div>
+      <div class="res" id="res">
+        <h2>Resultado</h2>
+        <div class="concl" id="concl"></div>
+        <div class="cats" id="cats"></div>
+        <div id="descwrap" style="display:none">
+          <h3>Descripción de la escena</h3>
+          <div class="desc" id="desc"></div>
+        </div>
+        <div id="ctxwrap" style="display:none">
+          <h3>Sugerido por el contexto vecinal</h3>
+          <div class="cats" id="ctxcats"></div>
+          <div class="mini">Surgen del texto que escribiste; la foto no las confirma y no suman a la gravedad.</div>
+        </div>
+        <div id="preswrap" style="display:none">
+          <h3>Elementos detectados</h3>
+          <div class="cats" id="prescats"></div>
+          <div class="mini">Contenedores visibles en la foto; se informan aunque no tengan problemas.</div>
+        </div>
+        <div id="dudawrap" style="display:none">
+          <h3>Sin consenso</h3>
+          <div class="mini" id="dudas"></div>
+        </div>
+        <details class="det">
+          <summary>Cómo se obtuvo este resultado</summary>
+          <div class="detbody">
+            <div class="estado" id="estado"></div>
+            <div id="votos"></div>
+            <h3>Predicciones del modelo local (top 5)</h3>
+            <div class="mini" style="margin:0 0 8px">Probabilidades del clasificador propio. La confirmación
+              final surge del consenso: una categoría queda confirmada con 2 de 3 fuentes (modelo local +
+              dos modelos de visión); las de una sola fuente las decide un árbitro de texto.</div>
+            <div id="bars"></div>
+          </div>
+        </details>
+      </div>
     </div>
   </div>
 
-  <div class="api">
-    <h2>API</h2>
-    <div class="endpoint"><b>POST</b> <span id="ep"></span> · multipart/form-data, campo <b>file</b> · campo opcional <b>contexto</b> · ?verificar=auto|1|0</div>
-    <div class="tabs" id="tabs">
-      <button class="tab active" data-l="curl">curl</button>
-      <button class="tab" data-l="python">Python</button>
-      <button class="tab" data-l="js">JavaScript</button>
+  <details class="det" id="jsonwrap" style="display:none">
+    <summary>Ver respuesta JSON <span id="jsonsize" style="font-weight:400"></span></summary>
+    <div class="detbody">
+      <button class="copybtn" id="copyjson">Copiar JSON</button>
+      <pre class="json" id="json"></pre>
     </div>
-    <pre class="code active" id="code-curl"></pre>
-    <pre class="code" id="code-python"></pre>
-    <pre class="code" id="code-js"></pre>
-    <div class="json-wrap">
-      <h2>Respuesta JSON</h2>
-      <pre class="json" id="json">// subí una foto para ver la respuesta real</pre>
+  </details>
+
+  <details class="det">
+    <summary>API para desarrolladores</summary>
+    <div class="detbody">
+      <div class="endpoint"><b>POST</b> <span id="ep"></span> · multipart/form-data, campo <b>file</b> · campo opcional <b>contexto</b></div>
+      <div class="apinote">Parámetro opcional <b>?verificar=</b> <b>auto</b> (default: verifica si hay clave
+        de OpenRouter) · <b>1</b> (forzar verificación) · <b>0</b> (solo modelo local). Las categorías que el
+        contexto describe pero la foto no confirma vuelven en <b>final.categorias_contexto</b>.</div>
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-l="curl">curl</button>
+        <button class="tab" data-l="python">Python</button>
+        <button class="tab" data-l="js">JavaScript</button>
+      </div>
+      <pre class="code active" id="code-curl"></pre>
+      <pre class="code" id="code-python"></pre>
+      <pre class="code" id="code-js"></pre>
     </div>
-  </div>
+  </details>
 </div>
 <script>
 const $=s=>document.querySelector(s);
 const O=location.origin;
 $('#ep').textContent=O+'/clasificar';
+const GRAV={1:'mínima',2:'leve',3:'alta',4:'grave',5:'muy grave'};
+const PRESENCIA=['contenedor_secos','contenedor_humedos_lateral','contenedor_humedos_bilateral'];
 const SNIP={
  curl:`curl -s -F "file=@foto.jpg" -F "contexto=vidrios rotos en la vereda" ${O}/clasificar`,
  python:`import requests\n\nwith open("foto.jpg", "rb") as f:\n    r = requests.post("${O}/clasificar", files={"file": f},\n                      data={"contexto": "vidrios rotos en la vereda"})\ndata = r.json()\nprint(data["final"]["descripcion"])\nfor c in data["final"]["categorias"]:\n    print(c["key"], c["gravedad"], c["fuentes"])`,
@@ -309,49 +390,77 @@ $('#tabs').onclick=e=>{const b=e.target.closest('.tab');if(!b)return;
   document.querySelectorAll('.code').forEach(c=>c.classList.remove('active'));
   $('#code-'+b.dataset.l).classList.add('active');};
 fetch('/salud').then(r=>r.json()).then(h=>{
-  $('#modechip').textContent=h.verificacion
-    ?'verificación activa: '+h.verificadores.join(' + ')
-    :'solo modelo local (sin OPENROUTER_API_KEY)';});
+  const chip=$('#modechip');
+  chip.textContent=h.verificacion?'Análisis completo activo':'Modo básico: solo modelo local, sin verificación cruzada';
+  chip.title=h.verificacion?('Verificadores: '+h.verificadores.join(' + ')+(h.arbitro?' · árbitro: '+h.arbitro:'')):'Configurá OPENROUTER_API_KEY para activar la verificación';});
 const drop=$('#drop'),file=$('#file');
 drop.onclick=()=>file.click();
+drop.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();file.click();}});
 // Toda la página acepta drop: si la segunda foto cae fuera del recuadro (por
 // ejemplo sobre el resultado), el navegador ya no navega al archivo.
 ['dragover','dragenter'].forEach(e=>document.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('over')}));
 ['dragleave','drop'].forEach(e=>document.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('over')}));
 document.addEventListener('drop',ev=>{if(ev.dataTransfer.files[0])enviar(ev.dataTransfer.files[0])});
 file.addEventListener('change',()=>{if(file.files[0]){enviar(file.files[0]);file.value='';}});
-let ctrl=null;
+$('#copyjson').onclick=()=>{navigator.clipboard.writeText($('#json').textContent).then(()=>{
+  $('#copyjson').textContent='Copiado ✓';setTimeout(()=>$('#copyjson').textContent='Copiar JSON',1500);});};
+const chip=(c,extra)=>`<div class="cat${extra?' ctx':''}"><b>${c.nombre}</b>${c.gravedad?`<span title="${(c.fuentes||[]).join(', ')}">${c.gravedad}/5 · ${GRAV[c.gravedad]||''} · ${(c.fuentes||[]).length} fuente${(c.fuentes||[]).length!==1?'s':''}</span>`:''}</div>`;
+let ctrl=null,cronoIv=null;
 function enviar(f){
   if(ctrl)ctrl.abort();
+  if(cronoIv)clearInterval(cronoIv);
   ctrl=new AbortController();
-  $('#err').textContent='';$('#espera').style.display='block';
+  $('#err').style.display='none';$('#err').textContent='';
   $('#res').style.display='none';$('#cats').innerHTML='';$('#bars').innerHTML='';
-  $('#estado').textContent='';$('#desc').textContent='';$('#desc').style.display='none';
-  $('#json').textContent='// analizando…';
+  $('#estado').textContent='';$('#votos').innerHTML='';$('#concl').textContent='';
+  ['descwrap','ctxwrap','preswrap','dudawrap'].forEach(id=>$('#'+id).style.display='none');
+  $('#espera').style.display='flex';
+  const t0=Date.now();
+  cronoIv=setInterval(()=>{$('#elapsed').textContent=Math.round((Date.now()-t0)/1000)+' s'},1000);
+  $('#elapsed').textContent='0 s';
   const img=$('#preview');img.src=URL.createObjectURL(f);img.style.display='block';
   const fd=new FormData();fd.append('file',f);
   const ctx=$('#ctx').value.trim();if(ctx)fd.append('contexto',ctx);
   fetch('/clasificar',{method:'POST',body:fd,signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error('no pude leer la imagen');return r.json()})
    .then(d=>{
+     clearInterval(cronoIv);
      $('#espera').style.display='none';$('#res').style.display='block';
      const fin=d.final;
-     const ctxChips=(fin.categorias_contexto||[]).map(c=>`<div class="cat"><b>${c.nombre}</b><span>según el contexto vecinal (no visible en la foto)</span></div>`).join('');
-     $('#cats').innerHTML=(fin.sin_problema
-       ?'<div class="cat"><b>Sin problema identificable en la foto</b></div>'
-       :fin.categorias.map(c=>`<div class="cat"><b>${c.nombre}</b><span>gravedad ${c.gravedad??'—'} · ${c.fuentes.length} fuente${c.fuentes.length>1?'s':''}</span></div>`).join(''))+ctxChips;
-     const desc=$('#desc');desc.textContent=fin.descripcion||'';
-     desc.style.display=fin.descripcion?'block':'none';
+     const pres=fin.categorias.filter(c=>PRESENCIA.includes(c.key));
+     const probs=fin.categorias.filter(c=>!PRESENCIA.includes(c.key));
+     $('#concl').textContent=fin.sin_problema
+       ?'No se identificaron problemas en la foto.'
+       :(probs.length===1?'Se identificó 1 incidencia':'Se identificaron '+probs.length+' incidencias')
+         +(fin.gravedad_maxima?` · gravedad máxima ${fin.gravedad_maxima}/5 (${GRAV[fin.gravedad_maxima]})`:'')+'.';
+     $('#cats').innerHTML=probs.map(c=>chip(c)).join('');
+     if(fin.descripcion){$('#desc').textContent=fin.descripcion;$('#descwrap').style.display='block';}
+     const cc=fin.categorias_contexto||[];
+     if(cc.length){$('#ctxcats').innerHTML=cc.map(c=>chip(c,true)).join('');$('#ctxwrap').style.display='block';}
+     if(pres.length){$('#prescats').innerHTML=pres.map(c=>`<div class="cat"><b>${c.nombre}</b></div>`).join('');$('#preswrap').style.display='block';}
+     if(fin.en_duda.length){$('#dudas').textContent='Reportadas por una sola fuente y sin decisión del árbitro: '
+       +fin.en_duda.map(k=>k.replace(/_/g,' ')).join(', ')+'. No se incluyen entre las confirmadas.';
+       $('#dudawrap').style.display='block';}
      const v=d.verificacion;
      $('#estado').textContent=v.activa
-       ?'Verificado por '+v.verificadores.filter(x=>x.ok).map(x=>x.modelo).join(' y ')
-         +(fin.en_duda.length?' · en duda: '+fin.en_duda.join(', '):'')
-       :'Sin verificación ('+v.motivo+')';
+       ?'Verificación cruzada completada en '+Math.round((Date.now()-t0)/1000)+' s.'
+       :'Sin verificación cruzada ('+v.motivo+'): resultado solo del modelo local.';
+     if(v.activa){$('#votos').innerHTML=v.verificadores.map(x=>x.ok
+       ?`<div class="voto"><b>${x.modelo}</b>: ${x.categorias.length?x.categorias.map(c=>c.key.replace(/_/g,' ')).join(', '):'sin hallazgos'}</div>`
+       :`<div class="voto"><b>${x.modelo}</b>: no respondió</div>`).join('')
+       +(v.arbitro&&v.arbitro.ok&&v.arbitro.decisiones.length
+         ?`<div class="voto"><b>árbitro</b>: ${v.arbitro.decisiones.map(dd=>dd.key.replace(/_/g,' ')+' '+(dd.veredicto==='confirmar'?'✓':'✗')).join(', ')}</div>`:'');}
      $('#bars').innerHTML=d.modelo_local.top5.map(t=>`
        <div class="row"><div class="name"><span>${t.nombre}</span><span class="pct">${Math.round(t.score*100)}%</span></div>
        <div class="track"><i style="width:${Math.max(2,Math.round(t.score*100))}%"></i></div></div>`).join('');
-     $('#json').textContent=JSON.stringify(d,null,2);
+     const jtxt=JSON.stringify(d,null,2);
+     $('#json').textContent=jtxt;
+     $('#jsonsize').textContent='· '+(jtxt.length/1024).toFixed(1)+' KB';
+     $('#jsonwrap').style.display='block';
    }).catch(e=>{if(e.name==='AbortError')return;
-     $('#espera').style.display='none';$('#err').textContent=e.message});
+     clearInterval(cronoIv);
+     $('#espera').style.display='none';
+     $('#err').textContent=e.message+' · Probá de nuevo con otra foto.';
+     $('#err').style.display='block';});
 }
 </script></body></html>"""
 
