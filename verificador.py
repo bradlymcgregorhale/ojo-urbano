@@ -135,7 +135,12 @@ def _prompt_verificador(categorias, contexto=""):
             "de categorías que el contexto DESCRIBE o denuncia (aunque NO se vean en la "
             "foto). Usá las mismas claves de arriba; si el contexto no describe ningún "
             'problema, lista vacía. Ejemplo: "hay ratas por todos lados" -> '
-            '["desratizacion"].')
+            '["desratizacion"]. Confiá en lo que el vecino afirma aunque no puedas '
+            "verlo (olores, ratas, ruidos): nunca lo descartes. Los problemas NO "
+            "visibles se asignan según lo que SÍ se ve en la foto: malos olores con un "
+            "contenedor visible -> lavado_contenedor; con un cesto papelero -> "
+            "lavado_cesto; sin contenedor ni cesto a la vista -> desratizacion "
+            "(desinfección de la vía pública).")
     return prompt
 
 
@@ -438,9 +443,25 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # unión de lo que reportaron los verificadores, sin las ya confirmadas.
     # No cuentan para gravedad_maxima ni sin_problema (no son evidencia visual),
     # pero le dan al consumidor el tipo de reporte que el texto está pidiendo.
+    # Las sugerencias condicionadas a un objeto visible se validan acá: lavado
+    # de contenedor/cesto exige que ese objeto aparezca en alguna fuente; si no
+    # aparece, el reclamo (p. ej. olores) se remapea a desratizacion
+    # (desinfección de la vía pública) en vez de descartarse.
+    contenedor_keys = {"contenedor_secos", "contenedor_humedos_lateral",
+                       "contenedor_humedos_bilateral", "contenedor_desbordado",
+                       "vaciado_contenedor", "reparacion_contenedor",
+                       "reposicion_contenedor", "lavado_contenedor"}
+    cesto_keys = {"vaciado_cesto", "reparacion_cesto", "lavado_cesto"}
+    vistos_todos = set(fuentes)
+    remap = {}
+    if not (vistos_todos & contenedor_keys):
+        remap["lavado_contenedor"] = "desratizacion"
+    if not (vistos_todos & cesto_keys):
+        remap["lavado_cesto"] = "desratizacion"
     ctx_cats = []
     for v in activos:
         for k in v.get("categorias_contexto") or []:
+            k = remap.get(k, k)
             if k not in confirmadas and k not in ctx_cats:
                 ctx_cats.append(k)
     categorias_contexto = [
