@@ -300,13 +300,15 @@ PAGINA = """<!DOCTYPE html>
   <div class="grid">
     <img id="preview" alt="Foto subida">
     <div>
-      <div class="espera" id="espera" aria-live="polite">
+      <div class="espera" id="espera">
         <div class="spin" aria-hidden="true"></div>
         <div>
-          <b>Analizando la foto</b>
-          <div class="esptxt">Modelo local + verificación cruzada con dos modelos de visión.
-            Suele tardar entre 20 y 60 segundos.</div>
-          <div class="esptxt" id="elapsed">0 s</div>
+          <div aria-live="polite">
+            <b>Analizando la foto</b>
+            <div class="esptxt">Modelo local + verificación cruzada con dos modelos de visión.
+              Suele tardar entre 20 y 60 segundos.</div>
+          </div>
+          <div class="esptxt" id="elapsed" aria-hidden="true">0 s</div>
         </div>
       </div>
       <div class="res" id="res">
@@ -414,11 +416,15 @@ function enviar(f){
   $('#res').style.display='none';$('#cats').innerHTML='';$('#bars').innerHTML='';
   $('#estado').textContent='';$('#votos').innerHTML='';$('#concl').textContent='';
   ['descwrap','ctxwrap','preswrap','dudawrap'].forEach(id=>$('#'+id).style.display='none');
+  const jw=$('#jsonwrap');jw.style.display='none';jw.removeAttribute('open');
+  $('#json').textContent='';$('#jsonsize').textContent='';
   $('#espera').style.display='flex';
   const t0=Date.now();
   cronoIv=setInterval(()=>{$('#elapsed').textContent=Math.round((Date.now()-t0)/1000)+' s'},1000);
   $('#elapsed').textContent='0 s';
-  const img=$('#preview');img.src=URL.createObjectURL(f);img.style.display='block';
+  const img=$('#preview');
+  if(img.src.startsWith('blob:'))URL.revokeObjectURL(img.src);
+  img.src=URL.createObjectURL(f);img.style.display='block';
   const fd=new FormData();fd.append('file',f);
   const ctx=$('#ctx').value.trim();if(ctx)fd.append('contexto',ctx);
   fetch('/clasificar',{method:'POST',body:fd,signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error('no pude leer la imagen');return r.json()})
@@ -454,7 +460,7 @@ function enviar(f){
        <div class="track"><i style="width:${Math.max(2,Math.round(t.score*100))}%"></i></div></div>`).join('');
      const jtxt=JSON.stringify(d,null,2);
      $('#json').textContent=jtxt;
-     $('#jsonsize').textContent='· '+(jtxt.length/1024).toFixed(1)+' KB';
+     $('#jsonsize').textContent='· '+(new Blob([jtxt]).size/1024).toFixed(1)+' KB';
      $('#jsonwrap').style.display='block';
    }).catch(e=>{if(e.name==='AbortError')return;
      clearInterval(cronoIv);
