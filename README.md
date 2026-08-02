@@ -1,6 +1,6 @@
 # Ojo Urbano
 
-API local para clasificar fotos de incidencias urbanas: residuos en la vía pública, escombros, muebles abandonados, contenedores y cestos en mal estado, baches, veredas rotas, vehículos abandonados o mal estacionados y más (39 categorías canónicas, ver [`categorias.json`](categorias.json)).
+API local para clasificar fotos de incidencias urbanas: residuos en la vía pública, escombros, muebles abandonados, contenedores y cestos en mal estado, baches, veredas rotas, vehículos abandonados o mal estacionados y más (40 categorías canónicas, ver [`categorias.json`](categorias.json)).
 
 Combina dos capas:
 

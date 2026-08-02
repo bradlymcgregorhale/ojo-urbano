@@ -111,8 +111,12 @@
     "nombre": "Reparación / construcción de cordón de vereda",
     "grupo": "Infraestructura"
   },
-  "nivelacion_tapa": {
-    "nombre": "Nivelación de tapa de servicio público en vereda",
+  "tapa_vereda": {
+    "nombre": "Nivelación de tapa de servicio público en la vereda",
+    "grupo": "Infraestructura"
+  },
+  "tapa_calle": {
+    "nombre": "Nivelación de tapa de servicio público en la calle",
     "grupo": "Infraestructura"
   },
   "destape_sumidero": {

@@ -11,7 +11,10 @@ Cada verificador devuelve además una descripción breve de la foto dentro de su
 misma respuesta (sin llamadas extra). La descripción final consolidada la
 redacta el árbitro cuando ya tiene que intervenir por una disputa; si no hay
 disputa, se elige localmente la descripción del verificador que más coincide
-con las categorías finales. El conteo de llamadas por foto no cambia.
+con las categorías finales. Única excepción al conteo de llamadas: si todas
+las descripciones disponibles contradicen un subtipo ya resuelto (húmedos
+lateral/bilateral, tapa vereda/calle), se pide al árbitro una descripción
+correcta en una llamada extra de solo texto.
 
 Config por variables de entorno (ver .env.example):
     OPENROUTER_API_KEY   requerida para verificar; sin ella la API responde
@@ -39,6 +42,9 @@ FOLD = {
     "recoleccion_restos_obra": "retiro_escombros",
     "recoleccion_verdes": "retiro_poda",
     "diseminado": "recoleccion",
+    # la clase única del modelo local no distingue dónde está la tapa; se
+    # pliega a tapa_vereda y los modelos de visión deciden el subtipo real
+    "nivelacion_tapa": "tapa_vereda",
 }
 
 # Claves de PRESENCIA: indican que un contenedor se ve en la foto, no que haya
@@ -121,16 +127,16 @@ def _prompt_verificador(categorias):
 # mano. Las claves deben existir en categorias.json.
 _RUBRICA_KEYS = {
     "retiro_muebles", "retiro_escombros", "recoleccion", "barrido",
-    "retiro_poda", "destape_sumidero", "reparacion_vereda", "nivelacion_tapa",
+    "retiro_poda", "destape_sumidero", "reparacion_vereda",
     "situacion_calle", "manteros", "contenedor_secos",
     "contenedor_humedos_lateral", "contenedor_humedos_bilateral",
     "reparacion_contenedor", "contenedor_desbordado", "vaciado_contenedor",
     "vaciado_cesto", "reparacion_cesto", "vehiculo_mal_estacionado",
     "columna_poste_cable", "reposicion_contenedor", "lavado_contenedor",
-    "puesto_diarios", "puesto_flores",
+    "puesto_diarios", "puesto_flores", "tapa_vereda", "tapa_calle",
 }
 
-_RUBRICA = """Sos un verificador experto de reportes de higiene urbana en la vía pública. Mirá la foto adjunta (puede ser de noche/oscura; prestá atención a objetos voluminosos como muebles, estanterías o cajones delante o al lado de un contenedor) y reportá los problemas visibles.
+_RUBRICA = """Sos un verificador experto de reportes de incidencias en la vía pública: higiene urbana, contenedores y cestos, infraestructura, vehículos en infracción y ocupación del espacio público. Mirá la foto adjunta (puede ser de noche/oscura; prestá atención a objetos voluminosos como muebles, estanterías o cajones delante o al lado de un contenedor, y a vehículos detenidos sobre ciclovías, veredas o rampas) y reportá los problemas visibles.
 
 Categorías y criterios (usá SOLO estas claves):
 
@@ -140,8 +146,9 @@ Categorías y criterios (usá SOLO estas claves):
 - barrido: acumulación de material fino y liviano para BARRER, sobre todo hojas secas, ramitas, tierra o polvo, juntada en el cordón o la vereda. Si PREDOMINAN las hojas, reportá barrido aunque haya basurita mezclada (y si esa basura mezclada es grande o abundante, reportá TAMBIÉN recoleccion). No lo uses cuando lo que predomina es basura suelta o bolsas.
 - retiro_poda: ramas, troncos o restos de poda/jardinería acumulados.
 - destape_sumidero: un sumidero o alcantarilla TAPADO, obstruido o desbordado (NO si solo se ve la rejilla sin problema).
-- reparacion_vereda: la vereda claramente ROTA: baldosas partidas, faltantes, levantadas o hundidas, visibles con nitidez. NO si la vereda solo está sucia, mojada, cubierta de hojas o con desgaste normal. Si el hueco es RECTANGULAR con MARCO metálico es nivelacion_tapa, NO reparacion_vereda.
-- nivelacion_tapa: una TAPA de empresa de servicio público (agua/luz/gas/teléfono) rota, hundida o FALTANTE: hueco RECTANGULAR con marco o borde METÁLICO prolijo en la vereda o la calle. Señal típica: objetos metidos en el hueco (cajones, tablas, conos, sillas) como advertencia; esos objetos NO son voluminosos descartados, no los reportes como retiro_muebles.
+- reparacion_vereda: la vereda claramente ROTA: baldosas partidas, faltantes, levantadas o hundidas, visibles con nitidez. NO si la vereda solo está sucia, mojada, cubierta de hojas o con desgaste normal. Si el hueco es RECTANGULAR con MARCO metálico es tapa_vereda, NO reparacion_vereda.
+- tapa_vereda: una TAPA de empresa de servicio público (agua/luz/gas/teléfono) rota, hundida o FALTANTE, EN LA VEREDA: hueco RECTANGULAR con marco o borde METÁLICO prolijo. Señal típica: objetos metidos en el hueco (cajones, tablas, conos, sillas) como advertencia; esos objetos NO son voluminosos descartados, no los reportes como retiro_muebles.
+- tapa_calle: lo mismo que tapa_vereda pero con la tapa EN LA CALZADA (la calle de asfalto por donde circulan los vehículos). Un pozo de asfalto SIN marco metálico es reparacion_bache, no esto. Reportá tapa_vereda O tapa_calle según dónde esté la tapa, nunca ambas por la misma tapa.
 - situacion_calle: una persona claramente viviendo en la calle: alguien durmiendo o instalado con colchón ARMADO como cama, refugio o pertenencias habitadas. NO es un colchón o mueble descartado sin nadie. Una persona parada revolviendo un contenedor junto a colchones/mantas desparramados NO está "instalada"; eso es descarte (retiro_muebles, y recoleccion si hay textiles desparramados en cantidad).
 - manteros: un puesto informal con mercadería nueva exhibida para la venta en el piso, sobre una manta, mesa o lona.
 - contenedor_secos [PRESENCIA]: se ve un contenedor municipal inequívocamente VERDE (reciclables). Los contenedores negros, grises o gris oscuro NO son secos.
@@ -195,40 +202,64 @@ def _verificar_uno(modelo, data_url, categorias):
         return {"modelo": modelo, "ok": False, "error": str(e)[:200]}
 
 
-def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas):
+def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
+              firmes=()):
     """El árbitro (modelo de texto) decide las categorías con una sola fuente.
 
     En la misma llamada redacta la descripción final consolidada de la foto,
-    a partir de las descripciones de los verificadores (sin llamadas extra).
+    a partir de las descripciones de los verificadores. Con disputadas vacío
+    solo redacta la descripción. firmes: subtipos ya resueltos por el sistema
+    (contenedor de húmedos, tapa) que la descripción no debe contradecir.
     """
     if not ARBITRO:
         return None
     probas = {p["key"]: p["score"] for p in probabilidades[:12]}
-    prompt = (
+    partes = [
         "Actuás como árbitro de un clasificador de fotos de incidencias urbanas. "
-        "Un modelo local y dos modelos de visión analizaron la misma foto (vos no la ves). "
-        "Estas categorías fueron reportadas por UNA sola fuente y hay que decidir si se confirman.\n\n"
+        "Un modelo local y dos modelos de visión analizaron la misma foto (vos no la ves).\n\n"
         f"Categorías (clave: nombre): {json.dumps({k: v['nombre'] for k, v in categorias.items()}, ensure_ascii=False)}\n\n"
         f"Probabilidades del modelo local (entrenado con miles de fotos reales): {json.dumps(probas, ensure_ascii=False)}\n\n"
         f"Veredictos de los modelos de visión: {json.dumps(veredictos, ensure_ascii=False)}\n\n"
         f"Categorías ya confirmadas por consenso: {json.dumps(sorted(consensuadas), ensure_ascii=False)}\n\n"
-        f"Categorías en disputa: {json.dumps(sorted(disputadas), ensure_ascii=False)}\n\n"
-        "Criterio: confirmá una categoría de un modelo de visión solo si su evidencia citada "
-        "es concreta y coherente con lo que reportaron los demás. Si una categoría la reporta "
-        "SOLO el modelo local y ninguno de los dos modelos de visión la vio al mirar la foto, "
-        "rechazala aunque la probabilidad local sea alta, salvo que la evidencia de los "
-        "verificadores describa lo mismo con otras palabras. Categorías que nombran el mismo "
-        "objeto físico ya reportado por consenso no deben duplicarse: rechazá la redundante. "
-        "Ante la duda, rechazá.\n\n"
-        'Además, redactá "descripcion": 1 a 3 frases en español que describan la foto '
+    ]
+    if firmes:
+        partes.append(
+            "Subtipos ya resueltos por el sistema (la clave correcta es esta; en la "
+            "descripción usá exactamente este subtipo aunque algún veredicto diga el otro): "
+            f"{json.dumps(sorted(firmes), ensure_ascii=False)}\n\n")
+    if disputadas:
+        partes.append(
+            "Estas categorías fueron reportadas por UNA sola fuente y hay que decidir si se confirman.\n\n"
+            f"Categorías en disputa: {json.dumps(sorted(disputadas), ensure_ascii=False)}\n\n"
+            "Criterio: confirmá una categoría de un modelo de visión solo si su evidencia citada "
+            "es concreta y coherente con lo que reportaron los demás. Si una categoría la reporta "
+            "SOLO el modelo local y ninguno de los dos modelos de visión la vio al mirar la foto, "
+            "rechazala aunque la probabilidad local sea alta, salvo que la evidencia de los "
+            "verificadores describa lo mismo con otras palabras. Categorías que nombran el mismo "
+            "objeto físico ya reportado por consenso no deben duplicarse: rechazá la redundante. "
+            "Ante la duda, rechazá.\n\n")
+        vlm_only = sorted(set(categorias) - {p["key"] for p in probabilidades}
+                          - {"sin_problema"})
+        if vlm_only and disputadas & set(vlm_only):
+            partes.append(
+                "EXCEPCIÓN: estas categorías NO existen en el modelo local, que nunca puede "
+                f"reportarlas: {json.dumps(sorted(disputadas & set(vlm_only)), ensure_ascii=False)}. "
+                "Para ellas el silencio del modelo local NO cuenta en contra. Confirmá la categoría "
+                "si el modelo de visión que la reporta cita evidencia concreta y específica (señala "
+                "objetos, demarcaciones o carteles) y la descripción del otro modelo es compatible "
+                "con esa escena, aunque no haya reportado la categoría.\n\n")
+        partes.append("Además, redactá")
+    else:
+        partes.append("Tu única tarea: redactá")
+    partes.append(
+        ' "descripcion": 1 a 3 frases en español que describan la foto '
         "integrando las descripciones y evidencias de los dos modelos de visión, y que "
         "respalden las categorías confirmadas (las de consenso más las que confirmes acá). "
         "No inventes detalles que ninguna fuente haya mencionado.\n\n"
         "Respondé SOLO con JSON:\n"
-        '{"decisiones": [{"key": "...", "veredicto": "confirmar"|"rechazar", "motivo": "..."}], "descripcion": "..."}'
-    )
+        '{"decisiones": [{"key": "...", "veredicto": "confirmar"|"rechazar", "motivo": "..."}], "descripcion": "..."}')
     try:
-        contenido = _llamar(ARBITRO, [{"role": "user", "content": prompt}])
+        contenido = _llamar(ARBITRO, [{"role": "user", "content": "".join(partes)}])
         data = _extraer_json(contenido)
         decisiones = [d for d in data.get("decisiones", [])
                       if isinstance(d, dict) and d.get("key") in disputadas]
@@ -266,6 +297,16 @@ def verificar(img, categorias, prediccion_local):
             except (TypeError, ValueError):
                 grav.setdefault(k, 1)
 
+    def _plegar_en(elegido, otros):
+        for otro in otros:
+            for f in fuentes.pop(otro):
+                if f not in fuentes[elegido]:
+                    fuentes[elegido].append(f)
+            if otro in grav:
+                grav[elegido] = max(grav.get(elegido, 0), grav.pop(otro))
+
+    subtipos_firmes = {}  # subtipo elegido -> subtipos descartados
+
     # Un contenedor de húmedos es lateral O bilateral, nunca ambos. Los modelos
     # de visión confunden el subtipo seguido; el modelo local es el experto acá,
     # así que sus votos deciden el subtipo y los votos VLM del otro subtipo
@@ -276,12 +317,19 @@ def verificar(img, categorias, prediccion_local):
         local_gris = next((p["key"] for p in prediccion_local["predichas"]
                            if p["key"] in grises), None)
         elegido = local_gris or max(vistos, key=lambda k: len(fuentes[k]))
-        for otro in vistos - {elegido}:
-            for f in fuentes.pop(otro):
-                if f not in fuentes[elegido]:
-                    fuentes[elegido].append(f)
-            if otro in grav:
-                grav[elegido] = max(grav.get(elegido, 0), grav.pop(otro))
+        subtipos_firmes[elegido] = sorted(vistos - {elegido})
+        _plegar_en(elegido, vistos - {elegido})
+
+    # Una tapa de servicio está en la vereda O en la calle. Acá el experto es
+    # al revés: la clase única del modelo local no distingue (se pliega a
+    # tapa_vereda), así que deciden los votos de los modelos de visión.
+    tapas = {"tapa_vereda", "tapa_calle"}
+    vistos = tapas & set(fuentes)
+    if len(vistos) > 1:
+        votos_vlm = lambda k: sum(1 for f in fuentes[k] if f != "modelo_local")
+        elegido = max(vistos, key=lambda k: (votos_vlm(k), k == "tapa_vereda"))
+        subtipos_firmes[elegido] = sorted(vistos - {elegido})
+        _plegar_en(elegido, vistos - {elegido})
 
     activos = [v for v in veredictos if v.get("ok")]
     confirmadas = {k for k, f in fuentes.items() if len(f) >= 2}
@@ -291,7 +339,7 @@ def verificar(img, categorias, prediccion_local):
     en_duda = []
     if disputadas and activos:
         arbitro = _arbitrar(disputadas, activos, prediccion_local["probabilidades"],
-                            categorias, confirmadas)
+                            categorias, confirmadas, sorted(subtipos_firmes))
         if arbitro and arbitro.get("ok"):
             decididas = set()
             for d in arbitro["decisiones"]:
@@ -315,10 +363,14 @@ def verificar(img, categorias, prediccion_local):
             "fuentes": fuentes.get(k, []),
         })
 
-    # Descripción final consolidada, siempre sin llamadas extra: la redacta el
-    # árbitro si ya intervino; si no, se elige la descripción del verificador
-    # que más coincide con las categorías finales (a igual coincidencia, la
-    # más detallada).
+    # Descripción final consolidada: la redacta el árbitro si ya intervino; si
+    # no, se elige la descripción del verificador que no contradiga un subtipo
+    # ya resuelto y que más coincida con las categorías finales (a igual
+    # coincidencia, la más detallada). Si TODAS las descripciones contradicen
+    # un subtipo resuelto, se hace una llamada extra al árbitro (solo texto,
+    # el único caso donde el conteo de llamadas crece) para no publicar una
+    # descripción con el subtipo equivocado.
+    perdidos = {k for otros in subtipos_firmes.values() for k in otros}
     descripcion, descripcion_fuente = None, None
     if arbitro and arbitro.get("ok") and arbitro.get("descripcion"):
         descripcion, descripcion_fuente = arbitro["descripcion"], ARBITRO
@@ -327,11 +379,17 @@ def verificar(img, categorias, prediccion_local):
         for v in activos:
             if not v.get("descripcion"):
                 continue
-            clave = (len({c["key"] for c in v["categorias"]} & confirmadas),
-                     len(v["descripcion"]))
+            claves_v = {c["key"] for c in v["categorias"]}
+            clave = (not (claves_v & perdidos),
+                     len(claves_v & confirmadas), len(v["descripcion"]))
             if mejor is None or clave > mejor[0]:
                 mejor = (clave, v)
-        if mejor:
+        if mejor and not mejor[0][0] and ARBITRO:
+            arbitro = _arbitrar(set(), activos, prediccion_local["probabilidades"],
+                                categorias, confirmadas, sorted(subtipos_firmes))
+        if arbitro and arbitro.get("ok") and arbitro.get("descripcion"):
+            descripcion, descripcion_fuente = arbitro["descripcion"], ARBITRO
+        elif mejor:
             descripcion, descripcion_fuente = mejor[1]["descripcion"], mejor[1]["modelo"]
 
     return {
