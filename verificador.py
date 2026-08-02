@@ -76,8 +76,11 @@ def _imagen_data_url(img):
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
-def _llamar(modelo, mensajes, max_tokens=2500, intentos=2):
+def _llamar(modelo, mensajes, max_tokens=6000, intentos=3):
+    # reasoning effort bajo: los modelos razonadores (Kimi) pueden gastar todo
+    # el presupuesto pensando y devolver el JSON vacío (finish_reason=length)
     body = json.dumps({"model": modelo, "max_tokens": max_tokens,
+                       "reasoning": {"effort": "low"},
                        "messages": mensajes}).encode()
     req = urllib.request.Request(OPENROUTER_URL, data=body, headers={
         "Authorization": "Bearer " + api_key(),
@@ -134,6 +137,7 @@ _RUBRICA_KEYS = {
     "vaciado_cesto", "reparacion_cesto", "vehiculo_mal_estacionado",
     "columna_poste_cable", "reposicion_contenedor", "lavado_contenedor",
     "puesto_diarios", "puesto_flores", "tapa_vereda", "tapa_calle",
+    "ocupacion_comercial",
 }
 
 _RUBRICA = """Sos un verificador experto de reportes de incidencias en la vía pública: higiene urbana, contenedores y cestos, infraestructura, vehículos en infracción y ocupación del espacio público. Mirá la foto adjunta (puede ser de noche/oscura; prestá atención a objetos voluminosos como muebles, estanterías o cajones delante o al lado de un contenedor, y a vehículos detenidos sobre ciclovías, veredas o rampas) y reportá los problemas visibles.
@@ -150,8 +154,9 @@ Categorías y criterios (usá SOLO estas claves):
 - tapa_vereda: una TAPA de empresa de servicio público (agua/luz/gas/teléfono) rota, hundida o FALTANTE, EN LA VEREDA: hueco RECTANGULAR con marco o borde METÁLICO prolijo. Señal típica: objetos metidos en el hueco (cajones, tablas, conos, sillas) como advertencia; esos objetos NO son voluminosos descartados, no los reportes como retiro_muebles.
 - tapa_calle: lo mismo que tapa_vereda pero con la tapa EN LA CALZADA (la calle de asfalto por donde circulan los vehículos). Un pozo de asfalto SIN marco metálico es reparacion_bache, no esto. Reportá tapa_vereda O tapa_calle según dónde esté la tapa, nunca ambas por la misma tapa.
 - situacion_calle: una persona claramente viviendo en la calle: alguien durmiendo o instalado con colchón ARMADO como cama, refugio o pertenencias habitadas. NO es un colchón o mueble descartado sin nadie. Una persona parada revolviendo un contenedor junto a colchones/mantas desparramados NO está "instalada"; eso es descarte (retiro_muebles, y recoleccion si hay textiles desparramados en cantidad).
-- manteros: un puesto informal con mercadería nueva exhibida para la venta en el piso, sobre una manta, mesa o lona.
-- contenedor_secos [PRESENCIA]: se ve un contenedor municipal inequívocamente VERDE (reciclables). Los contenedores negros, grises o gris oscuro NO son secos.
+- manteros: un vendedor ambulante o puesto informal en la vía pública: mercadería exhibida para la venta en el piso, sobre una manta, mesa o lona, o un carrito/puesto ambulante de comida o bebida operando en la vereda. NO un local comercial establecido (eso es ocupacion_comercial) ni un kiosco de diarios.
+- ocupacion_comercial: un local comercial ESTABLECIDO que ocupa la vereda con su mercadería o mobiliario fuera de la línea del local: cajas o cajones apilados, exhibidores, ropa o frazadas colgadas, heladeras, carteles. NO un vendedor ambulante (eso es manteros) ni mesas de un local gastronómico.
+- contenedor_secos [PRESENCIA]: se ve un contenedor municipal inequívocamente VERDE (reciclables). Los contenedores negros, grises o gris oscuro NO son secos. Un volquete o caja abierta de obra NO es un contenedor municipal, aunque sea verde.
 - contenedor_humedos_lateral [PRESENCIA]: se ve un contenedor de húmedos con POSTES o montantes metálicos VERTICALES en los costados (el brazo del camión los toma para izarlo). Suele ser negro o gris oscuro, cuerpo plástico grande redondeado.
 - contenedor_humedos_bilateral [PRESENCIA]: se ve un contenedor de húmedos SIN postes metálicos: cuerpo RECTANGULAR de paredes laterales PLANAS y techo abovedado, gris (claro o dos tonos). El discriminador NO es el color sino los POSTES: si el contenedor NO tiene postes verticales metálicos en los costados es BILATERAL, aunque el gris se vea oscuro o sucio; si los tiene es LATERAL. Reportá solo UNO de los dos tipos de húmedos.
 - reparacion_contenedor: un contenedor visiblemente ROTO/vandalizado/quemado (tapa desprendida, pedal roto, cuerpo agrietado o derretido), esté parado o volcado. Un contenedor VOLCADO pero sin daños visibles NO va acá: es reposicion_contenedor. Un contenedor parado y en buen estado NO.
@@ -223,10 +228,12 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
         f"Categorías ya confirmadas por consenso: {json.dumps(sorted(consensuadas), ensure_ascii=False)}\n\n"
     ]
     if firmes:
+        detalle = {k: categorias.get(k, {}).get("nombre", k) for k in sorted(firmes)}
         partes.append(
             "Subtipos ya resueltos por el sistema (la clave correcta es esta; en la "
-            "descripción usá exactamente este subtipo aunque algún veredicto diga el otro): "
-            f"{json.dumps(sorted(firmes), ensure_ascii=False)}\n\n")
+            "descripción usá exactamente este subtipo Y sus características físicas, "
+            "aunque algún veredicto diga el otro): "
+            f"{json.dumps(detalle, ensure_ascii=False)}\n\n")
     if disputadas:
         partes.append(
             "Estas categorías fueron reportadas por UNA sola fuente y hay que decidir si se confirman.\n\n"
@@ -247,7 +254,15 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
                 "Para ellas el silencio del modelo local NO cuenta en contra. Confirmá la categoría "
                 "si el modelo de visión que la reporta cita evidencia concreta y específica (señala "
                 "objetos, demarcaciones o carteles) y la descripción del otro modelo es compatible "
-                "con esa escena, aunque no haya reportado la categoría.\n\n")
+                "con esa escena, aunque no haya reportado la categoría. Pero si el otro modelo "
+                "describe el mismo objeto en un estado INCOMPATIBLE (por ejemplo, uno dice "
+                "contenedor volcado y el otro lo describe parado y en buen estado), rechazala.\n\n")
+        if len(veredictos) < 2:
+            partes.append(
+                "ATENCIÓN: solo respondió UN modelo de visión, no hay segunda opinión visual. "
+                "Sé más exigente para confirmar: la evidencia citada debe ser muy concreta, y si "
+                "el modelo local conoce una categoría equivalente sobre el mismo objeto y le da "
+                "probabilidad baja, tomalo como señal en contra.\n\n")
         partes.append("Además, redactá")
     else:
         partes.append("Tu única tarea: redactá")
