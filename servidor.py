@@ -262,6 +262,10 @@ PAGINA = """<!DOCTYPE html>
   .row:not(:first-child) .track>i{background:#747474}
   .err{display:none;font-size:13px;font-weight:600;margin-top:12px;border:1px solid var(--line2);
        border-radius:8px;background:var(--surface);padding:10px 12px}
+  .reenviar{width:100%;margin-top:10px;padding:8px 12px;font:13px inherit;font-weight:600;
+       border:1px solid var(--line2);border-radius:8px;background:var(--surface);
+       color:var(--muted);cursor:pointer}
+  .reenviar:hover{color:var(--ink);border-color:var(--ink)}
   details.det{margin-top:18px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
   details.det>summary{cursor:pointer;padding:10px 14px;font-size:13px;font-weight:600;color:var(--muted);
        list-style-position:inside}
@@ -310,7 +314,10 @@ PAGINA = """<!DOCTYPE html>
   <div class="err" id="err"></div>
 
   <div class="grid">
-    <img id="preview" alt="Foto subida">
+    <div>
+      <img id="preview" alt="Foto subida">
+      <button id="reenviar" class="reenviar" style="display:none">&#8635; Reanalizar esta foto</button>
+    </div>
     <div>
       <div class="espera" id="espera">
         <div class="spin" aria-hidden="true"></div>
@@ -419,11 +426,14 @@ file.addEventListener('change',()=>{if(file.files[0]){enviar(file.files[0]);file
 $('#copyjson').onclick=()=>{navigator.clipboard.writeText($('#json').textContent).then(()=>{
   $('#copyjson').textContent='Copiado ✓';setTimeout(()=>$('#copyjson').textContent='Copiar JSON',1500);});};
 const chip=(c,extra)=>`<div class="cat${extra?' ctx':''}"><b>${c.nombre}</b>${c.gravedad?`<span title="${(c.fuentes||[]).join(', ')}">${c.gravedad}/5 · ${GRAV[c.gravedad]||''} · ${(c.fuentes||[]).length} fuente${(c.fuentes||[]).length!==1?'s':''}</span>`:''}</div>`;
-let ctrl=null,cronoIv=null;
+let ctrl=null,cronoIv=null,ultimoArchivo=null;
+$('#reenviar').onclick=()=>{if(ultimoArchivo)enviar(ultimoArchivo);};
 function enviar(f){
   if(ctrl)ctrl.abort();
   if(cronoIv)clearInterval(cronoIv);
   ctrl=new AbortController();
+  ultimoArchivo=f;
+  $('#reenviar').style.display='none';
   $('#err').style.display='none';$('#err').textContent='';
   $('#res').style.display='none';$('#cats').innerHTML='';$('#bars').innerHTML='';
   $('#estado').textContent='';$('#votos').innerHTML='';$('#concl').textContent='';
@@ -473,11 +483,13 @@ function enviar(f){
      $('#json').textContent=jtxt;
      $('#jsonsize').textContent='· '+(new Blob([jtxt]).size/1024).toFixed(1)+' KB';
      $('#jsonwrap').style.display='block';
+     $('#reenviar').style.display='block';
    }).catch(e=>{if(e.name==='AbortError')return;
      clearInterval(cronoIv);
      $('#espera').style.display='none';
-     $('#err').textContent=e.message+' · Probá de nuevo con otra foto.';
-     $('#err').style.display='block';});
+     $('#err').textContent=e.message+' · Reintentá con el botón o probá otra foto.';
+     $('#err').style.display='block';
+     $('#reenviar').style.display='block';});
 }
 </script></body></html>"""
 
