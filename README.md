@@ -9,7 +9,7 @@ Combina dos capas:
 
    Algunas categorías (por ejemplo `vehiculo_mal_estacionado` o `columna_poste_cable`) no existen en el modelo local: las detectan solo los modelos de visión, y quedan confirmadas cuando ambos las reportan (2 de 3 fuentes). Con un solo reporte van al árbitro, como cualquier otra disputa.
 
-   Cada verificador devuelve además una **descripción** breve de la foto dentro de su misma respuesta, y la API entrega en `final.descripcion` una descripción consolidada que respalda las categorías confirmadas: la redacta el árbitro cuando ya interviene por una disputa, y si no hay disputa se elige la descripción del verificador que más coincide con el resultado final. Todo sin llamadas extra: el conteo de llamadas por foto no cambia.
+   Cada verificador devuelve además una **descripción** breve de la foto dentro de su misma respuesta, y la API entrega en `descripcion` una descripción consolidada que respalda las categorías confirmadas: la redacta el árbitro cuando ya interviene por una disputa, y si no hay disputa se elige la descripción del verificador que más coincide con el resultado final. Todo sin llamadas extra: el conteo de llamadas por foto no cambia.
 
 ## Instalación
 
@@ -30,50 +30,48 @@ La primera ejecución descarga los modelos de embeddings (varios GB, una sola ve
 
 ### `POST /clasificar`
 
-`multipart/form-data` con el campo `file`. Campo opcional `contexto` ("contexto vecinal"): texto de quien reporta, que los modelos de visión y el árbitro usan como pista para interpretar la foto; nunca como evidencia (se reporta solo lo que la foto muestra, máx. 500 caracteres). Las categorías que el contexto describe pero la foto no confirma vuelven aparte en `final.categorias_contexto` (por ejemplo, "hay ratas por todos lados" devuelve `desratizacion` ahí aunque no se vea ninguna rata); no cuentan para `gravedad_maxima` ni `sin_problema`. Parámetro opcional `verificar`: `auto` (default: verifica si hay clave), `1` (forzar), `0` (solo modelo local).
+`multipart/form-data` con el campo `file`. Campo opcional `contexto` ("contexto vecinal"): texto de quien reporta, que los modelos de visión y el árbitro usan como pista para interpretar la foto; nunca como evidencia (se reporta solo lo que la foto muestra, máx. 500 caracteres). Las categorías que el contexto describe pero la foto no confirma vuelven aparte en `categorias_contexto` (por ejemplo, "hay ratas por todos lados" devuelve `desratizacion` ahí aunque no se vea ninguna rata); no cuentan para `hay_problema` ni `gravedad_maxima`. Parámetro opcional `verificar`: `auto` (default: verifica si hay clave), `1` (forzar), `0` (solo modelo local).
 
 ```bash
 curl -s -F "file=@foto.jpg" -F "contexto=vidrios rotos en la vereda" http://127.0.0.1:8080/clasificar
 ```
 
-Respuesta (resumida):
+Respuesta: el veredicto primero, el detalle técnico adentro de `detalle`.
 
 ```json
 {
-  "modelo_local": {
-    "predichas": [{ "key": "recoleccion", "nombre": "Recolección de residuos", "score": 0.94 }],
-    "top5": [ ... ],
-    "probabilidades": [ ... ],
-    "gravedad": { "value": 3, "raw": 3.2 }
-  },
-  "verificacion": {
-    "activa": true,
-    "verificadores": [
-      { "modelo": "moonshotai/kimi-k2.5", "ok": true, "categorias": [ ... ],
-        "descripcion": "Bolsas de residuos y cajas apiladas junto a un contenedor negro." },
-      { "modelo": "qwen/qwen3-vl-8b-instruct", "ok": true, "categorias": [ ... ],
-        "descripcion": "Vereda con basura domiciliaria acumulada al pie de un contenedor." }
-    ],
-    "arbitro": { "modelo": "deepseek/deepseek-v4-flash", "ok": true, "decisiones": [ ... ],
-                 "descripcion": "..." },
-    "en_duda": [],
-    "descripcion": "Bolsas de residuos y cajas de cartón acumuladas en la vereda junto a un contenedor negro de húmedos.",
-    "descripcion_fuente": "deepseek/deepseek-v4-flash"
-  },
-  "final": {
-    "categorias": [
-      { "key": "recoleccion", "nombre": "Recolección de residuos", "gravedad": 3,
-        "fuentes": ["modelo_local", "moonshotai/kimi-k2.5", "qwen/qwen3-vl-8b-instruct"] }
-    ],
-    "en_duda": [],
-    "descripcion": "Bolsas de residuos y cajas de cartón acumuladas en la vereda junto a un contenedor negro de húmedos.",
-    "gravedad_maxima": 3,
-    "sin_problema": false
+  "hay_problema": true,
+  "gravedad_maxima": 3,
+  "problemas": [
+    { "key": "recoleccion", "nombre": "Recolección de residuos", "gravedad": 3,
+      "fuentes": ["modelo_local", "openai/gpt-5-mini", "google/gemini-3.5-flash-lite"] }
+  ],
+  "descripcion": "Bolsas de residuos y cajas de cartón acumuladas en la vereda junto a un contenedor negro de húmedos.",
+  "categorias_contexto": [
+    { "key": "desratizacion", "nombre": "Desratización / control de plagas en la vía pública" }
+  ],
+  "elementos_detectados": [
+    { "key": "contenedor_humedos_lateral", "nombre": "Contenedor de húmedos, carga lateral" }
+  ],
+  "en_duda": [],
+  "detalle": {
+    "modelo_local": { "predichas": [ ... ], "top5": [ ... ], "probabilidades": [ ... ],
+                      "gravedad": { "value": 3, "raw": 3.2 } },
+    "verificacion": { "activa": true, "contexto": "...",
+                      "verificadores": [ { "modelo": "...", "categorias": [ ... ], "descripcion": "..." } ],
+                      "arbitro": { "decisiones": [ ... ], "descripcion": "..." },
+                      "descripcion_fuente": "deepseek/deepseek-v4-flash" }
   }
 }
 ```
 
-`final.categorias` es el veredicto consolidado; `fuentes` dice quién vio cada problema. Una foto puede tener varias categorías a la vez (una por problema visible). `final.descripcion` describe la foto respaldando esas categorías (`verificacion.descripcion_fuente` dice quién la redactó); es `null` cuando la verificación no corre.
+- `hay_problema`: el veredicto en un booleano.
+- `problemas`: qué se confirmó, con gravedad 1-5 y las `fuentes` que lo vieron (modelo local y/o modelos de visión). Una foto puede tener varios problemas.
+- `descripcion`: la descripción consolidada de la escena (la redacta el árbitro cuando interviene; si no, el verificador que mejor coincide con el resultado). Es `null` sin verificación.
+- `categorias_contexto`: lo que el contexto vecinal describe pero la foto no confirma (sugerencias, no cuentan para `hay_problema` ni `gravedad_maxima`).
+- `elementos_detectados`: contenedores visibles en la foto, tengan o no problemas.
+- `en_duda`: categorías con una sola fuente que el árbitro no llegó a decidir.
+- `detalle`: todo lo interno (probabilidades del modelo local, veredicto y descripción de cada modelo de visión, decisiones del árbitro) para quien quiera profundizar.
 
 ### `GET /salud`
 

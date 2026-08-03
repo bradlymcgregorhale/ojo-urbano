@@ -16,16 +16,18 @@ with open(sys.argv[1], "rb") as f:
 r.raise_for_status()
 data = r.json()
 
-final = data["final"]
-if final["sin_problema"]:
+if not data["hay_problema"]:
     print("Sin problema identificable")
 else:
-    for c in final["categorias"]:
-        print(f"{c['key']:30s} gravedad={c['gravedad']} fuentes={', '.join(c['fuentes'])}")
-if final["en_duda"]:
-    print("En duda:", ", ".join(final["en_duda"]))
-if final.get("descripcion"):
-    print("Descripción:", final["descripcion"])
+    print(f"Gravedad máxima: {data['gravedad_maxima']}/5")
+    for p in data["problemas"]:
+        print(f"{p['key']:30s} gravedad={p['gravedad']} fuentes={', '.join(p['fuentes'])}")
+for s in data["categorias_contexto"]:
+    print("Sugerido por el contexto:", s["key"])
+if data["en_duda"]:
+    print("En duda:", ", ".join(data["en_duda"]))
+if data.get("descripcion"):
+    print("Descripción:", data["descripcion"])
 
 veri = data["verificacion"]
 print("Verificación:", "activa" if veri.get("activa") else f"inactiva ({veri.get('motivo')})")

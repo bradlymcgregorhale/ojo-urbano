@@ -166,25 +166,35 @@ async def clasificar(file: UploadFile = File(...), verificar: str = "auto",
 
     if activar and verificador.disponible():
         veri = verificador.verificar(img, CATEGORIAS, local, contexto)
-        final = {"categorias": veri["confirmadas"], "en_duda": veri["en_duda"],
-                 "categorias_contexto": veri["categorias_contexto"],
-                 "descripcion": veri["descripcion"]}
+        categorias = veri["confirmadas"]
+        en_duda = veri["en_duda"]
+        ctx_cats = veri["categorias_contexto"]
+        descripcion = veri["descripcion"]
     else:
         motivo = ("falta OPENROUTER_API_KEY" if not verificador.disponible()
                   else "desactivada por parámetro")
         veri = {"activa": False, "motivo": motivo}
-        final = {"categorias": [{"key": p["key"], "nombre": p["nombre"],
-                                 "gravedad": (local["gravedad"] or {}).get("value"),
-                                 "fuentes": ["modelo_local"]}
-                                for p in local["predichas"] if p["key"] != "sin_problema"],
-                 "en_duda": [], "categorias_contexto": [], "descripcion": None}
+        categorias = [{"key": p["key"], "nombre": p["nombre"],
+                       "gravedad": (local["gravedad"] or {}).get("value"),
+                       "fuentes": ["modelo_local"]}
+                      for p in local["predichas"] if p["key"] != "sin_problema"]
+        en_duda, ctx_cats, descripcion = [], [], None
 
-    problemas = [c for c in final["categorias"]
-                 if c["key"] not in verificador.PRESENCIA]
+    # El veredicto primero; todo lo interno queda en "detalle".
+    problemas = [c for c in categorias if c["key"] not in verificador.PRESENCIA]
+    elementos = [{"key": c["key"], "nombre": c["nombre"]}
+                 for c in categorias if c["key"] in verificador.PRESENCIA]
     gravedades = [c["gravedad"] for c in problemas if c.get("gravedad")]
-    final["gravedad_maxima"] = max(gravedades) if gravedades else None
-    final["sin_problema"] = not problemas
-    return JSONResponse({"modelo_local": local, "verificacion": veri, "final": final})
+    return JSONResponse({
+        "hay_problema": bool(problemas),
+        "gravedad_maxima": max(gravedades) if gravedades else None,
+        "problemas": problemas,
+        "descripcion": descripcion,
+        "categorias_contexto": ctx_cats,
+        "elementos_detectados": elementos,
+        "en_duda": en_duda,
+        "detalle": {"modelo_local": local, "verificacion": veri},
+    })
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -385,8 +395,8 @@ const GRAV={1:'mínima',2:'leve',3:'alta',4:'grave',5:'muy grave'};
 const PRESENCIA=['contenedor_secos','contenedor_humedos_lateral','contenedor_humedos_bilateral'];
 const SNIP={
  curl:`curl -s -F "file=@foto.jpg" -F "contexto=vidrios rotos en la vereda" ${O}/clasificar`,
- python:`import requests\n\nwith open("foto.jpg", "rb") as f:\n    r = requests.post("${O}/clasificar", files={"file": f},\n                      data={"contexto": "vidrios rotos en la vereda"})\ndata = r.json()\nprint(data["final"]["descripcion"])\nfor c in data["final"]["categorias"]:\n    print(c["key"], c["gravedad"], c["fuentes"])`,
- js:`const fd = new FormData();\nfd.append("file", fileInput.files[0]);\nfd.append("contexto", "vidrios rotos en la vereda"); // opcional\nconst res = await fetch("${O}/clasificar", { method: "POST", body: fd });\nconst data = await res.json();\nconsole.log(data.final.categorias);`
+ python:`import requests\n\nwith open("foto.jpg", "rb") as f:\n    r = requests.post("${O}/clasificar", files={"file": f},\n                      data={"contexto": "vidrios rotos en la vereda"})\ndata = r.json()\nif data["hay_problema"]:\n    print(data["descripcion"])\n    for p in data["problemas"]:\n        print(p["key"], p["gravedad"], p["fuentes"])\nelse:\n    print("sin problema:", data["descripcion"])`,
+ js:`const fd = new FormData();\nfd.append("file", fileInput.files[0]);\nfd.append("contexto", "vidrios rotos en la vereda"); // opcional\nconst res = await fetch("${O}/clasificar", { method: "POST", body: fd });\nconst d = await res.json();\nif (d.hay_problema) console.log(d.problemas, d.descripcion);`
 };
 ['curl','python','js'].forEach(l=>$('#code-'+l).textContent=SNIP[l]);
 $('#tabs').onclick=e=>{const b=e.target.closest('.tab');if(!b)return;
@@ -433,22 +443,21 @@ function enviar(f){
    .then(d=>{
      clearInterval(cronoIv);
      $('#espera').style.display='none';$('#res').style.display='block';
-     const fin=d.final;
-     const pres=fin.categorias.filter(c=>PRESENCIA.includes(c.key));
-     const probs=fin.categorias.filter(c=>!PRESENCIA.includes(c.key));
-     $('#concl').textContent=fin.sin_problema
+     const probs=d.problemas;
+     $('#concl').textContent=!d.hay_problema
        ?'No se identificaron problemas en la foto.'
        :(probs.length===1?'Se identificó 1 incidencia':'Se identificaron '+probs.length+' incidencias')
-         +(fin.gravedad_maxima?` · gravedad máxima ${fin.gravedad_maxima}/5 (${GRAV[fin.gravedad_maxima]})`:'')+'.';
+         +(d.gravedad_maxima?` · gravedad máxima ${d.gravedad_maxima}/5 (${GRAV[d.gravedad_maxima]})`:'')+'.';
      $('#cats').innerHTML=probs.map(c=>chip(c)).join('');
-     if(fin.descripcion){$('#desc').textContent=fin.descripcion;$('#descwrap').style.display='block';}
-     const cc=fin.categorias_contexto||[];
+     if(d.descripcion){$('#desc').textContent=d.descripcion;$('#descwrap').style.display='block';}
+     const cc=d.categorias_contexto||[];
      if(cc.length){$('#ctxcats').innerHTML=cc.map(c=>chip(c,true)).join('');$('#ctxwrap').style.display='block';}
+     const pres=d.elementos_detectados||[];
      if(pres.length){$('#prescats').innerHTML=pres.map(c=>`<div class="cat"><b>${c.nombre}</b></div>`).join('');$('#preswrap').style.display='block';}
-     if(fin.en_duda.length){$('#dudas').textContent='Reportadas por una sola fuente y sin decisión del árbitro: '
-       +fin.en_duda.map(k=>k.replace(/_/g,' ')).join(', ')+'. No se incluyen entre las confirmadas.';
+     if(d.en_duda.length){$('#dudas').textContent='Reportadas por una sola fuente y sin decisión del árbitro: '
+       +d.en_duda.map(k=>k.replace(/_/g,' ')).join(', ')+'. No se incluyen entre las confirmadas.';
        $('#dudawrap').style.display='block';}
-     const v=d.verificacion;
+     const v=d.detalle.verificacion;
      $('#estado').textContent=v.activa
        ?'Verificación cruzada completada en '+Math.round((Date.now()-t0)/1000)+' s.'
        :'Sin verificación cruzada ('+v.motivo+'): resultado solo del modelo local.';
@@ -457,7 +466,7 @@ function enviar(f){
        :`<div class="voto"><b>${x.modelo}</b>: no respondió</div>`).join('')
        +(v.arbitro&&v.arbitro.ok&&v.arbitro.decisiones.length
          ?`<div class="voto"><b>árbitro</b>: ${v.arbitro.decisiones.map(dd=>dd.key.replace(/_/g,' ')+' '+(dd.veredicto==='confirmar'?'✓':'✗')).join(', ')}</div>`:'');}
-     $('#bars').innerHTML=d.modelo_local.top5.map(t=>`
+     $('#bars').innerHTML=d.detalle.modelo_local.top5.map(t=>`
        <div class="row"><div class="name"><span>${t.nombre}</span><span class="pct">${Math.round(t.score*100)}%</span></div>
        <div class="track"><i style="width:${Math.max(2,Math.round(t.score*100))}%"></i></div></div>`).join('');
      const jtxt=JSON.stringify(d,null,2);
