@@ -334,7 +334,44 @@ check("no se cachea si un verificador falló",
 check("sí se cachea una verificación completa",
       S._cacheable({"detalle": {"verificacion": {
           "activa": True, "verificadores": [{"ok": True}, {"ok": True}]}}}))
+check("no se cachea si el árbitro falló",
+      not S._cacheable({"detalle": {"verificacion": {
+          "activa": True, "verificadores": [{"ok": True}, {"ok": True}],
+          "arbitro": {"ok": False, "error": "timeout"}}}}))
+check("sí se cachea con árbitro que respondió",
+      S._cacheable({"detalle": {"verificacion": {
+          "activa": True, "verificadores": [{"ok": True}, {"ok": True}],
+          "arbitro": {"ok": True, "decisiones": []}}}}))
+check("y con árbitro que no hizo falta",
+      S._cacheable({"detalle": {"verificacion": {
+          "activa": True, "verificadores": [{"ok": True}, {"ok": True}],
+          "arbitro": None}}}))
+
+# Dos pedidos simultáneos de la misma foto no pueden pagar dos veces: el
+# segundo tiene que colgarse del primero, no arrancar otro pipeline.
+_corridas["n"] = 0
+S.procesar = _contando
+_demora["s"] = 1.5
+gemela = foto(809, 609)
+salidas = []
+
+
+def _tirar():
+    salidas.append(pedir("/clasificar", *_multipart("f.jpg", gemela)[::1])[0])
+
+
+hilos = [threading.Thread(target=_tirar) for _ in range(3)]
+for t in hilos:
+    t.start()
+for t in hilos:
+    t.join()
+_demora["s"] = 0.0
+check("3 pedidos simultáneos de la misma foto procesan una sola vez",
+      _corridas["n"] == 1, f"{_corridas['n']} corridas")
+check("y los tres reciben 200 (ninguno se come un 503)",
+      salidas == [200, 200, 200], str(salidas))
 S.procesar = _procesar_real
+check("el registro de pedidos en vuelo queda vacío", not S._en_vuelo, str(S._en_vuelo))
 
 print("[#1] límite por IP")
 S._pedidos.clear()

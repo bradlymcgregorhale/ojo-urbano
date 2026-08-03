@@ -172,6 +172,7 @@ def clasificar_local(img):
 
 _pedidos = collections.defaultdict(collections.deque)  # ip -> timestamps
 _cache = collections.OrderedDict()                    # huella -> respuesta
+_en_vuelo = {}                                        # huella -> future en curso
 # El cupo lo suelta el HILO cuando termina de verdad, no la corrutina que lo
 # espera: cancelar un await NO corta el thread, así que soltarlo ahí dejaría
 # entrar pedidos nuevos mientras el pipeline anterior sigue quemando CPU.
@@ -283,7 +284,12 @@ def _cacheable(respuesta):
     """
     veri = respuesta.get("detalle", {}).get("verificacion", {})
     if veri.get("activa"):
-        return not any(not v.get("ok") for v in veri.get("verificadores") or [])
+        if any(not v.get("ok") for v in veri.get("verificadores") or []):
+            return False
+        # Un árbitro caído deja categorías en_duda: si se cachea, esa foto no
+        # vuelve a arbitrarse nunca.
+        arbitro = veri.get("arbitro")
+        return not (arbitro and not arbitro.get("ok"))
     # Sin clave o apagado por parámetro el resultado es estable; por cuota no.
     return veri.get("motivo") != MOTIVO_CUOTA
 
@@ -396,6 +402,40 @@ async def clasificar(request: Request, file: UploadFile = File(...),
         _cache.move_to_end(huella)
         return JSONResponse(_cache[huella])
 
+    # Dos pedidos simultáneos de la MISMA foto pagarían dos veces: el segundo
+    # ve el miss antes de que el primero publique. El que llega después se
+    # cuelga del resultado del primero en vez de arrancar otro pipeline.
+    # Va antes del cupo, para que esperar no consuma concurrencia.
+    en_vuelo = _en_vuelo.get(huella)
+    if en_vuelo is not None:
+        return JSONResponse(await asyncio.shield(en_vuelo))
+
+    propia = asyncio.get_running_loop().create_future()
+    # Consume la excepción para que no salte "never retrieved" si nadie espera.
+    propia.add_done_callback(lambda f: f.cancelled() or f.exception())
+    _en_vuelo[huella] = propia
+
+    try:
+        respuesta = await _clasificar_una(datos, contexto, verificar)
+    except BaseException as e:
+        if not propia.done():
+            propia.set_exception(e)
+        raise
+    else:
+        if not propia.done():
+            propia.set_result(respuesta)
+    finally:
+        _en_vuelo.pop(huella, None)
+
+    if CACHE_MAX > 0 and _cacheable(respuesta):
+        _cache[huella] = respuesta
+        while len(_cache) > CACHE_MAX:
+            _cache.popitem(last=False)
+    return JSONResponse(respuesta)
+
+
+async def _clasificar_una(datos, contexto, verificar):
+    """Corre el pipeline con el cupo tomado, fuera del event loop."""
     # Sin techo de concurrencia, cada pedido encolado retiene su imagen en RAM
     # y suma minutos de espera. Mejor rechazar rápido.
     if not _cupos.acquire(blocking=False):
@@ -422,7 +462,7 @@ async def clasificar(request: Request, file: UploadFile = File(...),
         _cupos.release()
         raise HTTPException(503, "el servidor se está apagando")
     try:
-        respuesta = await asyncio.wrap_future(tarea)
+        return await asyncio.wrap_future(tarea)
     except asyncio.CancelledError:
         # cancel() devuelve True solo si seguía en la cola: ahí es seguro
         # soltar, porque trabajo() no va a correr nunca. Si devuelve False ya
@@ -430,12 +470,6 @@ async def clasificar(request: Request, file: UploadFile = File(...),
         if tarea.cancel():
             _cupos.release()
         raise
-
-    if CACHE_MAX > 0 and _cacheable(respuesta):
-        _cache[huella] = respuesta
-        while len(_cache) > CACHE_MAX:
-            _cache.popitem(last=False)
-    return JSONResponse(respuesta)
 
 
 @app.get("/", response_class=HTMLResponse)
