@@ -172,7 +172,6 @@ def clasificar_local(img):
 
 _pedidos = collections.defaultdict(collections.deque)  # ip -> timestamps
 _cache = collections.OrderedDict()                    # huella -> respuesta
-_en_vuelo = {}                                        # huella -> future en curso
 # El cupo lo suelta el HILO cuando termina de verdad, no la corrutina que lo
 # espera: cancelar un await NO corta el thread, así que soltarlo ahí dejaría
 # entrar pedidos nuevos mientras el pipeline anterior sigue quemando CPU.
@@ -286,8 +285,11 @@ def _cacheable(respuesta):
     if veri.get("activa"):
         if any(not v.get("ok") for v in veri.get("verificadores") or []):
             return False
-        # Un árbitro caído deja categorías en_duda: si se cachea, esa foto no
-        # vuelve a arbitrarse nunca.
+        # Con árbitro configurado, que queden categorías en duda significa que
+        # el arbitraje falló o quedó incompleto (respondió sin decidirlas
+        # todas). Cachearlo congela ese resultado a medio hacer para siempre.
+        if verificador.ARBITRO and respuesta.get("en_duda"):
+            return False
         arbitro = veri.get("arbitro")
         return not (arbitro and not arbitro.get("ok"))
     # Sin clave o apagado por parámetro el resultado es estable; por cuota no.
@@ -402,30 +404,14 @@ async def clasificar(request: Request, file: UploadFile = File(...),
         _cache.move_to_end(huella)
         return JSONResponse(_cache[huella])
 
-    # Dos pedidos simultáneos de la MISMA foto pagarían dos veces: el segundo
-    # ve el miss antes de que el primero publique. El que llega después se
-    # cuelga del resultado del primero en vez de arrancar otro pipeline.
-    # Va antes del cupo, para que esperar no consuma concurrencia.
-    en_vuelo = _en_vuelo.get(huella)
-    if en_vuelo is not None:
-        return JSONResponse(await asyncio.shield(en_vuelo))
-
-    propia = asyncio.get_running_loop().create_future()
-    # Consume la excepción para que no salte "never retrieved" si nadie espera.
-    propia.add_done_callback(lambda f: f.cancelled() or f.exception())
-    _en_vuelo[huella] = propia
-
-    try:
-        respuesta = await _clasificar_una(datos, contexto, verificar)
-    except BaseException as e:
-        if not propia.done():
-            propia.set_exception(e)
-        raise
-    else:
-        if not propia.done():
-            propia.set_result(respuesta)
-    finally:
-        _en_vuelo.pop(huella, None)
+    # Acá hubo una deduplicación de pedidos en vuelo (que el segundo pedido de
+    # la misma foto se colgara del primero en vez de pagarla dos veces). Se
+    # sacó a propósito: hacía esperar a los waiters reteniendo cada uno su
+    # copia de hasta MAX_BYTES, que con los defaults son ~600 MB de una sola
+    # IP, mucho peor que el problema que resolvía. Con CONCURRENCIA=1 el cupo
+    # ya evita el pipeline duplicado (el segundo se lleva un 503); subirla
+    # afloja esa garantía y se puede volver a pagar una foto simultánea.
+    respuesta = await _clasificar_una(datos, contexto, verificar)
 
     if CACHE_MAX > 0 and _cacheable(respuesta):
         _cache[huella] = respuesta

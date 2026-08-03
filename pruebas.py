@@ -347,8 +347,25 @@ check("y con árbitro que no hizo falta",
           "activa": True, "verificadores": [{"ok": True}, {"ok": True}],
           "arbitro": None}}}))
 
-# Dos pedidos simultáneos de la misma foto no pueden pagar dos veces: el
-# segundo tiene que colgarse del primero, no arrancar otro pipeline.
+# Un arbitraje incompleto (respondió pero no decidió todas las disputas) deja
+# categorías en duda: cachearlo congela ese resultado a medias para siempre.
+_arb_real = V.ARBITRO
+V.ARBITRO = "arbitro/x"
+check("no se cachea un arbitraje incompleto",
+      not S._cacheable({"en_duda": ["reparacion_contenedor"],
+                        "detalle": {"verificacion": {
+                            "activa": True, "verificadores": [{"ok": True}, {"ok": True}],
+                            "arbitro": {"ok": True, "decisiones": []}}}}))
+V.ARBITRO = ""
+check("sin árbitro configurado, quedar en duda es estable y sí se cachea",
+      S._cacheable({"en_duda": ["reparacion_contenedor"],
+                    "detalle": {"verificacion": {
+                        "activa": True, "verificadores": [{"ok": True}, {"ok": True}]}}}))
+V.ARBITRO = _arb_real
+
+# Sin deduplicación en vuelo (se sacó a propósito), el cupo es lo que impide
+# el pipeline duplicado: el segundo pedido simultáneo se lleva un 503 rápido
+# en vez de quedarse esperando y reteniendo su copia de la foto.
 _corridas["n"] = 0
 S.procesar = _contando
 _demora["s"] = 1.5
@@ -366,12 +383,11 @@ for t in hilos:
 for t in hilos:
     t.join()
 _demora["s"] = 0.0
-check("3 pedidos simultáneos de la misma foto procesan una sola vez",
+check("con CONCURRENCIA=1 solo corre un pipeline a la vez",
       _corridas["n"] == 1, f"{_corridas['n']} corridas")
-check("y los tres reciben 200 (ninguno se come un 503)",
-      salidas == [200, 200, 200], str(salidas))
+check("y los simultáneos se rechazan rápido en vez de acumular memoria",
+      sorted(salidas) == [200, 503, 503], str(salidas))
 S.procesar = _procesar_real
-check("el registro de pedidos en vuelo queda vacío", not S._en_vuelo, str(S._en_vuelo))
 
 print("[#1] límite por IP")
 S._pedidos.clear()
