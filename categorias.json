@@ -99,6 +99,10 @@
     "nombre": "Cuidacoches exigiendo dinero en la vía pública",
     "grupo": "Ocupación de vía pública"
   },
+  "volquete_mal_dispuesto": {
+    "nombre": "Remoción de volquete abandonado o mal dispuesto",
+    "grupo": "Ocupación de vía pública"
+  },
   "reparacion_bache": {
     "nombre": "Reparación de bache en calle",
     "grupo": "Infraestructura"
