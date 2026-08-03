@@ -266,6 +266,8 @@ PAGINA = """<!DOCTYPE html>
        border:1px solid var(--line2);border-radius:8px;background:var(--surface);
        color:var(--muted);cursor:pointer}
   .reenviar:hover{color:var(--ink);border-color:var(--ink)}
+  .reenviar.primario{background:var(--ink);border-color:var(--ink);color:#fff}
+  .reenviar.primario:hover{color:#fff;opacity:.85}
   details.det{margin-top:18px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
   details.det>summary{cursor:pointer;padding:10px 14px;font-size:13px;font-weight:600;color:var(--muted);
        list-style-position:inside}
@@ -304,11 +306,12 @@ PAGINA = """<!DOCTYPE html>
   <input id="ctx" type="text" maxlength="500"
          placeholder="Contá algo que quizá no se vea en la foto, p. ej. «todo huele mal» o «hay ratas»">
   <div class="ctxhint">Sirve de pista para interpretar la foto y para sugerir reportes. Lo que no se vea
-    en la foto vuelve como sugerencia aparte, nunca como confirmación. Escribilo antes de soltar la foto.</div>
+    en la foto vuelve como sugerencia aparte, nunca como confirmación. Podés escribirlo antes o después
+    de elegir la foto.</div>
 
   <div id="drop" role="button" tabindex="0" aria-label="Elegir una foto para analizar">
     <p><strong>Arrastrá una foto acá</strong> o hacé clic para elegir</p>
-    <p>JPG / PNG / WEBP · el análisis arranca al soltarla</p>
+    <p>JPG / PNG / WEBP · después tocá «Analizar»</p>
     <input id="file" type="file" accept="image/*" hidden>
   </div>
   <div class="err" id="err"></div>
@@ -421,8 +424,18 @@ drop.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDe
 // ejemplo sobre el resultado), el navegador ya no navega al archivo.
 ['dragover','dragenter'].forEach(e=>document.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('over')}));
 ['dragleave','drop'].forEach(e=>document.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('over')}));
-document.addEventListener('drop',ev=>{if(ev.dataTransfer.files[0])enviar(ev.dataTransfer.files[0])});
-file.addEventListener('change',()=>{if(file.files[0]){enviar(file.files[0]);file.value='';}});
+document.addEventListener('drop',ev=>{if(ev.dataTransfer.files[0])seleccionar(ev.dataTransfer.files[0])});
+file.addEventListener('change',()=>{if(file.files[0]){seleccionar(file.files[0]);file.value='';}});
+// Elegir la foto NO arranca el análisis: deja el preview y el botón Analizar,
+// así se puede escribir o ajustar el contexto vecinal antes de mandar.
+function seleccionar(f){
+  ultimoArchivo=f;
+  const img=$('#preview');
+  if(img.src.startsWith('blob:'))URL.revokeObjectURL(img.src);
+  img.src=URL.createObjectURL(f);img.style.display='block';
+  const b=$('#reenviar');
+  b.textContent='Analizar esta foto';b.classList.add('primario');b.style.display='block';
+}
 $('#copyjson').onclick=()=>{navigator.clipboard.writeText($('#json').textContent).then(()=>{
   $('#copyjson').textContent='Copiado ✓';setTimeout(()=>$('#copyjson').textContent='Copiar JSON',1500);});};
 const chip=(c,extra)=>`<div class="cat${extra?' ctx':''}"><b>${c.nombre}</b>${c.gravedad?`<span title="${(c.fuentes||[]).join(', ')}">${c.gravedad}/5 · ${GRAV[c.gravedad]||''} · ${(c.fuentes||[]).length} fuente${(c.fuentes||[]).length!==1?'s':''}</span>`:''}</div>`;
@@ -483,13 +496,17 @@ function enviar(f){
      $('#json').textContent=jtxt;
      $('#jsonsize').textContent='· '+(new Blob([jtxt]).size/1024).toFixed(1)+' KB';
      $('#jsonwrap').style.display='block';
-     $('#reenviar').style.display='block';
+     mostrarReanalizar();
    }).catch(e=>{if(e.name==='AbortError')return;
      clearInterval(cronoIv);
      $('#espera').style.display='none';
      $('#err').textContent=e.message+' · Reintentá con el botón o probá otra foto.';
      $('#err').style.display='block';
-     $('#reenviar').style.display='block';});
+     mostrarReanalizar();});
+}
+function mostrarReanalizar(){
+  const b=$('#reenviar');
+  b.textContent='↻ Reanalizar esta foto';b.classList.remove('primario');b.style.display='block';
 }
 </script></body></html>"""
 
