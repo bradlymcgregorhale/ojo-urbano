@@ -24,7 +24,6 @@ import json
 import math
 import os
 import time
-import warnings
 from pathlib import Path
 
 # carga .env si existe (sin dependencias extra)
@@ -176,17 +175,28 @@ def _ip_cliente(request):
     return request.client.host if request.client else "?"
 
 
+def _purgar_pedidos(ahora):
+    """Saca las IPs que ya salieron de la ventana.
+
+    Sin esto, una IP que pega una sola vez deja su entrada para siempre y el
+    diccionario crece sin techo ante un ataque distribuido.
+    """
+    viejas = [ip for ip, cola in _pedidos.items()
+              if not cola or ahora - cola[-1] > RATE_VENTANA]
+    for ip in viejas:
+        del _pedidos[ip]
+
+
 def _permitir(ip):
     """Ventana deslizante por IP. Devuelve False si ya agotó su cuota."""
     if RATE_LIMITE <= 0:
         return True
     ahora = time.monotonic()
+    if len(_pedidos) > 1024:
+        _purgar_pedidos(ahora)
     cola = _pedidos[ip]
     while cola and ahora - cola[0] > RATE_VENTANA:
         cola.popleft()
-    if not cola:
-        del _pedidos[ip]
-        cola = _pedidos[ip]
     if len(cola) >= RATE_LIMITE:
         return False
     cola.append(ahora)
@@ -213,16 +223,17 @@ def _abrir_imagen(datos):
 
     Image.open solo lee la cabecera, así que las dimensiones se controlan
     ANTES del convert(), que es el que materializa la imagen entera en RAM.
+    El corte es en el mismo umbral en el que Pillow apenas avisaría, así que
+    el warning queda cubierto sin tocar el filtro global de warnings (que no
+    sería seguro de mutar ahora que esto corre en un hilo aparte).
     """
     demasiado = f"la foto supera los {MAX_PIXELES // 1_000_000} megapíxeles"
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", Image.DecompressionBombWarning)
-            img = Image.open(io.BytesIO(datos))
-            ancho, alto = img.size
-            if ancho * alto > MAX_PIXELES:
-                raise HTTPException(400, demasiado)
-            return img.convert("RGB")
+        img = Image.open(io.BytesIO(datos))
+        ancho, alto = img.size
+        if ancho * alto > MAX_PIXELES:
+            raise HTTPException(400, demasiado)
+        return img.convert("RGB")
     except HTTPException:
         raise
     except (Image.DecompressionBombError, Image.DecompressionBombWarning):
@@ -283,7 +294,13 @@ async def guardias(request, call_next):
                 request.headers.get("x-api-token", ""), API_TOKEN):
             return JSONResponse({"detail": "token inválido o ausente"}, status_code=401)
         declarado = request.headers.get("content-length", "")
-        if declarado.isdigit() and int(declarado) > MAX_BYTES:
+        if not declarado.isdigit():
+            # Sin Content-Length (cuerpo chunked) el techo de tamaño no se
+            # puede aplicar antes de que el parser multipart lea todo. Los
+            # navegadores y curl siempre lo mandan en un multipart.
+            return JSONResponse(
+                {"detail": "hace falta Content-Length"}, status_code=411)
+        if int(declarado) > MAX_BYTES:
             return JSONResponse(
                 {"detail": f"la foto supera el límite de {MAX_BYTES // (1024 * 1024)} MB"},
                 status_code=413)
