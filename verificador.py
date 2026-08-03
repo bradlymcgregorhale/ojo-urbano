@@ -371,7 +371,7 @@ _SISTEMA_ARBITRO = (
 
 
 def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
-              firmes=(), contexto="", sospechosas=()):
+              firmes=(), contexto="", sospechosas=(), fuentes=None):
     """El árbitro (modelo de texto) decide las categorías con una sola fuente.
 
     En la misma llamada redacta la descripción final consolidada de la foto,
@@ -381,6 +381,7 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
     """
     if not ARBITRO:
         return None
+    fuentes = fuentes or {}
     probas = {p["key"]: p["score"] for p in probabilidades[:12]}
     partes = [
         f"Categorías (clave: nombre): {json.dumps({k: v['nombre'] for k, v in categorias.items()}, ensure_ascii=False)}\n\n"
@@ -411,16 +412,25 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
             "aunque algún veredicto diga el otro): "
             f"{json.dumps(detalle, ensure_ascii=False)}\n\n")
     if disputadas:
+        detalle_fuentes = {k: sorted(fuentes.get(k, [])) for k in sorted(disputadas)}
         partes.append(
-            "Estas categorías fueron reportadas por UNA sola fuente y hay que decidir si se confirman.\n\n"
-            f"Categorías en disputa: {json.dumps(sorted(disputadas), ensure_ascii=False)}\n\n"
+            "Estas categorías no alcanzaron el consenso automático y hay que decidir si se "
+            "confirman.\n\n"
+            f"Categorías en disputa, con las fuentes que las reportaron: "
+            f"{json.dumps(detalle_fuentes, ensure_ascii=False)}\n\n"
             "Criterio: confirmá una categoría de un modelo de visión solo si su evidencia citada "
             "es concreta y coherente con lo que reportaron los demás. Si una categoría la reporta "
             "SOLO el modelo local y ninguno de los dos modelos de visión la vio al mirar la foto, "
             "rechazala aunque la probabilidad local sea alta, salvo que la evidencia de los "
-            "verificadores describa lo mismo con otras palabras. Categorías que nombran el mismo "
-            "objeto físico ya reportado por consenso no deben duplicarse: rechazá la redundante. "
-            "Ante la duda, rechazá.\n\n")
+            "verificadores describa lo mismo con otras palabras. Si en cambio la reportaron LOS "
+            "DOS modelos de visión y el modelo local no la respalda, es una candidata seria: "
+            "confirmala si las evidencias que citan son concretas, específicas y compatibles "
+            "entre sí, y rechazala si son vagas o se contradicen. Ojo con eso último: los dos "
+            "verificadores miran la misma foto con el mismo prompt, así que coincidir NO los "
+            "vuelve independientes; si el contexto o un texto escrito dentro de la foto pudo "
+            "haberles sugerido la categoría, exigí evidencia visual inequívoca. Categorías que "
+            "nombran el mismo objeto físico ya reportado por consenso no deben duplicarse: "
+            "rechazá la redundante. Ante la duda, rechazá.\n\n")
         vlm_only = sorted(set(categorias) - {p["key"] for p in probabilidades}
                           - {"sin_problema"})
         if vlm_only and disputadas & set(vlm_only):
@@ -556,7 +566,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     if disputadas and activos:
         arbitro = _arbitrar(disputadas, activos, prediccion_local["probabilidades"],
                             categorias, confirmadas, sorted(subtipos_firmes), contexto,
-                            sorted(disputadas & ctx_claims))
+                            sorted(disputadas & ctx_claims), fuentes)
         if arbitro and arbitro.get("ok"):
             decididas = set()
             for d in arbitro["decisiones"]:

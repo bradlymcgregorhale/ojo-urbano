@@ -261,13 +261,80 @@ check("con el cupo tomado se rechaza",
       pedir("/clasificar", *_multipart("f.jpg", foto(806, 606))[::1])[0] == 503)
 S._cupos.release()
 
+
+# Cancelar el await mientras el trabajo sigue ENCOLADO no debe perder el cupo:
+# trabajo() nunca arranca, así que su finally nunca corre.
+async def _cancelar_encolado():
+    ocupa = threading.Event()
+    libera = threading.Event()
+    S._pool.submit(lambda: (ocupa.set(), libera.wait(10)))
+    ocupa.wait(5)  # el único worker queda tomado: lo que sigue va a la cola
+    arrancó = {"si": False}
+
+    def trabajo():
+        arrancó["si"] = True
+        try:
+            return "listo"
+        finally:
+            S._cupos.release()
+
+    S._cupos.acquire()
+    tarea = S._pool.submit(trabajo)
+    fut = asyncio.wrap_future(tarea)
+    await asyncio.sleep(0.05)
+    fut.cancel()
+    try:
+        await fut
+    except asyncio.CancelledError:
+        if tarea.cancel():
+            S._cupos.release()
+    libera.set()
+    await asyncio.sleep(0.2)
+    return arrancó["si"]
+
+
+arrancó = asyncio.run(_cancelar_encolado())
+check("cancelar un trabajo encolado no filtra el cupo",
+      not arrancó and S._cupos.acquire(blocking=False), f"el hilo arrancó={arrancó}")
+S._cupos.release()
+check("y el endpoint sigue atendiendo después de la cancelación",
+      pedir("/clasificar", *_multipart("f.jpg", foto(808, 608))[::1])[0] == 200)
+
 print("[#1] caché por foto")
+# No se mide por tiempo (el encoder stub es instantáneo): se cuenta cuántas
+# veces corre el pipeline de verdad.
+_corridas = {"n": 0}
+_procesar_real = S.procesar
+
+
+def _contando(*a, **k):
+    _corridas["n"] += 1
+    return _procesar_real(*a, **k)
+
+
+S.procesar = _contando
 misma = foto(807, 607)
 pedir("/clasificar", *_multipart("f.jpg", misma)[::1])
-t0 = time.monotonic()
-código, _ = pedir("/clasificar", *_multipart("f.jpg", misma)[::1])
-check("la misma foto vuelve de caché", código == 200 and time.monotonic() - t0 < 0.5,
-      f"{time.monotonic() - t0:.3f}s")
+pedir("/clasificar", *_multipart("f.jpg", misma)[::1])
+check("la misma foto no vuelve a procesarse", _corridas["n"] == 1, f"{_corridas['n']} corridas")
+pedir("/clasificar", *_multipart("f.jpg", misma, contexto="hay ratas")[::1])
+check("distinto contexto sí se procesa de nuevo", _corridas["n"] == 2,
+      f"{_corridas['n']} corridas")
+
+# Un resultado degradado por cuota agotada no puede quedar cacheado: al día
+# siguiente, con cuota nueva, la misma foto tiene que volver a verificarse.
+degradada = {"detalle": {"verificacion": {"activa": False, "motivo": S.MOTIVO_CUOTA}}}
+check("no se cachea un resultado con la cuota agotada", not S._cacheable(degradada))
+check("sí se cachea uno sin clave",
+      S._cacheable({"detalle": {"verificacion": {"activa": False,
+                                                 "motivo": "falta OPENROUTER_API_KEY"}}}))
+check("no se cachea si un verificador falló",
+      not S._cacheable({"detalle": {"verificacion": {
+          "activa": True, "verificadores": [{"ok": True}, {"ok": False}]}}}))
+check("sí se cachea una verificación completa",
+      S._cacheable({"detalle": {"verificacion": {
+          "activa": True, "verificadores": [{"ok": True}, {"ok": True}]}}}))
+S.procesar = _procesar_real
 
 print("[#1] límite por IP")
 S._pedidos.clear()
@@ -364,6 +431,34 @@ r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
 check("CONSENSO_VLM_SOLO=confirma restaura la regla vieja",
       "reparacion_contenedor" in {c["key"] for c in r["confirmadas"]})
 V.CONSENSO_VLM_SOLO = "arbitro"
+
+# El árbitro tiene que enterarse de que la categoría la vieron LOS DOS
+# verificadores, no "una sola fuente": si se le miente el conteo, rechaza
+# justo el caso nuevo.
+V.ARBITRO = "arbitro/x"
+ARB = json.dumps({"decisiones": [{"key": "reparacion_contenedor",
+                                  "veredicto": "confirmar", "motivo": "evidencia clara"}],
+                  "descripcion": "Un contenedor roto."})
+llamadas = []
+
+
+def _llamar_arbitro(modelo, mensajes, **k):
+    llamadas.append((modelo, mensajes))
+    return ARB if modelo == V.ARBITRO else RESP
+
+
+V._llamar = _llamar_arbitro
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+texto_arb = next(m[1][-1]["content"] for m in llamadas if m[0] == V.ARBITRO)
+check("el árbitro ve las fuentes reales de cada disputa",
+      '"reparacion_contenedor": ["vlm/dos", "vlm/uno"]' in texto_arb
+      or '"reparacion_contenedor": ["vlm/uno", "vlm/dos"]' in texto_arb,
+      texto_arb[texto_arb.find("disputa"):][:110])
+check("ya no se le dice que hubo UNA sola fuente", "UNA sola fuente" not in texto_arb)
+check("y puede confirmar la categoría",
+      "reparacion_contenedor" in {c["key"] for c in r["confirmadas"]})
+V._llamar = lambda modelo, mensajes, **k: (capturado.update(m=mensajes), RESP)[1]
+V.ARBITRO = ""
 
 desc = r["descripcion"] or ""
 check("la descripción vuelve sin caracteres de control",

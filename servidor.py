@@ -17,6 +17,7 @@ La primera ejecución descarga los modelos de embeddings (varios GB).
 """
 import asyncio
 import collections
+import concurrent.futures
 import hashlib
 import hmac
 import io
@@ -64,6 +65,7 @@ CONCURRENCIA = max(1, int(os.environ.get("CONCURRENCIA", "1")))
 # no alcanza solo: detrás de un proxy todos comparten IP, y un atacante
 # distribuido usa muchas. Esto acota el gasto pase lo que pase.
 CUOTA_DIARIA = int(os.environ.get("CUOTA_DIARIA", "500"))
+MOTIVO_CUOTA = "cuota diaria de verificación agotada"
 RATE_LIMITE = int(os.environ.get("RATE_LIMITE", "60"))  # 0 = sin límite
 RATE_VENTANA = int(os.environ.get("RATE_VENTANA", "3600"))
 API_TOKEN = os.environ.get("API_TOKEN", "").strip()
@@ -174,6 +176,10 @@ _cache = collections.OrderedDict()                    # huella -> respuesta
 # espera: cancelar un await NO corta el thread, así que soltarlo ahí dejaría
 # entrar pedidos nuevos mientras el pipeline anterior sigue quemando CPU.
 _cupos = threading.BoundedSemaphore(CONCURRENCIA)
+# Tantos hilos como cupos: con el semáforo de admisión, un trabajo aceptado
+# siempre encuentra un worker libre y no se queda encolado.
+_pool = concurrent.futures.ThreadPoolExecutor(
+    max_workers=CONCURRENCIA, thread_name_prefix="ojo")
 _cuota = {"dia": None, "usadas": 0}
 _cuota_lock = threading.Lock()
 
@@ -268,6 +274,20 @@ def _abrir_imagen(datos):
         raise HTTPException(400, "no pude leer la imagen")
 
 
+def _cacheable(respuesta):
+    """Un resultado degradado por algo transitorio no se guarda.
+
+    Si se cachea una respuesta hecha con la cuota diaria agotada (o con los
+    verificadores caídos), esa foto queda devuelta sin verificar para siempre,
+    incluso al día siguiente con cuota nueva.
+    """
+    veri = respuesta.get("detalle", {}).get("verificacion", {})
+    if veri.get("activa"):
+        return not any(not v.get("ok") for v in veri.get("verificadores") or [])
+    # Sin clave o apagado por parámetro el resultado es estable; por cuota no.
+    return veri.get("motivo") != MOTIVO_CUOTA
+
+
 def procesar(datos, contexto, verificar):
     """Pipeline completo y sincrónico. Corre fuera del event loop."""
     img = _abrir_imagen(datos)
@@ -286,7 +306,7 @@ def procesar(datos, contexto, verificar):
         descripcion = veri["descripcion"]
     else:
         if sin_cuota:
-            motivo = "cuota diaria de verificación agotada"
+            motivo = MOTIVO_CUOTA
         elif not verificador.disponible():
             motivo = "falta OPENROUTER_API_KEY"
         else:
@@ -383,7 +403,8 @@ async def clasificar(request: Request, file: UploadFile = File(...),
 
     def trabajo():
         # El cupo se suelta acá, en el hilo, para que siga tomado si la
-        # corrutina que espera se cancela (cliente que corta la conexión).
+        # corrutina que espera se cancela (cliente que corta la conexión):
+        # cancelar el await NO corta el hilo, que sigue quemando CPU.
         try:
             return procesar(datos, contexto, verificar)
         finally:
@@ -391,9 +412,26 @@ async def clasificar(request: Request, file: UploadFile = File(...),
 
     # El pipeline es sincrónico y tarda 25-60 s: fuera del event loop, o
     # bloquea /salud, la portada y cualquier otro pedido mientras corre.
-    respuesta = await asyncio.to_thread(trabajo)
+    # Se usa el pool propio (y no asyncio.to_thread) para poder preguntarle al
+    # future si el trabajo llegó a arrancar: si se cancela mientras todavía
+    # estaba encolado, el finally de trabajo() nunca corre y el cupo se
+    # perdería para siempre.
+    try:
+        tarea = _pool.submit(trabajo)
+    except RuntimeError:
+        _cupos.release()
+        raise HTTPException(503, "el servidor se está apagando")
+    try:
+        respuesta = await asyncio.wrap_future(tarea)
+    except asyncio.CancelledError:
+        # cancel() devuelve True solo si seguía en la cola: ahí es seguro
+        # soltar, porque trabajo() no va a correr nunca. Si devuelve False ya
+        # arrancó y lo suelta su propio finally.
+        if tarea.cancel():
+            _cupos.release()
+        raise
 
-    if CACHE_MAX > 0:
+    if CACHE_MAX > 0 and _cacheable(respuesta):
         _cache[huella] = respuesta
         while len(_cache) > CACHE_MAX:
             _cache.popitem(last=False)
