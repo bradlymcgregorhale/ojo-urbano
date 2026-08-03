@@ -89,8 +89,34 @@ Todo por variables de entorno o `.env` (ver [`.env.example`](.env.example)):
 | `ARBITRO` | `deepseek/deepseek-v4-flash` | Modelo de texto que resuelve desacuerdos. Vacío = sin árbitro (las disputas quedan `en_duda`). |
 | `UMBRAL` | `0.5` | Probabilidad mínima del modelo local para proponer una categoría. |
 | `HOST` / `PORT` | `127.0.0.1` / `8080` | Dónde escucha la API. |
+| `VERIFICADOR_TIMEOUT` | `120` | Segundos por llamada a OpenRouter. |
+| `VERIFICADOR_DEADLINE` | `180` | Techo total de reintentos por modelo. |
 
 Nota: los modelos de DeepSeek en OpenRouter no aceptan imágenes, por eso participa como árbitro de texto y no como verificador visual.
+
+### Límites de abuso
+
+Clasificar una foto cuesta 25-60 s de CPU y 2-3 llamadas pagas a OpenRouter, así que `/clasificar` viene con techos puestos de fábrica:
+
+| Variable | Default | Qué hace |
+|---|---|---|
+| `MAX_BYTES` | `10485760` (10 MB) | Tamaño máximo del upload; más grande devuelve `413`. |
+| `MAX_PIXELES` | `25000000` | Megapíxeles máximos; frena bombas de descompresión con `400`. |
+| `CONCURRENCIA` | `1` | Clasificaciones en paralelo; por encima devuelve `503`. |
+| `RATE_LIMITE` / `RATE_VENTANA` | `60` / `3600` | Pedidos por IP y ventana en segundos; por encima devuelve `429`. `0` desactiva. |
+| `API_TOKEN` | vacío | Si lo ponés, `POST /clasificar` exige el header `X-Api-Token`. |
+| `CACHE_MAX` | `128` | Respuestas cacheadas por hash de foto, para no pagar dos veces la misma. |
+| `CONFIAR_PROXY` | apagado | Hace que el límite por IP use `X-Forwarded-For`. Activalo **solo** detrás de un proxy propio: sin proxy, cualquiera falsea el header y se saltea el límite. |
+
+Si publicás la API en internet, además de esto:
+
+- Poné un límite de tamaño de cuerpo en el proxy (`client_max_body_size` en nginx). La app rechaza por `Content-Length` y corta la lectura al pasarse, pero el servidor de adelante es el que evita que el cuerpo entero llegue a viajar.
+- Poné un tope de gasto mensual en la clave de OpenRouter, con una clave dedicada a este servicio.
+- Tené en cuenta que `multipart/form-data` no dispara preflight de CORS: cualquier página puede hacer que el navegador de sus visitantes pegue contra tu endpoint. El límite por IP y el token son lo que lo frena.
+
+### Sobre el contexto vecinal y la inyección de prompt
+
+El `contexto` que escribe quien sube la foto, y cualquier texto que aparezca *dentro* de la foto, llegan a los modelos de visión. Son datos no confiables: la rúbrica viaja en un mensaje `system` aparte, y una categoría que solo vieron los dos modelos de visión y que además coincide con lo que el contexto denuncia no se confirma sola, la decide el árbitro. Aun así, `descripcion` es texto generado por un modelo e influido por quien sube la foto: **escapalo antes de renderizarlo como HTML** y no abras reportes automáticos sin revisión humana.
 
 ## Ejemplo
 

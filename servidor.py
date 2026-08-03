@@ -15,10 +15,16 @@ Uso:
 Abrí http://127.0.0.1:8080 y arrastrá una foto, o usá POST /clasificar.
 La primera ejecución descarga los modelos de embeddings (varios GB).
 """
+import asyncio
+import collections
+import hashlib
+import hmac
 import io
 import json
 import math
 import os
+import time
+import warnings
 from pathlib import Path
 
 # carga .env si existe (sin dependencias extra)
@@ -33,7 +39,7 @@ if _env.exists():
 import joblib
 import numpy as np
 import uvicorn
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from PIL import Image
 from sentence_transformers import SentenceTransformer
@@ -47,6 +53,24 @@ HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "8080"))
 UMBRAL = float(os.environ.get("UMBRAL", "0.5"))
 GRAV_MAX = 5
+
+# Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y 2-3 llamadas
+# pagas a OpenRouter, así que el endpoint no puede quedar abierto sin techo.
+MAX_BYTES = int(os.environ.get("MAX_BYTES", str(10 * 1024 * 1024)))
+MAX_PIXELES = int(os.environ.get("MAX_PIXELES", str(25_000_000)))
+CONCURRENCIA = max(1, int(os.environ.get("CONCURRENCIA", "1")))
+RATE_LIMITE = int(os.environ.get("RATE_LIMITE", "60"))  # 0 = sin límite
+RATE_VENTANA = int(os.environ.get("RATE_VENTANA", "3600"))
+API_TOKEN = os.environ.get("API_TOKEN", "").strip()
+CACHE_MAX = int(os.environ.get("CACHE_MAX", "128"))
+# Solo con esto activo se cree el X-Forwarded-For; si no, cualquiera podría
+# falsear su IP y saltarse el límite de tasa poniendo un header.
+CONFIAR_PROXY = os.environ.get("CONFIAR_PROXY", "").strip().lower() not in (
+    "", "0", "false", "no")
+
+# Pillow, entre MAX_IMAGE_PIXELS y el doble, solo avisa y sigue decodificando:
+# una imagen bomba de pocos KB se convierte en cientos de MB de RGB.
+Image.MAX_IMAGE_PIXELS = MAX_PIXELES
 
 if not MODELO.exists():
     raise SystemExit("Falta model.joblib junto a servidor.py")
@@ -139,27 +163,78 @@ def clasificar_local(img):
     }
 
 
-app = FastAPI(title="Ojo Urbano")
+_pedidos = collections.defaultdict(collections.deque)  # ip -> timestamps
+_cache = collections.OrderedDict()                    # huella -> respuesta
+_en_curso = 0
 
 
-@app.get("/salud")
-def salud():
-    canonicas = sorted({verificador.FOLD.get(k, k) for k in clases})
-    return {"ok": True, "clases": canonicas,
-            "verificacion": verificador.disponible(),
-            "verificadores": verificador.VERIFICADORES,
-            "arbitro": verificador.ARBITRO or None}
+def _ip_cliente(request):
+    if CONFIAR_PROXY:
+        reenviada = request.headers.get("x-forwarded-for", "")
+        if reenviada:
+            return reenviada.split(",")[0].strip()
+    return request.client.host if request.client else "?"
 
 
-@app.post("/clasificar")
-async def clasificar(file: UploadFile = File(...), verificar: str = "auto",
-                     contexto: str = Form("")):
+def _permitir(ip):
+    """Ventana deslizante por IP. Devuelve False si ya agotó su cuota."""
+    if RATE_LIMITE <= 0:
+        return True
+    ahora = time.monotonic()
+    cola = _pedidos[ip]
+    while cola and ahora - cola[0] > RATE_VENTANA:
+        cola.popleft()
+    if not cola:
+        del _pedidos[ip]
+        cola = _pedidos[ip]
+    if len(cola) >= RATE_LIMITE:
+        return False
+    cola.append(ahora)
+    return True
+
+
+async def _leer_acotado(archivo):
+    """Lee el upload en trozos y aborta apenas pasa el límite de bytes."""
+    trozos, total = [], 0
+    while True:
+        trozo = await archivo.read(65536)
+        if not trozo:
+            break
+        total += len(trozo)
+        if total > MAX_BYTES:
+            raise HTTPException(
+                413, f"la foto supera el límite de {MAX_BYTES // (1024 * 1024)} MB")
+        trozos.append(trozo)
+    return b"".join(trozos)
+
+
+def _abrir_imagen(datos):
+    """Abre la foto rechazando bombas de descompresión antes de decodificarla.
+
+    Image.open solo lee la cabecera, así que las dimensiones se controlan
+    ANTES del convert(), que es el que materializa la imagen entera en RAM.
+    """
+    demasiado = f"la foto supera los {MAX_PIXELES // 1_000_000} megapíxeles"
     try:
-        img = Image.open(io.BytesIO(await file.read())).convert("RGB")
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            img = Image.open(io.BytesIO(datos))
+            ancho, alto = img.size
+            if ancho * alto > MAX_PIXELES:
+                raise HTTPException(400, demasiado)
+            return img.convert("RGB")
+    except HTTPException:
+        raise
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        # Pillow ya la frena solo por encima del doble de MAX_IMAGE_PIXELS
+        raise HTTPException(400, demasiado)
     except Exception:
         raise HTTPException(400, "no pude leer la imagen")
 
-    contexto = (contexto or "").strip()[:500]
+
+def procesar(datos, contexto, verificar):
+    """Pipeline completo y sincrónico. Corre fuera del event loop."""
+    img = _abrir_imagen(datos)
     local = clasificar_local(img)
     activar = (verificador.disponible() if verificar == "auto"
                else verificar not in ("0", "false", "no"))
@@ -185,7 +260,7 @@ async def clasificar(file: UploadFile = File(...), verificar: str = "auto",
     elementos = [{"key": c["key"], "nombre": c["nombre"]}
                  for c in categorias if c["key"] in verificador.PRESENCIA]
     gravedades = [c["gravedad"] for c in problemas if c.get("gravedad")]
-    return JSONResponse({
+    return {
         "hay_problema": bool(problemas),
         "gravedad_maxima": max(gravedades) if gravedades else None,
         "problemas": problemas,
@@ -194,7 +269,71 @@ async def clasificar(file: UploadFile = File(...), verificar: str = "auto",
         "elementos_detectados": elementos,
         "en_duda": en_duda,
         "detalle": {"modelo_local": local, "verificacion": veri},
-    })
+    }
+
+
+app = FastAPI(title="Ojo Urbano")
+
+
+@app.middleware("http")
+async def guardias(request, call_next):
+    """Token, tamaño declarado y límite por IP ANTES de parsear el multipart."""
+    if request.method == "POST" and request.url.path.rstrip("/").endswith("/clasificar"):
+        if API_TOKEN and not hmac.compare_digest(
+                request.headers.get("x-api-token", ""), API_TOKEN):
+            return JSONResponse({"detail": "token inválido o ausente"}, status_code=401)
+        declarado = request.headers.get("content-length", "")
+        if declarado.isdigit() and int(declarado) > MAX_BYTES:
+            return JSONResponse(
+                {"detail": f"la foto supera el límite de {MAX_BYTES // (1024 * 1024)} MB"},
+                status_code=413)
+        if not _permitir(_ip_cliente(request)):
+            return JSONResponse(
+                {"detail": "demasiados pedidos; probá de nuevo más tarde"},
+                status_code=429)
+    return await call_next(request)
+
+
+@app.get("/salud")
+def salud():
+    canonicas = sorted({verificador.FOLD.get(k, k) for k in clases})
+    return {"ok": True, "clases": canonicas,
+            "verificacion": verificador.disponible(),
+            "verificadores": verificador.VERIFICADORES,
+            "arbitro": verificador.ARBITRO or None}
+
+
+@app.post("/clasificar")
+async def clasificar(request: Request, file: UploadFile = File(...),
+                     verificar: str = "auto", contexto: str = Form("")):
+    global _en_curso
+    datos = await _leer_acotado(file)
+    contexto = (contexto or "").strip()[:500]
+
+    # La misma foto con el mismo contexto no se vuelve a pagar.
+    huella = hashlib.sha256(
+        datos + b"\x00" + contexto.encode() + b"\x00" + verificar.encode()).hexdigest()
+    if huella in _cache:
+        _cache.move_to_end(huella)
+        return JSONResponse(_cache[huella])
+
+    # Sin techo de concurrencia, cada request encolado retiene su imagen en RAM
+    # y suma minutos de espera. Mejor rechazar rápido.
+    if _en_curso >= CONCURRENCIA:
+        raise HTTPException(503, "el servidor está ocupado; reintentá en un momento")
+    _en_curso += 1
+    try:
+        # El pipeline es sincrónico y tarda 25-60 s: fuera del event loop, o
+        # bloquea /salud, la portada y cualquier otro pedido mientras corre.
+        respuesta = await asyncio.to_thread(procesar, datos, contexto, verificar)
+    finally:
+        _en_curso -= 1
+
+    if CACHE_MAX > 0:
+        _cache[huella] = respuesta
+        while len(_cache) > CACHE_MAX:
+            _cache.popitem(last=False)
+    return JSONResponse(respuesta)
 
 
 @app.get("/", response_class=HTMLResponse)
