@@ -137,11 +137,16 @@ def _prompt_verificador(categorias, contexto=""):
             "claridad POR SÍ SOLA, sin el contexto; si no la ves con certeza, ponela "
             "en \"categorias_contexto\". Y en \"descripcion\" describí solo lo que se "
             "VE: nunca repitas como visto algo que solo está en el contexto.\n"
-            'Además, agregá al JSON el campo "categorias_contexto": la lista de claves '
-            "de categorías que el contexto DESCRIBE o denuncia (aunque NO se vean en la "
+            'Además, agregá al JSON el campo "categorias_contexto": lista de objetos '
+            '{"key": "...", "respaldo": "compatible"|"neutral"|"contradice"} con las '
+            "categorías que el contexto DESCRIBE o denuncia (aunque NO se vean en la "
             "foto). Usá las mismas claves de arriba; si el contexto no describe ningún "
-            'problema, lista vacía. Ejemplo: "hay ratas por todos lados" -> '
-            '["desratizacion"]. Confiá en lo que el vecino afirma aunque no puedas '
+            'problema, lista vacía. "respaldo" dice qué tan consistente es la FOTO con '
+            "ese reclamo sin llegar a confirmarlo: compatible (la escena encaja: de "
+            "noche y oscura para una luminaria apagada), neutral (la foto no muestra "
+            "nada al respecto) o contradice (la foto muestra lo contrario). Ejemplo: "
+            '"hay ratas por todos lados" -> [{"key": "desratizacion", "respaldo": '
+            '"neutral"}]. Confiá en lo que el vecino afirma aunque no puedas '
             "verlo (olores, ratas, ruidos): nunca lo descartes. Los problemas NO "
             "visibles se asignan según lo que SÍ se ve en la foto: malos olores con un "
             "contenedor visible -> lavado_contenedor; con un cesto papelero -> "
@@ -161,7 +166,7 @@ _RUBRICA_KEYS = {
     "vaciado_cesto", "reparacion_cesto", "vehiculo_mal_estacionado",
     "columna_poste_cable", "reposicion_contenedor", "lavado_contenedor",
     "puesto_diarios", "puesto_flores", "tapa_vereda", "tapa_calle",
-    "ocupacion_comercial", "desratizacion", "obstruccion",
+    "ocupacion_comercial", "desratizacion", "obstruccion", "luminaria_apagada",
 }
 
 _RUBRICA = """Sos un verificador experto de reportes de incidencias en la vía pública: higiene urbana, contenedores y cestos, infraestructura, vehículos en infracción y ocupación del espacio público. Mirá la foto adjunta (puede ser de noche/oscura; prestá atención a objetos voluminosos como muebles, estanterías o cajones delante o al lado de un contenedor, y a vehículos detenidos sobre ciclovías, veredas o rampas) y reportá los problemas visibles. Recorré también el PLANO DEL PISO: las baldosas faltantes, hundidas o levantadas tienen poco contraste y se esconden entre hojas y sombras; buscá interrupciones en la trama de las baldosas (contrapiso o tierra a la vista, juntas que desaparecen, un sector hundido donde se juntan las hojas).
@@ -191,6 +196,7 @@ Categorías y criterios (usá SOLO estas claves):
 - columna_poste_cable: una columna, un poste o cables de servicios AÚN INSTALADOS y con problemas: cables colgando, sueltos o cortados a baja altura; poste o columna inclinado, roto o deteriorado. Un poste o caño SUELTO tirado en el piso como descarte es retiro_muebles, NO esto.
 - puesto_diarios: un kiosco o puesto de venta de diarios y revistas en la vía pública abandonado, muy deteriorado u obstruyendo el paso. Un puesto operando con normalidad NO.
 - puesto_flores: lo mismo que puesto_diarios pero para un puesto de venta de flores.
+- luminaria_apagada: de NOCHE, una luminaria pública claramente APAGADA o rota: un poste de alumbrado sin luz dejando su tramo a oscuras mientras otras luminarias cercanas están encendidas, o un farol visiblemente roto o colgando. Una foto oscura por sí sola NO alcanza (puede ser la exposición de la cámara): buscá el poste apagado o el tramo notablemente más oscuro que el resto. Si el reclamo es que hace falta MÁS iluminación donde no la hay, es mayor_iluminacion, no esto.
 - desratizacion: un animal plaga o su evidencia visible en la vía pública: una rata o ratón (vivo o muerto), un panal o nido de avispas/abejas en un árbol, poste o fachada, un enjambre, o cucarachas en cantidad. Las palomas, los perros y los gatos NO son plaga. Reportá solo con evidencia clara en la foto.
 - contenedor_desbordado: el contenedor mismo REBALSA por su boca, con residuos sobresaliendo por encima. La basura en el piso alrededor NO lo hace desbordado (eso es recoleccion).
 - vaciado_contenedor: contenedor lleno que necesita vaciado (residuos visibles hasta la boca), sin llegar a rebalsar.
@@ -227,11 +233,20 @@ def _verificar_uno(modelo, data_url, categorias, contexto=""):
             if c["key"] in categorias and c["key"] not in {v["key"] for v in vistas}:
                 vistas.append(c)
         ctx_cats = []
-        for k in veredicto.get("categorias_contexto") or []:
+        for item in veredicto.get("categorias_contexto") or []:
+            # tolera claves sueltas (formato viejo) u objetos {key, respaldo}
+            if isinstance(item, str):
+                k, respaldo = item, "neutral"
+            elif isinstance(item, dict):
+                k = item.get("key")
+                respaldo = item.get("respaldo") if item.get("respaldo") in (
+                    "compatible", "neutral", "contradice") else "neutral"
+            else:
+                continue
             k = FOLD.get(k, k)
             if isinstance(k, str) and k in categorias and k != "sin_problema" \
-                    and k not in ctx_cats:
-                ctx_cats.append(k)
+                    and k not in [c["key"] for c in ctx_cats]:
+                ctx_cats.append({"key": k, "respaldo": respaldo})
         return {"modelo": modelo, "ok": True, "categorias": vistas,
                 "sin_problema": bool(veredicto.get("sin_problema")),
                 "descripcion": str(veredicto.get("descripcion") or "").strip(),
@@ -402,7 +417,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
 
     # Categorías en disputa que además figuran en lo que el contexto describe:
     # candidatas a sugestión (el texto pudo inducir la "detección" visual).
-    ctx_claims = {k for v in activos for k in v.get("categorias_contexto") or []}
+    ctx_claims = {c["key"] for v in activos for c in v.get("categorias_contexto") or []}
 
     arbitro = None
     en_duda = []
@@ -481,15 +496,22 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         remap["lavado_contenedor"] = "desratizacion"
     if not (vistos_todos & cesto_keys):
         remap["lavado_cesto"] = "desratizacion"
-    ctx_cats = []
+    # respaldo_visual: qué tan consistente es la foto con el reclamo (sin
+    # confirmarlo). Entre verificadores gana el mayor respaldo.
+    rango = {"compatible": 2, "neutral": 1, "contradice": 0}
+    ctx_resp = {}
     for v in activos:
-        for k in v.get("categorias_contexto") or []:
-            k = remap.get(k, k)
-            if k not in confirmadas and k not in ctx_cats:
-                ctx_cats.append(k)
+        for c in v.get("categorias_contexto") or []:
+            k = remap.get(c["key"], c["key"])
+            if k in confirmadas:
+                continue
+            r = c.get("respaldo", "neutral")
+            if k not in ctx_resp or rango[r] > rango[ctx_resp[k]]:
+                ctx_resp[k] = r
     categorias_contexto = [
-        {"key": k, "nombre": categorias.get(k, {}).get("nombre", k)}
-        for k in sorted(ctx_cats)]
+        {"key": k, "nombre": categorias.get(k, {}).get("nombre", k),
+         "respaldo_visual": ctx_resp[k]}
+        for k in sorted(ctx_resp)]
 
     return {
         "activa": True,

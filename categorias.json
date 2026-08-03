@@ -135,6 +135,10 @@
     "nombre": "Falta de iluminación en la vía pública",
     "grupo": "Infraestructura"
   },
+  "luminaria_apagada": {
+    "nombre": "Reparación de luminaria apagada durante la noche",
+    "grupo": "Infraestructura"
+  },
   "plantacion_arbol": {
     "nombre": "Plantación de árbol",
     "grupo": "Arbolado"

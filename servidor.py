@@ -474,7 +474,8 @@ function enviar(f){
      $('#cats').innerHTML=probs.map(c=>chip(c)).join('');
      if(d.descripcion){$('#desc').textContent=d.descripcion;$('#descwrap').style.display='block';}
      const cc=d.categorias_contexto||[];
-     if(cc.length){$('#ctxcats').innerHTML=cc.map(c=>chip(c,true)).join('');$('#ctxwrap').style.display='block';}
+     const RESPALDO={compatible:'la foto es compatible con el reclamo',neutral:'no visible en la foto',contradice:'la foto lo contradice'};
+     if(cc.length){$('#ctxcats').innerHTML=cc.map(c=>`<div class="cat ctx"><b>${c.nombre}</b><span>${RESPALDO[c.respaldo_visual]||'según el contexto'}</span></div>`).join('');$('#ctxwrap').style.display='block';}
      const pres=d.elementos_detectados||[];
      if(pres.length){$('#prescats').innerHTML=pres.map(c=>`<div class="cat"><b>${c.nombre}</b></div>`).join('');$('#preswrap').style.display='block';}
      if(d.en_duda.length){$('#dudas').textContent='Reportadas por una sola fuente y sin decisión del árbitro: '

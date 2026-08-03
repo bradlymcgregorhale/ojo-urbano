@@ -1,6 +1,6 @@
 # Ojo Urbano
 
-API local para clasificar fotos de incidencias urbanas: residuos en la vía pública, escombros, muebles abandonados, contenedores y cestos en mal estado, baches, veredas rotas, vehículos abandonados o mal estacionados, plagas, poda y más (42 categorías canónicas, ver [`categorias.json`](categorias.json)).
+API local para clasificar fotos de incidencias urbanas: residuos en la vía pública, escombros, muebles abandonados, contenedores y cestos en mal estado, baches, veredas rotas, vehículos abandonados o mal estacionados, plagas, poda y más (43 categorías canónicas, ver [`categorias.json`](categorias.json)).
 
 Combina dos capas:
 
@@ -48,7 +48,8 @@ Respuesta: el veredicto primero, el detalle técnico adentro de `detalle`.
   ],
   "descripcion": "Bolsas de residuos y cajas de cartón acumuladas en la vereda junto a un contenedor negro de húmedos.",
   "categorias_contexto": [
-    { "key": "desratizacion", "nombre": "Desratización / control de plagas en la vía pública" }
+    { "key": "desratizacion", "nombre": "Desratización / control de plagas en la vía pública",
+      "respaldo_visual": "neutral" }
   ],
   "elementos_detectados": [
     { "key": "contenedor_humedos_lateral", "nombre": "Contenedor de húmedos, carga lateral" }
@@ -68,7 +69,7 @@ Respuesta: el veredicto primero, el detalle técnico adentro de `detalle`.
 - `hay_problema`: el veredicto en un booleano.
 - `problemas`: qué se confirmó, con gravedad 1-5 y las `fuentes` que lo vieron (modelo local y/o modelos de visión). Una foto puede tener varios problemas.
 - `descripcion`: la descripción consolidada de la escena (la redacta el árbitro cuando interviene; si no, el verificador que mejor coincide con el resultado). Es `null` sin verificación.
-- `categorias_contexto`: lo que el contexto vecinal describe pero la foto no confirma (sugerencias, no cuentan para `hay_problema` ni `gravedad_maxima`).
+- `categorias_contexto`: lo que el contexto vecinal describe pero la foto no confirma (sugerencias, no cuentan para `hay_problema` ni `gravedad_maxima`). Cada una trae `respaldo_visual`: `compatible` (la escena encaja con el reclamo sin llegar a confirmarlo: una foto nocturna oscura para "no funciona la luminaria"), `neutral` (la foto no muestra nada al respecto) o `contradice`. Un consumidor que quiera deferir al vecino puede tomar las `compatible` como reportables.
 - `elementos_detectados`: contenedores visibles en la foto, tengan o no problemas.
 - `en_duda`: categorías con una sola fuente que el árbitro no llegó a decidir.
 - `detalle`: todo lo interno (probabilidades del modelo local, veredicto y descripción de cada modelo de visión, decisiones del árbitro) para quien quiera profundizar.
