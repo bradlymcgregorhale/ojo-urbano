@@ -15,10 +15,17 @@ Uso:
 Abrí http://127.0.0.1:8080 y arrastrá una foto, o usá POST /clasificar.
 La primera ejecución descarga los modelos de embeddings (varios GB).
 """
+import asyncio
+import collections
+import concurrent.futures
+import hashlib
+import hmac
 import io
 import json
 import math
 import os
+import threading
+import time
 from pathlib import Path
 
 # carga .env si existe (sin dependencias extra)
@@ -33,7 +40,7 @@ if _env.exists():
 import joblib
 import numpy as np
 import uvicorn
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from PIL import Image
 from sentence_transformers import SentenceTransformer
@@ -47,6 +54,30 @@ HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "8080"))
 UMBRAL = float(os.environ.get("UMBRAL", "0.5"))
 GRAV_MAX = 5
+
+# Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y 2-3 llamadas
+# pagas a OpenRouter, así que el endpoint no puede quedar abierto sin techo.
+MAX_BYTES = int(os.environ.get("MAX_BYTES", str(10 * 1024 * 1024)))
+MARGEN_MULTIPART = 64 * 1024  # boundaries, headers y contexto encima de la foto
+MAX_PIXELES = int(os.environ.get("MAX_PIXELES", str(25_000_000)))
+CONCURRENCIA = max(1, int(os.environ.get("CONCURRENCIA", "1")))
+# Techo global de fotos verificadas por día (0 = sin techo). El límite por IP
+# no alcanza solo: detrás de un proxy todos comparten IP, y un atacante
+# distribuido usa muchas. Esto acota el gasto pase lo que pase.
+CUOTA_DIARIA = int(os.environ.get("CUOTA_DIARIA", "500"))
+MOTIVO_CUOTA = "cuota diaria de verificación agotada"
+RATE_LIMITE = int(os.environ.get("RATE_LIMITE", "60"))  # 0 = sin límite
+RATE_VENTANA = int(os.environ.get("RATE_VENTANA", "3600"))
+API_TOKEN = os.environ.get("API_TOKEN", "").strip()
+CACHE_MAX = int(os.environ.get("CACHE_MAX", "128"))
+# Solo con esto activo se cree el X-Forwarded-For; si no, cualquiera podría
+# falsear su IP y saltarse el límite de tasa poniendo un header.
+CONFIAR_PROXY = os.environ.get("CONFIAR_PROXY", "").strip().lower() not in (
+    "", "0", "false", "no")
+
+# Pillow, entre MAX_IMAGE_PIXELS y el doble, solo avisa y sigue decodificando:
+# una imagen bomba de pocos KB se convierte en cientos de MB de RGB.
+Image.MAX_IMAGE_PIXELS = MAX_PIXELES
 
 if not MODELO.exists():
     raise SystemExit("Falta model.joblib junto a servidor.py")
@@ -139,30 +170,141 @@ def clasificar_local(img):
     }
 
 
-app = FastAPI(title="Ojo Urbano")
+_pedidos = collections.defaultdict(collections.deque)  # ip -> timestamps
+_cache = collections.OrderedDict()                    # huella -> respuesta
+# El cupo lo suelta el HILO cuando termina de verdad, no la corrutina que lo
+# espera: cancelar un await NO corta el thread, así que soltarlo ahí dejaría
+# entrar pedidos nuevos mientras el pipeline anterior sigue quemando CPU.
+_cupos = threading.BoundedSemaphore(CONCURRENCIA)
+# Tantos hilos como cupos: con el semáforo de admisión, un trabajo aceptado
+# siempre encuentra un worker libre y no se queda encolado.
+_pool = concurrent.futures.ThreadPoolExecutor(
+    max_workers=CONCURRENCIA, thread_name_prefix="ojo")
+_cuota = {"dia": None, "usadas": 0}
+_cuota_lock = threading.Lock()
 
 
-@app.get("/salud")
-def salud():
-    canonicas = sorted({verificador.FOLD.get(k, k) for k in clases})
-    return {"ok": True, "clases": canonicas,
-            "verificacion": verificador.disponible(),
-            "verificadores": verificador.VERIFICADORES,
-            "arbitro": verificador.ARBITRO or None}
+def _hay_cuota():
+    """Consume una unidad del techo diario global de verificaciones pagas."""
+    if CUOTA_DIARIA <= 0:
+        return True
+    hoy = time.strftime("%Y-%m-%d", time.gmtime())
+    with _cuota_lock:
+        if _cuota["dia"] != hoy:
+            _cuota["dia"], _cuota["usadas"] = hoy, 0
+        if _cuota["usadas"] >= CUOTA_DIARIA:
+            return False
+        _cuota["usadas"] += 1
+        return True
 
 
-@app.post("/clasificar")
-async def clasificar(file: UploadFile = File(...), verificar: str = "auto",
-                     contexto: str = Form("")):
+def _ip_cliente(request):
+    if CONFIAR_PROXY:
+        reenviada = request.headers.get("x-forwarded-for", "")
+        if reenviada:
+            return reenviada.split(",")[0].strip()
+    return request.client.host if request.client else "?"
+
+
+def _purgar_pedidos(ahora):
+    """Saca las IPs que ya salieron de la ventana.
+
+    Sin esto, una IP que pega una sola vez deja su entrada para siempre y el
+    diccionario crece sin techo ante un ataque distribuido.
+    """
+    viejas = [ip for ip, cola in _pedidos.items()
+              if not cola or ahora - cola[-1] > RATE_VENTANA]
+    for ip in viejas:
+        del _pedidos[ip]
+
+
+def _permitir(ip):
+    """Ventana deslizante por IP. Devuelve False si ya agotó su cuota."""
+    if RATE_LIMITE <= 0:
+        return True
+    ahora = time.monotonic()
+    if len(_pedidos) > 1024:
+        _purgar_pedidos(ahora)
+    cola = _pedidos[ip]
+    while cola and ahora - cola[0] > RATE_VENTANA:
+        cola.popleft()
+    if len(cola) >= RATE_LIMITE:
+        return False
+    cola.append(ahora)
+    return True
+
+
+async def _leer_acotado(archivo):
+    """Lee el upload en trozos y aborta apenas pasa el límite de bytes."""
+    trozos, total = [], 0
+    while True:
+        trozo = await archivo.read(65536)
+        if not trozo:
+            break
+        total += len(trozo)
+        if total > MAX_BYTES:
+            raise HTTPException(
+                413, f"la foto supera el límite de {MAX_BYTES // (1024 * 1024)} MB")
+        trozos.append(trozo)
+    return b"".join(trozos)
+
+
+def _abrir_imagen(datos):
+    """Abre la foto rechazando bombas de descompresión antes de decodificarla.
+
+    Image.open solo lee la cabecera, así que las dimensiones se controlan
+    ANTES del convert(), que es el que materializa la imagen entera en RAM.
+    El corte es en el mismo umbral en el que Pillow apenas avisaría, así que
+    el warning queda cubierto sin tocar el filtro global de warnings (que no
+    sería seguro de mutar ahora que esto corre en un hilo aparte).
+    """
+    demasiado = f"la foto supera los {MAX_PIXELES // 1_000_000} megapíxeles"
     try:
-        img = Image.open(io.BytesIO(await file.read())).convert("RGB")
+        img = Image.open(io.BytesIO(datos))
+        ancho, alto = img.size
+        if ancho * alto > MAX_PIXELES:
+            raise HTTPException(400, demasiado)
+        return img.convert("RGB")
+    except HTTPException:
+        raise
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        # Pillow ya la frena solo por encima del doble de MAX_IMAGE_PIXELS
+        raise HTTPException(400, demasiado)
     except Exception:
         raise HTTPException(400, "no pude leer la imagen")
 
-    contexto = (contexto or "").strip()[:500]
+
+def _cacheable(respuesta):
+    """Un resultado degradado por algo transitorio no se guarda.
+
+    Si se cachea una respuesta hecha con la cuota diaria agotada (o con los
+    verificadores caídos), esa foto queda devuelta sin verificar para siempre,
+    incluso al día siguiente con cuota nueva.
+    """
+    veri = respuesta.get("detalle", {}).get("verificacion", {})
+    if veri.get("activa"):
+        if any(not v.get("ok") for v in veri.get("verificadores") or []):
+            return False
+        # Con árbitro configurado, que queden categorías en duda significa que
+        # el arbitraje falló o quedó incompleto (respondió sin decidirlas
+        # todas). Cachearlo congela ese resultado a medio hacer para siempre.
+        if verificador.ARBITRO and respuesta.get("en_duda"):
+            return False
+        arbitro = veri.get("arbitro")
+        return not (arbitro and not arbitro.get("ok"))
+    # Sin clave o apagado por parámetro el resultado es estable; por cuota no.
+    return veri.get("motivo") != MOTIVO_CUOTA
+
+
+def procesar(datos, contexto, verificar):
+    """Pipeline completo y sincrónico. Corre fuera del event loop."""
+    img = _abrir_imagen(datos)
     local = clasificar_local(img)
     activar = (verificador.disponible() if verificar == "auto"
                else verificar not in ("0", "false", "no"))
+    sin_cuota = activar and verificador.disponible() and not _hay_cuota()
+    if sin_cuota:
+        activar = False
 
     if activar and verificador.disponible():
         veri = verificador.verificar(img, CATEGORIAS, local, contexto)
@@ -171,8 +313,12 @@ async def clasificar(file: UploadFile = File(...), verificar: str = "auto",
         ctx_cats = veri["categorias_contexto"]
         descripcion = veri["descripcion"]
     else:
-        motivo = ("falta OPENROUTER_API_KEY" if not verificador.disponible()
-                  else "desactivada por parámetro")
+        if sin_cuota:
+            motivo = MOTIVO_CUOTA
+        elif not verificador.disponible():
+            motivo = "falta OPENROUTER_API_KEY"
+        else:
+            motivo = "desactivada por parámetro"
         veri = {"activa": False, "motivo": motivo}
         categorias = [{"key": p["key"], "nombre": p["nombre"],
                        "gravedad": (local["gravedad"] or {}).get("value"),
@@ -185,7 +331,7 @@ async def clasificar(file: UploadFile = File(...), verificar: str = "auto",
     elementos = [{"key": c["key"], "nombre": c["nombre"]}
                  for c in categorias if c["key"] in verificador.PRESENCIA]
     gravedades = [c["gravedad"] for c in problemas if c.get("gravedad")]
-    return JSONResponse({
+    return {
         "hay_problema": bool(problemas),
         "gravedad_maxima": max(gravedades) if gravedades else None,
         "problemas": problemas,
@@ -194,7 +340,122 @@ async def clasificar(file: UploadFile = File(...), verificar: str = "auto",
         "elementos_detectados": elementos,
         "en_duda": en_duda,
         "detalle": {"modelo_local": local, "verificacion": veri},
-    })
+    }
+
+
+app = FastAPI(title="Ojo Urbano")
+
+
+@app.middleware("http")
+async def guardias(request, call_next):
+    """Token, tamaño declarado y límite por IP ANTES de parsear el multipart.
+
+    La ruta se saca de scope["path"], que es la MISMA que usa el router. Con
+    request.url.path no alcanza: se arma con el header Host, así que un
+    "Host: evil?" deja el path en "" y el pedido esquiva todas las guardas
+    mientras el router igual despacha /clasificar.
+    """
+    ruta = request.scope.get("path", "").rstrip("/")
+    if request.method == "POST" and ruta.endswith("/clasificar"):
+        if API_TOKEN and not hmac.compare_digest(
+                request.headers.get("x-api-token", ""), API_TOKEN):
+            return JSONResponse({"detail": "token inválido o ausente"}, status_code=401)
+        declarado = request.headers.get("content-length", "")
+        if not declarado.isdigit():
+            # Sin Content-Length (cuerpo chunked) el techo de tamaño no se
+            # puede aplicar antes de que el parser multipart lea todo. Los
+            # navegadores y curl siempre lo mandan en un multipart.
+            return JSONResponse(
+                {"detail": "hace falta Content-Length"}, status_code=411)
+        # El Content-Length mide el multipart entero (boundaries, headers y el
+        # contexto), no solo la foto: sin este margen una foto justo en el
+        # límite se rechazaría por el envoltorio. El techo exacto de la foto lo
+        # aplica _leer_acotado.
+        if int(declarado) > MAX_BYTES + MARGEN_MULTIPART:
+            return JSONResponse(
+                {"detail": f"la foto supera el límite de {MAX_BYTES // (1024 * 1024)} MB"},
+                status_code=413)
+        if not _permitir(_ip_cliente(request)):
+            return JSONResponse(
+                {"detail": "demasiados pedidos; probá de nuevo más tarde"},
+                status_code=429)
+    return await call_next(request)
+
+
+@app.get("/salud")
+def salud():
+    canonicas = sorted({verificador.FOLD.get(k, k) for k in clases})
+    return {"ok": True, "clases": canonicas,
+            "verificacion": verificador.disponible(),
+            "verificadores": verificador.VERIFICADORES,
+            "arbitro": verificador.ARBITRO or None}
+
+
+@app.post("/clasificar")
+async def clasificar(request: Request, file: UploadFile = File(...),
+                     verificar: str = "auto", contexto: str = Form("")):
+    datos = await _leer_acotado(file)
+    contexto = (contexto or "").strip()[:500]
+
+    # La misma foto con el mismo contexto no se vuelve a pagar.
+    huella = hashlib.sha256(
+        datos + b"\x00" + contexto.encode() + b"\x00" + verificar.encode()).hexdigest()
+    if huella in _cache:
+        _cache.move_to_end(huella)
+        return JSONResponse(_cache[huella])
+
+    # Acá hubo una deduplicación de pedidos en vuelo (que el segundo pedido de
+    # la misma foto se colgara del primero en vez de pagarla dos veces). Se
+    # sacó a propósito: hacía esperar a los waiters reteniendo cada uno su
+    # copia de hasta MAX_BYTES, que con los defaults son ~600 MB de una sola
+    # IP, mucho peor que el problema que resolvía. Con CONCURRENCIA=1 el cupo
+    # ya evita el pipeline duplicado (el segundo se lleva un 503); subirla
+    # afloja esa garantía y se puede volver a pagar una foto simultánea.
+    respuesta = await _clasificar_una(datos, contexto, verificar)
+
+    if CACHE_MAX > 0 and _cacheable(respuesta):
+        _cache[huella] = respuesta
+        while len(_cache) > CACHE_MAX:
+            _cache.popitem(last=False)
+    return JSONResponse(respuesta)
+
+
+async def _clasificar_una(datos, contexto, verificar):
+    """Corre el pipeline con el cupo tomado, fuera del event loop."""
+    # Sin techo de concurrencia, cada pedido encolado retiene su imagen en RAM
+    # y suma minutos de espera. Mejor rechazar rápido.
+    if not _cupos.acquire(blocking=False):
+        raise HTTPException(503, "el servidor está ocupado; reintentá en un momento")
+
+    def trabajo():
+        # El cupo se suelta acá, en el hilo, para que siga tomado si la
+        # corrutina que espera se cancela (cliente que corta la conexión):
+        # cancelar el await NO corta el hilo, que sigue quemando CPU.
+        try:
+            return procesar(datos, contexto, verificar)
+        finally:
+            _cupos.release()
+
+    # El pipeline es sincrónico y tarda 25-60 s: fuera del event loop, o
+    # bloquea /salud, la portada y cualquier otro pedido mientras corre.
+    # Se usa el pool propio (y no asyncio.to_thread) para poder preguntarle al
+    # future si el trabajo llegó a arrancar: si se cancela mientras todavía
+    # estaba encolado, el finally de trabajo() nunca corre y el cupo se
+    # perdería para siempre.
+    try:
+        tarea = _pool.submit(trabajo)
+    except RuntimeError:
+        _cupos.release()
+        raise HTTPException(503, "el servidor se está apagando")
+    try:
+        return await asyncio.wrap_future(tarea)
+    except asyncio.CancelledError:
+        # cancel() devuelve True solo si seguía en la cola: ahí es seguro
+        # soltar, porque trabajo() no va a correr nunca. Si devuelve False ya
+        # arrancó y lo suelta su propio finally.
+        if tarea.cancel():
+            _cupos.release()
+        raise
 
 
 @app.get("/", response_class=HTMLResponse)

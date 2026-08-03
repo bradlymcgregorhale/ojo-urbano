@@ -5,9 +5,9 @@ API local para clasificar fotos de incidencias urbanas: residuos en la vía púb
 Combina dos capas:
 
 1. **Modelo propio, gratis y local.** Embeddings de imagen (CLIP + DINOv2 + SigLIP2, todos open source) con un cabezal de regresión logística multi-etiqueta entrenado con miles de fotos callejeras reales etiquetadas a mano, más un regresor de gravedad (1 a 5). Corre 100% en tu máquina, sin ninguna API paga. Las clases sinónimas del modelo se pliegan a una categoría canónica (por ejemplo, todo objeto voluminoso descartado sale como `retiro_muebles`).
-2. **Verificación cruzada por IA (opcional).** Con una clave de [OpenRouter](https://openrouter.ai), dos modelos de visión (por defecto **GPT-5 mini** y **Gemini Flash Lite**, elegidos por bake-off contra fotos reales etiquetadas) analizan la foto de forma independiente siguiendo una rúbrica detallada por categoría, calibrada contra fotos reales. Una categoría queda confirmada cuando la reportan al menos 2 de las 3 fuentes; las que tienen una sola fuente van a un **árbitro** de texto (por defecto **DeepSeek**) que lee los veredictos y las probabilidades del modelo local y decide. El subtipo de contenedor de húmedos (lateral vs bilateral) siempre lo decide el modelo local, que es más preciso ahí que los modelos de visión. El costo por foto es de fracciones de centavo.
+2. **Verificación cruzada por IA (opcional).** Con una clave de [OpenRouter](https://openrouter.ai), dos modelos de visión (por defecto **GPT-5 mini** y **Gemini Flash Lite**, elegidos por bake-off contra fotos reales etiquetadas) analizan la foto siguiendo una rúbrica detallada por categoría, calibrada contra fotos reales. Una categoría queda confirmada cuando la respalda el modelo local y además la reporta al menos un verificador. El subtipo de contenedor de húmedos (lateral vs bilateral) siempre lo decide el modelo local, que es más preciso ahí que los modelos de visión. El costo por foto es de fracciones de centavo.
 
-   Algunas categorías (por ejemplo `vehiculo_mal_estacionado` o `columna_poste_cable`) no existen en el modelo local: las detectan solo los modelos de visión, y quedan confirmadas cuando ambos las reportan (2 de 3 fuentes). Con un solo reporte van al árbitro, como cualquier otra disputa.
+   Todo lo demás lo decide un **árbitro** de texto (por defecto **DeepSeek**), que lee los veredictos, las evidencias citadas y las probabilidades del modelo local. Van al árbitro tanto las categorías que reportó una sola fuente como las que reportaron los dos verificadores sin respaldo del modelo local: los dos miran la misma foto con el mismo prompt, así que coincidir no los vuelve fuentes independientes, y una inyección que funcione en ambos alcanzaría para confirmar sola. Esto alcanza a las categorías que el modelo local nunca vio (por ejemplo `vehiculo_mal_estacionado` o `columna_poste_cable`), que en la práctica se confirman igual pero pasando por el árbitro. Con `CONSENSO_VLM_SOLO=confirma` se vuelve a la regla vieja de 2 de 3.
 
    Cada verificador devuelve además una **descripción** breve de la foto dentro de su misma respuesta, y la API entrega en `descripcion` una descripción consolidada que respalda las categorías confirmadas: la redacta el árbitro cuando ya interviene por una disputa, y si no hay disputa se elige la descripción del verificador que más coincide con el resultado final. Todo sin llamadas extra: el conteo de llamadas por foto no cambia.
 
@@ -89,8 +89,44 @@ Todo por variables de entorno o `.env` (ver [`.env.example`](.env.example)):
 | `ARBITRO` | `deepseek/deepseek-v4-flash` | Modelo de texto que resuelve desacuerdos. Vacío = sin árbitro (las disputas quedan `en_duda`). |
 | `UMBRAL` | `0.5` | Probabilidad mínima del modelo local para proponer una categoría. |
 | `HOST` / `PORT` | `127.0.0.1` / `8080` | Dónde escucha la API. |
+| `VERIFICADOR_TIMEOUT` | `120` | Segundos por llamada a OpenRouter. |
+| `VERIFICADOR_DEADLINE` | `180` | Techo total de reintentos por modelo. |
 
 Nota: los modelos de DeepSeek en OpenRouter no aceptan imágenes, por eso participa como árbitro de texto y no como verificador visual.
+
+### Límites de abuso
+
+Clasificar una foto cuesta 25-60 s de CPU y 2-3 llamadas pagas a OpenRouter, así que `/clasificar` viene con techos puestos de fábrica:
+
+| Variable | Default | Qué hace |
+|---|---|---|
+| `MAX_BYTES` | `10485760` (10 MB) | Tamaño máximo del upload; más grande devuelve `413`. |
+| `MAX_PIXELES` | `25000000` | Megapíxeles máximos; frena bombas de descompresión con `400`. |
+| `CONCURRENCIA` | `1` | Clasificaciones en paralelo; por encima devuelve `503`. |
+| `RATE_LIMITE` / `RATE_VENTANA` | `60` / `3600` | Pedidos por IP y ventana en segundos; por encima devuelve `429`. `0` desactiva. |
+| `CUOTA_DIARIA` | `500` | Techo global de fotos verificadas por día. Pasado el techo la API sigue respondiendo, pero solo con el modelo local. `0` desactiva. |
+| `API_TOKEN` | vacío | Si lo ponés, `POST /clasificar` exige el header `X-Api-Token`. |
+| `CACHE_MAX` | `128` | Respuestas cacheadas por hash de foto, para no pagar dos veces la misma. |
+| `CONFIAR_PROXY` | apagado | Hace que el límite por IP use `X-Forwarded-For`. |
+
+Si publicás la API en internet, además de esto:
+
+- **Detrás de un proxy, activá `CONFIAR_PROXY` y hacé que el proxy PISE el `X-Forwarded-For` que manda el cliente.** Las dos mitades importan. Sin `CONFIAR_PROXY`, todos los visitantes llegan como `127.0.0.1` y comparten una sola cuota: uno solo se la agota y deja afuera a todos los demás. Con `CONFIAR_PROXY` pero sin pisar el header, cualquiera rota su `X-Forwarded-For` y se saltea el límite. Sin proxy adelante, dejalo apagado.
+- Poné un límite de tamaño de cuerpo en el proxy (`client_max_body_size` en nginx). La app exige `Content-Length` y lo rechaza por encima del techo, pero el servidor de adelante es el que evita que el cuerpo entero llegue a viajar.
+- Poné un tope de gasto mensual en la clave de OpenRouter, con una clave dedicada a este servicio. `CUOTA_DIARIA` acota el gasto del lado de la app, pero es por proceso y se reinicia con el servicio.
+- Tené en cuenta que `multipart/form-data` no dispara preflight de CORS: cualquier página puede hacer que el navegador de sus visitantes pegue contra tu endpoint. El límite por IP y el token son lo que lo frena.
+
+El límite por IP y el de concurrencia viven en memoria del proceso: son por instancia y se reinician con el servicio. Para varias instancias hace falta llevarlos al proxy o a un store compartido.
+
+### Sobre el contexto vecinal y la inyección de prompt
+
+El `contexto` que escribe quien sube la foto, y cualquier texto que aparezca *dentro* de la foto, llegan a los modelos de visión. Son datos no confiables, y se tratan como tales:
+
+- La rúbrica viaja en un mensaje `system` aparte; los datos del usuario van en el `user`. Lo mismo para el árbitro.
+- Los dos verificadores **no cuentan como fuentes independientes**: miran la misma foto con el mismo prompt, así que una sola inyección que funcione en ambos alcanzaría para el "2 de 3". Por eso una categoría sin respaldo del modelo local no se confirma por consenso entre ellos: la decide el árbitro, que solo ve texto y tiene su propia consigna (`CONSENSO_VLM_SOLO`).
+- Las descripciones y evidencias vuelven acotadas y sin caracteres de control.
+
+Nada de esto es una barrera dura: un LLM no tiene un límite real entre instrucciones y datos. `descripcion` es texto generado por un modelo e influido por quien sube la foto, así que **escapalo antes de renderizarlo como HTML** y no abras reportes automáticos sin revisión humana.
 
 ## Ejemplo
 
