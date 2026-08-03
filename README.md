@@ -104,19 +104,29 @@ Clasificar una foto cuesta 25-60 s de CPU y 2-3 llamadas pagas a OpenRouter, as�
 | `MAX_PIXELES` | `25000000` | Megapíxeles máximos; frena bombas de descompresión con `400`. |
 | `CONCURRENCIA` | `1` | Clasificaciones en paralelo; por encima devuelve `503`. |
 | `RATE_LIMITE` / `RATE_VENTANA` | `60` / `3600` | Pedidos por IP y ventana en segundos; por encima devuelve `429`. `0` desactiva. |
+| `CUOTA_DIARIA` | `500` | Techo global de fotos verificadas por día. Pasado el techo la API sigue respondiendo, pero solo con el modelo local. `0` desactiva. |
 | `API_TOKEN` | vacío | Si lo ponés, `POST /clasificar` exige el header `X-Api-Token`. |
 | `CACHE_MAX` | `128` | Respuestas cacheadas por hash de foto, para no pagar dos veces la misma. |
-| `CONFIAR_PROXY` | apagado | Hace que el límite por IP use `X-Forwarded-For`. Activalo **solo** detrás de un proxy propio: sin proxy, cualquiera falsea el header y se saltea el límite. |
+| `CONFIAR_PROXY` | apagado | Hace que el límite por IP use `X-Forwarded-For`. |
 
 Si publicás la API en internet, además de esto:
 
-- Poné un límite de tamaño de cuerpo en el proxy (`client_max_body_size` en nginx). La app rechaza por `Content-Length` y corta la lectura al pasarse, pero el servidor de adelante es el que evita que el cuerpo entero llegue a viajar.
-- Poné un tope de gasto mensual en la clave de OpenRouter, con una clave dedicada a este servicio.
+- **Detrás de un proxy, activá `CONFIAR_PROXY` y hacé que el proxy PISE el `X-Forwarded-For` que manda el cliente.** Las dos mitades importan. Sin `CONFIAR_PROXY`, todos los visitantes llegan como `127.0.0.1` y comparten una sola cuota: uno solo se la agota y deja afuera a todos los demás. Con `CONFIAR_PROXY` pero sin pisar el header, cualquiera rota su `X-Forwarded-For` y se saltea el límite. Sin proxy adelante, dejalo apagado.
+- Poné un límite de tamaño de cuerpo en el proxy (`client_max_body_size` en nginx). La app exige `Content-Length` y lo rechaza por encima del techo, pero el servidor de adelante es el que evita que el cuerpo entero llegue a viajar.
+- Poné un tope de gasto mensual en la clave de OpenRouter, con una clave dedicada a este servicio. `CUOTA_DIARIA` acota el gasto del lado de la app, pero es por proceso y se reinicia con el servicio.
 - Tené en cuenta que `multipart/form-data` no dispara preflight de CORS: cualquier página puede hacer que el navegador de sus visitantes pegue contra tu endpoint. El límite por IP y el token son lo que lo frena.
+
+El límite por IP y el de concurrencia viven en memoria del proceso: son por instancia y se reinician con el servicio. Para varias instancias hace falta llevarlos al proxy o a un store compartido.
 
 ### Sobre el contexto vecinal y la inyección de prompt
 
-El `contexto` que escribe quien sube la foto, y cualquier texto que aparezca *dentro* de la foto, llegan a los modelos de visión. Son datos no confiables: la rúbrica viaja en un mensaje `system` aparte, y una categoría que solo vieron los dos modelos de visión y que además coincide con lo que el contexto denuncia no se confirma sola, la decide el árbitro. Aun así, `descripcion` es texto generado por un modelo e influido por quien sube la foto: **escapalo antes de renderizarlo como HTML** y no abras reportes automáticos sin revisión humana.
+El `contexto` que escribe quien sube la foto, y cualquier texto que aparezca *dentro* de la foto, llegan a los modelos de visión. Son datos no confiables, y se tratan como tales:
+
+- La rúbrica viaja en un mensaje `system` aparte; los datos del usuario van en el `user`. Lo mismo para el árbitro.
+- Los dos verificadores **no cuentan como fuentes independientes**: miran la misma foto con el mismo prompt, así que una sola inyección que funcione en ambos alcanzaría para el "2 de 3". Por eso una categoría sin respaldo del modelo local no se confirma por consenso entre ellos: la decide el árbitro, que solo ve texto y tiene su propia consigna (`CONSENSO_VLM_SOLO`).
+- Las descripciones y evidencias vuelven acotadas y sin caracteres de control.
+
+Nada de esto es una barrera dura: un LLM no tiene un límite real entre instrucciones y datos. `descripcion` es texto generado por un modelo e influido por quien sube la foto, así que **escapalo antes de renderizarlo como HTML** y no abras reportes automáticos sin revisión humana.
 
 ## Ejemplo
 

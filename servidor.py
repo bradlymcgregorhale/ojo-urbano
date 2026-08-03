@@ -23,6 +23,7 @@ import io
 import json
 import math
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -56,8 +57,13 @@ GRAV_MAX = 5
 # Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y 2-3 llamadas
 # pagas a OpenRouter, así que el endpoint no puede quedar abierto sin techo.
 MAX_BYTES = int(os.environ.get("MAX_BYTES", str(10 * 1024 * 1024)))
+MARGEN_MULTIPART = 64 * 1024  # boundaries, headers y contexto encima de la foto
 MAX_PIXELES = int(os.environ.get("MAX_PIXELES", str(25_000_000)))
 CONCURRENCIA = max(1, int(os.environ.get("CONCURRENCIA", "1")))
+# Techo global de fotos verificadas por día (0 = sin techo). El límite por IP
+# no alcanza solo: detrás de un proxy todos comparten IP, y un atacante
+# distribuido usa muchas. Esto acota el gasto pase lo que pase.
+CUOTA_DIARIA = int(os.environ.get("CUOTA_DIARIA", "500"))
 RATE_LIMITE = int(os.environ.get("RATE_LIMITE", "60"))  # 0 = sin límite
 RATE_VENTANA = int(os.environ.get("RATE_VENTANA", "3600"))
 API_TOKEN = os.environ.get("API_TOKEN", "").strip()
@@ -164,7 +170,26 @@ def clasificar_local(img):
 
 _pedidos = collections.defaultdict(collections.deque)  # ip -> timestamps
 _cache = collections.OrderedDict()                    # huella -> respuesta
-_en_curso = 0
+# El cupo lo suelta el HILO cuando termina de verdad, no la corrutina que lo
+# espera: cancelar un await NO corta el thread, así que soltarlo ahí dejaría
+# entrar pedidos nuevos mientras el pipeline anterior sigue quemando CPU.
+_cupos = threading.BoundedSemaphore(CONCURRENCIA)
+_cuota = {"dia": None, "usadas": 0}
+_cuota_lock = threading.Lock()
+
+
+def _hay_cuota():
+    """Consume una unidad del techo diario global de verificaciones pagas."""
+    if CUOTA_DIARIA <= 0:
+        return True
+    hoy = time.strftime("%Y-%m-%d", time.gmtime())
+    with _cuota_lock:
+        if _cuota["dia"] != hoy:
+            _cuota["dia"], _cuota["usadas"] = hoy, 0
+        if _cuota["usadas"] >= CUOTA_DIARIA:
+            return False
+        _cuota["usadas"] += 1
+        return True
 
 
 def _ip_cliente(request):
@@ -249,6 +274,9 @@ def procesar(datos, contexto, verificar):
     local = clasificar_local(img)
     activar = (verificador.disponible() if verificar == "auto"
                else verificar not in ("0", "false", "no"))
+    sin_cuota = activar and verificador.disponible() and not _hay_cuota()
+    if sin_cuota:
+        activar = False
 
     if activar and verificador.disponible():
         veri = verificador.verificar(img, CATEGORIAS, local, contexto)
@@ -257,8 +285,12 @@ def procesar(datos, contexto, verificar):
         ctx_cats = veri["categorias_contexto"]
         descripcion = veri["descripcion"]
     else:
-        motivo = ("falta OPENROUTER_API_KEY" if not verificador.disponible()
-                  else "desactivada por parámetro")
+        if sin_cuota:
+            motivo = "cuota diaria de verificación agotada"
+        elif not verificador.disponible():
+            motivo = "falta OPENROUTER_API_KEY"
+        else:
+            motivo = "desactivada por parámetro"
         veri = {"activa": False, "motivo": motivo}
         categorias = [{"key": p["key"], "nombre": p["nombre"],
                        "gravedad": (local["gravedad"] or {}).get("value"),
@@ -288,8 +320,15 @@ app = FastAPI(title="Ojo Urbano")
 
 @app.middleware("http")
 async def guardias(request, call_next):
-    """Token, tamaño declarado y límite por IP ANTES de parsear el multipart."""
-    if request.method == "POST" and request.url.path.rstrip("/").endswith("/clasificar"):
+    """Token, tamaño declarado y límite por IP ANTES de parsear el multipart.
+
+    La ruta se saca de scope["path"], que es la MISMA que usa el router. Con
+    request.url.path no alcanza: se arma con el header Host, así que un
+    "Host: evil?" deja el path en "" y el pedido esquiva todas las guardas
+    mientras el router igual despacha /clasificar.
+    """
+    ruta = request.scope.get("path", "").rstrip("/")
+    if request.method == "POST" and ruta.endswith("/clasificar"):
         if API_TOKEN and not hmac.compare_digest(
                 request.headers.get("x-api-token", ""), API_TOKEN):
             return JSONResponse({"detail": "token inválido o ausente"}, status_code=401)
@@ -300,7 +339,11 @@ async def guardias(request, call_next):
             # navegadores y curl siempre lo mandan en un multipart.
             return JSONResponse(
                 {"detail": "hace falta Content-Length"}, status_code=411)
-        if int(declarado) > MAX_BYTES:
+        # El Content-Length mide el multipart entero (boundaries, headers y el
+        # contexto), no solo la foto: sin este margen una foto justo en el
+        # límite se rechazaría por el envoltorio. El techo exacto de la foto lo
+        # aplica _leer_acotado.
+        if int(declarado) > MAX_BYTES + MARGEN_MULTIPART:
             return JSONResponse(
                 {"detail": f"la foto supera el límite de {MAX_BYTES // (1024 * 1024)} MB"},
                 status_code=413)
@@ -323,7 +366,6 @@ def salud():
 @app.post("/clasificar")
 async def clasificar(request: Request, file: UploadFile = File(...),
                      verificar: str = "auto", contexto: str = Form("")):
-    global _en_curso
     datos = await _leer_acotado(file)
     contexto = (contexto or "").strip()[:500]
 
@@ -334,17 +376,22 @@ async def clasificar(request: Request, file: UploadFile = File(...),
         _cache.move_to_end(huella)
         return JSONResponse(_cache[huella])
 
-    # Sin techo de concurrencia, cada request encolado retiene su imagen en RAM
+    # Sin techo de concurrencia, cada pedido encolado retiene su imagen en RAM
     # y suma minutos de espera. Mejor rechazar rápido.
-    if _en_curso >= CONCURRENCIA:
+    if not _cupos.acquire(blocking=False):
         raise HTTPException(503, "el servidor está ocupado; reintentá en un momento")
-    _en_curso += 1
-    try:
-        # El pipeline es sincrónico y tarda 25-60 s: fuera del event loop, o
-        # bloquea /salud, la portada y cualquier otro pedido mientras corre.
-        respuesta = await asyncio.to_thread(procesar, datos, contexto, verificar)
-    finally:
-        _en_curso -= 1
+
+    def trabajo():
+        # El cupo se suelta acá, en el hilo, para que siga tomado si la
+        # corrutina que espera se cancela (cliente que corta la conexión).
+        try:
+            return procesar(datos, contexto, verificar)
+        finally:
+            _cupos.release()
+
+    # El pipeline es sincrónico y tarda 25-60 s: fuera del event loop, o
+    # bloquea /salud, la portada y cualquier otro pedido mientras corre.
+    respuesta = await asyncio.to_thread(trabajo)
 
     if CACHE_MAX > 0:
         _cache[huella] = respuesta
