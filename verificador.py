@@ -31,8 +31,52 @@ import os
 import re
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# Catálogo completo de prestaciones de la Ciudad (para mapear reclamos del
+# contexto vecinal a CUALQUIER tipo de reporte, no solo a las categorías
+# visuales). Generado desde el backend público de BA Colaborativa.
+try:
+    PRESTACIONES = json.loads(
+        (Path(__file__).resolve().parent / "prestaciones.json").read_text())
+except OSError:
+    PRESTACIONES = []
+_PRESTACIONES_POR_CODIGO = {p["codigo"]: p for p in PRESTACIONES}
+
+
+def _norm_texto(s):
+    return (s or "").lower().translate(str.maketrans("áéíóúüñ", "aeiouun"))
+
+
+def _prestaciones_candidatas(contexto, n=12):
+    """Prestaciones del catálogo que mejor matchean el texto del contexto.
+
+    Puntúa contra las palabras clave y el concepto (peso doble) y también
+    contra el texto de la página de la prestación (mensajes informativos),
+    que suele describir mejor qué cubre el reporte que su título.
+    """
+    if not contexto or not PRESTACIONES:
+        return []
+    palabras_ctx = set(re.findall(r"[a-z]{4,}", _norm_texto(contexto)))
+    puntuadas = []
+    for p in PRESTACIONES:
+        claves = set(re.findall(r"[a-z]{4,}", _norm_texto(
+            (p.get("palabras_clave") or "") + " " + p["concepto"])))
+        pagina = set(re.findall(r"[a-z]{4,}", _norm_texto(
+            " ".join(p.get("mensajes") or []))))
+        score = 2 * len(palabras_ctx & claves) + len(palabras_ctx & pagina)
+        if score:
+            puntuadas.append((score, p))
+    puntuadas.sort(key=lambda x: (-x[0], x[1]["codigo"]))
+    return [p for _, p in puntuadas[:n]]
+
+
+def _resumen_prestacion(p, largo=240):
+    """Resumen del texto de la página de la prestación para el prompt."""
+    texto = " ".join(p.get("mensajes") or [])
+    return texto[:largo] + ("…" if len(texto) > largo else "")
 
 # Sinónimos que se pliegan a una categoría canónica en TODA la API: el modelo
 # local fue entrenado con estas clases pero la salida siempre usa la canónica.
@@ -152,6 +196,18 @@ def _prompt_verificador(categorias, contexto=""):
             "contenedor visible -> lavado_contenedor; con un cesto papelero -> "
             "lavado_cesto; sin contenedor ni cesto a la vista -> desratizacion "
             "(desinfección de la vía pública).")
+        cand = _prestaciones_candidatas(contexto)
+        if cand:
+            prompt += (
+                "\nSi el reclamo del contexto corresponde MEJOR a una de estas "
+                "prestaciones del catálogo completo de la Ciudad que a las claves de "
+                'arriba, usá en "categorias_contexto" un objeto {"codigo": "...", '
+                '"respaldo": ...} con su código exacto. Elegí por lo que CUBRE cada '
+                "prestación (campo 'cubre', tomado de su página oficial), no solo por "
+                "el título:\n"
+                + json.dumps([{"codigo": p["codigo"], "concepto": p["concepto"],
+                               "cubre": _resumen_prestacion(p)}
+                              for p in cand], ensure_ascii=False))
     return prompt
 
 
@@ -234,18 +290,27 @@ def _verificar_uno(modelo, data_url, categorias, contexto=""):
                 vistas.append(c)
         ctx_cats = []
         for item in veredicto.get("categorias_contexto") or []:
-            # tolera claves sueltas (formato viejo) u objetos {key, respaldo}
+            # tolera claves sueltas (formato viejo), {key, respaldo} o
+            # {codigo, respaldo} para prestaciones del catálogo completo
+            respaldo = "neutral"
+            if isinstance(item, dict) and item.get("respaldo") in (
+                    "compatible", "neutral", "contradice"):
+                respaldo = item["respaldo"]
             if isinstance(item, str):
-                k, respaldo = item, "neutral"
-            elif isinstance(item, dict):
-                k = item.get("key")
-                respaldo = item.get("respaldo") if item.get("respaldo") in (
-                    "compatible", "neutral", "contradice") else "neutral"
+                k = item
+            elif isinstance(item, dict) and item.get("key"):
+                k = item["key"]
+            elif isinstance(item, dict) and item.get("codigo"):
+                cod = str(item["codigo"])
+                if cod in _PRESTACIONES_POR_CODIGO and \
+                        cod not in [c.get("codigo") for c in ctx_cats]:
+                    ctx_cats.append({"codigo": cod, "respaldo": respaldo})
+                continue
             else:
                 continue
             k = FOLD.get(k, k)
             if isinstance(k, str) and k in categorias and k != "sin_problema" \
-                    and k not in [c["key"] for c in ctx_cats]:
+                    and k not in [c.get("key") for c in ctx_cats]:
                 ctx_cats.append({"key": k, "respaldo": respaldo})
         return {"modelo": modelo, "ok": True, "categorias": vistas,
                 "sin_problema": bool(veredicto.get("sin_problema")),
@@ -417,7 +482,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
 
     # Categorías en disputa que además figuran en lo que el contexto describe:
     # candidatas a sugestión (el texto pudo inducir la "detección" visual).
-    ctx_claims = {c["key"] for v in activos for c in v.get("categorias_contexto") or []}
+    ctx_claims = {c["key"] for v in activos
+                  for c in v.get("categorias_contexto") or [] if c.get("key")}
 
     arbitro = None
     en_duda = []
@@ -497,21 +563,34 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     if not (vistos_todos & cesto_keys):
         remap["lavado_cesto"] = "desratizacion"
     # respaldo_visual: qué tan consistente es la foto con el reclamo (sin
-    # confirmarlo). Entre verificadores gana el mayor respaldo.
+    # confirmarlo). Entre verificadores gana el mayor respaldo. Las entradas
+    # pueden ser categorías propias (key) o prestaciones del catálogo completo
+    # de la Ciudad (codigo).
     rango = {"compatible": 2, "neutral": 1, "contradice": 0}
     ctx_resp = {}
     for v in activos:
         for c in v.get("categorias_contexto") or []:
-            k = remap.get(c["key"], c["key"])
-            if k in confirmadas:
-                continue
+            if c.get("key"):
+                k = remap.get(c["key"], c["key"])
+                if k in confirmadas:
+                    continue
+                ident = ("key", k)
+            else:
+                ident = ("codigo", c["codigo"])
             r = c.get("respaldo", "neutral")
-            if k not in ctx_resp or rango[r] > rango[ctx_resp[k]]:
-                ctx_resp[k] = r
-    categorias_contexto = [
-        {"key": k, "nombre": categorias.get(k, {}).get("nombre", k),
-         "respaldo_visual": ctx_resp[k]}
-        for k in sorted(ctx_resp)]
+            if ident not in ctx_resp or rango[r] > rango[ctx_resp[ident]]:
+                ctx_resp[ident] = r
+    categorias_contexto = []
+    for (tipo, valor) in sorted(ctx_resp, key=lambda t: (t[0], t[1])):
+        if tipo == "key":
+            categorias_contexto.append(
+                {"key": valor, "nombre": categorias.get(valor, {}).get("nombre", valor),
+                 "respaldo_visual": ctx_resp[(tipo, valor)]})
+        else:
+            p = _PRESTACIONES_POR_CODIGO.get(valor, {})
+            categorias_contexto.append(
+                {"codigo": valor, "nombre": p.get("concepto", valor),
+                 "respaldo_visual": ctx_resp[(tipo, valor)]})
 
     return {
         "activa": True,
