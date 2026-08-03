@@ -400,9 +400,12 @@ PAGINA = """<!DOCTYPE html>
 <script>
 const $=s=>document.querySelector(s);
 // Prefijo-agnóstico: funciona en la raíz (http://localhost:8080/) y detrás de
-// un proxy con prefijo (https://dominio/ojourbano/).
+// un proxy con prefijo (https://dominio/ojourbano/). Bajo prefijo, las rutas
+// llevan barra final para que el proxy las sirva sin redirecciones (una 301
+// convierte el POST en GET y rompe la subida).
 const O=location.origin+location.pathname.replace(/\/$/,'');
-$('#ep').textContent=O+'/clasificar';
+const SUF=location.pathname.replace(/\/$/,'')?'/':'';
+$('#ep').textContent=O+'/clasificar'+SUF;
 const GRAV={1:'mínima',2:'leve',3:'alta',4:'grave',5:'muy grave'};
 const PRESENCIA=['contenedor_secos','contenedor_humedos_lateral','contenedor_humedos_bilateral'];
 const SNIP={
@@ -415,7 +418,7 @@ $('#tabs').onclick=e=>{const b=e.target.closest('.tab');if(!b)return;
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t===b));
   document.querySelectorAll('.code').forEach(c=>c.classList.remove('active'));
   $('#code-'+b.dataset.l).classList.add('active');};
-fetch(O+'/salud').then(r=>r.json()).then(h=>{
+fetch(O+'/salud'+SUF).then(r=>r.json()).then(h=>{
   const chip=$('#modechip');
   chip.textContent=h.verificacion?'Análisis completo activo':'Modo básico: solo modelo local, sin verificación cruzada';
   chip.title=h.verificacion?('Verificadores: '+h.verificadores.join(' + ')+(h.arbitro?' · árbitro: '+h.arbitro:'')):'Configurá OPENROUTER_API_KEY para activar la verificación';});
@@ -464,7 +467,7 @@ function enviar(f){
   img.src=URL.createObjectURL(f);img.style.display='block';
   const fd=new FormData();fd.append('file',f);
   const ctx=$('#ctx').value.trim();if(ctx)fd.append('contexto',ctx);
-  fetch(O+'/clasificar',{method:'POST',body:fd,signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error('no pude leer la imagen');return r.json()})
+  fetch(O+'/clasificar'+SUF,{method:'POST',body:fd,signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error('no pude leer la imagen');return r.json()})
    .then(d=>{
      clearInterval(cronoIv);
      $('#espera').style.display='none';$('#res').style.display='block';
