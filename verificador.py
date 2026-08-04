@@ -104,6 +104,31 @@ TIMEOUT = int(os.environ.get("VERIFICADOR_TIMEOUT", "120"))
 # Techo total por modelo: sin esto, 3 intentos x TIMEOUT dejan una sola foto
 # ocupando el server seis minutos cuando OpenRouter responde lento.
 DEADLINE = int(os.environ.get("VERIFICADOR_DEADLINE", "180"))
+# Determinismo del muestreo. Temperatura 0 = greedy: ante la misma entrada, la
+# misma salida. Es la causa principal de que el árbitro cambiara de opinión.
+TEMPERATURA = float(os.environ.get("TEMPERATURA", "0"))
+# Cuántas veces se le pregunta al árbitro cada disputa; con >1 gana la mayoría.
+#
+# Default 1 (una sola vuelta) por un eval de 101 fotos pareadas e intercaladas
+# (2026-08-04). Votar de a 3 NO demostró servir:
+#   - cambio del conjunto de categorías: 11,9% -> 8,9%, McNemar p=0,58.
+#   - hay_problema: 3,0% en ambos. gravedad: 5,0% -> 4,0%. Sin diferencia.
+#   - descripción: 83% inestable en AMBOS, b=0 c=0. Votar no la toca en nada.
+# Con n=56 parecía 6-a-1 a favor; con n=101 quedó 8-a-5. Regresión a la media.
+# Cuesta 3x las llamadas del árbitro y no compra nada medible, así que queda
+# apagado. El mecanismo sigue disponible por si se quiere reevaluar con n≈250,
+# que es lo que haría falta para resolverlo de verdad.
+#
+# Lo que sí quedó claro del eval: la inestabilidad que importa NO es la que se
+# estaba midiendo. hay_problema y gravedad ya eran bastante estables (3-5%);
+# lo que cambia casi siempre es el TEXTO de la descripción, y eso no se
+# arregla votando: el árbitro redacta de nuevo en cada llamada.
+ARBITRO_VOTOS = max(1, int(os.environ.get("ARBITRO_VOTOS", "1")))
+SEMILLA = (int(os.environ["SEMILLA"]) if os.environ.get("SEMILLA", "").strip()
+           else None)  # solo algunos proveedores la respetan
+# Fijar el backend saca la varianza entre proveedores, pero pierde el failover.
+PROVEEDOR_FIJO = os.environ.get("PROVEEDOR_FIJO", "").strip().lower() not in (
+    "", "0", "false", "no")
 # Con "arbitro", una categoría que solo vieron los modelos de visión, sin
 # respaldo del modelo local, la decide el árbitro en vez de confirmarse por
 # consenso entre dos fuentes que comparten la misma entrada manipulable.
@@ -160,9 +185,23 @@ def _imagen_data_url(img):
 def _llamar(modelo, mensajes, max_tokens=6000, intentos=3):
     # reasoning effort bajo: los modelos razonadores (Kimi) pueden gastar todo
     # el presupuesto pensando y devolver el JSON vacío (finish_reason=length)
-    body = json.dumps({"model": modelo, "max_tokens": max_tokens,
-                       "reasoning": {"effort": "low"},
-                       "messages": mensajes}).encode()
+    cuerpo = {"model": modelo, "max_tokens": max_tokens,
+              "reasoning": {"effort": "low"},
+              # Sin esto se sampleaba a la temperatura default del proveedor
+              # (típicamente 1): la MISMA foto con la MISMA evidencia daba
+              # veredictos distintos en el 17,5% de los casos. No era el
+              # modelo equivocándose, era el sampleo. Ver issue #7.
+              "temperature": TEMPERATURA,
+              "top_p": 1,
+              "messages": mensajes}
+    if SEMILLA is not None:
+        cuerpo["seed"] = SEMILLA
+    if PROVEEDOR_FIJO:
+        # OpenRouter puede mandar el mismo modelo a backends distintos, con
+        # otra cuantización y otros kernels. Fijarlo saca esa fuente de
+        # varianza, a costa de perder el failover si ese backend se cae.
+        cuerpo["provider"] = {"allow_fallbacks": False}
+    body = json.dumps(cuerpo).encode()
     req = urllib.request.Request(OPENROUTER_URL, data=body, headers={
         "Authorization": "Bearer " + api_key(),
         "Content-Type": "application/json",
@@ -477,17 +516,86 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
         "Respondé SOLO con JSON:\n"
         '{"decisiones": [{"key": "...", "veredicto": "confirmar"|"rechazar", "motivo": "..."}], "descripcion": "..."}')
     try:
-        contenido = _llamar(ARBITRO, [
-            {"role": "system", "content": _SISTEMA_ARBITRO},
-            {"role": "user", "content": "".join(partes)},
-        ])
-        data = _extraer_json(contenido)
-        decisiones = [d for d in data.get("decisiones", [])
-                      if isinstance(d, dict) and d.get("key") in disputadas]
+        mensajes = [{"role": "system", "content": _SISTEMA_ARBITRO},
+                    {"role": "user", "content": "".join(partes)}]
+
+        def _una_vuelta(_):
+            return _extraer_json(_llamar(ARBITRO, mensajes))
+
+        if ARBITRO_VOTOS == 1:
+            datos = [_una_vuelta(0)]
+        else:
+            # En paralelo: son la misma pregunta, no dependen entre sí.
+            with concurrent.futures.ThreadPoolExecutor(ARBITRO_VOTOS) as pool:
+                crudos = list(pool.map(
+                    lambda i: _intentar(_una_vuelta, i), range(ARBITRO_VOTOS)))
+            datos = [d for d in crudos if d is not None]
+            if not datos:
+                raise ValueError("ninguna vuelta del árbitro devolvió JSON")
+
+        # Voto válido = a lo sumo una decisión por categoría, con veredicto
+        # legible. Una vuelta malformada se descarta entera en vez de aportar
+        # medio voto: si no, un JSON raro corre el umbral sin que se note.
+        def _boletas(d):
+            vistas, salida = set(), {}
+            for x in d.get("decisiones", []):
+                if not isinstance(x, dict):
+                    continue
+                k, ver = x.get("key"), x.get("veredicto")
+                if k not in disputadas or ver not in ("confirmar", "rechazar"):
+                    continue
+                if k in vistas:      # la misma categoría decidida dos veces
+                    return None
+                vistas.add(k)
+                salida[k] = (ver, x.get("motivo"))
+            return salida
+
+        boletas = [b for b in (_boletas(d) for d in datos) if b is not None]
+        if not boletas:
+            raise ValueError("ninguna vuelta del árbitro dio una boleta válida")
+
+        # Mayoría por categoría sobre el total de boletas válidas. Un empate, o
+        # una categoría que la mayoría ni siquiera decidió, se rechaza: la
+        # consigna ya dice que ante la duda se rechaza. Es una decisión de
+        # umbral deliberada, no solo reducción de varianza: sesga a rechazar.
+        decisiones = []
+        for k in sorted(disputadas):
+            si = sum(1 for b in boletas if b.get(k, ("",))[0] == "confirmar")
+            no = sum(1 for b in boletas if b.get(k, ("",))[0] == "rechazar")
+            if not si and not no:
+                continue
+            motivo = next((b[k][1] for b in boletas if k in b), None)
+            decisiones.append({"key": k, "votos": f"{si}-{no}", "motivo": motivo,
+                               "veredicto": "confirmar" if si > no else "rechazar"})
+
+        # La descripción también tiene que ser estable: elegirla por orden de
+        # llegada de los hilos dejaba el texto que ve el usuario al azar aunque
+        # las categorías ya no lo estuvieran. Se elige la de la vuelta que más
+        # coincide con el veredicto final; a igualdad, la más larga y después
+        # alfabética, para que el desempate sea determinista.
+        finales = {d["key"]: d["veredicto"] for d in decisiones}
+        def _puntaje(par):
+            b, texto = par
+            return (sum(1 for k, v in finales.items() if b.get(k, ("",))[0] == v),
+                    len(texto), texto)
+        pares = [(b, _texto_limpio(d.get("descripcion"), DESC_MAX))
+                 for b, d in zip(boletas, datos) if _texto_limpio(d.get("descripcion"), 1)]
+        descripcion = max(pares, key=_puntaje)[1] if pares else ""
         return {"modelo": ARBITRO, "ok": True, "decisiones": decisiones,
-                "descripcion": _texto_limpio(data.get("descripcion"), DESC_MAX)}
+                "vueltas_pedidas": ARBITRO_VOTOS, "vueltas_validas": len(boletas),
+                "degradado": len(boletas) < ARBITRO_VOTOS,
+                "descripcion": descripcion}
     except (urllib.error.URLError, ValueError, KeyError, json.JSONDecodeError, OSError) as e:
         return {"modelo": ARBITRO, "ok": False, "error": str(e)[:200]}
+
+
+def _intentar(fn, arg):
+    """Una vuelta que falla no debe tumbar la votación entera."""
+    try:
+        return fn(arg)
+    except (urllib.error.URLError, ValueError, KeyError,
+            json.JSONDecodeError, OSError):
+        return None
 
 
 def verificar(img, categorias, prediccion_local, contexto=""):
