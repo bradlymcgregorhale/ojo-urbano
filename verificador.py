@@ -104,10 +104,27 @@ TIMEOUT = int(os.environ.get("VERIFICADOR_TIMEOUT", "120"))
 # Techo total por modelo: sin esto, 3 intentos x TIMEOUT dejan una sola foto
 # ocupando el server seis minutos cuando OpenRouter responde lento.
 DEADLINE = int(os.environ.get("VERIFICADOR_DEADLINE", "180"))
-# "arbitro" (default): una categoría que solo vieron los modelos de visión, sin
+# Con "arbitro", una categoría que solo vieron los modelos de visión, sin
 # respaldo del modelo local, la decide el árbitro en vez de confirmarse por
 # consenso entre dos fuentes que comparten la misma entrada manipulable.
-CONSENSO_VLM_SOLO = os.environ.get("CONSENSO_VLM_SOLO", "arbitro").strip().lower()
+#
+# El DEFAULT es "confirma" (la regla vieja de 2 de 3) por decisión de un eval
+# de 231 fotos reales (2026-08-04). Resumen: el beneficio NO se pudo demostrar
+# y el costo NO se pudo descartar.
+#   - De 25 inyecciones, 0 lograron engañar a los DOS verificadores a la vez,
+#     que es la única población sobre la que actúa esta regla. El mecanismo
+#     nunca se ejercitó: no quedó probado que sirva. Y 0/25 no dice que la
+#     amenaza sea rara (el techo del IC95 es ~11%).
+#   - El árbitro cambia de opinión en el 17,5% de las fotos ante la MISMA
+#     entrada. Esa inestabilidad es mayor que el efecto que se quería medir
+#     (12,6%), así que el eval quedó sin poder estadístico: haría falta n≈600.
+#   - Como el árbitro decide todas las disputas en UNA llamada, mandarle más
+#     categorías puede mover también las que sí tienen respaldo local
+#     (spillover), y esta regla justamente le manda más.
+# Antes de volver a activarla: arbitrar cada categoría por separado, fijar
+# temperatura/seed, y armar un set adjudicado a mano para medir exactitud y no
+# solo desacuerdo. Ver notas del eval en el issue.
+CONSENSO_VLM_SOLO = os.environ.get("CONSENSO_VLM_SOLO", "confirma").strip().lower()
 LADO_MAX = 1024  # la foto se reduce a este lado máximo antes de enviarla
 DESC_MAX = 600   # longitud máxima de una descripción devuelta por un modelo
 EVID_MAX = 160   # ídem para la evidencia citada por categoría

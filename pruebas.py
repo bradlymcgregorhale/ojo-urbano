@@ -464,6 +464,16 @@ class _Img:
         buf.write(b"jpeg")
 
 
+# El DEFAULT es la regla vieja (2 de 3): el eval de 231 fotos no pudo demostrar
+# el beneficio de "arbitro" ni descartar su costo. Ver verificador.py.
+check("el default es la regla vieja de 2 de 3",
+      V.CONSENSO_VLM_SOLO == "confirma", V.CONSENSO_VLM_SOLO)
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("con el default, 2 votos VLM confirman",
+      "reparacion_contenedor" in {c["key"] for c in r["confirmadas"]})
+
+# A partir de acá se prueba el modo opcional "arbitro", que sigue disponible.
+V.CONSENSO_VLM_SOLO = "arbitro"
 # Sin contexto: la inyección puede venir escrita DENTRO de la foto, así que el
 # consenso entre los dos verificadores tampoco alcanza acá.
 r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
