@@ -1,0 +1,13 @@
+{
+  "_nota": "Conteos crudos de los experimentos de estabilidad del árbitro. Cada 'flips' es sobre replays de la MISMA foto con la MISMA config sobre evidencia congelada. Las condiciones marcadas bloque_secuencial NO son comparables entre sí: se corrieron en bloques de tiempo distintos y la tasa deriva (ver README). Solo las pareadas/intercaladas lo son.",
+  "condiciones": [
+    {"id": "temp1_n63",  "desc": "temperatura default del proveedor, modo arbitro", "flips": 7,  "n": 63,  "diseno": "bloque_secuencial"},
+    {"id": "temp0_n63",  "desc": "temperatura 0, modo arbitro",                     "flips": 4,  "n": 63,  "diseno": "bloque_secuencial"},
+    {"id": "A_temp0",    "desc": "temp0 sin pin, deepseek, modo confirma",          "flips": 29, "n": 231, "diseno": "bloque_secuencial"},
+    {"id": "B_pin",      "desc": "temp0 con allow_fallbacks=false, deepseek",       "flips": 21, "n": 231, "diseno": "bloque_secuencial"},
+    {"id": "C_denso",    "desc": "temp0, arbitro mistral-small-24b (denso)",        "flips": 7,  "n": 231, "diseno": "bloque_secuencial"},
+    {"id": "C_denso_rep","desc": "repeticion de C_denso",                           "flips": 14, "n": 231, "diseno": "bloque_secuencial"},
+    {"id": "M32_r1",     "desc": "mistral-small-3.2-24b, corrida 1",                "flips": 32, "n": 231, "diseno": "bloque_secuencial"},
+    {"id": "M32_r2",     "desc": "mistral-small-3.2-24b, corrida 2 (identica)",     "flips": 18, "n": 231, "diseno": "bloque_secuencial"}
+  ]
+}

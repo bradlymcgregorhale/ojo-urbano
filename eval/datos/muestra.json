@@ -1,0 +1,1002 @@
+[
+ {
+  "ident": "00495514/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 1,
+  "sha256": "0398fef1f9a891f9"
+ },
+ {
+  "ident": "00854577/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de contenedor",
+  "clave_esperada": "lavado_contenedor",
+  "n": 2,
+  "sha256": "6b0e2dac9c2bf2fc"
+ },
+ {
+  "ident": "00250394/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 3,
+  "sha256": "e930ef9c5fdac7ca"
+ },
+ {
+  "ident": "00801509/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 4,
+  "sha256": "631950de168cb2d9"
+ },
+ {
+  "ident": "00856665/26",
+  "estrato": "desacuerdo",
+  "concepto": "Columna/poste/cable en mal estado, abandonado o cortado",
+  "clave_esperada": "columna_poste_cable",
+  "n": 6,
+  "sha256": "5d886b41a27e5d28"
+ },
+ {
+  "ident": "00447994/26",
+  "estrato": "desacuerdo",
+  "concepto": "Retiro de escombros/restos de obra",
+  "clave_esperada": null,
+  "n": 7,
+  "sha256": "0dc8156a2a54e330"
+ },
+ {
+  "ident": "00856121/26",
+  "estrato": "desacuerdo",
+  "concepto": "Columna/poste/cable en mal estado, abandonado o cortado",
+  "clave_esperada": "columna_poste_cable",
+  "n": 8,
+  "sha256": "4cee1047b7019c32"
+ },
+ {
+  "ident": "00860458/26",
+  "estrato": "acuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": "vehiculo_mal_estacionado",
+  "n": 9,
+  "sha256": "433d9a2d37b9623c"
+ },
+ {
+  "ident": "00857554/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reposición de contenedor",
+  "clave_esperada": "reposicion_contenedor",
+  "n": 10,
+  "sha256": "8a03bbc9b61de957"
+ },
+ {
+  "ident": "00857526/26",
+  "estrato": "acuerdo",
+  "concepto": "Reposición de contenedor",
+  "clave_esperada": "reposicion_contenedor",
+  "n": 11,
+  "sha256": "b8490dafab9e2ca2"
+ },
+ {
+  "ident": "00237510/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reparación de vereda",
+  "clave_esperada": null,
+  "n": 12,
+  "sha256": "8558c2279c16bbb5"
+ },
+ {
+  "ident": "00559835/26",
+  "estrato": "acuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 13,
+  "sha256": "3f963391d7109b6d"
+ },
+ {
+  "ident": "00849281/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de contenedor",
+  "clave_esperada": "lavado_contenedor",
+  "n": 14,
+  "sha256": "9adf9a353b9a91ad"
+ },
+ {
+  "ident": "00838816/26",
+  "estrato": "desacuerdo",
+  "concepto": "Irregularidades en puesto de diarios",
+  "clave_esperada": "puesto_diarios",
+  "n": 15,
+  "sha256": "6fdddc01789a543a"
+ },
+ {
+  "ident": "00823912/26",
+  "estrato": "desacuerdo",
+  "concepto": "Remoción de vehículo abandonado",
+  "clave_esperada": null,
+  "n": 16,
+  "sha256": "53a73ae3b4b8706c"
+ },
+ {
+  "ident": "00478819/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 17,
+  "sha256": "a1602332a3b458a2"
+ },
+ {
+  "ident": "00796796/26",
+  "estrato": "desacuerdo",
+  "concepto": "Irregularidades en puesto de flores",
+  "clave_esperada": "puesto_flores",
+  "n": 18,
+  "sha256": "dc9c18d784a2cce5"
+ },
+ {
+  "ident": "00856088/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de contenedor",
+  "clave_esperada": "lavado_contenedor",
+  "n": 19,
+  "sha256": "485e225effa2799c"
+ },
+ {
+  "ident": "00853266/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de contenedor",
+  "clave_esperada": "lavado_contenedor",
+  "n": 20,
+  "sha256": "87eec7f1b40d8a81"
+ },
+ {
+  "ident": "00551389/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de cesto papelero",
+  "clave_esperada": "lavado_cesto",
+  "n": 21,
+  "sha256": "020f3535bf7d8f25"
+ },
+ {
+  "ident": "00798244/26",
+  "estrato": "desacuerdo",
+  "concepto": "Irregularidades en la separación de residuos en origen",
+  "clave_esperada": null,
+  "n": 23,
+  "sha256": "9e5132086562bc0f"
+ },
+ {
+  "ident": "00068620/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de contenedor",
+  "clave_esperada": null,
+  "n": 24,
+  "sha256": "7204a9686afb3b5a"
+ },
+ {
+  "ident": "00857158/26",
+  "estrato": "acuerdo",
+  "concepto": "Reposición de contenedor",
+  "clave_esperada": "reposicion_contenedor",
+  "n": 25,
+  "sha256": "741a203fa44472dd"
+ },
+ {
+  "ident": "00860456/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": "vehiculo_mal_estacionado",
+  "n": 26,
+  "sha256": "41656be9971a48bd"
+ },
+ {
+  "ident": "00559316/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de cesto papelero",
+  "clave_esperada": "lavado_cesto",
+  "n": 27,
+  "sha256": "feecf5bcb590710a"
+ },
+ {
+  "ident": "00860461/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": "vehiculo_mal_estacionado",
+  "n": 28,
+  "sha256": "5966b21bd3829678"
+ },
+ {
+  "ident": "00859313/26",
+  "estrato": "acuerdo",
+  "concepto": "Columna/poste/cable en mal estado, abandonado o cortado",
+  "clave_esperada": "columna_poste_cable",
+  "n": 29,
+  "sha256": "98504d37eaf6ad9b"
+ },
+ {
+  "ident": "00860033/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de contenedor",
+  "clave_esperada": "lavado_contenedor",
+  "n": 30,
+  "sha256": "9adf9a353b9a91ad"
+ },
+ {
+  "ident": "00825973/26",
+  "estrato": "desacuerdo",
+  "concepto": "Personas o familias en situación de calle",
+  "clave_esperada": null,
+  "n": 31,
+  "sha256": "3b10cb1f48f3bcb3"
+ },
+ {
+  "ident": "00860470/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": "vehiculo_mal_estacionado",
+  "n": 32,
+  "sha256": "6607e44be955270d"
+ },
+ {
+  "ident": "00529685/26",
+  "estrato": "acuerdo",
+  "concepto": "Lavado de cesto papelero",
+  "clave_esperada": "lavado_cesto",
+  "n": 33,
+  "sha256": "2e0832df7e2a0da6"
+ },
+ {
+  "ident": "00860462/26",
+  "estrato": "acuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": "vehiculo_mal_estacionado",
+  "n": 34,
+  "sha256": "057f4a0f430eaed1"
+ },
+ {
+  "ident": "00850073/26",
+  "estrato": "acuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 35,
+  "sha256": "98cd9a4891595154"
+ },
+ {
+  "ident": "00020979/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 36,
+  "sha256": "909ba098aa7465c7"
+ },
+ {
+  "ident": "00275956/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reparación de vereda por raíces de árbol que producen roturas",
+  "clave_esperada": null,
+  "n": 37,
+  "sha256": "216d4acaf478fed6"
+ },
+ {
+  "ident": "00844103/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reparación de luminaria apagada durante la noche",
+  "clave_esperada": null,
+  "n": 39,
+  "sha256": "a1997edd0da265e6"
+ },
+ {
+  "ident": "00441702/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de cesto papelero",
+  "clave_esperada": "lavado_cesto",
+  "n": 40,
+  "sha256": "1ce6ffd9eb06e6eb"
+ },
+ {
+  "ident": "00454791/26",
+  "estrato": "desacuerdo",
+  "concepto": "Recolección de residuos fuera del contenedor",
+  "clave_esperada": null,
+  "n": 41,
+  "sha256": "31f5f9759c1ef7fe"
+ },
+ {
+  "ident": "00326288/26",
+  "estrato": "acuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 42,
+  "sha256": "40a790e7a0d68607"
+ },
+ {
+  "ident": "00860149/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de contenedor",
+  "clave_esperada": "lavado_contenedor",
+  "n": 44,
+  "sha256": "69ed3637ed22e31c"
+ },
+ {
+  "ident": "00679928/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 45,
+  "sha256": "cfa00fb1a055fb5d"
+ },
+ {
+  "ident": "00134799/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 46,
+  "sha256": "81fc798632142332"
+ },
+ {
+  "ident": "00616155/26",
+  "estrato": "acuerdo",
+  "concepto": "Lavado de contenedor",
+  "clave_esperada": null,
+  "n": 47,
+  "sha256": "5b0e2d0871759648"
+ },
+ {
+  "ident": "00858045/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reposición de contenedor",
+  "clave_esperada": "reposicion_contenedor",
+  "n": 49,
+  "sha256": "43dcc878387cd859"
+ },
+ {
+  "ident": "00857544/26",
+  "estrato": "desacuerdo",
+  "concepto": "Columna/poste/cable en mal estado, abandonado o cortado",
+  "clave_esperada": "columna_poste_cable",
+  "n": 50,
+  "sha256": "d6ea14fad58a4e1f"
+ },
+ {
+  "ident": "00860455/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": "vehiculo_mal_estacionado",
+  "n": 51,
+  "sha256": "e4d79f2ac6a982fc"
+ },
+ {
+  "ident": "00860490/26",
+  "estrato": "acuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": "vehiculo_mal_estacionado",
+  "n": 52,
+  "sha256": "fb7a8258778bcfe9"
+ },
+ {
+  "ident": "00141171/26",
+  "estrato": "desacuerdo",
+  "concepto": "Recolección de residuos fuera del contenedor",
+  "clave_esperada": null,
+  "n": 53,
+  "sha256": "f96b89d0676075a1"
+ },
+ {
+  "ident": "00317741/26",
+  "estrato": "acuerdo",
+  "concepto": "Retiro de muebles y electrodomésticos en desuso",
+  "clave_esperada": null,
+  "n": 54,
+  "sha256": "30dc35463767fd8f"
+ },
+ {
+  "ident": "00509808/26",
+  "estrato": "desacuerdo",
+  "concepto": "Recolección de residuos fuera del contenedor",
+  "clave_esperada": null,
+  "n": 56,
+  "sha256": "47ce65020bb3c0de"
+ },
+ {
+  "ident": "00857199/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reposición de contenedor",
+  "clave_esperada": "reposicion_contenedor",
+  "n": 57,
+  "sha256": "ba50b4593617e3e8"
+ },
+ {
+  "ident": "00848392/26",
+  "estrato": "desacuerdo",
+  "concepto": "Mayor iluminación en calle / plaza",
+  "clave_esperada": "mayor_iluminacion",
+  "n": 58,
+  "sha256": "d87ab7437717e91f"
+ },
+ {
+  "ident": "00855956/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de contenedor",
+  "clave_esperada": "lavado_contenedor",
+  "n": 59,
+  "sha256": "b09b64c18861315b"
+ },
+ {
+  "ident": "00857164/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de contenedor",
+  "clave_esperada": "lavado_contenedor",
+  "n": 60,
+  "sha256": "ab9441eb4230ce43"
+ },
+ {
+  "ident": "00859516/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reposición de contenedor",
+  "clave_esperada": "reposicion_contenedor",
+  "n": 61,
+  "sha256": "feea166d8a41a747"
+ },
+ {
+  "ident": "00723538/26",
+  "estrato": "desacuerdo",
+  "concepto": "Recolección de residuos fuera del contenedor",
+  "clave_esperada": null,
+  "n": 63,
+  "sha256": "196a3396112cb632"
+ },
+ {
+  "ident": "00530537/26",
+  "estrato": "desacuerdo",
+  "concepto": "Recolección de residuos fuera del contenedor",
+  "clave_esperada": null,
+  "n": 64,
+  "sha256": "9994543a1a7b11bc"
+ },
+ {
+  "ident": "00859048/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reposición de contenedor",
+  "clave_esperada": "reposicion_contenedor",
+  "n": 66,
+  "sha256": "d61434280382147c"
+ },
+ {
+  "ident": "00460118/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de cesto papelero",
+  "clave_esperada": "lavado_cesto",
+  "n": 67,
+  "sha256": "e46937bf8c5f1840"
+ },
+ {
+  "ident": "00859813/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reposición de contenedor",
+  "clave_esperada": "reposicion_contenedor",
+  "n": 69,
+  "sha256": "598a7ec2fe4e6621"
+ },
+ {
+  "ident": "00665958/26",
+  "estrato": "desacuerdo",
+  "concepto": "Poda de árbol/despeje de luminaria o semáforo",
+  "clave_esperada": null,
+  "n": 70,
+  "sha256": "787f91ee14b298dc"
+ },
+ {
+  "ident": "00040786/26",
+  "estrato": "desacuerdo",
+  "concepto": "Retiro de escombros/restos de obra",
+  "clave_esperada": null,
+  "n": 71,
+  "sha256": "121bdc82682a4f94"
+ },
+ {
+  "ident": "00852221/26",
+  "estrato": "desacuerdo",
+  "concepto": "Columna/poste/cable en mal estado, abandonado o cortado",
+  "clave_esperada": "columna_poste_cable",
+  "n": 72,
+  "sha256": "c082d5aa1ff0b275"
+ },
+ {
+  "ident": "00000931/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 73,
+  "sha256": "e572bb00f702df7e"
+ },
+ {
+  "ident": "00407555/26",
+  "estrato": "acuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 74,
+  "sha256": "c3ba8b27c9dee898"
+ },
+ {
+  "ident": "00853291/26",
+  "estrato": "acuerdo",
+  "concepto": "Mayor iluminación en calle / plaza",
+  "clave_esperada": "mayor_iluminacion",
+  "n": 76,
+  "sha256": "c0febb156b51efca"
+ },
+ {
+  "ident": "00860308/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reposición de contenedor",
+  "clave_esperada": "reposicion_contenedor",
+  "n": 77,
+  "sha256": "38139b17f05b7b06"
+ },
+ {
+  "ident": "00267564/26",
+  "estrato": "desacuerdo",
+  "concepto": "Recolección de residuos fuera del contenedor",
+  "clave_esperada": null,
+  "n": 78,
+  "sha256": "b7322c79cd6096cb"
+ },
+ {
+  "ident": "00118377/26",
+  "estrato": "desacuerdo",
+  "concepto": "Recolección de residuos fuera del contenedor",
+  "clave_esperada": null,
+  "n": 79,
+  "sha256": "e4099ca33f0b643a"
+ },
+ {
+  "ident": "00823299/26",
+  "estrato": "desacuerdo",
+  "concepto": "Irregularidades en puesto de diarios",
+  "clave_esperada": "puesto_diarios",
+  "n": 80,
+  "sha256": "f4d21dd7a21a92bb"
+ },
+ {
+  "ident": "00820820/26",
+  "estrato": "desacuerdo",
+  "concepto": "Irregularidades en puesto de diarios",
+  "clave_esperada": "puesto_diarios",
+  "n": 81,
+  "sha256": "90e42714eb329a02"
+ },
+ {
+  "ident": "00311695/26",
+  "estrato": "desacuerdo",
+  "concepto": "Recolección de residuos fuera del contenedor",
+  "clave_esperada": null,
+  "n": 82,
+  "sha256": "cfa7c8b94810999e"
+ },
+ {
+  "ident": "00317140/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reparación de vereda",
+  "clave_esperada": null,
+  "n": 83,
+  "sha256": "0a4ddcde791cd0a5"
+ },
+ {
+  "ident": "00857165/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reposición de contenedor",
+  "clave_esperada": "reposicion_contenedor",
+  "n": 84,
+  "sha256": "c4bb5f5dba60eaa9"
+ },
+ {
+  "ident": "00469600/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de cesto papelero",
+  "clave_esperada": "lavado_cesto",
+  "n": 85,
+  "sha256": "cab3109f2dc9a6ba"
+ },
+ {
+  "ident": "00858518/26",
+  "estrato": "acuerdo",
+  "concepto": "Reposición de contenedor",
+  "clave_esperada": "reposicion_contenedor",
+  "n": 86,
+  "sha256": "c2990b157b37d2ea"
+ },
+ {
+  "ident": "00810821/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 87,
+  "sha256": "d7097fa4f60bf281"
+ },
+ {
+  "ident": "00859172/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de contenedor",
+  "clave_esperada": "lavado_contenedor",
+  "n": 88,
+  "sha256": "b3bb330afb1dc19f"
+ },
+ {
+  "ident": "00535852/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de cesto papelero",
+  "clave_esperada": "lavado_cesto",
+  "n": 89,
+  "sha256": "444bbde3bd195e8c"
+ },
+ {
+  "ident": "00714074/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 91,
+  "sha256": "0970c25f3ce6a533"
+ },
+ {
+  "ident": "00638595/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reparación de cuneta",
+  "clave_esperada": null,
+  "n": 92,
+  "sha256": "452ed227e7c47092"
+ },
+ {
+  "ident": "00820967/26",
+  "estrato": "desacuerdo",
+  "concepto": "Irregularidades en puesto de diarios",
+  "clave_esperada": "puesto_diarios",
+  "n": 93,
+  "sha256": "52b1770e11c9d6bb"
+ },
+ {
+  "ident": "00860020/26",
+  "estrato": "acuerdo",
+  "concepto": "Mayor iluminación en calle / plaza",
+  "clave_esperada": "mayor_iluminacion",
+  "n": 94,
+  "sha256": "c02db63a2f7107f5"
+ },
+ {
+  "ident": "00228515/26",
+  "estrato": "acuerdo",
+  "concepto": "Retiro de escombros/restos de obra",
+  "clave_esperada": null,
+  "n": 95,
+  "sha256": "e688a118212e32b0"
+ },
+ {
+  "ident": "00814973/26",
+  "estrato": "acuerdo",
+  "concepto": "Irregularidades en puesto de diarios",
+  "clave_esperada": "puesto_diarios",
+  "n": 96,
+  "sha256": "c89251a1f8104e5b"
+ },
+ {
+  "ident": "00120680/26",
+  "estrato": "acuerdo",
+  "concepto": "Reparación de vereda",
+  "clave_esperada": null,
+  "n": 97,
+  "sha256": "b4e0c1f4f152b6fc"
+ },
+ {
+  "ident": "00544841/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de contenedor",
+  "clave_esperada": null,
+  "n": 98,
+  "sha256": "04a06c5db492a945"
+ },
+ {
+  "ident": "00858389/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de contenedor",
+  "clave_esperada": "lavado_contenedor",
+  "n": 101,
+  "sha256": "f1cc635f30515f1e"
+ },
+ {
+  "ident": "00859458/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de contenedor",
+  "clave_esperada": "lavado_contenedor",
+  "n": 105,
+  "sha256": "89663d15075a11f1"
+ },
+ {
+  "ident": "00821833/26",
+  "estrato": "desacuerdo",
+  "concepto": "Solicitud Instalación de parada de colectivo",
+  "clave_esperada": null,
+  "n": 106,
+  "sha256": "b0f0bd62d400c35a"
+ },
+ {
+  "ident": "00763580/26",
+  "estrato": "desacuerdo",
+  "concepto": "Irregularidades en puesto de flores",
+  "clave_esperada": "puesto_flores",
+  "n": 107,
+  "sha256": "1f5b23f0f3b5d9ac"
+ },
+ {
+  "ident": "00330193/26",
+  "estrato": "acuerdo",
+  "concepto": "Retiro de escombros/restos de obra",
+  "clave_esperada": null,
+  "n": 108,
+  "sha256": "fdb8538603fc7b57"
+ },
+ {
+  "ident": "00475668/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de cesto papelero",
+  "clave_esperada": "lavado_cesto",
+  "n": 109,
+  "sha256": "fff80d2f3981d0d9"
+ },
+ {
+  "ident": "00857534/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de contenedor",
+  "clave_esperada": "lavado_contenedor",
+  "n": 110,
+  "sha256": "4b2a2625c04ee538"
+ },
+ {
+  "ident": "00855539/26",
+  "estrato": "desacuerdo",
+  "concepto": "Irregularidades en puesto de flores",
+  "clave_esperada": "puesto_flores",
+  "n": 111,
+  "sha256": "3969fb411df1eae9"
+ },
+ {
+  "ident": "00858720/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reposición de contenedor",
+  "clave_esperada": "reposicion_contenedor",
+  "n": 112,
+  "sha256": "a577eb8569f7f548"
+ },
+ {
+  "ident": "00856646/26",
+  "estrato": "desacuerdo",
+  "concepto": "Columna/poste/cable en mal estado, abandonado o cortado",
+  "clave_esperada": "columna_poste_cable",
+  "n": 113,
+  "sha256": "bfe3e150bdb2b84f"
+ },
+ {
+  "ident": "00706901/26",
+  "estrato": "desacuerdo",
+  "concepto": "Personas o familias en situación de calle",
+  "clave_esperada": null,
+  "n": 114,
+  "sha256": "45c9222a9c3a6c28"
+ },
+ {
+  "ident": "00783560/26",
+  "estrato": "desacuerdo",
+  "concepto": "Auto en depósito",
+  "clave_esperada": null,
+  "n": 115,
+  "sha256": "4633077aaf82e8f9"
+ },
+ {
+  "ident": "00856657/26",
+  "estrato": "desacuerdo",
+  "concepto": "Columna/poste/cable en mal estado, abandonado o cortado",
+  "clave_esperada": "columna_poste_cable",
+  "n": 117,
+  "sha256": "c14e7fbde298d1b9"
+ },
+ {
+  "ident": "00698659/26",
+  "estrato": "acuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 118,
+  "sha256": "acb67bf69f90457b"
+ },
+ {
+  "ident": "00609662/26",
+  "estrato": "desacuerdo",
+  "concepto": "Poda de árbol/despeje de luminaria o semáforo",
+  "clave_esperada": null,
+  "n": 119,
+  "sha256": "32b271de3145e0aa"
+ },
+ {
+  "ident": "00630365/26",
+  "estrato": "acuerdo",
+  "concepto": "Columna/poste/cable en mal estado, abandonado o cortado",
+  "clave_esperada": null,
+  "n": 120,
+  "sha256": "493916db11413f98"
+ },
+ {
+  "ident": "00506996/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 123,
+  "sha256": "bb8bcffce3e460c5"
+ },
+ {
+  "ident": "00106185/26",
+  "estrato": "desacuerdo",
+  "concepto": "Recolección de residuos fuera del contenedor",
+  "clave_esperada": null,
+  "n": 125,
+  "sha256": "3d2598d6b20e4c31"
+ },
+ {
+  "ident": "00248351/26",
+  "estrato": "desacuerdo",
+  "concepto": "Recolección de residuos fuera del contenedor",
+  "clave_esperada": null,
+  "n": 126,
+  "sha256": "7d57243b9011272b"
+ },
+ {
+  "ident": "00860459/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": "vehiculo_mal_estacionado",
+  "n": 127,
+  "sha256": "88765f4063001e2f"
+ },
+ {
+  "ident": "00813395/26",
+  "estrato": "desacuerdo",
+  "concepto": "Irregularidades en puesto de diarios",
+  "clave_esperada": "puesto_diarios",
+  "n": 128,
+  "sha256": "c5b756e544b35f72"
+ },
+ {
+  "ident": "00565937/26",
+  "estrato": "desacuerdo",
+  "concepto": "Lavado de cesto papelero",
+  "clave_esperada": "lavado_cesto",
+  "n": 130,
+  "sha256": "31e0f279448e31cb"
+ },
+ {
+  "ident": "00751022/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reposición de contenedor",
+  "clave_esperada": null,
+  "n": 132,
+  "sha256": "4f64bcab54a99e81"
+ },
+ {
+  "ident": "00137762/26",
+  "estrato": "acuerdo",
+  "concepto": "Recolección de residuos fuera del contenedor",
+  "clave_esperada": null,
+  "n": 133,
+  "sha256": "113eabfa4ef7f36e"
+ },
+ {
+  "ident": "00022745/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 136,
+  "sha256": "1f766939da1bc65a"
+ },
+ {
+  "ident": "00470502/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reubicación de contenedor",
+  "clave_esperada": null,
+  "n": 137,
+  "sha256": "f99dd11271b83e5c"
+ },
+ {
+  "ident": "00751606/26",
+  "estrato": "acuerdo",
+  "concepto": "Retiro de restos de poda o jardinería domiciliaria",
+  "clave_esperada": null,
+  "n": 138,
+  "sha256": "f1f12ec27a187328"
+ },
+ {
+  "ident": "00811941/26",
+  "estrato": "desacuerdo",
+  "concepto": "Irregularidades en puesto de flores",
+  "clave_esperada": "puesto_flores",
+  "n": 139,
+  "sha256": "7c621e9f57c0a2ab"
+ },
+ {
+  "ident": "00843291/26",
+  "estrato": "desacuerdo",
+  "concepto": "Irregularidades en puesto de diarios",
+  "clave_esperada": "puesto_diarios",
+  "n": 140,
+  "sha256": "57e36fed4788bea9"
+ },
+ {
+  "ident": "00203764/26",
+  "estrato": "acuerdo",
+  "concepto": "Recolección de residuos fuera del contenedor",
+  "clave_esperada": null,
+  "n": 141,
+  "sha256": "63dcd638652e3b28"
+ },
+ {
+  "ident": "00848887/26",
+  "estrato": "desacuerdo",
+  "concepto": "Mayor iluminación en calle / plaza",
+  "clave_esperada": "mayor_iluminacion",
+  "n": 142,
+  "sha256": "7a998eda8d2409c6"
+ },
+ {
+  "ident": "00193083/26",
+  "estrato": "acuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 143,
+  "sha256": "e1aa8e0bdb810188"
+ },
+ {
+  "ident": "00232912/26",
+  "estrato": "acuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 144,
+  "sha256": "b83f840d8b39ed31"
+ },
+ {
+  "ident": "00784568/26",
+  "estrato": "desacuerdo",
+  "concepto": "Problemas con obras de bacheo",
+  "clave_esperada": null,
+  "n": 146,
+  "sha256": "d47014bfdfdb5f63"
+ },
+ {
+  "ident": "00539040/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 147,
+  "sha256": "2738b2d2854f0abd"
+ },
+ {
+  "ident": "00603827/26",
+  "estrato": "desacuerdo",
+  "concepto": "Reparación de luminaria por artefacto roto",
+  "clave_esperada": null,
+  "n": 148,
+  "sha256": "3c4304c6d73f0c0a"
+ },
+ {
+  "ident": "00087957/26",
+  "estrato": "desacuerdo",
+  "concepto": "Vehículo mal estacionado",
+  "clave_esperada": null,
+  "n": 149,
+  "sha256": "f01a55920020c5c9"
+ },
+ {
+  "ident": "00599105/26",
+  "estrato": "acuerdo",
+  "concepto": "Mejora de barrido",
+  "clave_esperada": null,
+  "n": 150,
+  "sha256": "c4f2e9fd38445fc9"
+ }
+]
