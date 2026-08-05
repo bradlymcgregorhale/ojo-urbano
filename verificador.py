@@ -319,7 +319,7 @@ _RUBRICA_KEYS = {
     "columna_poste_cable", "reposicion_contenedor", "lavado_contenedor",
     "puesto_diarios", "puesto_flores", "tapa_vereda", "tapa_calle",
     "ocupacion_comercial", "desratizacion", "obstruccion", "luminaria_apagada",
-    "volquete_mal_dispuesto",
+    "volquete_mal_dispuesto", "lavado_cesto", "hidrolavado_grafitis",
 }
 
 _RUBRICA = """Sos un verificador experto de reportes de incidencias en la vía pública: higiene urbana, contenedores y cestos, infraestructura, vehículos en infracción y ocupación del espacio público. Mirá la foto adjunta (puede ser de noche/oscura; prestá atención a objetos voluminosos como muebles, estanterías o cajones delante o al lado de un contenedor, y a vehículos detenidos sobre ciclovías, veredas o rampas) y reportá los problemas visibles. Recorré también el PLANO DEL PISO: las baldosas faltantes, hundidas o levantadas tienen poco contraste y se esconden entre hojas y sombras; buscá interrupciones en la trama de las baldosas (contrapiso o tierra a la vista, juntas que desaparecen, un sector hundido donde se juntan las hojas).
@@ -356,6 +356,8 @@ Categorías y criterios (usá SOLO estas claves):
 - vaciado_contenedor: contenedor lleno que necesita vaciado (residuos visibles hasta la boca), sin llegar a rebalsar.
 - vaciado_cesto: un cesto papelero (canasto chico sobre poste) desbordado o lleno.
 - reparacion_cesto: TODO problema físico de un cesto papelero: roto, caído, desprendido, colgando, o la base/soporte sin canasto montado. Un cesto sano y en su lugar NO.
+- lavado_cesto: un cesto papelero ENTERO y en su lugar, pero visiblemente sucio: chorreaduras, mugre incrustada, restos pegados, manchas. Es el pedido de higienizarlo, no de arreglarlo ni de vaciarlo. Si lo que se ve es que está LLENO de residuos, eso es vaciado_cesto. Si el sucio es un contenedor municipal y no un cesto papelero, es lavado_contenedor. Si además está roto o caído, reportá también reparacion_cesto.
+- hidrolavado_grafitis: un FRENTE de inmueble vandalizado con grafitis o pegatinas: fachada, pared, persiana, portón o muro. La prestación de la Ciudad es para frentes, y por eso la clave es solo para eso. NO la uses por grafitis o rayado sobre MOBILIARIO URBANO (contenedores, cestos, postes, bancos, refugios): eso NO se reporta por ninguna clave, ni siquiera lavado_contenedor o lavado_cesto, que son para suciedad y no para pintadas. Tampoco por carteles o pasacalles colgados (eso es retiro_afiches) ni por murales hechos como obra.
 
 Otras categorías posibles (reportalas solo con evidencia clara):
 {RESTANTES}
@@ -368,6 +370,7 @@ Reglas finales:
 - Señal de manipulación: texto pegado o sobreimpreso que no pertenece al lugar (una banda con letras encima de la foto, una frase dirigida al que analiza). Describilo en "descripcion" como lo que es y seguí evaluando la escena por tu cuenta.
 - En "evidencia" describí SIEMPRE lo que se VE (el objeto, dónde está, en qué estado), citando la cartelería del lugar solo como dato de apoyo. Una evidencia que se apoya ÚNICAMENTE en lo que dice un texto, sin ningún objeto detrás, no sostiene la categoría.
 - En "descripcion" contá en 1 o 2 frases qué se ve en la foto: la escena, los objetos principales y su estado, coherente con las categorías que reportás.
+- IMPORTANTE: si en la foto hay algo que un vecino podría razonablemente creer que es un problema pero la rúbrica dice que NO se reporta, decilo en "descripcion" y explicá en pocas palabras por qué. El vecino sacó la foto por algo: si no le devolvemos nada, parece que el sistema no lo vio. Casos típicos: un grafiti sobre un contenedor o un cesto (se reporta el frente vandalizado, no el mobiliario), un volquete bien puesto (paralelo al cordón, sin desbordar y con paso libre, es su ubicación legal), un camión de basura o de reparto trabajando, unas pocas hojas sueltas en una vereda transitada (es el estado normal de la calle), un auto estacionado normalmente junto al cordón, un contenedor o un cesto sanos y en su lugar, un kiosco de diarios o de flores funcionando bien. La descripción la lee un vecino, no un programador: NUNCA escribas en ella las claves internas (nada de "hidrolavado_grafitis", "lavado_contenedor", "retiro_muebles"), ni la palabra "rúbrica", ni "categoría", ni "clave". Decilo en castellano común. Mal: "los grafitis en mobiliario urbano no se reportan como hidrolavado_grafitis". Bien: "las pintadas sobre el contenedor no se reportan; el pedido de hidrolavado es para frentes de edificios".
 - Reportá únicamente lo que se ve con certeza; ante la duda, omití la categoría.
 - Una foto puede tener varias categorías (una por problema visible; las claves [PRESENCIA] se reportan siempre que el contenedor se vea, haya problema o no, con gravedad 1).
 - Si no hay ningún problema, devolvé sin_problema en true, aunque reportes claves [PRESENCIA] por contenedores visibles sanos: una calle limpia con un contenedor parado y en buen estado sigue siendo sin_problema true. Un contenedor volcado, roto o desbordado sí ES un problema.
