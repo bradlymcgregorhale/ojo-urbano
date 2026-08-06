@@ -579,7 +579,7 @@ def _servidor_que_gotea(parar, gotear_headers=False):
 
 
 _parar = _threading.Event()
-_puerto, _srv = _servidor_que_gotea(_parar)
+_puerto, _srv_gotea = _servidor_que_gotea(_parar)
 _url_real = V.OPENROUTER_URL
 V.OPENROUTER_URL = f"http://127.0.0.1:{_puerto}/v1/chat"
 V.DEADLINE, V.TIMEOUT = 3, 120
