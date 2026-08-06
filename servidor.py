@@ -380,7 +380,10 @@ def procesar(datos, contexto, verificar):
 
     # El veredicto primero; todo lo interno queda en "detalle".
     problemas = [c for c in categorias if c["key"] not in verificador.PRESENCIA]
-    elementos = [{"key": c["key"], "nombre": c["nombre"]}
+    # fuentes se guarda en el objeto interno para que _publica pueda filtrar
+    # lo solo-local; el serializador lo saca antes de publicar.
+    elementos = [{"key": c["key"], "nombre": c["nombre"],
+                  "fuentes": c.get("fuentes") or []}
                  for c in categorias if c["key"] in verificador.PRESENCIA]
 
     # Si la foto NO corresponde a lo que el vecino contó, no se puede reportar
@@ -458,7 +461,9 @@ def _terminos_prohibidos():
     partes = [re.escape(m) for m in modelos]
     # también el nombre pelado, sin el proveedor: "gpt-5-mini" a secas
     partes += [re.escape(m.split("/", 1)[1]) for m in modelos if "/" in m]
-    partes += [r"modelo[_ ]local", r"\bscore\b", r"probabilidad(?:es)?\s+local(?:es)?"]
+    partes += [r"modelo[_ ]local", r"\bscore\b", r"probabilidad(?:es)?\s+local(?:es)?",
+               r"clasificador\s+(?:local|propio|interno)", r"modelo\s+interno",
+               r"fuente\s+local", r"sistema\s+interno"]
     return re.compile("|".join(partes), re.IGNORECASE)
 
 
@@ -500,6 +505,22 @@ def _publica(r):
 
     for campo in ("problemas", "posibles", "descartados_por_foto"):
         pub[campo] = [_entrada(c) for c in (r.get(campo) or []) if _visible(c)]
+
+    # elementos_detectados y en_duda también pueden nacer solo del modelo
+    # local (modo sin verificación; árbitro caído): mismo filtro. en_duda es
+    # una lista de claves peladas, así que las fuentes se buscan en el objeto
+    # interno; una clave que no se puede rastrear no se publica.
+    pub["elementos_detectados"] = [
+        {"key": c.get("key"), "nombre": c.get("nombre")}
+        for c in (r.get("elementos_detectados") or []) if _visible(c)]
+    _fuentes_de = {p.get("key"): p.get("fuentes") or []
+                   for p in (r.get("posibles") or []) + (r.get("problemas") or [])}
+    pub["en_duda"] = [k for k in (r.get("en_duda") or [])
+                      if set(_fuentes_de.get(k, [])) - {"modelo_local"}]
+
+    # La descripción consolidada la redacta un LLM: mismo backstop que los
+    # motivos para que no cuente el mecanismo interno.
+    pub["descripcion"] = _sanear_motivo(pub.get("descripcion"))
 
     # Las invariantes del contrato valen sobre lo PUBLICADO: si el filtro
     # sacó el único problema (modo sin verificación), hay_problema es false.
@@ -938,7 +959,8 @@ function seleccionar(f){
 }
 $('#copyjson').onclick=()=>{navigator.clipboard.writeText($('#json').textContent).then(()=>{
   $('#copyjson').textContent='Copiado ✓';setTimeout(()=>$('#copyjson').textContent='Copiar JSON',1500);});};
-const chip=(c,extra)=>`<div class="cat${extra?' ctx':''}"><b>${c.nombre}</b>${c.gravedad?`<span title="${(c.fuentes||[]).join(', ')}">${c.gravedad}/5 · ${GRAV[c.gravedad]||''} · ${(c.fuentes||[]).length} fuente${(c.fuentes||[]).length!==1?'s':''}</span>`:''}</div>`;
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const chip=(c,extra)=>`<div class="cat${extra?' ctx':''}"><b>${esc(c.nombre)}</b>${c.gravedad?`<span>${c.gravedad}/5 · ${GRAV[c.gravedad]||''}${typeof c.fuentes==='number'?` · ${c.fuentes} fuente${c.fuentes!==1?'s':''}`:''}</span>`:''}</div>`;
 let ctrl=null,cronoIv=null,ultimoArchivo=null;
 $('#reenviar').onclick=()=>{if(ultimoArchivo)enviar(ultimoArchivo);};
 function enviar(f){
@@ -988,24 +1010,24 @@ function enviar(f){
      if(d.descripcion){$('#desc').textContent=d.descripcion;$('#descwrap').style.display='block';}
      const cc=d.categorias_contexto||[];
      const RESPALDO={compatible:'la foto es compatible con el reclamo',neutral:'no visible en la foto',contradice:'la foto lo contradice'};
-     if(cc.length){$('#ctxcats').innerHTML=cc.map(c=>`<div class="cat ctx"><b>${c.nombre}</b><span>${RESPALDO[c.respaldo_visual]||'según el contexto'}</span></div>`).join('');$('#ctxwrap').style.display='block';}
+     if(cc.length){$('#ctxcats').innerHTML=cc.map(c=>`<div class="cat ctx"><b>${esc(c.nombre)}</b><span>${RESPALDO[c.respaldo_visual]||'según el contexto'}</span></div>`).join('');$('#ctxwrap').style.display='block';}
      const pres=d.elementos_detectados||[];
-     if(pres.length){$('#prescats').innerHTML=pres.map(c=>`<div class="cat"><b>${c.nombre}</b></div>`).join('');$('#preswrap').style.display='block';}
+     if(pres.length){$('#prescats').innerHTML=pres.map(c=>`<div class="cat"><b>${esc(c.nombre)}</b></div>`).join('');$('#preswrap').style.display='block';}
      if(d.en_duda.length){$('#dudas').textContent='Reportadas por una sola fuente y sin decisión del árbitro: '
        +d.en_duda.map(k=>k.replace(/_/g,' ')).join(', ')+'. No se incluyen entre las confirmadas.';
        $('#dudawrap').style.display='block';}
      const pos=d.posibles||[];
-     if(pos.length){$('#poscats').innerHTML=pos.map(p=>`<div class="voto"><b>${(p.nombre||p.key||p.codigo||'').toString().replace(/_/g,' ')}</b>${
+     if(pos.length){$('#poscats').innerHTML=pos.map(p=>`<div class="voto"><b>${esc((p.nombre||p.key||p.codigo||'').toString().replace(/_/g,' '))}</b>${
        p.origen==='contexto_vecinal'?' · sugerida por tu texto':''}${
-       p.motivo?`<span> — ${p.motivo}</span>`:''}</div>`).join('');
+       p.motivo?`<span> — ${esc(p.motivo)}</span>`:''}</div>`).join('');
        $('#poswrap').style.display='block';}
      $('#estado').textContent=d.verificacion_activa
        ?'Verificación cruzada completada en '+Math.round((Date.now()-t0)/1000)+' s.'
        :'Sin verificación cruzada ('+(d.verificacion_motivo||'desactivada')+'): no hay resultado confiable, solo un acuse de recibo.';
      if(d.verificacion_activa){$('#votos').innerHTML=(d.modelos||[]).map(x=>x.ok
-       ?`<div class="voto"><b>${x.modelo}</b>: ${x.categorias.length?x.categorias.map(c=>c.key.replace(/_/g,' ')).join(', '):'sin hallazgos'}${
-         x.descripcion?`<span> — ${x.descripcion}</span>`:''}</div>`
-       :`<div class="voto"><b>${x.modelo}</b>: no respondió</div>`).join('');}
+       ?`<div class="voto"><b>${esc(x.modelo)}</b>: ${x.categorias.length?esc(x.categorias.map(c=>c.key.replace(/_/g,' ')).join(', ')):'sin hallazgos'}${
+         x.descripcion?`<span> — ${esc(x.descripcion)}</span>`:''}</div>`
+       :`<div class="voto"><b>${esc(x.modelo)}</b>: no respondió</div>`).join('');}
      const jtxt=JSON.stringify(d,null,2);
      $('#json').textContent=jtxt;
      $('#jsonsize').textContent='· '+(new Blob([jtxt]).size/1024).toFixed(1)+' KB';

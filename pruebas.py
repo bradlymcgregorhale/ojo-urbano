@@ -684,9 +684,14 @@ _interno = {
         {"key": "obstruccion", "nombre": "O", "gravedad": 2,
          "fuentes": ["vlm/dos"], "origen": "foto",
          "arbitro": "rechazar", "motivo": "Ninguna descripción menciona un objeto fijo."}],
-    "elementos_detectados": [], "en_duda": [],
+    "elementos_detectados": [
+        {"key": "contenedor_secos", "nombre": "CS", "fuentes": ["modelo_local"]},
+        {"key": "contenedor_humedos_lateral", "nombre": "CH",
+         "fuentes": ["modelo_local", "vlm/uno"]}],
+    "en_duda": ["situacion_calle", "reparacion_cesto"],
     "detalle": {"modelo_local": {"predichas": []},
                 "verificacion": {"activa": True, "verificadores": []}}}
+_interno["descripcion"] = "Solo el clasificador local detectó algo acá."
 _pub = servidor._publica(_interno)
 check("un problema sostenido solo por el modelo local no se publica",
       [p["key"] for p in _pub["problemas"]] == ["recoleccion"],
@@ -701,6 +706,14 @@ check("un motivo que nombra un modelo se reemplaza entero",
       _pub["posibles"][0]["motivo"])
 check("  y un motivo limpio queda como estaba",
       _pub["posibles"][1]["motivo"] == "Ninguna descripción menciona un objeto fijo.")
+check("un elemento detectado solo por el modelo local no se publica",
+      [e["key"] for e in _pub["elementos_detectados"]] == ["contenedor_humedos_lateral"]
+      and all("fuentes" not in e for e in _pub["elementos_detectados"]),
+      str(_pub["elementos_detectados"]))
+check("en_duda filtra lo solo-local y lo irrastreable",
+      _pub["en_duda"] == ["reparacion_cesto"], str(_pub["en_duda"]))
+check("la descripción también pasa por el saneador (variante 'clasificador local')",
+      _pub["descripcion"] == servidor._MOTIVO_GENERICO, _pub["descripcion"])
 _solo_local = dict(_interno, problemas=[_interno["problemas"][1]],
                    categorias_contexto=[])
 check("sin fuentes publicables: hay_problema y hay_reclamo son false",
