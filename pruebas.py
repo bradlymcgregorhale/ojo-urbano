@@ -518,8 +518,20 @@ check("el árbitro ve las fuentes reales de cada disputa",
       or '"reparacion_contenedor": ["vlm/uno", "vlm/dos"]' in texto_arb,
       texto_arb[texto_arb.find("disputa"):][:110])
 check("ya no se le dice que hubo UNA sola fuente", "UNA sola fuente" not in texto_arb)
-check("y puede confirmar la categoría",
-      "reparacion_contenedor" in {c["key"] for c in r["confirmadas"]})
+# Por default el árbitro YA NO promueve lo de una sola fuente: sale como
+# POSIBLE. Afirmar algo que vio un solo modelo era peor que no afirmarlo.
+check("por default NO confirma lo de una sola fuente",
+      "reparacion_contenedor" not in {c["key"] for c in r["confirmadas"]})
+check("  pero lo devuelve como posible, no lo pierde",
+      "reparacion_contenedor" in {c["key"] for c in r["posibles"]},
+      str([c["key"] for c in r["posibles"]]))
+check("  con quién lo vio y qué dijo el árbitro",
+      all("fuentes" in c and "arbitro" in c for c in r["posibles"]))
+V.ARBITRO_CONFIRMA = True
+r2 = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("con ARBITRO_CONFIRMA=1 vuelve a promover",
+      "reparacion_contenedor" in {c["key"] for c in r2["confirmadas"]})
+V.ARBITRO_CONFIRMA = False
 V._llamar = lambda modelo, mensajes, **k: (capturado.update(m=mensajes), RESP)[1]
 V.ARBITRO = ""
 

@@ -314,6 +314,7 @@ def procesar(datos, contexto, verificar):
         descripcion = veri["descripcion"]
         # None = no se pudo juzgar (sin contexto, o los modelos no coincidieron)
         foto_valida = veri.get("foto_valida")
+        posibles = veri.get("posibles") or []
     else:
         if sin_cuota:
             motivo = MOTIVO_CUOTA
@@ -327,6 +328,7 @@ def procesar(datos, contexto, verificar):
                        "fuentes": ["modelo_local"]}
                       for p in local["predichas"] if p["key"] != "sin_problema"]
         en_duda, ctx_cats, descripcion, foto_valida = [], [], None, None
+        posibles = []
 
     # El veredicto primero; todo lo interno queda en "detalle".
     problemas = [c for c in categorias if c["key"] not in verificador.PRESENCIA]
@@ -337,14 +339,40 @@ def procesar(datos, contexto, verificar):
     # lo que se vea en ella: sería abrir un reclamo por algo que el vecino no
     # pidió, mirando una foto que ya dijimos que no sirve. Los hallazgos no se
     # tiran (quedan en descartados, con el motivo), pero no son el veredicto.
+    # POSIBLES: todo lo que PODRÍA ser un reporte pero no está confirmado. Se
+    # devuelve siempre, incluso cuando no hay nada definitivo: es justamente
+    # ahí donde le sirve a quien consume la API, para repreguntarle al vecino
+    # en vez de recibir una respuesta vacía. Cada uno dice de dónde salió.
+    for p in posibles:
+        p.setdefault("origen", "foto")
+    vistos_pos = {p["key"] for p in posibles}
+    # lo que el contexto sugiere y la foto no confirmó también es un posible
+    for c in ctx_cats:
+        if c.get("key") and c["key"] not in vistos_pos:
+            vistos_pos.add(c["key"])
+            posibles.append({
+                "key": c["key"], "nombre": c["nombre"],
+                "gravedad": None, "fuentes": ["contexto_vecinal"],
+                "origen": "contexto_vecinal",
+                "respaldo_visual": c.get("respaldo_visual"),
+            })
+
     descartados = []
-    if foto_valida is False and problemas:
-        descartados = [dict(c, motivo_descarte="la foto no corresponde a lo que "
-                                               "el vecino reportó") for c in problemas]
-        problemas = []
-        # Y que detalle.verificacion no siga diciendo "confirmadas" de algo que
-        # arriba ya no se reporta: dos campos contradiciéndose sobre qué está
-        # confirmado es peor que no tener el detalle.
+    if foto_valida is False:
+        # La foto no muestra lo que el vecino reclamó: lo que vieron los
+        # modelos es OTRA cosa, no lo que él vino a reportar. Se guarda pero
+        # no se reporta, y el reclamo se arma con lo que dijo el vecino.
+        if problemas:
+            descartados = [dict(c, motivo_descarte="la foto no corresponde a lo "
+                                "que el vecino reportó") for c in problemas]
+            # No se reportan, pero siguen siendo cosas que podrían ser un
+            # reporte: van a posibles marcadas con su origen, para que se
+            # entienda que salieron de una foto que no venía al caso.
+            for c in descartados:
+                if c["key"] not in vistos_pos:
+                    vistos_pos.add(c["key"])
+                    posibles.append(dict(c, origen="foto_no_relacionada"))
+        problemas = list(veri.get("por_contexto") or [])
         if isinstance(veri, dict) and veri.get("confirmadas"):
             veri = dict(veri, confirmadas=[c for c in veri["confirmadas"]
                                            if c["key"] in verificador.PRESENCIA],
@@ -363,6 +391,9 @@ def procesar(datos, contexto, verificar):
         "categorias_contexto": ctx_cats,
         "foto_valida": foto_valida,
         "descartados_por_foto": descartados,
+        # Lo que vio UNA sola fuente. No es un problema confirmado: se ofrece
+        # para que el consumidor repregunte, no para reportarlo como un hecho.
+        "posibles": posibles,
         "elementos_detectados": elementos,
         "en_duda": en_duda,
         "detalle": {"modelo_local": local, "verificacion": veri},
