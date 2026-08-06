@@ -385,7 +385,7 @@ Categorías y criterios (usá SOLO estas claves):
 - contenedor_humedos_lateral [PRESENCIA]: se ve un contenedor de húmedos con POSTES o montantes metálicos VERTICALES en los costados (el brazo del camión los toma para izarlo). Suele ser negro o gris oscuro, cuerpo plástico grande redondeado.
 - contenedor_humedos_bilateral [PRESENCIA]: se ve un contenedor de húmedos SIN postes metálicos: cuerpo RECTANGULAR de paredes laterales PLANAS y techo abovedado, gris (claro o dos tonos). El discriminador NO es el color sino los POSTES: si el contenedor NO tiene postes verticales metálicos en los costados es BILATERAL, aunque el gris se vea oscuro o sucio; si los tiene es LATERAL. Reportá solo UNO de los dos tipos de húmedos.
 - reparacion_contenedor: un contenedor con DAÑO ESTRUCTURAL visible (tapa desprendida, pedal roto, cuerpo agrietado, perforado, derretido o quemado), esté parado o volcado. Es daño en la pieza, no suciedad ni pintura: un contenedor con grafitis, pegatinas o rayado pero entero NO va acá ni en ninguna otra clave. Un contenedor VOLCADO pero sin daños visibles tampoco: es reposicion_contenedor. Un contenedor parado y en buen estado NO.
-- reposicion_contenedor: un contenedor CAÍDO o VOLCADO (acostado, dado vuelta, corrido al medio de la calle) SIN daños visibles: solo hay que volver a pararlo o ubicarlo. Si además está roto, quemado o vandalizado es reparacion_contenedor, no esto.
+- reposicion_contenedor: un contenedor CAÍDO o VOLCADO (acostado, dado vuelta, corrido al medio de la calle) SIN daños visibles: solo hay que volver a pararlo o ubicarlo. Si además tiene daño estructural (roto, agrietado, quemado, tapa o pedal desprendido) es reparacion_contenedor, no esto. Los grafitis o pegatinas NO cuentan como daño.
 - lavado_contenedor: un contenedor en su lugar pero visiblemente MUY sucio por fuera: chorreaduras, mugre incrustada, suciedad notoria que pide lavado. NO por grafitis, calcomanías ni desgaste normal del color.
 - vehiculo_mal_estacionado: un vehículo estacionado o detenido donde está PROHIBIDO: sobre una ciclovía/bicisenda (carril demarcado, típicamente entre franjas amarillas), sobre la vereda o senda peatonal, bloqueando una rampa de accesibilidad o una esquina/ochava, o junto a cartelería de "No estacionar". Señal fuerte: las ruedas pisan la demarcación de la ciclovía o el vehículo está arriba de la vereda. Cuenta aunque el vehículo esté operando (un camión de reparto detenido sobre la ciclovía SÍ es infracción); un vehículo estacionado normal junto al cordón NO. Si el vehículo se ve abandonado (muy deteriorado, sucio, ruedas desinfladas) es vehiculo_abandonado.
 - columna_poste_cable: una columna, un poste o cables de servicios AÚN INSTALADOS y con problemas: cables colgando, sueltos o cortados a baja altura; poste o columna inclinado, roto o deteriorado. Un poste o caño SUELTO tirado en el piso como descarte es retiro_muebles, NO esto.
@@ -433,6 +433,19 @@ Respondé SOLO con JSON válido, sin texto adicional ni markdown:
 {"categorias": [{"key": "...", "gravedad": 1-5, "evidencia": "qué se ve, máx 10 palabras"}], "sin_problema": true|false, "descripcion": "1-2 frases sobre qué se ve en la foto"}"""
 
 
+def _si_o_no(v):
+    """True/False solo si el modelo se pronunció de forma reconocible."""
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        t = v.strip().lower()
+        if t in ("true", "si", "sí", "yes", "1"):
+            return True
+        if t in ("false", "no", "0"):
+            return False
+    return None
+
+
 def _verificar_uno(modelo, data_url, categorias, contexto=""):
     try:
         contenido = _llamar(modelo, [
@@ -475,10 +488,11 @@ def _verificar_uno(modelo, data_url, categorias, contexto=""):
             if isinstance(k, str) and k in categorias and k != "sin_problema" \
                     and k not in [c.get("key") for c in ctx_cats]:
                 ctx_cats.append({"key": k, "respaldo": respaldo})
-        corresponde = veredicto.get("foto_corresponde")
+        # bool() a secas invertiría el juicio: un modelo que devuelve la
+        # cadena "false" en vez del literal JSON daría True. Cualquier cosa
+        # que no sea un sí o un no reconocible se trata como "no se pronunció".
         return {"modelo": modelo, "ok": True, "categorias": vistas,
-                "foto_corresponde": (None if corresponde is None
-                                     else bool(corresponde)),
+                "foto_corresponde": _si_o_no(veredicto.get("foto_corresponde")),
                 "sin_problema": bool(veredicto.get("sin_problema")),
                 "descripcion": _texto_limpio(veredicto.get("descripcion"), DESC_MAX),
                 "categorias_contexto": ctx_cats}
@@ -781,8 +795,10 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     img: PIL.Image ya abierta.
     categorias: dict de categorias.json.
     prediccion_local: dict con "predichas" y "probabilidades" (del modelo local).
-    contexto: texto opcional de quien reportó ("contexto vecinal"); se pasa a
-    los verificadores y al árbitro como pista, nunca como evidencia.
+    contexto: texto opcional de quien reportó ("contexto vecinal"). Se pasa a
+    los verificadores y al árbitro para interpretar la foto, y además viaja por
+    su propio canal: lo que el vecino describe vuelve en "por_contexto" y puede
+    sostener el reclamo solo cuando la foto no corresponde (foto_valida False).
     """
     data_url = _imagen_data_url(img)
     with concurrent.futures.ThreadPoolExecutor(len(VERIFICADORES)) as pool:

@@ -562,19 +562,23 @@ print("[foto_valida] respuesta REAL de servidor.procesar")
 # La versión anterior de estas pruebas reimplementaba la lógica en un helper y
 # probaba esa copia: no tocaba servidor.procesar, así que no habría detectado
 # el bug original. Ahora se llama a la función real con los modelos mockeados.
-_ver_real = V._verificar_uno
-_llamar_real = V._llamar
-_disp_real = V.disponible
+# Se guarda TODO lo que este bloque toca y se restaura en un finally: fijar
+# valores conocidos alcanza para que estas pruebas pasen, pero no evita
+# contaminar las que siguen si algo revienta en el medio.
+_previo = {n: getattr(V, n) for n in (
+    "_verificar_uno", "_llamar", "disponible", "VERIFICADORES", "ARBITRO",
+    "CONSENSO_VLM_SOLO", "ARBITRO_CONFIRMA")}
 # la suite corre sin clave a propósito; para ejercitar el camino con
 # verificación hay que decirle que está disponible, con los modelos mockeados
 V.disponible = lambda: True
 
-def _mock(cats_foto, ctx_cats, corresponde):
+def _mock(cats_foto, ctx_cats, corresponde, por_modelo=None):
+    """por_modelo: dict modelo -> foto_corresponde, para simular desacuerdo."""
     def _f(m, du, c, contexto=""):
         return {"modelo": m, "ok": True,
                 "categorias": [{"key": k, "gravedad": 3, "evidencia": "x"}
                                for k in cats_foto],
-                "foto_corresponde": corresponde,
+                "foto_corresponde": (por_modelo or {}).get(m, corresponde),
                 "sin_problema": not cats_foto, "descripcion": "una escena",
                 "categorias_contexto": [{"key": k, "respaldo": "neutral"}
                                         for k in ctx_cats]}
@@ -585,7 +589,17 @@ if _foto is None:
     check("hay fotos en eval/fotos_cache para la prueba real", False,
           "falta el cache; se saltean las pruebas de punta a punta")
 else:
+  try:
     _bytes = _foto.read_bytes()
+    _pares_vistos = []
+
+    def _pedir(*a, **k):
+        """servidor.procesar, guardando el par (foto_valida, estado) de cada
+        respuesta real para verificar después que nunca se contradicen."""
+        r = servidor.procesar(*a, **k)
+        _pares_vistos.append((r["foto_valida"], r.get("foto_valida_estado")))
+        return r
+
     # se fija la config acá: pruebas anteriores dejan globals cambiados
     V.VERIFICADORES = ["m1", "m2"]
     V.ARBITRO = ""
@@ -594,7 +608,7 @@ else:
 
     # foto que NO corresponde al reclamo: no se reporta lo visual
     V._verificar_uno = _mock(["vehiculo_mal_estacionado"], ["recoleccion"], False)
-    _r = servidor.procesar(_bytes, "mi cuadra esta llena de basura", "1")
+    _r = _pedir(_bytes, "mi cuadra esta llena de basura", "1")
     check("foto que no corresponde: no reporta lo de la foto",
           "vehiculo_mal_estacionado" not in {p["key"] for p in _r["problemas"]},
           str([p["key"] for p in _r["problemas"]]))
@@ -609,7 +623,7 @@ else:
 
     # foto que no corresponde y el texto no pide nada del catálogo
     V._verificar_uno = _mock(["vehiculo_mal_estacionado"], [], False)
-    _r = servidor.procesar(_bytes, "esto es un disparate, son todos unos payasos", "1")
+    _r = _pedir(_bytes, "esto es un disparate, son todos unos payasos", "1")
     check("nada mapea: hay_problema False", _r["hay_problema"] is False, str(_r["hay_problema"]))
     check("  y problemas vacío", _r["problemas"] == [])
     check("  pero el hallazgo sigue ofrecido en posibles",
@@ -617,14 +631,14 @@ else:
 
     # foto que SÍ corresponde
     V._verificar_uno = _mock(["recoleccion"], [], True)
-    _r = servidor.procesar(_bytes, "hay basura tirada en la vereda", "1")
+    _r = _pedir(_bytes, "hay basura tirada en la vereda", "1")
     check("foto que corresponde: se reporta normal",
           "recoleccion" in {p["key"] for p in _r["problemas"]})
     check("  foto_valida es True", _r["foto_valida"] is True)
 
     # sin contexto: no se juzga la foto
     V._verificar_uno = _mock(["recoleccion"], [], None)
-    _r = servidor.procesar(_bytes, "", "1")
+    _r = _pedir(_bytes, "", "1")
     check("sin contexto: foto_valida None y no se descarta nada",
           _r["foto_valida"] is None and _r["descartados_por_foto"] == [])
     check("  y foto_valida_estado lo explica",
@@ -632,14 +646,43 @@ else:
           str(_r.get("foto_valida_estado")))
 
     # verificación apagada: null NO debe leerse como "la foto está bien"
-    _r = servidor.procesar(_bytes, "hay basura", "0")
+    _r = _pedir(_bytes, "hay basura", "0")
     check("sin verificación: foto_valida_estado dice que no se evaluó",
           _r.get("foto_valida_estado") == "no_evaluado",
           str(_r.get("foto_valida_estado")))
 
-    V._verificar_uno = _ver_real
-    V._llamar = _llamar_real
-    V.disponible = _disp_real
+    # los verificadores se dividen: no hay veredicto sobre la foto
+    V._verificar_uno = _mock(["recoleccion"], [], None,
+                             {"m1": True, "m2": False})
+    _r = _pedir(_bytes, "hay basura", "1")
+    check("verificadores divididos: foto_valida None y estado 'empate'",
+          _r["foto_valida"] is None
+          and _r.get("foto_valida_estado") == "empate",
+          str(_r.get("foto_valida_estado")))
+
+    # contestan pero ninguno se pronuncia sobre si la foto corresponde
+    V._verificar_uno = _mock(["recoleccion"], [], None)
+    _r = _pedir(_bytes, "hay basura", "1")
+    check("nadie se pronuncia: estado 'sin_opinion'",
+          _r.get("foto_valida_estado") == "sin_opinion",
+          str(_r.get("foto_valida_estado")))
+
+    # Invariante sobre las respuestas REALES de arriba: el booleano y el
+    # estado nunca pueden contradecirse. Un true con estado "sin_contexto"
+    # (o un null con estado "corresponde") sería un contrato roto.
+    _validos = {True: ("corresponde",), False: ("no_corresponde",),
+                None: ("sin_contexto", "empate", "sin_opinion", "no_evaluado")}
+    _malos = [(fv, fe) for fv, fe in _pares_vistos
+              if fe not in _validos.get(fv, ())]
+    check("foto_valida y foto_valida_estado nunca se contradicen",
+          not _malos, f"{len(_pares_vistos)} respuestas; malos: {_malos}")
+    check("  y se cubrieron los dos valores y varios null",
+          {fv for fv, _ in _pares_vistos} == {True, False, None}
+          and len({fe for fv, fe in _pares_vistos if fv is None}) >= 3,
+          str(sorted({str(x) for x in _pares_vistos})))
+  finally:
+    for _n, _v in _previo.items():
+        setattr(V, _n, _v)
 
 print("[config] cantidad de verificadores elegible por el operador")
 # El que despliega elige CUÁNTOS modelos de visión y CUÁL árbitro. La regla de

@@ -323,7 +323,12 @@ def procesar(datos, contexto, verificar):
         # None = no se pudo juzgar (sin contexto, o los modelos no coincidieron)
         foto_valida = veri.get("foto_valida")
         posibles = veri.get("posibles") or []
-        foto_estado = veri.get("foto_valida_estado") or "sin_contexto"
+        # Si el estado no vino (respuesta vieja o incompleta), se deduce del
+        # booleano en vez de asumir "sin_contexto": eso daría un par imposible
+        # como foto_valida=True con estado "sin_contexto".
+        foto_estado = veri.get("foto_valida_estado") or (
+            "corresponde" if foto_valida is True else
+            "no_corresponde" if foto_valida is False else "sin_contexto")
     else:
         if sin_cuota:
             motivo = MOTIVO_CUOTA
@@ -717,7 +722,7 @@ PAGINA = """<!DOCTYPE html>
       <div class="endpoint"><b>POST</b> <span id="ep"></span> · multipart/form-data, campo <b>file</b> · campo opcional <b>contexto</b></div>
       <div class="apinote">Parámetro opcional <b>?verificar=</b> <b>auto</b> (default: verifica si hay clave
         de OpenRouter) · <b>1</b> (forzar verificación) · <b>0</b> (solo modelo local). Las categorías que el
-        contexto describe pero la foto no confirma vuelven en <b>final.categorias_contexto</b>.</div>
+        contexto describe pero la foto no confirma vuelven en <b>categorias_contexto</b>.</div>
       <div class="tabs" id="tabs">
         <button class="tab active" data-l="curl">curl</button>
         <button class="tab" data-l="python">Python</button>
@@ -806,7 +811,8 @@ function enviar(f){
      const probs=d.problemas;
      $('#concl').textContent=!d.hay_problema
        ?'No se identificaron problemas en la foto.'
-       :(probs.length===1?'Se identificó 1 incidencia':'Se identificaron '+probs.length+' incidencias')
+       :(probs.length===0?'La foto no muestra el problema, pero lo que contaste sí corresponde a un reclamo'
+         :probs.length===1?'Se identificó 1 incidencia':'Se identificaron '+probs.length+' incidencias')
          +(d.gravedad_maxima?` · gravedad máxima ${d.gravedad_maxima}/5 (${GRAV[d.gravedad_maxima]})`:'')+'.';
      $('#cats').innerHTML=probs.map(c=>chip(c)).join('');
      if(d.descripcion){$('#desc').textContent=d.descripcion;$('#descwrap').style.display='block';}
