@@ -65,7 +65,8 @@ VERSION_API = "2"
 
 # Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y varias
 # llamadas pagas a OpenRouter (una por verificador, tres por defecto, más el
-# árbitro cuando hay disputa y el encaminamiento por texto cuando hace falta), así que el endpoint no puede quedar abierto sin techo.
+# árbitro y el encaminamiento por texto cuando hacen falta), así que el
+# endpoint no puede quedar abierto sin techo.
 MAX_BYTES = int(os.environ.get("MAX_BYTES", str(10 * 1024 * 1024)))
 MARGEN_MULTIPART = 64 * 1024  # boundaries, headers y contexto encima de la foto
 MAX_PIXELES = int(os.environ.get("MAX_PIXELES", str(25_000_000)))

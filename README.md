@@ -120,7 +120,7 @@ Nota: los modelos de DeepSeek en OpenRouter no aceptan imágenes, por eso partic
 
 ### Límites de abuso
 
-Clasificar una foto cuesta 25-60 s de CPU y una llamada paga a OpenRouter por verificador (tres por defecto), más el árbitro cuando hay una disputa y el encaminamiento por texto cuando la foto no corresponde al reclamo. Por eso `/clasificar` viene con techos puestos de fábrica:
+Clasificar una foto cuesta 25-60 s de CPU y una llamada paga a OpenRouter por verificador (tres por defecto), más las llamadas extra listadas arriba (árbitro por disputa, encaminamiento por texto, corrección de descripción). Por eso `/clasificar` viene con techos puestos de fábrica:
 
 | Variable | Default | Qué hace |
 |---|---|---|
