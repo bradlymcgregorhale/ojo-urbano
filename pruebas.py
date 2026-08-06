@@ -267,10 +267,15 @@ S._cupos.release()
 # Cancelar el await mientras el trabajo sigue ENCOLADO no debe perder el cupo:
 # trabajo() nunca arranca, así que su finally nunca corre.
 async def _cancelar_encolado():
-    ocupa = threading.Event()
     libera = threading.Event()
-    S._pool.submit(lambda: (ocupa.set(), libera.wait(10)))
-    ocupa.wait(5)  # el único worker queda tomado: lo que sigue va a la cola
+    # Hay que tapar TODOS los workers, no uno: el pool tiene lugar de sobra
+    # para los trabajos abandonados por el techo, así que con un solo worker
+    # ocupado el siguiente arrancaría en vez de encolarse.
+    ocupados = [threading.Event() for _ in range(S._pool._max_workers)]
+    for ev in ocupados:
+        S._pool.submit(lambda e=ev: (e.set(), libera.wait(10)))
+    for ev in ocupados:
+        ev.wait(5)  # recién ahora lo que sigue va a la cola
     arrancó = {"si": False}
 
     def trabajo():
@@ -301,6 +306,38 @@ check("cancelar un trabajo encolado no filtra el cupo",
 S._cupos.release()
 check("y el endpoint sigue atendiendo después de la cancelación",
       pedir("/clasificar", *_multipart("f.jpg", foto(808, 608))[::1])[0] == 200)
+
+# EL INCIDENTE: un hilo trabado se quedó con el cupo y, con CONCURRENCIA=1,
+# todo /clasificar devolvió 503 para siempre mientras /salud seguía en 200.
+# El deadline de verificador acota las lecturas HTTP, pero no todo se puede
+# interrumpir (el DNS pasa adentro de la conexión). El techo es la red de
+# seguridad: da el trabajo por perdido y devuelve el cupo.
+_techo_real, S.TECHO_TRABAJO = S.TECHO_TRABAJO, 1
+_trabado = threading.Event()
+_procesar_real2 = S.procesar
+
+
+def _procesar_trabado(*a, **k):
+    _trabado.wait(30)          # simula el hilo colgado en el proveedor
+    return _procesar_real2(*a, **k)
+
+
+S.procesar = _procesar_trabado
+_hilo = threading.Thread(
+    target=lambda: pedir("/clasificar", *_multipart("f.jpg", foto(810, 610))[::1]),
+    daemon=True)
+_hilo.start()
+time.sleep(0.6)
+_ocupado, _ = pedir("/clasificar", *_multipart("f.jpg", foto(811, 611))[::1])
+check("mientras un trabajo corre, el siguiente recibe 503", _ocupado == 503,
+      f"HTTP {_ocupado}")
+time.sleep(1.6)                # pasa el techo: el cupo tiene que volver
+S.procesar = _procesar_real2
+_despues, _ = pedir("/clasificar", *_multipart("f.jpg", foto(812, 612))[::1])
+check("pasado el techo, el cupo vuelve y el servicio se recupera",
+      _despues == 200, f"HTTP {_despues} (con el hilo viejo todavía trabado)")
+_trabado.set()
+S.TECHO_TRABAJO = _techo_real
 
 print("[#1] caché por foto")
 # No se mide por tiempo (el encoder stub es instantáneo): se cuenta cuántas
@@ -445,8 +482,13 @@ import socket as _socket
 import threading as _threading
 
 
-def _servidor_que_gotea(parar):
-    """Manda headers y después un byte cada tanto, para siempre."""
+def _servidor_que_gotea(parar, gotear_headers=False):
+    """Gotea el cuerpo o, si se pide, ya la línea de estado.
+
+    El caso de los headers importa aparte: ahí urlopen() todavía no volvió,
+    así que el guardia no tiene una respuesta que cerrar y depende de haber
+    capturado el socket al conectar.
+    """
     srv = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
     srv.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
     srv.bind(("127.0.0.1", 0))
@@ -459,6 +501,15 @@ def _servidor_que_gotea(parar):
         except OSError:
             return
         try:
+            if gotear_headers:
+                cli.sendall(b"HTTP/1.1 200 OK\r\n")
+                while not parar.is_set():   # nunca termina de mandar headers
+                    try:
+                        cli.sendall(b"X-Relleno: a\r\n")
+                    except OSError:
+                        return
+                    time.sleep(0.05)
+                return
             cli.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
                         b"Content-Length: 100000\r\n\r\n")
             cli.sendall(b'{"choices":')
@@ -499,6 +550,25 @@ check("un proveedor real que gotea no cuelga el hilo para siempre",
       _tardo < 10, f"tardó {_tardo:.1f}s con deadline 3s")
 check("  y corta con un error, no con un JSON a medias", _exc is not None,
       type(_exc).__name__)
+
+# Mismo tope, pero goteando los HEADERS: acá urlopen todavía no volvió, así
+# que el guardia solo puede cortar si capturó el socket al conectarse.
+_parar_h = _threading.Event()
+_puerto_h, _srv_h = _servidor_que_gotea(_parar_h, gotear_headers=True)
+V.OPENROUTER_URL = f"http://127.0.0.1:{_puerto_h}/v1/chat"
+V.DEADLINE, V.TIMEOUT = 3, 120
+_t0 = time.monotonic()
+try:
+    V._llamar("modelo/x", [{"role": "user", "content": "hola"}], intentos=1)
+    _exc_h = None
+except Exception as e:                # noqa: BLE001
+    _exc_h = e
+_tardo_h = time.monotonic() - _t0
+_parar_h.set()
+V.OPENROUTER_URL = _url_real
+V.DEADLINE, V.TIMEOUT = 180, 120
+check("headers que gotean tampoco cuelgan el hilo",
+      _tardo_h < 10, f"tardó {_tardo_h:.1f}s con deadline 3s")
 
 print("[v3] la respuesta viene resumida, y ?detalle=1 trae todo")
 # El contrato v3 saca el ranking de 29 categorías del modelo local y los

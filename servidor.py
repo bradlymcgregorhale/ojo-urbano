@@ -189,10 +189,22 @@ _cache = collections.OrderedDict()                    # huella -> respuesta
 # espera: cancelar un await NO corta el thread, así que soltarlo ahí dejaría
 # entrar pedidos nuevos mientras el pipeline anterior sigue quemando CPU.
 _cupos = threading.BoundedSemaphore(CONCURRENCIA)
+# Techo de última instancia. El deadline de verificador.py acota las lecturas
+# HTTP, pero no TODO se puede interrumpir desde afuera: la resolución DNS, por
+# ejemplo, pasa adentro de la conexión y no hay forma de cortarla. Si alguna
+# vez un hilo queda trabado igual, el cupo tomado dejaría el servicio en 503
+# permanente, que es exactamente el incidente que ya pasó una vez. Pasado este
+# techo el trabajo se da por PERDIDO y se devuelve su cupo: el hilo sigue vivo
+# (a un hilo de Python no se lo puede matar), pero el servicio se recupera.
+TECHO_TRABAJO = int(os.environ.get("TECHO_TRABAJO", "600"))
+# Los hilos perdidos no pueden quedarse con los workers, o el próximo pedido
+# esperaría por uno libre en vez de correr. Se deja lugar para unos cuantos.
+ABANDONO_MAX = max(1, int(os.environ.get("ABANDONO_MAX", "4")))
+_perdidos = {"n": 0}
 # Tantos hilos como cupos: con el semáforo de admisión, un trabajo aceptado
 # siempre encuentra un worker libre y no se queda encolado.
 _pool = concurrent.futures.ThreadPoolExecutor(
-    max_workers=CONCURRENCIA, thread_name_prefix="ojo")
+    max_workers=CONCURRENCIA + ABANDONO_MAX, thread_name_prefix="ojo")
 _cuota = {"dia": None, "usadas": 0}
 _cuota_lock = threading.Lock()
 
@@ -547,6 +559,27 @@ async def _clasificar_una(datos, contexto, verificar):
     if not _cupos.acquire(blocking=False):
         raise HTTPException(503, "el servidor está ocupado; reintentá en un momento")
 
+    # El cupo lo suelta EL PRIMERO que llegue: el hilo al terminar, o el techo
+    # si el trabajo se colgó. Nunca los dos (BoundedSemaphore explotaría).
+    soltado = threading.Lock()
+    estado_cupo = {"suelto": False}
+
+    def soltar_cupo(por_techo=False):
+        with soltado:
+            if estado_cupo["suelto"]:
+                return False
+            estado_cupo["suelto"] = True
+        if por_techo:
+            _perdidos["n"] += 1
+            print(f"[ojo] trabajo abandonado tras {TECHO_TRABAJO}s; "
+                  f"se devuelve el cupo (perdidos={_perdidos['n']})", flush=True)
+        _cupos.release()
+        return True
+
+    techo = threading.Timer(TECHO_TRABAJO, soltar_cupo, kwargs={"por_techo": True})
+    techo.daemon = True
+    techo.start()
+
     def trabajo():
         # El cupo se suelta acá, en el hilo, para que siga tomado si la
         # corrutina que espera se cancela (cliente que corta la conexión):
@@ -554,7 +587,8 @@ async def _clasificar_una(datos, contexto, verificar):
         try:
             return procesar(datos, contexto, verificar)
         finally:
-            _cupos.release()
+            techo.cancel()
+            soltar_cupo()
 
     # El pipeline es sincrónico y tarda 25-60 s: fuera del event loop, o
     # bloquea /salud, la portada y cualquier otro pedido mientras corre.
@@ -565,7 +599,8 @@ async def _clasificar_una(datos, contexto, verificar):
     try:
         tarea = _pool.submit(trabajo)
     except RuntimeError:
-        _cupos.release()
+        techo.cancel()
+        soltar_cupo()
         raise HTTPException(503, "el servidor se está apagando")
     try:
         return await asyncio.wrap_future(tarea)
@@ -574,7 +609,8 @@ async def _clasificar_una(datos, contexto, verificar):
         # soltar, porque trabajo() no va a correr nunca. Si devuelve False ya
         # arrancó y lo suelta su propio finally.
         if tarea.cancel():
-            _cupos.release()
+            techo.cancel()
+            soltar_cupo()
         raise
 
 

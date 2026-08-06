@@ -98,6 +98,14 @@ curl -s -F "file=@foto.jpg" "http://127.0.0.1:8080/clasificar?detalle=1"
 
 Estado del servicio: clases del modelo, si la verificación está activa y con qué modelos.
 
+## Si el proveedor se cuelga
+
+Las llamadas a OpenRouter tienen un tope de reloj **absoluto**, no por operación de socket. La diferencia importa: `urllib` reinicia su timeout con cada byte que llega, así que un proveedor que manda keepalives mientras el modelo genera puede tener un hilo esperando para siempre sin que salte ningún timeout. Cuando vence el tope se hace `shutdown()` del socket, que es lo único que desatasca una lectura bloqueada (`close()` desde otro hilo puede quedarse esperando el lock del buffer).
+
+Esto ya pasó en producción: un hilo quedó tomado sobre un socket abierto y, como el cupo de concurrencia lo suelta el hilo al terminar, con `CONCURRENCIA=1` todo `/clasificar` devolvió 503 hasta reiniciar, mientras `/salud` seguía contestando 200.
+
+Como red de seguridad hay además un `TECHO_TRABAJO` (default 600 s): pasado ese tiempo el trabajo se da por perdido y se devuelve su cupo. El hilo sigue vivo (a un hilo de Python no se lo puede matar) pero el servicio se recupera solo. Hace falta porque no todo se puede interrumpir desde afuera: la resolución DNS ocurre adentro de la conexión y no hay forma de cortarla.
+
 ## Cambios de contrato
 
 La respuesta trae `version`. Se sube cuando cambia el **significado** de un campo que ya existía, o cuando deja de venir por default.

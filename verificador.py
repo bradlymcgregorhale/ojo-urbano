@@ -38,6 +38,7 @@ import io
 import json
 import os
 import re
+import http.client
 import socket
 import threading
 import time
@@ -303,6 +304,47 @@ def _cortar_conexion(resp):
         pass
 
 
+class _HTTPEspiada(http.client.HTTPConnection):
+    """Deja ver el socket apenas se conecta, antes de mandar el pedido.
+
+    Sin esto, la referencia al socket recién existe cuando urlopen() ya
+    terminó de leer los headers: un proveedor que gotee la línea de estado
+    dejaría el hilo colgado sin que el guardia tenga nada que cortar.
+    """
+
+    caja = None
+
+    def connect(self):
+        super().connect()
+        if self.caja is not None:
+            self.caja["sock"] = self.sock
+
+
+class _HTTPSEspiada(http.client.HTTPSConnection):
+    caja = None
+
+    def connect(self):
+        super().connect()
+        if self.caja is not None:
+            self.caja["sock"] = self.sock
+
+
+def _opener_con_caja(caja):
+    """Un opener cuyo socket queda expuesto en `caja` ni bien se conecta."""
+    http_cls = type("_H", (_HTTPEspiada,), {"caja": caja})
+    https_cls = type("_HS", (_HTTPSEspiada,), {"caja": caja})
+
+    class _HandlerHTTP(urllib.request.HTTPHandler):
+        def http_open(self, r):
+            return self.do_open(http_cls, r)
+
+    class _HandlerHTTPS(urllib.request.HTTPSHandler):
+        def https_open(self, r):
+            return self.do_open(https_cls, r)
+
+    return urllib.request.build_opener(_HandlerHTTP, _HandlerHTTPS)
+
+
 def _pedir_http(req, timeout, vence):
     """Una llamada HTTP acotada por un reloj ABSOLUTO, no por operación.
 
@@ -319,18 +361,26 @@ def _pedir_http(req, timeout, vence):
     El guardia se arma ANTES de urlopen: el goteo puede estar en la línea de
     estado o en los headers, no solo en el cuerpo.
     """
+    # `caja` recibe el socket apenas se conecta, así el guardia puede cortar
+    # aunque urlopen todavía no haya vuelto (headers que gotean).
+    caja = {"sock": None}
     estado = {"resp": None, "vencio": False}
 
     def cortar():
         estado["vencio"] = True
         if estado["resp"] is not None:
             _cortar_conexion(estado["resp"])
+        elif caja["sock"] is not None:
+            try:
+                caja["sock"].shutdown(socket.SHUT_RDWR)
+            except Exception:      # noqa: BLE001
+                pass
 
     guardia = threading.Timer(max(0.1, vence - time.monotonic()), cortar)
     guardia.daemon = True
     guardia.start()
     try:
-        resp = urllib.request.urlopen(req, timeout=timeout)
+        resp = _opener_con_caja(caja).open(req, timeout=timeout)
         estado["resp"] = resp
         if estado["vencio"]:       # venció mientras se abría la conexión
             _cortar_conexion(resp)
