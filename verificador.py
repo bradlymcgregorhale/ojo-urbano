@@ -527,8 +527,11 @@ _SISTEMA_ARBITRO_FOTO = _SISTEMA_ARBITRO_TEXTO.replace(
     "lo agregues: tu tarea es decidir las categorías en disputa, no ampliarlas.")
 
 
-def _sistema_arbitro():
-    return _SISTEMA_ARBITRO_FOTO if ARBITRO_VE_FOTO else _SISTEMA_ARBITRO_TEXTO
+def _sistema_arbitro(con_foto):
+    """con_foto: si la imagen VA adjunta en este mensaje. No alcanza con que
+    ARBITRO_VE_FOTO esté activo: si no se pasó la foto, el prompt que dice
+    "la tenés adjunta" le miente al modelo."""
+    return _SISTEMA_ARBITRO_FOTO if con_foto else _SISTEMA_ARBITRO_TEXTO
 
 
 def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
@@ -635,12 +638,13 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
         # una compresión con pérdida de lo que hay que juzgar: si un modelo vio
         # algo y el otro no lo nombró, sin la foto no hay forma de saber quién
         # tiene razón. Requiere que ARBITRO sea un modelo con visión.
-        if ARBITRO_VE_FOTO and data_url:
+        con_foto = bool(ARBITRO_VE_FOTO and data_url)
+        if con_foto:
             contenido = [{"type": "text", "text": "".join(partes)},
                          {"type": "image_url", "image_url": {"url": data_url}}]
         else:
             contenido = "".join(partes)
-        mensajes = [{"role": "system", "content": _sistema_arbitro()},
+        mensajes = [{"role": "system", "content": _sistema_arbitro(con_foto)},
                     {"role": "user", "content": contenido}]
 
         def _una_vuelta(_):
@@ -965,7 +969,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                 mejor = (clave, v)
         if mejor and not mejor[0][0] and ARBITRO:
             arbitro = _arbitrar(set(), activos, prediccion_local["probabilidades"],
-                                categorias, confirmadas, sorted(subtipos_firmes), contexto)
+                                categorias, confirmadas, sorted(subtipos_firmes),
+                                contexto, data_url=data_url)
         if arbitro and arbitro.get("ok") and arbitro.get("descripcion"):
             descripcion, descripcion_fuente = arbitro["descripcion"], ARBITRO
         elif mejor:
@@ -1091,8 +1096,14 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         # perdía la que el modelo había confirmado visualmente, y como la
         # lista no quedaba vacía tampoco se reencaminaba por texto.
         vistos_pc = {c.get("key") for c in por_contexto}
+        # También por NOMBRE: una prestación del catálogo puede ser la misma
+        # cosa que una categoría propia con otro identificador, y duplicarlas
+        # abriría dos reclamos por lo mismo.
+        nombres_pc = {_norm_texto(c["nombre"]) for c in por_contexto}
         for k, nombre in sorted(ctx_ya_confirmadas.items()):
-            if k not in vistos_pc and k not in PRESENCIA:
+            if (k not in vistos_pc and k not in PRESENCIA
+                    and _norm_texto(nombre) not in nombres_pc):
+                nombres_pc.add(_norm_texto(nombre))
                 por_contexto.append({"key": k, "nombre": nombre, "gravedad": 2,
                                      "fuentes": ["contexto_vecinal"]})
         if not por_contexto:

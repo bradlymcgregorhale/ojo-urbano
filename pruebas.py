@@ -714,6 +714,16 @@ else:
     check("  y ambas quedan con fuente contexto_vecinal",
           all(p["fuentes"] == ["contexto_vecinal"] for p in _r["problemas"]))
 
+    # La misma cosa pedida dos veces (una como categoría propia confirmada y
+    # otra como prestación del catálogo con el mismo nombre) no puede abrir
+    # dos reclamos.
+    V._verificar_uno = _mock(["reparacion_cesto"],
+                             ["reparacion_cesto", "codigo:1540215836921"], False)
+    _r = _pedir(_bytes, "el cesto de la esquina esta roto", "1")
+    _nombres = [p["nombre"] for p in _r["problemas"]]
+    check("no se duplica un reclamo por key y por codigo del mismo nombre",
+          len(_nombres) == len(set(_nombres)), str(_nombres))
+
     # Si el encaminamiento por texto se cae (corte de OpenRouter), la
     # respuesta parece un "no hay problema" limpio. Cachearla congelaría ese
     # falso negativo para esa foto para siempre.
@@ -786,10 +796,16 @@ V.VERIFICADORES = ["a", "b"]
 V.ARBITRO = "arb/x"
 V.ARBITRO_VE_FOTO = False
 check("el árbitro de solo texto dice que no ve la foto",
-      "vos no la ves" in V._sistema_arbitro())
+      "vos no la ves" in V._sistema_arbitro(False))
 V.ARBITRO_VE_FOTO = True
-check("con ARBITRO_VE_FOTO el prompt le dice que la tiene adjunta",
-      "LA TENÉS ADJUNTA" in V._sistema_arbitro())
+check("con la foto adjunta el prompt le dice que la tiene",
+      "LA TENÉS ADJUNTA" in V._sistema_arbitro(True))
+# El prompt depende de si la foto VA en el mensaje, no de la variable de
+# entorno: la llamada extra para corregir la descripción no siempre la manda,
+# y decirle que la tiene cuando no la tiene lo hace opinar sobre nada.
+check("  pero si no se adjunta, no se le miente aunque ARBITRO_VE_FOTO esté activo",
+      "vos no la ves" in V._sistema_arbitro(False)
+      and "LA TENÉS ADJUNTA" not in V._sistema_arbitro(False))
 V.ARBITRO, V.ARBITRO_VE_FOTO, V.VERIFICADORES = _arb_prev, _ve_prev, _ver_prev
 
 print("[#7] votación del árbitro")
