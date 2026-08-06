@@ -701,6 +701,19 @@ else:
     check("  y no queda hay_problema true con problemas vacío",
           _r["hay_problema"] is True and _r["problemas"] != [])
 
+    # Reclamo de DOS incidencias: una la ve la foto (y sale de
+    # categorias_contexto porque queda confirmada) y otra no. Si después la
+    # foto se declara no relacionada, las dos tienen que sobrevivir: la que
+    # se había confirmado NO puede perderse por haber estado en la foto.
+    V._verificar_uno = _mock(["retiro_muebles"], ["recoleccion", "retiro_muebles"],
+                             False)
+    _r = _pedir(_bytes, "hay basura tirada y un colchon en la vereda", "1")
+    check("reclamo de dos incidencias: no se pierde la que la foto confirmaba",
+          {p.get("key") for p in _r["problemas"]} == {"recoleccion", "retiro_muebles"},
+          str([p.get("key") for p in _r["problemas"]]))
+    check("  y ambas quedan con fuente contexto_vecinal",
+          all(p["fuentes"] == ["contexto_vecinal"] for p in _r["problemas"]))
+
     # Si el encaminamiento por texto se cae (corte de OpenRouter), la
     # respuesta parece un "no hay problema" limpio. Cachearla congelaría ese
     # falso negativo para esa foto para siempre.

@@ -36,5 +36,5 @@ if data["en_duda"]:
 if data.get("descripcion"):
     print("Descripción:", data["descripcion"])
 
-veri = data["verificacion"]
+veri = data["detalle"]["verificacion"]
 print("Verificación:", "activa" if veri.get("activa") else f"inactiva ({veri.get('motivo')})")

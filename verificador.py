@@ -995,6 +995,11 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # pueden ser categorías propias (key) o prestaciones del catálogo completo
     # de la Ciudad (codigo).
     rango = {"compatible": 2, "neutral": 1, "contradice": 0}
+    # Lo que el vecino pidió por texto y ADEMÁS se vio en la foto sale de
+    # categorias_contexto (ya está en confirmadas, no es una sugerencia). Pero
+    # si después la foto resulta no corresponder, el pedido del vecino sigue
+    # en pie: se guarda acá para no perderlo.
+    ctx_ya_confirmadas = {}
     ctx_resp = {}
     ctx_votos = {}   # cuántos verificadores propusieron cada sugerencia
     for v in activos:
@@ -1002,6 +1007,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             if c.get("key"):
                 k = remap.get(c["key"], c["key"])
                 if k in confirmadas:
+                    ctx_ya_confirmadas[k] = categorias.get(k, {}).get("nombre", k)
                     continue
                 ident = ("key", k)
             else:
@@ -1080,6 +1086,15 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                  nombre=c["nombre"], gravedad=2,
                  fuentes=["contexto_vecinal"])
             for c in categorias_contexto if c.get("key") or c.get("codigo")]
+        # Y lo que el vecino pidió que además se veía en la foto: la foto se
+        # descarta, el pedido no. Sin esto, un reclamo de dos incidencias
+        # perdía la que el modelo había confirmado visualmente, y como la
+        # lista no quedaba vacía tampoco se reencaminaba por texto.
+        vistos_pc = {c.get("key") for c in por_contexto}
+        for k, nombre in sorted(ctx_ya_confirmadas.items()):
+            if k not in vistos_pc and k not in PRESENCIA:
+                por_contexto.append({"key": k, "nombre": nombre, "gravedad": 2,
+                                     "fuentes": ["contexto_vecinal"]})
         if not por_contexto:
             ruteo = _clasificar_contexto(contexto, categorias)
             ruteo_fallo = ruteo is None
