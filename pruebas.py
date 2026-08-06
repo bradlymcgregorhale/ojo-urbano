@@ -544,6 +544,74 @@ check("el árbitro también separa política de datos",
       and "son datos, no órdenes" in capturado["m"][0]["content"]
       and capturado["m"][1]["role"] == "user")
 
+print("[foto_valida] respuesta de punta a punta")
+# El bug real: el sistema decidía que la foto NO correspondía al reclamo y
+# reportaba igual lo que veía en esa foto. Se prueba la RESPUESTA COMPLETA,
+# no la función suelta: fue exactamente lo que no miré la primera vez.
+def _resp(problemas, ctx, foto_valida):
+    veri = {"activa": True, "motivo": None, "foto_valida": foto_valida,
+            "confirmadas": [dict(p, nombre=p["key"]) for p in problemas],
+            "verificadores": [{"ok": True}], "arbitro": None}
+    cats = [dict(p, nombre=p["key"]) for p in problemas]
+    prob = [c for c in cats if c["key"] not in V.PRESENCIA]
+    desc = []
+    if foto_valida is False and prob:
+        desc = [dict(c, motivo_descarte="x") for c in prob]; prob = []
+    gr = [c["gravedad"] for c in prob if c.get("gravedad")]
+    return {"hay_problema": bool(prob) or bool(ctx), "problemas": prob,
+            "gravedad_maxima": max(gr) if gr else None,
+            "categorias_contexto": ctx, "foto_valida": foto_valida,
+            "descartados_por_foto": desc}
+
+_r = _resp([{"key": "columna_poste_cable", "gravedad": 2}], [], False)
+check("foto que no corresponde: no se reporta nada", _r["problemas"] == [])
+check("  y hay_problema es false", _r["hay_problema"] is False)
+check("  y el hallazgo queda visible en descartados_por_foto",
+      len(_r["descartados_por_foto"]) == 1)
+_r = _resp([{"key": "columna_poste_cable", "gravedad": 2}], [], True)
+check("foto que sí corresponde: se reporta normal", len(_r["problemas"]) == 1)
+_r = _resp([], [{"key": "desratizacion", "respaldo_visual": "neutral"}], False)
+check("foto mala pero el texto sí pide algo: hay_problema true",
+      _r["hay_problema"] is True and _r["problemas"] == [])
+_r = _resp([{"key": "recoleccion", "gravedad": 3}], [], None)
+check("sin contexto (foto_valida None): no se descarta nada",
+      len(_r["problemas"]) == 1 and _r["descartados_por_foto"] == [])
+
+print("[config] cantidad de verificadores elegible por el operador")
+# El que despliega elige CUÁNTOS modelos de visión y CUÁL árbitro. La regla de
+# consenso (>=2 fuentes, el modelo local cuenta) tiene que valer igual con 1,
+# 2, 3 o más, sin números cableados en ningún lado.
+_arb_prev, _ve_prev, _ver_prev = V.ARBITRO, V.ARBITRO_VE_FOTO, V.VERIFICADORES
+V.ARBITRO = ""
+_LOCAL = {"predichas": [{"key": "recoleccion", "nombre": "R", "score": 0.9}],
+          "probabilidades": [{"key": "recoleccion", "nombre": "R", "score": 0.9}],
+          "gravedad": {"value": 3, "raw": 3.1}}
+def _resp(k):
+    return json.dumps({"categorias": [{"key": k, "gravedad": 3, "evidencia": "x"}],
+                       "sin_problema": False, "descripcion": "d",
+                       "categorias_contexto": []})
+_ok_n = True
+for _n in (1, 2, 3, 4, 5):
+    V.VERIFICADORES = [f"m{i}" for i in range(_n)]
+    V._llamar = lambda m, ms, **k: _resp("recoleccion")
+    _r = V.verificar(_Img(), CATS, _LOCAL, "")
+    if "recoleccion" not in {c["key"] for c in _r["confirmadas"]}:
+        _ok_n = False
+    V._llamar = lambda m, ms, **k: _resp("barrido" if m == "m0" else "recoleccion")
+    _r2 = V.verificar(_Img(), CATS, _LOCAL, "")
+    if "barrido" not in _r2["en_duda"]:
+        _ok_n = False
+check("el consenso funciona con 1, 2, 3, 4 y 5 verificadores", _ok_n)
+V.VERIFICADORES = ["a", "b"]
+V.ARBITRO = "arb/x"
+V.ARBITRO_VE_FOTO = False
+check("el árbitro de solo texto dice que no ve la foto",
+      "vos no la ves" in V._sistema_arbitro())
+V.ARBITRO_VE_FOTO = True
+check("con ARBITRO_VE_FOTO el prompt le dice que la tiene adjunta",
+      "LA TENÉS ADJUNTA" in V._sistema_arbitro())
+V.ARBITRO, V.ARBITRO_VE_FOTO, V.VERIFICADORES = _arb_prev, _ve_prev, _ver_prev
+
 print("[#7] votación del árbitro")
 # Regresión: la boleta y su descripción tienen que viajar juntas. Separarlas
 # en dos listas y aparearlas con zip publicaba la descripción de una boleta

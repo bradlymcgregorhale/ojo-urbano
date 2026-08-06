@@ -312,6 +312,8 @@ def procesar(datos, contexto, verificar):
         en_duda = veri["en_duda"]
         ctx_cats = veri["categorias_contexto"]
         descripcion = veri["descripcion"]
+        # None = no se pudo juzgar (sin contexto, o los modelos no coincidieron)
+        foto_valida = veri.get("foto_valida")
     else:
         if sin_cuota:
             motivo = MOTIVO_CUOTA
@@ -324,19 +326,43 @@ def procesar(datos, contexto, verificar):
                        "gravedad": (local["gravedad"] or {}).get("value"),
                        "fuentes": ["modelo_local"]}
                       for p in local["predichas"] if p["key"] != "sin_problema"]
-        en_duda, ctx_cats, descripcion = [], [], None
+        en_duda, ctx_cats, descripcion, foto_valida = [], [], None, None
 
     # El veredicto primero; todo lo interno queda en "detalle".
     problemas = [c for c in categorias if c["key"] not in verificador.PRESENCIA]
     elementos = [{"key": c["key"], "nombre": c["nombre"]}
                  for c in categorias if c["key"] in verificador.PRESENCIA]
+
+    # Si la foto NO corresponde a lo que el vecino contó, no se puede reportar
+    # lo que se vea en ella: sería abrir un reclamo por algo que el vecino no
+    # pidió, mirando una foto que ya dijimos que no sirve. Los hallazgos no se
+    # tiran (quedan en descartados, con el motivo), pero no son el veredicto.
+    descartados = []
+    if foto_valida is False and problemas:
+        descartados = [dict(c, motivo_descarte="la foto no corresponde a lo que "
+                                               "el vecino reportó") for c in problemas]
+        problemas = []
+        # Y que detalle.verificacion no siga diciendo "confirmadas" de algo que
+        # arriba ya no se reporta: dos campos contradiciéndose sobre qué está
+        # confirmado es peor que no tener el detalle.
+        if isinstance(veri, dict) and veri.get("confirmadas"):
+            veri = dict(veri, confirmadas=[c for c in veri["confirmadas"]
+                                           if c["key"] in verificador.PRESENCIA],
+                        descartadas_por_foto=[c for c in veri["confirmadas"]
+                                              if c["key"] not in verificador.PRESENCIA])
+
     gravedades = [c["gravedad"] for c in problemas if c.get("gravedad")]
     return {
-        "hay_problema": bool(problemas),
+        # hay_problema es sobre EL RECLAMO: hay algo reportable acá, sea porque
+        # se ve en la foto o porque el vecino lo describe. Si la foto no sirve
+        # y el texto tampoco pide nada que exista en el catálogo, es false.
+        "hay_problema": bool(problemas) or bool(ctx_cats),
         "gravedad_maxima": max(gravedades) if gravedades else None,
         "problemas": problemas,
         "descripcion": descripcion,
         "categorias_contexto": ctx_cats,
+        "foto_valida": foto_valida,
+        "descartados_por_foto": descartados,
         "elementos_detectados": elementos,
         "en_duda": en_duda,
         "detalle": {"modelo_local": local, "verificacion": veri},
