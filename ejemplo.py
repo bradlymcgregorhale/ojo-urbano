@@ -36,5 +36,8 @@ if data["en_duda"]:
 if data.get("descripcion"):
     print("Descripción:", data["descripcion"])
 
-veri = data["detalle"]["verificacion"]
-print("Verificación:", "activa" if veri.get("activa") else f"inactiva ({veri.get('motivo')})")
+print("Verificación:", "activa" if data.get("verificacion_activa")
+      else f"inactiva ({data.get('verificacion_motivo')})")
+for m in data.get("modelos") or []:
+    vistas = ", ".join(c["key"] for c in m.get("categorias") or []) or "nada"
+    print(f"  {m['modelo']}: {vistas}")

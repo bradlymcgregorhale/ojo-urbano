@@ -36,11 +36,11 @@ La primera ejecución descarga los modelos de embeddings (varios GB, una sola ve
 curl -s -F "file=@foto.jpg" -F "contexto=vidrios rotos en la vereda" http://127.0.0.1:8080/clasificar
 ```
 
-Respuesta: el veredicto primero, el detalle técnico adentro de `detalle`.
+Respuesta: el veredicto primero, y lo que dijo cada modelo de visión en `modelos`.
 
 ```json
 {
-  "version": "2",
+  "version": "3",
   "hay_problema": true,
   "gravedad_maxima": 3,
   "problemas": [
@@ -50,21 +50,33 @@ Respuesta: el veredicto primero, el detalle técnico adentro de `detalle`.
   "descripcion": "Bolsas de residuos y cajas de cartón acumuladas en la vereda junto a un contenedor negro de húmedos.",
   "categorias_contexto": [
     { "key": "desratizacion", "nombre": "Desratización / control de plagas en la vía pública",
-      "respaldo_visual": "neutral" }
+      "respaldo_visual": "neutral", "fuentes": 2, "de": 3 }
+  ],
+  "foto_valida": null,
+  "foto_valida_estado": "sin_contexto",
+  "descartados_por_foto": [],
+  "posibles": [
+    { "key": "reparacion_cesto", "nombre": "Reparación de cesto papelero", "gravedad": 2,
+      "fuentes": ["openai/gpt-5.6-luna"], "origen": "foto",
+      "arbitro": "rechazar", "motivo": "Lo reporta un solo modelo y las otras descripciones no mencionan ningún cesto." }
   ],
   "elementos_detectados": [
     { "key": "contenedor_humedos_lateral", "nombre": "Contenedor de húmedos, carga lateral" }
   ],
   "en_duda": [],
-  "detalle": {
-    "modelo_local": { "predichas": [ ... ], "top5": [ ... ], "probabilidades": [ ... ],
-                      "gravedad": { "value": 3, "raw": 3.2 } },
-    "verificacion": { "activa": true, "contexto": "...",
-                      "verificadores": [ { "modelo": "...", "categorias": [ ... ], "descripcion": "..." } ],
-                      "arbitro": { "decisiones": [ ... ], "descripcion": "..." },
-                      "descripcion_fuente": "deepseek/deepseek-v4-flash" }
-  }
+  "verificacion_activa": true,
+  "modelos": [
+    { "modelo": "openai/gpt-5-mini", "ok": true, "sin_problema": false,
+      "categorias": [ { "key": "recoleccion", "gravedad": 3, "evidencia": "bolsas y cajas fuera del contenedor" } ],
+      "descripcion": "..." }
+  ]
 }
+```
+
+Para el volcado técnico completo (el ranking entero del modelo local, los veredictos crudos y el árbitro), agregá `?detalle=1` al POST:
+
+```bash
+curl -s -F "file=@foto.jpg" "http://127.0.0.1:8080/clasificar?detalle=1"
 ```
 
 - `hay_problema`: si hay **algo reportable**, venga de la foto o del texto del vecino. No es "la foto muestra un problema": si la foto no sirve pero el vecino describe algo que existe en el catálogo, es `true`; si no hay nada por ningún lado, es `false`.
@@ -101,7 +113,7 @@ La respuesta traía el ranking completo del modelo local (29 categorías con su 
 | `detalle.verificacion.activa` / `.motivo` | `verificacion_activa` y, si está apagada, `verificacion_motivo` |
 | `detalle.verificacion.arbitro` | no viene; el veredicto y el motivo del árbitro para cada hallazgo dudoso ya están dentro de `posibles[]` |
 
-**Nada se perdió:** `GET/POST /clasificar?detalle=1` devuelve exactamente el volcado de v2, con `detalle` entero. Es lo que usa la página de demo para dibujar las barras del modelo local.
+**Nada se perdió:** `POST /clasificar?detalle=1` devuelve exactamente el volcado de v2, con `detalle` entero. Es lo que usa la página de demo para dibujar las barras del modelo local.
 
 ### v2
 

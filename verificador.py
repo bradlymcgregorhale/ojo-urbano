@@ -38,6 +38,7 @@ import io
 import json
 import os
 import re
+import socket
 import threading
 import time
 import urllib.error
@@ -260,8 +261,7 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3):
             ultimo = ultimo or TimeoutError(f"sin tiempo para {modelo}")
             break
         try:
-            resp = urllib.request.urlopen(req, timeout=min(TIMEOUT, resto))
-            data = _leer_con_tope(resp, vence)
+            data = _pedir_http(req, min(TIMEOUT, resto), vence)
             msg = data["choices"][0]["message"]
             # algunos modelos razonadores dejan el JSON en "reasoning"
             contenido = msg.get("content") or msg.get("reasoning") or ""
@@ -274,46 +274,77 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3):
     raise ultimo
 
 
-def _leer_con_tope(resp, vence):
-    """Lee el cuerpo con un tope de reloj ABSOLUTO y cierra el socket si vence.
+def _cortar_conexion(resp):
+    """Desatasca una lectura bloqueada.
 
-    El `timeout` de urllib es POR OPERACIÓN de socket, no por llamada: si el
-    proveedor manda el cuerpo de a pedacitos (OpenRouter intercala líneas de
-    keepalive mientras el modelo genera), cada byte que llega reinicia el
-    reloj y la lectura puede quedarse esperando para siempre sin que salte
-    ningún timeout.
-
-    Eso tiró el servicio en producción: un hilo quedó tomado leyendo un
-    socket abierto a OpenRouter y, como el cupo de concurrencia lo suelta el
-    hilo cuando termina, no volvió a entrar ni un pedido. Todo /clasificar
-    respondió 503 hasta reiniciar, mientras /salud seguía contestando 200.
+    close() NO alcanza: el BufferedReader puede estar reteniendo su lock
+    adentro del recv(), y el hilo que llama close() se queda esperando ese
+    mismo lock, con lo cual se cuelgan los dos. shutdown() actúa sobre el
+    socket y hace que el recv() bloqueado vuelva enseguida.
     """
-    disparo = {"vencio": False}
+    sock = None
+    for camino in (("fp", "raw", "_sock"), ("fp", "_sock"), ("_sock",)):
+        obj = resp
+        for attr in camino:
+            obj = getattr(obj, attr, None)
+            if obj is None:
+                break
+        if obj is not None:
+            sock = obj
+            break
+    if sock is not None:
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except Exception:      # noqa: BLE001 - ya cerrado o sin socket real
+            pass
+    try:
+        resp.close()
+    except Exception:          # noqa: BLE001
+        pass
+
+
+def _pedir_http(req, timeout, vence):
+    """Una llamada HTTP acotada por un reloj ABSOLUTO, no por operación.
+
+    El `timeout` de urllib es POR OPERACIÓN de socket: si el proveedor manda
+    la respuesta de a pedacitos (OpenRouter intercala keepalives mientras el
+    modelo genera), cada byte que llega reinicia el reloj y la llamada puede
+    quedarse esperando para siempre sin que salte ningún timeout.
+
+    Eso tiró el servicio en producción: un hilo quedó tomado sobre un socket
+    abierto a OpenRouter y, como el cupo de concurrencia lo suelta el hilo
+    cuando termina, no volvió a entrar ni un pedido. Todo /clasificar
+    respondió 503 hasta reiniciar, mientras /salud seguía contestando 200.
+
+    El guardia se arma ANTES de urlopen: el goteo puede estar en la línea de
+    estado o en los headers, no solo en el cuerpo.
+    """
+    estado = {"resp": None, "vencio": False}
 
     def cortar():
-        # Cerrar desde otro hilo hace que la lectura bloqueada largue una
-        # excepción: es la única forma de desatascarla.
-        disparo["vencio"] = True
-        try:
-            resp.close()
-        except Exception:       # noqa: BLE001 - cerrar nunca debe romper
-            pass
+        estado["vencio"] = True
+        if estado["resp"] is not None:
+            _cortar_conexion(estado["resp"])
 
     guardia = threading.Timer(max(0.1, vence - time.monotonic()), cortar)
     guardia.daemon = True
     guardia.start()
     try:
-        return json.load(resp)
-    except Exception as e:      # noqa: BLE001
-        if disparo["vencio"]:
+        resp = urllib.request.urlopen(req, timeout=timeout)
+        estado["resp"] = resp
+        if estado["vencio"]:       # venció mientras se abría la conexión
+            _cortar_conexion(resp)
+            raise TimeoutError("el proveedor no respondió a tiempo")
+        try:
+            return json.load(resp)
+        finally:
+            _cortar_conexion(resp)
+    except Exception as e:         # noqa: BLE001
+        if estado["vencio"]:
             raise TimeoutError("el proveedor no terminó de responder a tiempo") from e
         raise
     finally:
         guardia.cancel()
-        try:
-            resp.close()
-        except Exception:       # noqa: BLE001
-            pass
 
 
 def _extraer_json(texto):
@@ -440,7 +471,7 @@ Categorías y criterios (usá SOLO estas claves):
 - reparacion_contenedor: un contenedor con DAÑO ESTRUCTURAL visible (tapa desprendida, pedal roto, cuerpo agrietado, perforado, derretido o quemado), esté parado o volcado. TAMBIÉN va acá cuando la pieza que falta está TIRADA EN EL PISO al lado o cerca del contenedor: cabezal, tapa, boca de carga, portón, compuerta o pieza antivandálica desprendida. El cuerpo puede verse entero y liso y aun así estar roto: mirá si le FALTA la parte de arriba, si tiene un hueco rectangular donde debería ir la boca de carga, o si hay una pieza del mismo color y material caída al lado. Ese es el caso típico y hay que reportarlo acá, no como objeto voluminoso descartado. Es daño en la pieza, no suciedad ni pintura: un contenedor con grafitis, pegatinas o rayado pero entero NO va acá ni en ninguna otra clave. Un contenedor VOLCADO pero sin daños visibles tampoco: es reposicion_contenedor. Un contenedor parado y en buen estado NO.
 - reposicion_contenedor: un contenedor CAÍDO o VOLCADO (acostado, dado vuelta, corrido al medio de la calle) SIN daños visibles: solo hay que volver a pararlo o ubicarlo. Si además tiene daño estructural (roto, agrietado, quemado, tapa o pedal desprendido) es reparacion_contenedor, no esto. Los grafitis o pegatinas NO cuentan como daño.
 - lavado_contenedor: un contenedor en su lugar pero visiblemente MUY sucio por fuera: chorreaduras, mugre incrustada, suciedad notoria que pide lavado. NO por grafitis, calcomanías ni desgaste normal del color.
-- vehiculo_mal_estacionado: un vehículo estacionado o detenido donde está PROHIBIDO: sobre una ciclovía/bicisenda (carril demarcado, típicamente entre franjas amarillas), sobre la vereda o senda peatonal, bloqueando una rampa de accesibilidad o una esquina/ochava, o junto a cartelería de "No estacionar". Señal fuerte: las ruedas pisan la demarcación de la ciclovía o el vehículo está arriba de la vereda. Cuenta aunque el vehículo esté operando (un camión de reparto detenido sobre la ciclovía SÍ es infracción); un vehículo estacionado normal junto al cordón NO. CUIDADO CON LAS FOTOS DESDE ARRIBA (balcón, ventana, dron): mirando en picada, un auto estacionado bien contra el cordón PARECE estar sobre la vereda, porque la perspectiva aplasta la altura del cordón y superpone el auto con la baldosa. En una foto cenital NO reportes esta clave salvo que veas las RUEDAS apoyadas del lado de adentro del cordón, sobre la baldosa. Si el auto está paralelo al cordón y alineado con los demás autos estacionados de la cuadra, es un estacionamiento normal: NO lo reportes. Tampoco confundas las marcas del pavimento: una línea discontinua BLANCA Y AZUL sobre la calzada es demarcación de estacionamiento medido, no una ciclovía; la ciclovía es un carril propio, continuo y ancho, normalmente pintado y separado del tránsito. Si el vehículo se ve abandonado (muy deteriorado, sucio, ruedas desinfladas) es vehiculo_abandonado.
+- vehiculo_mal_estacionado: un vehículo estacionado o detenido donde está PROHIBIDO: sobre una ciclovía/bicisenda (carril demarcado, típicamente entre franjas amarillas), sobre la vereda o senda peatonal, bloqueando una rampa de accesibilidad o una esquina/ochava, o junto a cartelería de "No estacionar". Señal fuerte: las ruedas pisan la demarcación de la ciclovía o el vehículo está arriba de la vereda. Cuenta aunque el vehículo esté operando (un camión de reparto detenido sobre la ciclovía SÍ es infracción); un vehículo estacionado normal junto al cordón NO. CUIDADO CON LAS FOTOS DESDE ARRIBA (balcón, ventana, dron): mirando en picada, un auto estacionado bien contra el cordón PARECE estar sobre la vereda, porque la perspectiva aplasta la altura del cordón y superpone el auto con la baldosa. Esa advertencia vale SOLO para decidir si está sobre la vereda: en una foto cenital no uses esa superposición como prueba, exigí ver las RUEDAS apoyadas del lado de adentro del cordón. Un auto paralelo al cordón y alineado con los demás autos estacionados de la cuadra es un estacionamiento normal: NO lo reportes. Las otras infracciones de esta clave SÍ se ven bien desde arriba y se reportan normalmente: auto sobre la ciclovía, sobre la senda peatonal, tapando una rampa o la ochava, o junto a cartelería de "No estacionar". Tampoco confundas las marcas del pavimento: una línea discontinua BLANCA Y AZUL sobre la calzada es demarcación de estacionamiento medido, no una ciclovía; la ciclovía es un carril propio, continuo y ancho, normalmente pintado y separado del tránsito. Si el vehículo se ve abandonado (muy deteriorado, sucio, ruedas desinfladas) es vehiculo_abandonado.
 - columna_poste_cable: una columna, un poste o cables de servicios AÚN INSTALADOS y con problemas: cables colgando, sueltos o cortados a baja altura; poste o columna inclinado, roto o deteriorado. Un poste o caño SUELTO tirado en el piso como descarte es retiro_muebles, NO esto.
 - puesto_diarios: un kiosco o puesto de venta de diarios y revistas en la vía pública abandonado, muy deteriorado u obstruyendo el paso. Un puesto operando con normalidad NO.
 - puesto_flores: lo mismo que puesto_diarios pero para un puesto de venta de flores.

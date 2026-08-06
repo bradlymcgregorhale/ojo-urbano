@@ -431,46 +431,101 @@ check("no agota los 3 intentos si vence el deadline", len(intentos) < 3,
 check("acota cada intento al tiempo restante", all(t <= 120 for t in intentos),
       str([round(t, 1) for t in intentos]))
 
-# REGRESIÓN REAL: el servicio quedó devolviendo 503 en producción porque un
-# hilo se colgó leyendo el cuerpo de una respuesta de OpenRouter. El timeout
-# de urllib es POR OPERACIÓN de socket: un proveedor que manda keepalives
-# mientras genera reinicia el reloj con cada byte y la lectura no vence nunca.
-class _RespuestaQueGotea:
-    """Cuerpo que nunca termina: manda un byte cada tanto, para siempre."""
-
-    def __init__(self):
-        self.cerrada = False
-        self.leidos = 0
-
-    def read(self, n=-1):
-        while not self.cerrada:
-            time.sleep(0.05)          # keepalive: llega algo, nunca el final
-            self.leidos += 1
-        raise ValueError("I/O operation on closed file")
-
-    readline = read
-
-    def close(self):
-        self.cerrada = True
+# REGRESIÓN REAL: el servicio quedó devolviendo 503 en producción con /salud
+# en 200. Un hilo se colgó leyendo una respuesta de OpenRouter: el timeout de
+# urllib es POR OPERACIÓN de socket, así que un proveedor que gotea keepalives
+# mientras genera reinicia el reloj con cada byte y no vence nunca.
+#
+# La prueba usa un SERVIDOR TCP DE VERDAD que gotea, no un objeto simulado:
+# la primera versión de esta prueba usaba un fake cuyo close() prendía una
+# bandera que el lector consultaba, así que pasaba sin ejercitar nada. El
+# recv() real bloqueado solo se desatasca con shutdown() del socket; un
+# close() desde otro hilo puede quedarse esperando el lock del BufferedReader.
+import socket as _socket
+import threading as _threading
 
 
-_goteo = _RespuestaQueGotea()
-V.urllib.request.urlopen = lambda req, timeout=None: _goteo
-V.DEADLINE, V.TIMEOUT = 2, 120
+def _servidor_que_gotea(parar):
+    """Manda headers y después un byte cada tanto, para siempre."""
+    srv = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+    srv.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    puerto = srv.getsockname()[1]
+
+    def atender():
+        try:
+            cli, _ = srv.accept()
+        except OSError:
+            return
+        try:
+            cli.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                        b"Content-Length: 100000\r\n\r\n")
+            cli.sendall(b'{"choices":')
+            while not parar.is_set():          # goteo: nunca cierra el JSON
+                try:
+                    cli.sendall(b" ")
+                except OSError:
+                    return
+                time.sleep(0.05)
+        finally:
+            try:
+                cli.close()
+            except OSError:
+                pass
+            srv.close()
+
+    h = _threading.Thread(target=atender, daemon=True)
+    h.start()
+    return puerto, srv
+
+
+_parar = _threading.Event()
+_puerto, _srv = _servidor_que_gotea(_parar)
+_url_real = V.OPENROUTER_URL
+V.OPENROUTER_URL = f"http://127.0.0.1:{_puerto}/v1/chat"
+V.DEADLINE, V.TIMEOUT = 3, 120
 _t0 = time.monotonic()
 try:
     V._llamar("modelo/x", [{"role": "user", "content": "hola"}], intentos=1)
-    _excepcion = None
+    _exc = None
 except Exception as e:                # noqa: BLE001
-    _excepcion = e
+    _exc = e
 _tardo = time.monotonic() - _t0
-V.urllib.request.urlopen = _real_urlopen
+_parar.set()
+V.OPENROUTER_URL = _url_real
 V.DEADLINE, V.TIMEOUT = 180, 120
-check("una respuesta que gotea para siempre no cuelga el hilo",
-      _tardo < 8, f"tardó {_tardo:.1f}s (deadline 2s)")
-check("  y el socket queda cerrado", _goteo.cerrada)
-check("  y avisa que el proveedor no terminó a tiempo",
-      _excepcion is not None, type(_excepcion).__name__)
+check("un proveedor real que gotea no cuelga el hilo para siempre",
+      _tardo < 10, f"tardó {_tardo:.1f}s con deadline 3s")
+check("  y corta con un error, no con un JSON a medias", _exc is not None,
+      type(_exc).__name__)
+
+print("[v3] la respuesta viene resumida, y ?detalle=1 trae todo")
+# El contrato v3 saca el ranking de 29 categorías del modelo local y los
+# campos que detalle.verificacion repetía de la raíz. Se prueban los cuatro
+# caminos, porque la caché guarda la respuesta COMPLETA y resume al responder:
+# un bug ahí devolvería el volcado entero en un hit, o un resumen en el pedido
+# con ?detalle=1.
+_foto_v3 = foto(640, 480)
+_LEAN = ("version", "hay_problema", "problemas", "posibles", "modelos",
+         "verificacion_activa")
+for _vuelta in ("fresca", "cacheada"):
+    _c, _r = pedir("/clasificar", *_multipart("v3.jpg", _foto_v3)[::1])
+    check(f"resumida ({_vuelta}): sin detalle y con modelos",
+          _c == 200 and "detalle" not in _r and all(k in _r for k in _LEAN),
+          f"HTTP {_c} claves={sorted(_r)[:6]}")
+    check(f"  ({_vuelta}) los modelos son solo los de visión",
+          all("modelo" in m and "categorias" in m for m in _r["modelos"]),
+          str(_r["modelos"])[:80])
+    _c2, _r2 = pedir("/clasificar?detalle=1",
+                     *_multipart("v3.jpg", _foto_v3)[::1])
+    check(f"  ({_vuelta}) con ?detalle=1 vuelve el volcado completo",
+          _c2 == 200 and "detalle" in _r2
+          and "modelo_local" in _r2["detalle"],
+          f"HTTP {_c2} claves={sorted(_r2)[:6]}")
+    check(f"  ({_vuelta}) y el veredicto es el mismo en las dos formas",
+          _r["problemas"] == _r2["problemas"]
+          and _r["hay_problema"] == _r2["hay_problema"])
 
 print("[#4] consenso y saneado")
 CATS = json.loads((AQUI / "categorias.json").read_text())
