@@ -12,10 +12,12 @@ Cada verificador devuelve además una descripción breve de la foto dentro de su
 misma respuesta (sin llamadas extra). La descripción final consolidada la
 redacta el árbitro cuando ya tiene que intervenir por una disputa; si no hay
 disputa, se elige localmente la descripción del verificador que más coincide
-con las categorías finales. Única excepción al conteo de llamadas: si todas
-las descripciones disponibles contradicen un subtipo ya resuelto (húmedos
-lateral/bilateral, tapa vereda/calle), se pide al árbitro una descripción
-correcta en una llamada extra. Con ARBITRO_VE_FOTO esa llamada lleva la foto
+con las categorías finales. Si todas las descripciones disponibles
+contradicen un subtipo ya resuelto (húmedos lateral/bilateral, tapa
+vereda/calle), se pide al árbitro una descripción correcta en una llamada
+extra. Las tres llamadas extra posibles, ninguna fija, son esa, la del
+arbitraje cuando hay una disputa, y la del encaminamiento del reclamo por
+texto cuando la foto no corresponde a lo que el vecino contó. Con ARBITRO_VE_FOTO esa llamada lleva la foto
 adjunta, igual que el arbitraje normal: cuesta más, pero pedirle una
 descripción correcta a un modelo que no ve la escena no tiene sentido.
 
