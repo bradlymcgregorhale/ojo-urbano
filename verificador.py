@@ -782,6 +782,11 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
         "integrando las descripciones y evidencias de los modelos de visión, y que "
         "respalden las categorías confirmadas (las de consenso más las que confirmes acá). "
         "No inventes detalles que ninguna fuente haya mencionado.\n\n"
+        "Cada motivo habla SOLO de la evidencia visual: qué se ve o qué falta ver en la foto. "
+        "PROHIBIDO nombrar el mecanismo interno: nada de \"modelo local\", nombres de modelos, "
+        "probabilidades, scores ni cuántas fuentes votaron. En vez de \"solo el modelo local la "
+        "reporta\", escribí \"sin evidencia visual suficiente: ningún análisis de la foto "
+        "describe X\".\n\n"
         "Respondé SOLO con JSON:\n"
         '{"decisiones": [{"key": "...", "veredicto": "confirmar"|"rechazar", "motivo": "..."}], "descripcion": "..."}')
     try:
@@ -1265,7 +1270,9 @@ def verificar(img, categorias, prediccion_local, contexto=""):
 
     return {
         "activa": True,
-        "contexto": contexto or None,
+        # El contexto del vecino NO se devuelve: el cliente ya tiene el texto
+        # que envió, y el eco solo duplica PII (nombres, patentes, firmas)
+        # hacia logs y capturas. Sigue entrando a los modelos como pista.
         "foto_valida": foto_valida,
         # null es ambiguo por sí solo: puede ser que no haya contexto, que los
         # modelos no coincidan, o que la verificación no haya corrido. Un
