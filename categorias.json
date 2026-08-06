@@ -71,6 +71,10 @@
     "nombre": "Lavado / higienización de cesto papelero",
     "grupo": "Cestos papeleros"
   },
+  "hidrolavado_grafitis": {
+    "nombre": "Hidrolavado de frente vandalizado con grafitis o pegatinas",
+    "grupo": "Resoluciones urbanas"
+  },
   "manteros": {
     "nombre": "Vendedores ambulantes en la vía pública",
     "grupo": "Ocupación de vía pública"

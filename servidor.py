@@ -4,8 +4,10 @@
 Un modelo propio (embeddings CLIP + DINOv2 + SigLIP2 con cabezal de regresión
 logística multi-etiqueta, entrenado con miles de fotos reales etiquetadas a
 mano) clasifica la foto localmente. Si hay una OPENROUTER_API_KEY configurada,
-dos modelos de visión verifican el resultado de forma independiente y un
-árbitro de texto resuelve los desacuerdos (ver verificador.py).
+varios modelos de visión (tres por defecto) verifican el resultado de forma
+independiente, y lo que ve una sola fuente queda como "posible" en vez de
+confirmarse. El contexto que escribe el vecino puede sostener un reclamo por
+sí solo cuando la foto no sirve (ver verificador.py).
 
 Uso:
     pip install -r requirements.txt
@@ -54,9 +56,17 @@ HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "8080"))
 UMBRAL = float(os.environ.get("UMBRAL", "0.5"))
 GRAV_MAX = 5
+# Versión del contrato de la respuesta. Se sube cuando cambia el SIGNIFICADO de
+# un campo que ya existía, no cuando se agrega uno nuevo. v2: hay_problema pasó
+# a incluir lo que sostiene solo el texto del vecino, problemas dejó de ser
+# solo visual, apareció "contexto_vecinal" como fuente, y el árbitro dejó de
+# confirmar hallazgos de una sola fuente (ver README, "Cambios de contrato").
+VERSION_API = "2"
 
-# Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y 2-3 llamadas
-# pagas a OpenRouter, así que el endpoint no puede quedar abierto sin techo.
+# Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y varias
+# llamadas pagas a OpenRouter (una por verificador, tres por defecto, más el
+# árbitro y el encaminamiento por texto cuando hacen falta), así que el
+# endpoint no puede quedar abierto sin techo.
 MAX_BYTES = int(os.environ.get("MAX_BYTES", str(10 * 1024 * 1024)))
 MARGEN_MULTIPART = 64 * 1024  # boundaries, headers y contexto encima de la foto
 MAX_PIXELES = int(os.environ.get("MAX_PIXELES", str(25_000_000)))
@@ -290,6 +300,10 @@ def _cacheable(respuesta):
         # todas). Cachearlo congela ese resultado a medio hacer para siempre.
         if verificador.ARBITRO and respuesta.get("en_duda"):
             return False
+        # El encaminamiento del reclamo por texto falló: la respuesta puede
+        # ser un falso "no hay problema" por un corte transitorio.
+        if veri.get("ruteo_contexto_fallo"):
+            return False
         arbitro = veri.get("arbitro")
         return not (arbitro and not arbitro.get("ok"))
     # Sin clave o apagado por parámetro el resultado es estable; por cuota no.
@@ -312,6 +326,15 @@ def procesar(datos, contexto, verificar):
         en_duda = veri["en_duda"]
         ctx_cats = veri["categorias_contexto"]
         descripcion = veri["descripcion"]
+        # None = no se pudo juzgar (sin contexto, o los modelos no coincidieron)
+        foto_valida = veri.get("foto_valida")
+        posibles = veri.get("posibles") or []
+        # Si el estado no vino (respuesta vieja o incompleta), se deduce del
+        # booleano en vez de asumir "sin_contexto": eso daría un par imposible
+        # como foto_valida=True con estado "sin_contexto".
+        foto_estado = veri.get("foto_valida_estado") or (
+            "corresponde" if foto_valida is True else
+            "no_corresponde" if foto_valida is False else "sin_contexto")
     else:
         if sin_cuota:
             motivo = MOTIVO_CUOTA
@@ -324,19 +347,78 @@ def procesar(datos, contexto, verificar):
                        "gravedad": (local["gravedad"] or {}).get("value"),
                        "fuentes": ["modelo_local"]}
                       for p in local["predichas"] if p["key"] != "sin_problema"]
-        en_duda, ctx_cats, descripcion = [], [], None
+        en_duda, ctx_cats, descripcion, foto_valida = [], [], None, None
+        posibles = []
+        # Sin verificación no se evaluó la foto: decirlo, para que nadie
+        # interprete el null como "la foto sirve".
+        foto_estado = "no_evaluado"
 
     # El veredicto primero; todo lo interno queda en "detalle".
     problemas = [c for c in categorias if c["key"] not in verificador.PRESENCIA]
     elementos = [{"key": c["key"], "nombre": c["nombre"]}
                  for c in categorias if c["key"] in verificador.PRESENCIA]
+
+    # Si la foto NO corresponde a lo que el vecino contó, no se puede reportar
+    # lo que se vea en ella: sería abrir un reclamo por algo que el vecino no
+    # pidió, mirando una foto que ya dijimos que no sirve. Los hallazgos no se
+    # tiran (quedan en descartados, con el motivo), pero no son el veredicto.
+    # POSIBLES: todo lo que PODRÍA ser un reporte pero no está confirmado. Se
+    # devuelve siempre, incluso cuando no hay nada definitivo: es justamente
+    # ahí donde le sirve a quien consume la API, para repreguntarle al vecino
+    # en vez de recibir una respuesta vacía. Cada uno dice de dónde salió.
+    for p in posibles:
+        p.setdefault("origen", "foto")
+    vistos_pos = {p["key"] for p in posibles}
+    # lo que el contexto sugiere y la foto no confirmó también es un posible
+    for c in ctx_cats:
+        if c.get("key") and c["key"] not in vistos_pos:
+            vistos_pos.add(c["key"])
+            posibles.append({
+                "key": c["key"], "nombre": c["nombre"],
+                "gravedad": None, "fuentes": ["contexto_vecinal"],
+                "origen": "contexto_vecinal",
+                "respaldo_visual": c.get("respaldo_visual"),
+            })
+
+    descartados = []
+    if foto_valida is False:
+        # La foto no muestra lo que el vecino reclamó: lo que vieron los
+        # modelos es OTRA cosa, no lo que él vino a reportar. Se guarda pero
+        # no se reporta, y el reclamo se arma con lo que dijo el vecino.
+        if problemas:
+            descartados = [dict(c, motivo_descarte="la foto no corresponde a lo "
+                                "que el vecino reportó") for c in problemas]
+            # No se reportan, pero siguen siendo cosas que podrían ser un
+            # reporte: van a posibles marcadas con su origen, para que se
+            # entienda que salieron de una foto que no venía al caso.
+            for c in descartados:
+                if c["key"] not in vistos_pos:
+                    vistos_pos.add(c["key"])
+                    posibles.append(dict(c, origen="foto_no_relacionada"))
+        problemas = list(veri.get("por_contexto") or [])
+        if isinstance(veri, dict) and veri.get("confirmadas"):
+            veri = dict(veri, confirmadas=[c for c in veri["confirmadas"]
+                                           if c["key"] in verificador.PRESENCIA],
+                        descartadas_por_foto=[c for c in veri["confirmadas"]
+                                              if c["key"] not in verificador.PRESENCIA])
+
     gravedades = [c["gravedad"] for c in problemas if c.get("gravedad")]
     return {
-        "hay_problema": bool(problemas),
+        "version": VERSION_API,
+        # hay_problema es sobre EL RECLAMO: hay algo reportable acá, sea porque
+        # se ve en la foto o porque el vecino lo describe. Si la foto no sirve
+        # y el texto tampoco pide nada que exista en el catálogo, es false.
+        "hay_problema": bool(problemas) or bool(ctx_cats),
         "gravedad_maxima": max(gravedades) if gravedades else None,
         "problemas": problemas,
         "descripcion": descripcion,
         "categorias_contexto": ctx_cats,
+        "foto_valida": foto_valida,
+        "foto_valida_estado": foto_estado,
+        "descartados_por_foto": descartados,
+        # Lo que vio UNA sola fuente. No es un problema confirmado: se ofrece
+        # para que el consumidor repregunte, no para reportarlo como un hecho.
+        "posibles": posibles,
         "elementos_detectados": elementos,
         "en_duda": en_duda,
         "detalle": {"modelo_local": local, "verificacion": veri},
@@ -566,8 +648,8 @@ PAGINA = """<!DOCTYPE html>
   <label class="ctxlabel" for="ctx">Contexto vecinal (opcional)</label>
   <input id="ctx" type="text" maxlength="500"
          placeholder="Contá algo que quizá no se vea en la foto, p. ej. «todo huele mal» o «hay ratas»">
-  <div class="ctxhint">Sirve de pista para interpretar la foto y para sugerir reportes. Lo que no se vea
-    en la foto vuelve como sugerencia aparte, nunca como confirmación. Podés escribirlo antes o después
+  <div class="ctxhint">Tiene peso propio: si la foto no muestra lo que contás, el reclamo se arma con
+    lo que escribiste y la foto se marca como no válida. Podés escribirlo antes o después
     de elegir la foto.</div>
 
   <div id="drop" role="button" tabindex="0" aria-label="Elegir una foto para analizar">
@@ -588,7 +670,7 @@ PAGINA = """<!DOCTYPE html>
         <div>
           <div aria-live="polite">
             <b>Analizando la foto</b>
-            <div class="esptxt">Modelo local + verificación cruzada con dos modelos de visión.
+            <div class="esptxt">Modelo local + verificación cruzada con varios modelos de visión.
               Suele tardar entre 20 y 60 segundos.</div>
           </div>
           <div class="esptxt" id="elapsed" aria-hidden="true">0 s</div>
@@ -623,8 +705,8 @@ PAGINA = """<!DOCTYPE html>
             <div id="votos"></div>
             <h3>Predicciones del modelo local (top 5)</h3>
             <div class="mini" style="margin:0 0 8px">Probabilidades del clasificador propio. La confirmación
-              final surge del consenso: una categoría queda confirmada con 2 de 3 fuentes (modelo local +
-              dos modelos de visión); las de una sola fuente las decide un árbitro de texto.</div>
+              final surge del consenso: una categoría queda confirmada con al menos 2 fuentes (el modelo
+              local cuenta como una). Lo que ve una sola fuente no se confirma: queda como posible.</div>
             <div id="bars"></div>
           </div>
         </details>
@@ -646,7 +728,7 @@ PAGINA = """<!DOCTYPE html>
       <div class="endpoint"><b>POST</b> <span id="ep"></span> · multipart/form-data, campo <b>file</b> · campo opcional <b>contexto</b></div>
       <div class="apinote">Parámetro opcional <b>?verificar=</b> <b>auto</b> (default: verifica si hay clave
         de OpenRouter) · <b>1</b> (forzar verificación) · <b>0</b> (solo modelo local). Las categorías que el
-        contexto describe pero la foto no confirma vuelven en <b>final.categorias_contexto</b>.</div>
+        contexto describe pero la foto no confirma vuelven en <b>categorias_contexto</b>.</div>
       <div class="tabs" id="tabs">
         <button class="tab active" data-l="curl">curl</button>
         <button class="tab" data-l="python">Python</button>
@@ -671,7 +753,7 @@ const GRAV={1:'mínima',2:'leve',3:'alta',4:'grave',5:'muy grave'};
 const PRESENCIA=['contenedor_secos','contenedor_humedos_lateral','contenedor_humedos_bilateral'];
 const SNIP={
  curl:`curl -s -F "file=@foto.jpg" -F "contexto=vidrios rotos en la vereda" ${O}/clasificar`,
- python:`import requests\n\nwith open("foto.jpg", "rb") as f:\n    r = requests.post("${O}/clasificar", files={"file": f},\n                      data={"contexto": "vidrios rotos en la vereda"})\ndata = r.json()\nif data["hay_problema"]:\n    print(data["descripcion"])\n    for p in data["problemas"]:\n        print(p["key"], p["gravedad"], p["fuentes"])\nelse:\n    print("sin problema:", data["descripcion"])`,
+ python:`import requests\n\nwith open("foto.jpg", "rb") as f:\n    r = requests.post("${O}/clasificar", files={"file": f},\n                      data={"contexto": "vidrios rotos en la vereda"})\ndata = r.json()\nif data["hay_problema"]:\n    print(data["descripcion"])\n    for p in data["problemas"]:\n        print(p.get("key") or p.get("codigo"), p["gravedad"], p["fuentes"])\nelse:\n    print("sin problema:", data["descripcion"])`,
  js:`const fd = new FormData();\nfd.append("file", fileInput.files[0]);\nfd.append("contexto", "vidrios rotos en la vereda"); // opcional\nconst res = await fetch("${O}/clasificar", { method: "POST", body: fd });\nconst d = await res.json();\nif (d.hay_problema) console.log(d.problemas, d.descripcion);`
 };
 ['curl','python','js'].forEach(l=>$('#code-'+l).textContent=SNIP[l]);
@@ -733,10 +815,18 @@ function enviar(f){
      clearInterval(cronoIv);
      $('#espera').style.display='none';$('#res').style.display='block';
      const probs=d.problemas;
-     $('#concl').textContent=!d.hay_problema
-       ?'No se identificaron problemas en la foto.'
-       :(probs.length===1?'Se identificó 1 incidencia':'Se identificaron '+probs.length+' incidencias')
-         +(d.gravedad_maxima?` · gravedad máxima ${d.gravedad_maxima}/5 (${GRAV[d.gravedad_maxima]})`:'')+'.';
+     const desc=(d.descartados_por_foto||[]).length;
+     // La foto puede no corresponder al reclamo AUNQUE haya problemas: en ese
+     // caso salieron del texto, no de la foto, y hay que decirlo.
+     const aviso=(d.foto_valida===false&&d.hay_problema)
+       ?' La foto no muestra lo que contaste: el reclamo se armó con tu descripción.'
+       :(desc&&d.hay_problema?' Se dejaron de lado '+desc+' hallazgo(s) de la foto porque no venían al caso.':'');
+     $('#concl').textContent=(!d.hay_problema
+       ?(desc?'La foto muestra otra cosa y lo que contaste no corresponde a ningún reclamo.'
+             :'No se identificaron problemas en la foto.')
+       :(probs.length===0?'Hay un reclamo, pero todavía sin categoría confirmada'
+         :probs.length===1?'Se identificó 1 incidencia':'Se identificaron '+probs.length+' incidencias')
+         +(d.gravedad_maxima?` · gravedad máxima ${d.gravedad_maxima}/5 (${GRAV[d.gravedad_maxima]})`:'')+'.')+aviso;
      $('#cats').innerHTML=probs.map(c=>chip(c)).join('');
      if(d.descripcion){$('#desc').textContent=d.descripcion;$('#descwrap').style.display='block';}
      const cc=d.categorias_contexto||[];

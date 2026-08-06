@@ -89,10 +89,14 @@ mue = {x["n"]: x for x in (cargar("muestra.json") or [])}
 orig = {f["ident"]: f for f in jsonl("evidencia_congelada.jsonl")}
 v1 = {x["n"]: x for x in jsonl("evidencia_rubrica_v1.jsonl")}
 v2 = {x["n"]: x for x in jsonl("evidencia_rubrica_v2.jsonl")}
+v3 = {x["n"]: x for x in jsonl("evidencia_rubrica_v3.jsonl")}
 
 brazos = [("original", lambda n, m: claves(orig[mue[n]["ident"]], m) if mue[n]["ident"] in orig else None),
           ("estricta v1", lambda n, m: claves(v1[n], m) if n in v1 else None),
           ("revisada v2", lambda n, m: claves(v2[n], m) if n in v2 else None)]
+if v3:
+    brazos.append(("v3 (+12 categorías)",
+                   lambda n, m: claves(v3[n], m) if n in v3 else None))
 comun = [n for n, a in adj.items()
          if not a.get("basura")
          and all(get(n, m) is not None for _, get in brazos for m in (GPT, GEM))]
