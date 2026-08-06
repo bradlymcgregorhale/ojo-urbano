@@ -576,18 +576,27 @@ async def _clasificar_una(datos, contexto, verificar):
     estado_cupo = {"suelto": False}
 
     def soltar_cupo(por_techo=False):
+        # Marcar el trabajo como perdido y contarlo tiene que pasar ADENTRO
+        # del mismo lock: si se contara después de soltar el lock, un trabajo
+        # que termina justo en el medio vería el cupo ya suelto y restaría un
+        # perdido que todavía no se sumó. El max(0, ...) lo dejaría en cero y
+        # después el techo sumaría uno que ya nadie va a restar: un perdido
+        # fantasma para siempre. Con ABANDONO_MAX=1 eso es 503 permanente.
+        # Contar ANTES de soltar el cupo además ordena bien la admisión: quien
+        # entra ve la pérdida antes de ver el cupo libre.
         with soltado:
             if estado_cupo["suelto"]:
                 return False
             estado_cupo["suelto"] = True
-        # Primero el release y después el log: si el log explotara (stdout
-        # cerrado, colector caído), el cupo ya quedó marcado como suelto y
-        # nadie más lo iba a devolver. Eso es 503 permanente otra vez.
+            if por_techo:
+                with _perdidos["lock"]:
+                    _perdidos["vivos"] += 1
+                    _perdidos["total"] += 1
         _cupos.release()
+        # El log va al final y envuelto: si explotara (stdout cerrado,
+        # colector caído) el cupo ya quedó devuelto. Al revés era 503
+        # permanente otra vez.
         if por_techo:
-            with _perdidos["lock"]:
-                _perdidos["vivos"] += 1
-                _perdidos["total"] += 1
             try:
                 print(f"[ojo] trabajo abandonado tras {TECHO_TRABAJO}s; "
                       f"se devolvió el cupo (perdidos={_perdidos['total']})",

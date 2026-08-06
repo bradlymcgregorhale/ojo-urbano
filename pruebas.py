@@ -363,10 +363,17 @@ _c_sat, _r_sat = pedir("/clasificar", *_multipart("f.jpg", foto(899, 699))[::1])
 check("con la reserva agotada rechaza rápido en vez de encolar sin techo",
       _c_sat == 503 and "degradado" in str(_r_sat), f"HTTP {_c_sat} {_r_sat}")
 _libera_sat.set()
-time.sleep(0.6)
+for _h in _hilos_sat:
+    _h.join(20)
+time.sleep(0.5)
+# La contabilidad tiene que volver sola a cero. Si un techo sumara un perdido
+# después de que el hilo restó el suyo, quedaría un fantasma que nadie limpia
+# y el servicio se quedaría en 503 degradado hasta reiniciar.
+check("cuando los perdidos terminan, la contabilidad vuelve a cero",
+      S._perdidos["vivos"] == 0, f"vivos={S._perdidos['vivos']}")
 S.procesar = _procesar_real2
-with S._perdidos["lock"]:
-    S._perdidos["vivos"] = 0
+_c_rec, _ = pedir("/clasificar", *_multipart("f.jpg", foto(898, 698))[::1])
+check("y vuelve a aceptar pedidos normalmente", _c_rec == 200, f"HTTP {_c_rec}")
 S.TECHO_TRABAJO = _techo_real
 
 # La carrera del guardia: si vence justo mientras se está conectando, no hay
