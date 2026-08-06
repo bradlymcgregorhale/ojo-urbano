@@ -20,7 +20,11 @@ diferencia no puede venir de la muestra ni del momento del día.
 Se reporta por separado la cohorte dirigida y la aleatoria, que es el segundo
 criterio de aceptación de #7.
 
-    estabilidad.py [n_filas]
+    estabilidad.py [shard total_shards]
+
+Cada shard es un PROCESO aparte: verificador guarda estado en el módulo, así
+que no se puede paralelizar con hilos, pero sí con procesos. Sin argumentos
+corre todo en uno solo.
 
 Sale JSON por stdout y un detalle por fila en estabilidad.jsonl.
 """
@@ -77,11 +81,11 @@ def una_corrida(fila):
 
 def main():
     filas = [json.loads(l) for l in (DATOS / "evidencia_congelada.jsonl").open()]
-    if len(sys.argv) > 1:
-        filas = filas[:int(sys.argv[1])]
+    sh, nsh = (int(sys.argv[1]), int(sys.argv[2])) if len(sys.argv) > 2 else (0, 1)
+    filas = [f for i, f in enumerate(filas) if i % nsh == sh]
 
     V.CONSENSO_VLM_SOLO = "confirma"
-    salida = (Path(__file__).parent / "estabilidad.jsonl").open("w")
+    salida = (Path(__file__).parent / f"estabilidad-{sh}.jsonl").open("w")
     res = {}
 
     for brazo, confirma in (("arbitro_confirma=1 (viejo)", True),
@@ -126,6 +130,7 @@ def main():
 
     salida.close()
     print(json.dumps({
+        "shard": sh, "de": nsh,
         "criterio_1": "replay x2, <5% de diferencia en problemas",
         "arbitro": V.ARBITRO, "temperatura": V.TEMPERATURA,
         "resultados": res}, ensure_ascii=False, indent=2))

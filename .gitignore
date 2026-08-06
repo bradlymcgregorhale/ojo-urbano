@@ -6,3 +6,7 @@ __pycache__/
 .DS_Store
 
 fotos_cache/
+
+# Shards intermedios de los harness; lo consolidado vive en eval/datos/
+eval/harness/estabilidad-*.jsonl
+eval/harness/inyeccion-*.jsonl

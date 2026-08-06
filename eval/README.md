@@ -54,6 +54,8 @@ Dos advertencias que costaron caro:
 | `datos/inyecciones_*.jsonl` | ataques + controles limpios, por versión de rúbrica |
 | `datos/votacion_pareada.jsonl` | voto1 vs voto3, pareado e intercalado |
 | `datos/consenso_replay.jsonl` | `CONSENSO_VLM_SOLO` arbitro vs confirma |
+| `datos/estabilidad_replay.jsonl` | replay x2 por foto, brazo viejo (árbitro confirma) vs default de hoy — criterios de #7 |
+| `datos/inyecciones_v3_imagen.jsonl` | inyección estampada en la foto, muestra grande con 3 verificadores — criterios de #8 |
 
 ## Reproducir los números
 
@@ -77,6 +79,8 @@ Para rehacer el eval desde cero (llama a modelos, cuesta plata):
 | votación pareada | `harness/interleaved.py` | |
 | piso de ruido | `harness/ruido2.py` | |
 | calidad contra la adjudicación | `harness/calidad_arbitro.py` | |
+| piso de ruido, dos brazos (#7) | `harness/estabilidad.py` | replay puro, no necesita fotos; acepta `shard total` para correr en procesos paralelos |
+| inyección estampada, muestra grande (#8) | `harness/inyeccion.py` | necesita las fotos en `eval/fotos_cache/` y el modelo local; `shard total`, reanudable |
 
 Los scripts son reanudables: guardan lo hecho y saltean lo que ya está.
 
