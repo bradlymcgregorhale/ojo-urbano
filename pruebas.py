@@ -431,6 +431,47 @@ check("no agota los 3 intentos si vence el deadline", len(intentos) < 3,
 check("acota cada intento al tiempo restante", all(t <= 120 for t in intentos),
       str([round(t, 1) for t in intentos]))
 
+# REGRESIÓN REAL: el servicio quedó devolviendo 503 en producción porque un
+# hilo se colgó leyendo el cuerpo de una respuesta de OpenRouter. El timeout
+# de urllib es POR OPERACIÓN de socket: un proveedor que manda keepalives
+# mientras genera reinicia el reloj con cada byte y la lectura no vence nunca.
+class _RespuestaQueGotea:
+    """Cuerpo que nunca termina: manda un byte cada tanto, para siempre."""
+
+    def __init__(self):
+        self.cerrada = False
+        self.leidos = 0
+
+    def read(self, n=-1):
+        while not self.cerrada:
+            time.sleep(0.05)          # keepalive: llega algo, nunca el final
+            self.leidos += 1
+        raise ValueError("I/O operation on closed file")
+
+    readline = read
+
+    def close(self):
+        self.cerrada = True
+
+
+_goteo = _RespuestaQueGotea()
+V.urllib.request.urlopen = lambda req, timeout=None: _goteo
+V.DEADLINE, V.TIMEOUT = 2, 120
+_t0 = time.monotonic()
+try:
+    V._llamar("modelo/x", [{"role": "user", "content": "hola"}], intentos=1)
+    _excepcion = None
+except Exception as e:                # noqa: BLE001
+    _excepcion = e
+_tardo = time.monotonic() - _t0
+V.urllib.request.urlopen = _real_urlopen
+V.DEADLINE, V.TIMEOUT = 180, 120
+check("una respuesta que gotea para siempre no cuelga el hilo",
+      _tardo < 8, f"tardó {_tardo:.1f}s (deadline 2s)")
+check("  y el socket queda cerrado", _goteo.cerrada)
+check("  y avisa que el proveedor no terminó a tiempo",
+      _excepcion is not None, type(_excepcion).__name__)
+
 print("[#4] consenso y saneado")
 CATS = json.loads((AQUI / "categorias.json").read_text())
 V.ARBITRO = ""

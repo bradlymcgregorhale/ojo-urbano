@@ -88,7 +88,24 @@ Estado del servicio: clases del modelo, si la verificación está activa y con q
 
 ## Cambios de contrato
 
-La respuesta trae `version`. Se sube cuando cambia el **significado** de un campo que ya existía, no cuando se agrega uno nuevo. Si consumís esta API, esto es lo que cambió en **v2** y hay que revisar antes de actualizar:
+La respuesta trae `version`. Se sube cuando cambia el **significado** de un campo que ya existía, o cuando deja de venir por default.
+
+### v3: la respuesta viene resumida
+
+La respuesta traía el ranking completo del modelo local (29 categorías con su score, casi todas en 0.00x) y un `detalle.verificacion` que repetía seis campos que ya estaban arriba. Una respuesta típica pasó de ~9 KB a ~3 KB.
+
+| Antes (v2) | Ahora (v3) |
+|---|---|
+| `detalle.modelo_local` con `predichas`, `top5` y `probabilidades` | no viene; el modelo local sigue apareciendo como `"modelo_local"` en las `fuentes` de cada categoría |
+| `detalle.verificacion.verificadores` | `modelos`, en la raíz, con `modelo`, `ok`, `sin_problema`, `categorias` (`key`, `gravedad`, `evidencia`) y `descripcion` |
+| `detalle.verificacion.activa` / `.motivo` | `verificacion_activa` y, si está apagada, `verificacion_motivo` |
+| `detalle.verificacion.arbitro` | no viene; el veredicto y el motivo del árbitro para cada hallazgo dudoso ya están dentro de `posibles[]` |
+
+**Nada se perdió:** `GET/POST /clasificar?detalle=1` devuelve exactamente el volcado de v2, con `detalle` entero. Es lo que usa la página de demo para dibujar las barras del modelo local.
+
+### v2
+
+Esto es lo que cambió en **v2** y hay que revisar antes de actualizar:
 
 | Campo | Antes (v1) | Ahora (v2) |
 |---|---|---|

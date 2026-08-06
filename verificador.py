@@ -38,6 +38,7 @@ import io
 import json
 import os
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -259,17 +260,60 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3):
             ultimo = ultimo or TimeoutError(f"sin tiempo para {modelo}")
             break
         try:
-            with urllib.request.urlopen(req, timeout=min(TIMEOUT, resto)) as r:
-                data = json.load(r)
+            resp = urllib.request.urlopen(req, timeout=min(TIMEOUT, resto))
+            data = _leer_con_tope(resp, vence)
             msg = data["choices"][0]["message"]
             # algunos modelos razonadores dejan el JSON en "reasoning"
             contenido = msg.get("content") or msg.get("reasoning") or ""
             if "{" in contenido:
                 return contenido
             ultimo = ValueError("respuesta sin JSON")
-        except (urllib.error.URLError, KeyError, json.JSONDecodeError, OSError) as e:
+        except (urllib.error.URLError, KeyError, json.JSONDecodeError,
+                OSError, ValueError) as e:
             ultimo = e
     raise ultimo
+
+
+def _leer_con_tope(resp, vence):
+    """Lee el cuerpo con un tope de reloj ABSOLUTO y cierra el socket si vence.
+
+    El `timeout` de urllib es POR OPERACIÓN de socket, no por llamada: si el
+    proveedor manda el cuerpo de a pedacitos (OpenRouter intercala líneas de
+    keepalive mientras el modelo genera), cada byte que llega reinicia el
+    reloj y la lectura puede quedarse esperando para siempre sin que salte
+    ningún timeout.
+
+    Eso tiró el servicio en producción: un hilo quedó tomado leyendo un
+    socket abierto a OpenRouter y, como el cupo de concurrencia lo suelta el
+    hilo cuando termina, no volvió a entrar ni un pedido. Todo /clasificar
+    respondió 503 hasta reiniciar, mientras /salud seguía contestando 200.
+    """
+    disparo = {"vencio": False}
+
+    def cortar():
+        # Cerrar desde otro hilo hace que la lectura bloqueada largue una
+        # excepción: es la única forma de desatascarla.
+        disparo["vencio"] = True
+        try:
+            resp.close()
+        except Exception:       # noqa: BLE001 - cerrar nunca debe romper
+            pass
+
+    guardia = threading.Timer(max(0.1, vence - time.monotonic()), cortar)
+    guardia.daemon = True
+    guardia.start()
+    try:
+        return json.load(resp)
+    except Exception as e:      # noqa: BLE001
+        if disparo["vencio"]:
+            raise TimeoutError("el proveedor no terminó de responder a tiempo") from e
+        raise
+    finally:
+        guardia.cancel()
+        try:
+            resp.close()
+        except Exception:       # noqa: BLE001
+            pass
 
 
 def _extraer_json(texto):

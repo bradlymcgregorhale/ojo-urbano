@@ -60,8 +60,11 @@ GRAV_MAX = 5
 # un campo que ya existía, no cuando se agrega uno nuevo. v2: hay_problema pasó
 # a incluir lo que sostiene solo el texto del vecino, problemas dejó de ser
 # solo visual, apareció "contexto_vecinal" como fuente, y el árbitro dejó de
-# confirmar hallazgos de una sola fuente (ver README, "Cambios de contrato").
-VERSION_API = "2"
+# confirmar hallazgos de una sola fuente. v3: la respuesta viene resumida (los
+# modelos de visión en "modelos", sin el ranking completo del modelo local ni
+# los campos repetidos); el volcado entero se pide con ?detalle=1.
+# Ver README, "Cambios de contrato".
+VERSION_API = "3"
 
 # Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y varias
 # llamadas pagas a OpenRouter (una por verificador, tres por defecto, más el
@@ -425,6 +428,38 @@ def procesar(datos, contexto, verificar):
     }
 
 
+def _resumir(r):
+    """La respuesta por default: el veredicto, lo que dijo cada modelo de
+    visión, y lo que podría ser un reporte.
+
+    Lo que se saca es ruido para quien consume la API, no información nueva:
+    el ranking completo del modelo local son 29 categorías con su score (casi
+    todas en 0.00x) y `detalle.verificacion` repetía seis campos que ya están
+    arriba. Todo eso sigue disponible con ?detalle=1.
+    """
+    veri = (r.get("detalle") or {}).get("verificacion") or {}
+    lean = {k: v for k, v in r.items() if k != "detalle"}
+    lean["verificacion_activa"] = bool(veri.get("activa"))
+    if not veri.get("activa") and veri.get("motivo"):
+        lean["verificacion_motivo"] = veri["motivo"]
+    # Solo los modelos de visión: el modelo local ya está representado en las
+    # `fuentes` de cada categoría, y su ranking entero no le sirve a nadie que
+    # esté decidiendo qué reclamo abrir.
+    lean["modelos"] = [
+        {"modelo": v.get("modelo"), "ok": v.get("ok"),
+         "sin_problema": v.get("sin_problema"),
+         "categorias": [{"key": c.get("key"), "gravedad": c.get("gravedad"),
+                         "evidencia": c.get("evidencia")}
+                        for c in (v.get("categorias") or [])],
+         "descripcion": v.get("descripcion")}
+        for v in (veri.get("verificadores") or [])]
+    return lean
+
+
+def _pidio_detalle(valor):
+    return (valor or "").strip().lower() in ("1", "true", "si", "sí", "yes")
+
+
 app = FastAPI(title="Ojo Urbano")
 
 
@@ -475,16 +510,19 @@ def salud():
 
 @app.post("/clasificar")
 async def clasificar(request: Request, file: UploadFile = File(...),
-                     verificar: str = "auto", contexto: str = Form("")):
+                     verificar: str = "auto", contexto: str = Form(""),
+                     detalle: str = ""):
     datos = await _leer_acotado(file)
     contexto = (contexto or "").strip()[:500]
 
     # La misma foto con el mismo contexto no se vuelve a pagar.
     huella = hashlib.sha256(
         datos + b"\x00" + contexto.encode() + b"\x00" + verificar.encode()).hexdigest()
+    completo = _pidio_detalle(detalle)
     if huella in _cache:
         _cache.move_to_end(huella)
-        return JSONResponse(_cache[huella])
+        guardada = _cache[huella]
+        return JSONResponse(guardada if completo else _resumir(guardada))
 
     # Acá hubo una deduplicación de pedidos en vuelo (que el segundo pedido de
     # la misma foto se colgara del primero en vez de pagarla dos veces). Se
@@ -499,7 +537,7 @@ async def clasificar(request: Request, file: UploadFile = File(...),
         _cache[huella] = respuesta
         while len(_cache) > CACHE_MAX:
             _cache.popitem(last=False)
-    return JSONResponse(respuesta)
+    return JSONResponse(respuesta if completo else _resumir(respuesta))
 
 
 async def _clasificar_una(datos, contexto, verificar):
@@ -810,7 +848,7 @@ function enviar(f){
   img.src=URL.createObjectURL(f);img.style.display='block';
   const fd=new FormData();fd.append('file',f);
   const ctx=$('#ctx').value.trim();if(ctx)fd.append('contexto',ctx);
-  fetch(O+'/clasificar'+SUF,{method:'POST',body:fd,signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error('no pude leer la imagen');return r.json()})
+  fetch(O+'/clasificar'+SUF+'?detalle=1',{method:'POST',body:fd,signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error('no pude leer la imagen');return r.json()})
    .then(d=>{
      clearInterval(cronoIv);
      $('#espera').style.display='none';$('#res').style.display='block';
