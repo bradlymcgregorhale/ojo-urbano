@@ -579,7 +579,7 @@ print("[foto_valida] respuesta REAL de servidor.procesar")
 # contaminar las que siguen si algo revienta en el medio.
 _previo = {n: getattr(V, n) for n in (
     "_verificar_uno", "_llamar", "disponible", "VERIFICADORES", "ARBITRO",
-    "CONSENSO_VLM_SOLO", "ARBITRO_CONFIRMA")}
+    "CONSENSO_VLM_SOLO", "ARBITRO_CONFIRMA", "_clasificar_contexto")}
 
 def _mock(cats_foto, ctx_cats, corresponde, por_modelo=None):
     """por_modelo: dict modelo -> foto_corresponde, para simular desacuerdo.
@@ -700,6 +700,32 @@ else:
           str(_r["problemas"]))
     check("  y no queda hay_problema true con problemas vacío",
           _r["hay_problema"] is True and _r["problemas"] != [])
+
+    # Si el encaminamiento por texto se cae (corte de OpenRouter), la
+    # respuesta parece un "no hay problema" limpio. Cachearla congelaría ese
+    # falso negativo para esa foto para siempre.
+    V.ARBITRO = "arbitro/x"
+    V._verificar_uno = _mock(["vehiculo_mal_estacionado"], [], False)
+    V._clasificar_contexto = lambda c, cats: None      # falla transitoria
+    _r = _pedir(_bytes, "mi cuadra esta llena de basura", "1")
+    check("si el encaminamiento por texto falla, no hay problema reportado",
+          _r["hay_problema"] is False)
+    check("  pero la respuesta NO se cachea",
+          servidor._cacheable(_r) is False,
+          str(_r["detalle"]["verificacion"].get("ruteo_contexto_fallo")))
+    # El mismo caso pero con el encaminamiento corriendo bien y devolviendo
+    # vacío (el vecino no pidió nada del catálogo): ahí sí es estable.
+    # sin árbitro: lo de una sola fuente queda en duda de forma estable, así
+    # que lo único que puede impedir el cacheo es el fallo del encaminamiento
+    V.ARBITRO = ""
+    V._clasificar_contexto = lambda c, cats: []
+    _r = _pedir(_bytes, "esto es un disparate", "1")
+    check("si el encaminamiento corre y no mapea nada, sí se cachea",
+          servidor._cacheable(_r) is True,
+          "fallo=%s en_duda=%s arbitro=%s" % (
+              _r["detalle"]["verificacion"].get("ruteo_contexto_fallo"),
+              _r["en_duda"], _r["detalle"]["verificacion"].get("arbitro")))
+    V._clasificar_contexto = _previo["_clasificar_contexto"]
 
     # Invariante sobre las respuestas REALES de arriba: el booleano y el
     # estado nunca pueden contradecirse. Un true con estado "sin_contexto"

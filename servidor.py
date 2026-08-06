@@ -63,8 +63,9 @@ GRAV_MAX = 5
 # confirmar hallazgos de una sola fuente (ver README, "Cambios de contrato").
 VERSION_API = "2"
 
-# Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y 2-3 llamadas
-# pagas a OpenRouter, así que el endpoint no puede quedar abierto sin techo.
+# Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y varias
+# llamadas pagas a OpenRouter (una por verificador, tres por defecto, más el
+# árbitro cuando hay disputa y el encaminamiento por texto cuando hace falta), así que el endpoint no puede quedar abierto sin techo.
 MAX_BYTES = int(os.environ.get("MAX_BYTES", str(10 * 1024 * 1024)))
 MARGEN_MULTIPART = 64 * 1024  # boundaries, headers y contexto encima de la foto
 MAX_PIXELES = int(os.environ.get("MAX_PIXELES", str(25_000_000)))
@@ -297,6 +298,10 @@ def _cacheable(respuesta):
         # el arbitraje falló o quedó incompleto (respondió sin decidirlas
         # todas). Cachearlo congela ese resultado a medio hacer para siempre.
         if verificador.ARBITRO and respuesta.get("en_duda"):
+            return False
+        # El encaminamiento del reclamo por texto falló: la respuesta puede
+        # ser un falso "no hay problema" por un corte transitorio.
+        if veri.get("ruteo_contexto_fallo"):
             return False
         arbitro = veri.get("arbitro")
         return not (arbitro and not arbitro.get("ok"))

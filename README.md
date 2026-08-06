@@ -9,7 +9,7 @@ Combina dos capas:
 
    Algunas categorías (por ejemplo `vehiculo_mal_estacionado` o `columna_poste_cable`) no existen en el modelo local: las detectan solo los modelos de visión, y quedan confirmadas cuando al menos dos coinciden. Con `CONSENSO_VLM_SOLO=arbitro` esas pasan por el árbitro en vez de confirmarse solas; **no es el default**, ver [`verificador.py`](verificador.py) para por qué (un eval sobre fotos reales de reportes no pudo demostrar el beneficio ni descartar el costo; ver [`eval/`](eval/)).
 
-   Cada verificador devuelve además una **descripción** breve de la foto dentro de su misma respuesta, y la API entrega en `descripcion` una descripción consolidada que respalda las categorías confirmadas: la redacta el árbitro cuando ya interviene por una disputa, y si no hay disputa se elige la descripción del verificador que más coincide con el resultado final. No agrega llamadas para redactarla: sale de las respuestas que ya se pidieron. (La única llamada extra del sistema es la del árbitro, y solo cuando hay una disputa que resolver.)
+   Cada verificador devuelve además una **descripción** breve de la foto dentro de su misma respuesta, y la API entrega en `descripcion` una descripción consolidada que respalda las categorías confirmadas: la redacta el árbitro cuando ya interviene por una disputa, y si no hay disputa se elige la descripción del verificador que más coincide con el resultado final. No agrega llamadas para redactarla: sale de las respuestas que ya se pidieron. (Las llamadas extra del sistema son la del árbitro, cuando hay una disputa que resolver, y la del encaminamiento por texto cuando la foto no corresponde al reclamo.)
 
 ## Instalación
 
@@ -120,7 +120,7 @@ Nota: los modelos de DeepSeek en OpenRouter no aceptan imágenes, por eso partic
 
 ### Límites de abuso
 
-Clasificar una foto cuesta 25-60 s de CPU y 2-3 llamadas pagas a OpenRouter, así que `/clasificar` viene con techos puestos de fábrica:
+Clasificar una foto cuesta 25-60 s de CPU y una llamada paga a OpenRouter por verificador (tres por defecto), más el árbitro cuando hay una disputa y el encaminamiento por texto cuando la foto no corresponde al reclamo. Por eso `/clasificar` viene con techos puestos de fábrica:
 
 | Variable | Default | Qué hace |
 |---|---|---|
