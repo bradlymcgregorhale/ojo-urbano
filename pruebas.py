@@ -688,9 +688,15 @@ _interno = {
         {"key": "contenedor_secos", "nombre": "CS", "fuentes": ["modelo_local"]},
         {"key": "contenedor_humedos_lateral", "nombre": "CH",
          "fuentes": ["modelo_local", "vlm/uno"]}],
-    "en_duda": ["situacion_calle", "reparacion_cesto"],
+    "en_duda": ["situacion_calle", "reparacion_cesto", "contenedor_secos"],
     "detalle": {"modelo_local": {"predichas": []},
-                "verificacion": {"activa": True, "verificadores": []}}}
+                "verificacion": {"activa": True, "verificadores": [],
+                                 # contenedor_secos es PRESENCIA: no viaja en
+                                 # posibles, solo acá. Si este mapa se ignora,
+                                 # una presencia disputada legítima desaparece.
+                                 "fuentes_en_duda": {
+                                     "situacion_calle": ["modelo_local"],
+                                     "contenedor_secos": ["vlm/uno"]}}}}
 _interno["descripcion"] = "Solo el clasificador local detectó algo acá."
 _pub = servidor._publica(_interno)
 check("un problema sostenido solo por el modelo local no se publica",
@@ -710,10 +716,53 @@ check("un elemento detectado solo por el modelo local no se publica",
       [e["key"] for e in _pub["elementos_detectados"]] == ["contenedor_humedos_lateral"]
       and all("fuentes" not in e for e in _pub["elementos_detectados"]),
       str(_pub["elementos_detectados"]))
-check("en_duda filtra lo solo-local y lo irrastreable",
-      _pub["en_duda"] == ["reparacion_cesto"], str(_pub["en_duda"]))
+check("en_duda filtra lo solo-local pero conserva una PRESENCIA disputada",
+      _pub["en_duda"] == ["reparacion_cesto", "contenedor_secos"],
+      str(_pub["en_duda"]))
 check("la descripción también pasa por el saneador (variante 'clasificador local')",
       _pub["descripcion"] == servidor._MOTIVO_GENERICO, _pub["descripcion"])
+
+# El saneador, variante por variante: cada frase atada al mecanismo se
+# reemplaza entera; el lenguaje urbano legítimo pasa intacto.
+_nuked = ["Solo el modelo local la reporta.", "El clasificador propio dio 0.99.",
+          "El modelo interno le asigna score alto.", "probabilidades locales bajas"]
+check("el saneador ataja cada variante del mecanismo",
+      all(servidor._sanear_motivo(t) == servidor._MOTIVO_GENERICO for t in _nuked),
+      str([t for t in _nuked if servidor._sanear_motivo(t) != servidor._MOTIVO_GENERICO]))
+_legit = "Daños en el sistema interno del semáforo; la fuente local está rota."
+check("  y no borra frases urbanas legítimas ('sistema interno', 'fuente local')",
+      servidor._sanear_motivo(_legit) == _legit, servidor._sanear_motivo(_legit))
+
+# El seam completo de verificar=0: procesar() etiqueta lo local internamente
+# y _publica() lo degrada. Si la propagación de fuentes en procesar() se
+# revierte, este test falla aunque el fixture de arriba siga pasando.
+_cl_prev = servidor.clasificar_local
+servidor.clasificar_local = lambda img: {
+    "predichas": [{"key": "contenedor_secos", "nombre": "CS", "score": 0.9},
+                  {"key": "recoleccion", "nombre": "R", "score": 0.8}],
+    "top5": [], "probabilidades": [], "gravedad": {"value": 2, "raw": 2.0},
+    "umbral": 0.5}
+try:
+    _ri = servidor.procesar(foto(64, 48), "", "0")
+    check("verificar=0: los elementos internos llevan sus fuentes",
+          _ri["elementos_detectados"]
+          and all(e.get("fuentes") == ["modelo_local"]
+                  for e in _ri["elementos_detectados"]),
+          str(_ri["elementos_detectados"]))
+    _pi = servidor._publica(_ri)
+    check("  y el payload público degrada entero",
+          _pi["problemas"] == [] and _pi["elementos_detectados"] == []
+          and _pi["hay_problema"] is False and _pi["verificacion_activa"] is False)
+finally:
+    servidor.clasificar_local = _cl_prev
+
+# La demo no se ejecuta en estas pruebas: al menos que el fuente sirva de
+# centinela contra revertir el escape o el chip de conteo.
+_src = (AQUI / "servidor.py").read_text()
+check("la demo define esc() y escapa las descripciones de los modelos",
+      "const esc=" in _src and "esc(x.descripcion)" in _src and "esc(p.motivo)" in _src)
+check("  y chip() ya no trata fuentes como lista",
+      "fuentes||[]).join" not in _src)
 _solo_local = dict(_interno, problemas=[_interno["problemas"][1]],
                    categorias_contexto=[])
 check("sin fuentes publicables: hay_problema y hay_reclamo son false",

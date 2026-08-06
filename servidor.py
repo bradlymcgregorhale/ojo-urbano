@@ -461,9 +461,12 @@ def _terminos_prohibidos():
     partes = [re.escape(m) for m in modelos]
     # también el nombre pelado, sin el proveedor: "gpt-5-mini" a secas
     partes += [re.escape(m.split("/", 1)[1]) for m in modelos if "/" in m]
+    # Solo frases atadas al MECANISMO de clasificación. Genéricos como
+    # "sistema interno" o "fuente local" describen cosas reales de la vía
+    # pública (el sistema interno de un semáforo, una fuente) y borrarían
+    # descripciones válidas.
     partes += [r"modelo[_ ]local", r"\bscore\b", r"probabilidad(?:es)?\s+local(?:es)?",
-               r"clasificador\s+(?:local|propio|interno)", r"modelo\s+interno",
-               r"fuente\s+local", r"sistema\s+interno"]
+               r"clasificador\s+(?:local|propio|interno)", r"modelo\s+interno"]
     return re.compile("|".join(partes), re.IGNORECASE)
 
 
@@ -513,8 +516,11 @@ def _publica(r):
     pub["elementos_detectados"] = [
         {"key": c.get("key"), "nombre": c.get("nombre")}
         for c in (r.get("elementos_detectados") or []) if _visible(c)]
+    # Primero el mapa directo del verificador (cubre las claves de PRESENCIA,
+    # que no viajan en posibles); posibles/problemas quedan de respaldo.
     _fuentes_de = {p.get("key"): p.get("fuentes") or []
                    for p in (r.get("posibles") or []) + (r.get("problemas") or [])}
+    _fuentes_de.update(veri.get("fuentes_en_duda") or {})
     pub["en_duda"] = [k for k in (r.get("en_duda") or [])
                       if set(_fuentes_de.get(k, [])) - {"modelo_local"}]
 

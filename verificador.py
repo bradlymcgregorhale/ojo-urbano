@@ -1287,6 +1287,10 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         "arbitro": arbitro,
         "confirmadas": finales,
         "en_duda": en_duda,
+        # Interno, para que el serializador pueda filtrar en_duda por fuente:
+        # las claves de PRESENCIA no aparecen en posibles, así que sin esto no
+        # habría forma de saber quién vio una presencia en disputa.
+        "fuentes_en_duda": {k: sorted(fuentes.get(k, [])) for k in en_duda},
         "categorias_contexto": categorias_contexto,
         "descripcion": descripcion,
         "descripcion_fuente": descripcion_fuente,
