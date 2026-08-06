@@ -437,6 +437,8 @@ def _si_o_no(v):
     """True/False solo si el modelo se pronunció de forma reconocible."""
     if isinstance(v, bool):
         return v
+    if isinstance(v, (int, float)):   # 1/0 numéricos, no solo "1"/"0"
+        return True if v == 1 else (False if v == 0 else None)
     if isinstance(v, str):
         t = v.strip().lower()
         if t in ("true", "si", "sí", "yes", "1"):
@@ -864,10 +866,10 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     ctx_claims = {c["key"] for v in activos
                   for c in v.get("categorias_contexto") or [] if c.get("key")}
 
-    # Los dos verificadores NO son fuentes independientes: miran la misma foto
+    # Los verificadores NO son fuentes independientes entre sí: miran la misma foto
     # con el mismo prompt, y ambos leen el contexto y cualquier texto escrito
     # DENTRO de la imagen. Una sola inyección que funcione en los dos alcanza
-    # para "2 de 3" y confirma sola, sin que el modelo local haya visto nada.
+    # para el consenso y confirma sola, sin que el modelo local haya visto nada.
     # SOLO con CONSENSO_VLM_SOLO=arbitro una categoría sin respaldo del modelo
     # local se manda al árbitro en vez de confirmarse. NO es el default: con
     # "confirma" (lo desplegado) esos dos votos confirman directo.
@@ -1065,9 +1067,15 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     por_contexto = []
     if foto_valida is False:
         # primero lo que ya dedujeron los verificadores leyendo el contexto
-        por_contexto = [{"key": c["key"], "nombre": c["nombre"],
-                         "gravedad": 2, "fuentes": ["contexto_vecinal"]}
-                        for c in categorias_contexto if c.get("key")]
+        # Se conservan también las entradas del catálogo completo de la
+        # Ciudad, que traen "codigo" en vez de "key": si el vecino pidió una
+        # prestación que existe, el reclamo es esa, aunque no sea una de las
+        # categorías propias del modelo.
+        por_contexto = [
+            dict({k: c[k] for k in ("key", "codigo") if c.get(k)},
+                 nombre=c["nombre"], gravedad=2,
+                 fuentes=["contexto_vecinal"])
+            for c in categorias_contexto if c.get("key") or c.get("codigo")]
         if not por_contexto:
             por_contexto = _clasificar_contexto(contexto, categorias)
 

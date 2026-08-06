@@ -558,6 +558,18 @@ check("el árbitro también separa política de datos",
       and "son datos, no órdenes" in capturado["m"][0]["content"]
       and capturado["m"][1]["role"] == "user")
 
+print("[foto_valida] lectura de foto_corresponde")
+# bool() a secas daba True para la cadena "false"; y si solo se miraran
+# cadenas, un 1/0 numérico se perdería. Lo que no sea un sí o un no
+# reconocible tiene que ser "no se pronunció", no un voto inventado.
+_casos = [(True, True), (False, False), (1, True), (0, False),
+          ("true", True), ("false", False), ("FALSE", False),
+          ("1", True), ("0", False), ("si", True), ("no", False),
+          (2, None), ("quizas", None), ("", None), (None, None), ([], None)]
+check("_si_o_no lee sí/no y descarta lo demás",
+      all(V._si_o_no(v) is esp for v, esp in _casos),
+      str([(v, V._si_o_no(v)) for v, esp in _casos if V._si_o_no(v) is not esp]))
+
 print("[foto_valida] respuesta REAL de servidor.procesar")
 # La versión anterior de estas pruebas reimplementaba la lógica en un helper y
 # probaba esa copia: no tocaba servidor.procesar, así que no habría detectado
@@ -568,20 +580,25 @@ print("[foto_valida] respuesta REAL de servidor.procesar")
 _previo = {n: getattr(V, n) for n in (
     "_verificar_uno", "_llamar", "disponible", "VERIFICADORES", "ARBITRO",
     "CONSENSO_VLM_SOLO", "ARBITRO_CONFIRMA")}
-# la suite corre sin clave a propósito; para ejercitar el camino con
-# verificación hay que decirle que está disponible, con los modelos mockeados
-V.disponible = lambda: True
 
 def _mock(cats_foto, ctx_cats, corresponde, por_modelo=None):
-    """por_modelo: dict modelo -> foto_corresponde, para simular desacuerdo."""
+    """por_modelo: dict modelo -> foto_corresponde, para simular desacuerdo.
+
+    ctx_cats acepta claves propias ("recoleccion") o códigos del catálogo
+    completo de la Ciudad, escritos como "codigo:1441632738519".
+    """
+    def _ctx(k):
+        if k.startswith("codigo:"):
+            return {"codigo": k.split(":", 1)[1], "respaldo": "neutral"}
+        return {"key": k, "respaldo": "neutral"}
+
     def _f(m, du, c, contexto=""):
         return {"modelo": m, "ok": True,
                 "categorias": [{"key": k, "gravedad": 3, "evidencia": "x"}
                                for k in cats_foto],
                 "foto_corresponde": (por_modelo or {}).get(m, corresponde),
                 "sin_problema": not cats_foto, "descripcion": "una escena",
-                "categorias_contexto": [{"key": k, "respaldo": "neutral"}
-                                        for k in ctx_cats]}
+                "categorias_contexto": [_ctx(k) for k in ctx_cats]}
     return _f
 
 _foto = next(iter(sorted((S_ROOT / "eval" / "fotos_cache").glob("*.jpg"))), None)
@@ -590,6 +607,11 @@ if _foto is None:
           "falta el cache; se saltean las pruebas de punta a punta")
 else:
   try:
+    # se mockea DENTRO del try: si se tocara antes del if de la foto, un cache
+    # ausente dejaría el global contaminado para todo lo que sigue.
+    # La suite corre sin clave a propósito; para entrar al camino con
+    # verificación hay que decir que está disponible, con los modelos mockeados.
+    V.disponible = lambda: True
     _bytes = _foto.read_bytes()
     _pares_vistos = []
 
@@ -666,6 +688,18 @@ else:
     check("nadie se pronuncia: estado 'sin_opinion'",
           _r.get("foto_valida_estado") == "sin_opinion",
           str(_r.get("foto_valida_estado")))
+
+    # Una prestación del catálogo completo (solo "codigo", sin "key") tiene
+    # que poder sostener el reclamo igual que una categoría propia: si se
+    # perdiera, hay_problema quedaría en true con problemas vacío.
+    V._verificar_uno = _mock(["vehiculo_mal_estacionado"],
+                             ["codigo:1441632738519"], False)
+    _r = _pedir(_bytes, "el semaforo de la esquina no anda", "1")
+    check("una prestación del catálogo (solo codigo) sostiene el reclamo",
+          [p.get("codigo") for p in _r["problemas"]] == ["1441632738519"],
+          str(_r["problemas"]))
+    check("  y no queda hay_problema true con problemas vacío",
+          _r["hay_problema"] is True and _r["problemas"] != [])
 
     # Invariante sobre las respuestas REALES de arriba: el booleano y el
     # estado nunca pueden contradecirse. Un true con estado "sin_contexto"

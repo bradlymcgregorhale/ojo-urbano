@@ -811,7 +811,7 @@ function enviar(f){
      const probs=d.problemas;
      $('#concl').textContent=!d.hay_problema
        ?'No se identificaron problemas en la foto.'
-       :(probs.length===0?'La foto no muestra el problema, pero lo que contaste sí corresponde a un reclamo'
+       :(probs.length===0?(d.foto_valida===false?'La foto no muestra el problema, pero lo que contaste sí corresponde a un reclamo':'Lo que contaste corresponde a un reclamo; la foto no lo confirma')
          :probs.length===1?'Se identificó 1 incidencia':'Se identificaron '+probs.length+' incidencias')
          +(d.gravedad_maxima?` · gravedad máxima ${d.gravedad_maxima}/5 (${GRAV[d.gravedad_maxima]})`:'')+'.';
      $('#cats').innerHTML=probs.map(c=>chip(c)).join('');
