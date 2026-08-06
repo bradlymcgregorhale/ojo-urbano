@@ -16,15 +16,18 @@ with open(sys.argv[1], "rb") as f:
 r.raise_for_status()
 data = r.json()
 
-if not data["hay_problema"]:
-    print("Sin problema identificable")
-else:
+if data["hay_problema"]:
     print(f"Gravedad máxima: {data['gravedad_maxima']}/5")
     for p in data["problemas"]:
         # Una entrada puede venir con "key" (categoría propia) o con "codigo"
         # (prestación del catálogo completo de la Ciudad), nunca con las dos.
         ident = p.get("key") or p.get("codigo")
-        print(f"{ident:30s} gravedad={p['gravedad']} fuentes={', '.join(p['fuentes'])}")
+        # "fuentes" es un conteo (v4): cuántas fuentes del consenso la sostienen.
+        print(f"{ident:30s} gravedad={p['gravedad']} fuentes={p['fuentes']}")
+elif data.get("hay_reclamo"):
+    print("Hay un reclamo en el texto, sin problema confirmado en la foto")
+else:
+    print("Sin problema identificable")
 if data.get("foto_valida") is False:
     print("La foto no corresponde al reclamo; se reportó lo que contó el vecino.")
 for s in data["categorias_contexto"]:

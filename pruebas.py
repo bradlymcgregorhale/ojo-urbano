@@ -617,32 +617,165 @@ V.DEADLINE, V.TIMEOUT = 180, 120
 check("headers que gotean tampoco cuelgan el hilo",
       _tardo_h < 10, f"tardó {_tardo_h:.1f}s con deadline 3s")
 
-print("[v3] la respuesta viene resumida, y ?detalle=1 trae todo")
-# El contrato v3 saca el ranking de 29 categorías del modelo local y los
-# campos que detalle.verificacion repetía de la raíz. Se prueban los cuatro
-# caminos, porque la caché guarda la respuesta COMPLETA y resume al responder:
-# un bug ahí devolvería el volcado entero en un hit, o un resumen en el pedido
-# con ?detalle=1.
-_foto_v3 = foto(640, 480)
-_LEAN = ("version", "hay_problema", "problemas", "posibles", "modelos",
-         "verificacion_activa")
+print("[v4] el modelo local no se publica por ninguna vía")
+# El contrato v4 elimina la escotilla ?detalle=1: la respuesta SIEMPRE pasa
+# por el serializador público y el voto del modelo local no aparece. Se
+# prueban el camino fresco y el cacheado, porque la caché guarda el objeto
+# INTERNO completo: un bug ahí devolvería el volcado entero en un hit.
+_foto_v4 = foto(640, 480)
+_LEAN = ("version", "hay_problema", "hay_reclamo", "problemas", "posibles",
+         "modelos", "verificacion_activa")
+
+
+def _claves_recursivas(x):
+    if isinstance(x, dict):
+        for k, v in x.items():
+            yield k
+            yield from _claves_recursivas(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from _claves_recursivas(v)
+
+
+_PROHIBIDAS = {"detalle", "modelo_local", "predichas", "top5",
+               "probabilidades", "contexto", "score", "umbral"}
 for _vuelta in ("fresca", "cacheada"):
-    _c, _r = pedir("/clasificar", *_multipart("v3.jpg", _foto_v3)[::1])
-    check(f"resumida ({_vuelta}): sin detalle y con modelos",
-          _c == 200 and "detalle" not in _r and all(k in _r for k in _LEAN),
-          f"HTTP {_c} claves={sorted(_r)[:6]}")
-    check(f"  ({_vuelta}) los modelos son solo los de visión",
-          all("modelo" in m and "categorias" in m for m in _r["modelos"]),
-          str(_r["modelos"])[:80])
+    _c, _r = pedir("/clasificar", *_multipart("v4.jpg", _foto_v4)[::1])
+    check(f"({_vuelta}) contrato v4 con las claves esperadas",
+          _c == 200 and _r.get("version") == "4" and all(k in _r for k in _LEAN),
+          f"HTTP {_c} claves={sorted(_r)[:8]}")
+    _coladas = set(_claves_recursivas(_r)) & _PROHIBIDAS
+    check(f"  ({_vuelta}) ninguna clave interna aparece, a ninguna profundidad",
+          not _coladas, str(_coladas))
+    check(f"  ({_vuelta}) hay_problema == bool(problemas), siempre",
+          _r["hay_problema"] == bool(_r["problemas"]))
+    check(f"  ({_vuelta}) fuentes es un conteo, nunca una lista de nombres",
+          all(isinstance(p.get("fuentes"), int)
+              for p in _r["problemas"] + _r["posibles"]),
+          str([p.get("fuentes") for p in _r["problemas"] + _r["posibles"]])[:60])
     _c2, _r2 = pedir("/clasificar?detalle=1",
-                     *_multipart("v3.jpg", _foto_v3)[::1])
-    check(f"  ({_vuelta}) con ?detalle=1 vuelve el volcado completo",
-          _c2 == 200 and "detalle" in _r2
-          and "modelo_local" in _r2["detalle"],
-          f"HTTP {_c2} claves={sorted(_r2)[:6]}")
-    check(f"  ({_vuelta}) y el veredicto es el mismo en las dos formas",
-          _r["problemas"] == _r2["problemas"]
-          and _r["hay_problema"] == _r2["hay_problema"])
+                     *_multipart("v4.jpg", _foto_v4)[::1])
+    check(f"  ({_vuelta}) ?detalle=1 ya no existe: devuelve lo mismo",
+          _c2 == 200 and "detalle" not in _r2 and _r2 == _r,
+          f"HTTP {_c2} claves={sorted(_r2)[:8]}")
+
+print("[v4] el serializador filtra lo solo-local y sanea motivos")
+_conf_prev = V.VERIFICADORES, V.ARBITRO
+V.VERIFICADORES, V.ARBITRO = ["vlm/uno", "vlm/dos"], "arb/x"
+_interno = {
+    "version": "4", "hay_problema": True, "hay_reclamo": True,
+    "gravedad_maxima": 4,
+    "problemas": [
+        {"key": "recoleccion", "nombre": "R", "gravedad": 4,
+         "fuentes": ["modelo_local", "vlm/uno"]},
+        {"key": "situacion_calle", "nombre": "S", "gravedad": 1,
+         "fuentes": ["modelo_local"]}],
+    "descripcion": "d", "categorias_contexto": [],
+    "foto_valida": None, "foto_valida_estado": "sin_contexto",
+    "descartados_por_foto": [],
+    "posibles": [
+        {"key": "retiro_afiches", "nombre": "A", "gravedad": 1,
+         "fuentes": ["modelo_local"], "origen": "foto",
+         "arbitro": "rechazar", "motivo": "Solo el modelo local la reporta."},
+        {"key": "reparacion_cesto", "nombre": "C", "gravedad": 2,
+         "fuentes": ["vlm/dos"], "origen": "foto",
+         "arbitro": "rechazar",
+         "motivo": f"El modelo {V.VERIFICADORES[0] if V.VERIFICADORES else 'x/y'} no lo vio."},
+        {"key": "obstruccion", "nombre": "O", "gravedad": 2,
+         "fuentes": ["vlm/dos"], "origen": "foto",
+         "arbitro": "rechazar", "motivo": "Ninguna descripción menciona un objeto fijo."}],
+    "elementos_detectados": [
+        {"key": "contenedor_secos", "nombre": "CS", "fuentes": ["modelo_local"]},
+        {"key": "contenedor_humedos_lateral", "nombre": "CH",
+         "fuentes": ["modelo_local", "vlm/uno"]}],
+    "en_duda": ["situacion_calle", "reparacion_cesto", "contenedor_secos"],
+    "detalle": {"modelo_local": {"predichas": []},
+                "verificacion": {"activa": True, "verificadores": [],
+                                 # contenedor_secos es PRESENCIA: no viaja en
+                                 # posibles, solo acá. Si este mapa se ignora,
+                                 # una presencia disputada legítima desaparece.
+                                 "fuentes_en_duda": {
+                                     "situacion_calle": ["modelo_local"],
+                                     "contenedor_secos": ["vlm/uno"]}}}}
+_interno["descripcion"] = "Solo el clasificador local detectó algo acá."
+_pub = servidor._publica(_interno)
+check("un problema sostenido solo por el modelo local no se publica",
+      [p["key"] for p in _pub["problemas"]] == ["recoleccion"],
+      str([p["key"] for p in _pub["problemas"]]))
+check("  y las invariantes se recalculan sobre lo publicado",
+      _pub["hay_problema"] is True and _pub["gravedad_maxima"] == 4)
+check("un posible que solo vio el modelo local se filtra",
+      "retiro_afiches" not in {p["key"] for p in _pub["posibles"]})
+check("un motivo que nombra un modelo se reemplaza entero",
+      "modelo" not in _pub["posibles"][0]["motivo"].lower()
+      or _pub["posibles"][0]["motivo"] == servidor._MOTIVO_GENERICO,
+      _pub["posibles"][0]["motivo"])
+check("  y un motivo limpio queda como estaba",
+      _pub["posibles"][1]["motivo"] == "Ninguna descripción menciona un objeto fijo.")
+check("un elemento detectado solo por el modelo local no se publica",
+      [e["key"] for e in _pub["elementos_detectados"]] == ["contenedor_humedos_lateral"]
+      and all("fuentes" not in e for e in _pub["elementos_detectados"]),
+      str(_pub["elementos_detectados"]))
+check("en_duda filtra lo solo-local pero conserva una PRESENCIA disputada",
+      _pub["en_duda"] == ["reparacion_cesto", "contenedor_secos"],
+      str(_pub["en_duda"]))
+check("la descripción también pasa por el saneador (variante 'clasificador local')",
+      _pub["descripcion"] == servidor._MOTIVO_GENERICO, _pub["descripcion"])
+
+# El saneador, variante por variante: cada frase atada al mecanismo se
+# reemplaza entera; el lenguaje urbano legítimo pasa intacto.
+_nuked = ["Solo el modelo local la reporta.",     # una frase por patrón: si un
+          "El clasificador local duda.",          # patrón desaparece, cae SU
+          "El clasificador propio dio 0.99.",     # frase y no la tapa otro
+          "El clasificador interno la descarta.",
+          "El modelo interno la descarta.",
+          "El score fue alto.",
+          "Las probabilidades locales son bajas.",
+          "La probabilidad local no alcanza."]
+check("el saneador ataja cada variante del mecanismo",
+      all(servidor._sanear_motivo(t) == servidor._MOTIVO_GENERICO for t in _nuked),
+      str([t for t in _nuked if servidor._sanear_motivo(t) != servidor._MOTIVO_GENERICO]))
+_legit = "Daños en el sistema interno del semáforo; la fuente local está rota."
+check("  y no borra frases urbanas legítimas ('sistema interno', 'fuente local')",
+      servidor._sanear_motivo(_legit) == _legit, servidor._sanear_motivo(_legit))
+
+# El seam completo de verificar=0: procesar() etiqueta lo local internamente
+# y _publica() lo degrada. Si la propagación de fuentes en procesar() se
+# revierte, este test falla aunque el fixture de arriba siga pasando.
+_cl_prev = servidor.clasificar_local
+servidor.clasificar_local = lambda img: {
+    "predichas": [{"key": "contenedor_secos", "nombre": "CS", "score": 0.9},
+                  {"key": "recoleccion", "nombre": "R", "score": 0.8}],
+    "top5": [], "probabilidades": [], "gravedad": {"value": 2, "raw": 2.0},
+    "umbral": 0.5}
+try:
+    _ri = servidor.procesar(foto(64, 48), "", "0")
+    check("verificar=0: los elementos internos llevan sus fuentes",
+          _ri["elementos_detectados"]
+          and all(e.get("fuentes") == ["modelo_local"]
+                  for e in _ri["elementos_detectados"]),
+          str(_ri["elementos_detectados"]))
+    _pi = servidor._publica(_ri)
+    check("  y el payload público degrada entero",
+          _pi["problemas"] == [] and _pi["elementos_detectados"] == []
+          and _pi["hay_problema"] is False and _pi["verificacion_activa"] is False)
+finally:
+    servidor.clasificar_local = _cl_prev
+
+# La demo no se ejecuta en estas pruebas: al menos que el fuente sirva de
+# centinela contra revertir el escape o el chip de conteo.
+_src = (AQUI / "servidor.py").read_text()
+check("la demo define esc() y escapa las descripciones de los modelos",
+      "const esc=" in _src and "esc(x.descripcion)" in _src and "esc(p.motivo)" in _src)
+check("  y chip() ya no trata fuentes como lista",
+      "fuentes||[]).join" not in _src)
+_solo_local = dict(_interno, problemas=[_interno["problemas"][1]],
+                   categorias_contexto=[])
+check("sin fuentes publicables: hay_problema y hay_reclamo son false",
+      servidor._publica(_solo_local)["hay_problema"] is False
+      and servidor._publica(_solo_local)["hay_reclamo"] is False
+      and servidor._publica(_solo_local)["gravedad_maxima"] is None)
+V.VERIFICADORES, V.ARBITRO = _conf_prev
 
 print("[#4] consenso y saneado")
 CATS = json.loads((AQUI / "categorias.json").read_text())

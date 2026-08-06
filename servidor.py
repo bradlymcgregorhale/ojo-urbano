@@ -26,6 +26,7 @@ import io
 import json
 import math
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -62,9 +63,15 @@ GRAV_MAX = 5
 # solo visual, apareció "contexto_vecinal" como fuente, y el árbitro dejó de
 # confirmar hallazgos de una sola fuente. v3: la respuesta viene resumida (los
 # modelos de visión en "modelos", sin el ranking completo del modelo local ni
-# los campos repetidos); el volcado entero se pide con ?detalle=1.
-# Ver README, "Cambios de contrato".
-VERSION_API = "3"
+# los campos repetidos); el volcado entero se pide con ?detalle=1. v4: el
+# modelo local desaparece de la respuesta (sigue corriendo y contando como
+# fuente del consenso, pero su voto no se publica); no hay más ?detalle=1;
+# "fuentes" pasa a ser un conteo; hay_problema vuelve a significar problema
+# CONFIRMADO (hay_problema == bool(problemas)) y hay_reclamo expresa "el
+# vecino pide algo aunque la foto no lo confirme"; el contexto del vecino no
+# se devuelve nunca; ?verificar=0 responde degradado en vez de publicar el
+# modelo local. Ver README, "Cambios de contrato".
+VERSION_API = "4"
 
 # Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y varias
 # llamadas pagas a OpenRouter (una por verificador, tres por defecto, más el
@@ -373,7 +380,10 @@ def procesar(datos, contexto, verificar):
 
     # El veredicto primero; todo lo interno queda en "detalle".
     problemas = [c for c in categorias if c["key"] not in verificador.PRESENCIA]
-    elementos = [{"key": c["key"], "nombre": c["nombre"]}
+    # fuentes se guarda en el objeto interno para que _publica pueda filtrar
+    # lo solo-local; el serializador lo saca antes de publicar.
+    elementos = [{"key": c["key"], "nombre": c["nombre"],
+                  "fuentes": c.get("fuentes") or []}
                  for c in categorias if c["key"] in verificador.PRESENCIA]
 
     # Si la foto NO corresponde a lo que el vecino contó, no se puede reportar
@@ -423,10 +433,12 @@ def procesar(datos, contexto, verificar):
     gravedades = [c["gravedad"] for c in problemas if c.get("gravedad")]
     return {
         "version": VERSION_API,
-        # hay_problema es sobre EL RECLAMO: hay algo reportable acá, sea porque
-        # se ve en la foto o porque el vecino lo describe. Si la foto no sirve
-        # y el texto tampoco pide nada que exista en el catálogo, es false.
-        "hay_problema": bool(problemas) or bool(ctx_cats),
+        # Sobre el objeto INTERNO. _publica() recalcula los dos sobre lo que
+        # queda visible después de filtrar lo solo-local, y ahí valen las
+        # invariantes del contrato: hay_problema == bool(problemas) y
+        # hay_reclamo == bool(problemas or categorias_contexto).
+        "hay_problema": bool(problemas),
+        "hay_reclamo": bool(problemas) or bool(ctx_cats),
         "gravedad_maxima": max(gravedades) if gravedades else None,
         "problemas": problemas,
         "descripcion": descripcion,
@@ -443,36 +455,99 @@ def procesar(datos, contexto, verificar):
     }
 
 
-def _resumir(r):
-    """La respuesta por default: el veredicto, lo que dijo cada modelo de
-    visión, y lo que podría ser un reporte.
+def _terminos_prohibidos():
+    """Nombres internos que un texto público jamás debe contener."""
+    modelos = [m for m in (list(verificador.VERIFICADORES) + [verificador.ARBITRO]) if m]
+    partes = [re.escape(m) for m in modelos]
+    # también el nombre pelado, sin el proveedor: "gpt-5-mini" a secas
+    partes += [re.escape(m.split("/", 1)[1]) for m in modelos if "/" in m]
+    # Solo frases atadas al MECANISMO de clasificación. Genéricos como
+    # "sistema interno" o "fuente local" describen cosas reales de la vía
+    # pública (el sistema interno de un semáforo, una fuente) y borrarían
+    # descripciones válidas.
+    partes += [r"modelo[_ ]local", r"\bscore\b", r"probabilidad(?:es)?\s+local(?:es)?",
+               r"clasificador\s+(?:local|propio|interno)", r"modelo\s+interno"]
+    return re.compile("|".join(partes), re.IGNORECASE)
 
-    Lo que se saca es ruido para quien consume la API, no información nueva:
-    el ranking completo del modelo local son 29 categorías con su score (casi
-    todas en 0.00x) y `detalle.verificacion` repetía seis campos que ya están
-    arriba. Todo eso sigue disponible con ?detalle=1.
+
+_MOTIVO_GENERICO = ("Sin evidencia visual suficiente: ningún análisis de la foto "
+                    "describe esta categoría con un objeto concreto.")
+
+
+def _sanear_motivo(texto):
+    """Backstop del prompt: si el motivo del árbitro nombra el mecanismo
+    interno (modelos, scores, "modelo local"), se reemplaza entero por uno
+    genérico en vez de operarlo palabra por palabra."""
+    if not texto:
+        return texto
+    return _MOTIVO_GENERICO if _terminos_prohibidos().search(texto) else texto
+
+
+def _publica(r):
+    """Contrato v4: el veredicto, lo que dijo cada modelo de visión, y lo que
+    podría ser un reporte. El modelo local no aparece: sigue corriendo y
+    contando como fuente del consenso, pero su voto no se publica (README,
+    "Cambios de contrato").
     """
     veri = (r.get("detalle") or {}).get("verificacion") or {}
-    lean = {k: v for k, v in r.items() if k != "detalle"}
-    lean["verificacion_activa"] = bool(veri.get("activa"))
+    pub = {k: v for k, v in r.items() if k != "detalle"}
+
+    def _visible(c):
+        # Una entrada sostenida SOLO por el modelo local no se publica.
+        fuentes = c.get("fuentes") or []
+        return bool(set(fuentes) - {"modelo_local"})
+
+    def _entrada(c):
+        e = {k: v for k, v in c.items() if k != "fuentes"}
+        # "fuentes" público es un CONTEO (cuántas fuentes del consenso la
+        # sostienen), nunca la lista de nombres.
+        e["fuentes"] = len(c.get("fuentes") or [])
+        if "motivo" in e:
+            e["motivo"] = _sanear_motivo(e["motivo"])
+        return e
+
+    for campo in ("problemas", "posibles", "descartados_por_foto"):
+        pub[campo] = [_entrada(c) for c in (r.get(campo) or []) if _visible(c)]
+
+    # elementos_detectados y en_duda también pueden nacer solo del modelo
+    # local (modo sin verificación; árbitro caído): mismo filtro. en_duda es
+    # una lista de claves peladas, así que las fuentes se buscan en el objeto
+    # interno; una clave que no se puede rastrear no se publica.
+    pub["elementos_detectados"] = [
+        {"key": c.get("key"), "nombre": c.get("nombre")}
+        for c in (r.get("elementos_detectados") or []) if _visible(c)]
+    # Primero el mapa directo del verificador (cubre las claves de PRESENCIA,
+    # que no viajan en posibles); posibles/problemas quedan de respaldo.
+    _fuentes_de = {p.get("key"): p.get("fuentes") or []
+                   for p in (r.get("posibles") or []) + (r.get("problemas") or [])}
+    _fuentes_de.update(veri.get("fuentes_en_duda") or {})
+    pub["en_duda"] = [k for k in (r.get("en_duda") or [])
+                      if set(_fuentes_de.get(k, [])) - {"modelo_local"}]
+
+    # La descripción consolidada la redacta un LLM: mismo backstop que los
+    # motivos para que no cuente el mecanismo interno.
+    pub["descripcion"] = _sanear_motivo(pub.get("descripcion"))
+
+    # Las invariantes del contrato valen sobre lo PUBLICADO: si el filtro
+    # sacó el único problema (modo sin verificación), hay_problema es false.
+    gravedades = [c["gravedad"] for c in pub["problemas"] if c.get("gravedad")]
+    pub["hay_problema"] = bool(pub["problemas"])
+    pub["hay_reclamo"] = bool(pub["problemas"]) or bool(pub.get("categorias_contexto"))
+    pub["gravedad_maxima"] = max(gravedades) if gravedades else None
+
+    pub["verificacion_activa"] = bool(veri.get("activa"))
     if not veri.get("activa") and veri.get("motivo"):
-        lean["verificacion_motivo"] = veri["motivo"]
-    # Solo los modelos de visión: el modelo local ya está representado en las
-    # `fuentes` de cada categoría, y su ranking entero no le sirve a nadie que
-    # esté decidiendo qué reclamo abrir.
-    lean["modelos"] = [
+        pub["verificacion_motivo"] = veri["motivo"]
+    pub["modelos"] = [
         {"modelo": v.get("modelo"), "ok": v.get("ok"),
          "sin_problema": v.get("sin_problema"),
+         "foto_corresponde": v.get("foto_corresponde"),
          "categorias": [{"key": c.get("key"), "gravedad": c.get("gravedad"),
                          "evidencia": c.get("evidencia")}
                         for c in (v.get("categorias") or [])],
          "descripcion": v.get("descripcion")}
         for v in (veri.get("verificadores") or [])]
-    return lean
-
-
-def _pidio_detalle(valor):
-    return (valor or "").strip().lower() in ("1", "true", "si", "sí", "yes")
+    return pub
 
 
 app = FastAPI(title="Ojo Urbano")
@@ -525,19 +600,18 @@ def salud():
 
 @app.post("/clasificar")
 async def clasificar(request: Request, file: UploadFile = File(...),
-                     verificar: str = "auto", contexto: str = Form(""),
-                     detalle: str = ""):
+                     verificar: str = "auto", contexto: str = Form("")):
     datos = await _leer_acotado(file)
     contexto = (contexto or "").strip()[:500]
 
     # La misma foto con el mismo contexto no se vuelve a pagar.
     huella = hashlib.sha256(
         datos + b"\x00" + contexto.encode() + b"\x00" + verificar.encode()).hexdigest()
-    completo = _pidio_detalle(detalle)
+    # La caché guarda el objeto INTERNO completo; la respuesta SIEMPRE pasa
+    # por el serializador v4. No hay escotilla que devuelva los internals.
     if huella in _cache:
         _cache.move_to_end(huella)
-        guardada = _cache[huella]
-        return JSONResponse(guardada if completo else _resumir(guardada))
+        return JSONResponse(_publica(_cache[huella]))
 
     # Acá hubo una deduplicación de pedidos en vuelo (que el segundo pedido de
     # la misma foto se colgara del primero en vez de pagarla dos veces). Se
@@ -552,7 +626,7 @@ async def clasificar(request: Request, file: UploadFile = File(...),
         _cache[huella] = respuesta
         while len(_cache) > CACHE_MAX:
             _cache.popitem(last=False)
-    return JSONResponse(respuesta if completo else _resumir(respuesta))
+    return JSONResponse(_publica(respuesta))
 
 
 async def _clasificar_una(datos, contexto, verificar):
@@ -704,12 +778,6 @@ PAGINA = """<!DOCTYPE html>
   .estado{font-size:12.5px;color:var(--muted);margin:8px 0}
   .voto{font-size:12.5px;color:var(--muted);margin:3px 0}
   .voto b{color:var(--ink);font-weight:600}
-  .row{margin:9px 0}
-  .row .name{display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px}
-  .row .name .pct{color:var(--muted)}
-  .track{height:8px;background:var(--bar);border-radius:999px;overflow:hidden}
-  .track>i{display:block;height:100%;background:var(--ink);border-radius:999px}
-  .row:not(:first-child) .track>i{background:#747474}
   .err{display:none;font-size:13px;font-weight:600;margin-top:12px;border:1px solid var(--line2);
        border-radius:8px;background:var(--surface);padding:10px 12px}
   .reenviar{width:100%;margin-top:10px;padding:8px 12px;font:13px inherit;font-weight:600;
@@ -805,16 +873,19 @@ PAGINA = """<!DOCTYPE html>
           <h3>Sin consenso</h3>
           <div class="mini" id="dudas"></div>
         </div>
+        <div id="poswrap" style="display:none">
+          <h3>Posibles (sin confirmar)</h3>
+          <div id="poscats"></div>
+          <div class="mini">Lo que alguna fuente vio o el contexto sugiere, pero no alcanzó el consenso.
+            Sirven para repreguntar, no para reportar.</div>
+        </div>
         <details class="det">
           <summary>Cómo se obtuvo este resultado</summary>
           <div class="detbody">
             <div class="estado" id="estado"></div>
             <div id="votos"></div>
-            <h3>Predicciones del modelo local (top 5)</h3>
-            <div class="mini" style="margin:0 0 8px">Probabilidades del clasificador propio. La confirmación
-              final surge del consenso: una categoría queda confirmada con al menos 2 fuentes (el modelo
-              local cuenta como una). Lo que ve una sola fuente no se confirma: queda como posible.</div>
-            <div id="bars"></div>
+            <div class="mini" style="margin:8px 0 0">La confirmación surge del consenso: una categoría queda
+              confirmada con al menos 2 fuentes. Lo que ve una sola fuente no se confirma: queda como posible.</div>
           </div>
         </details>
       </div>
@@ -834,8 +905,9 @@ PAGINA = """<!DOCTYPE html>
     <div class="detbody">
       <div class="endpoint"><b>POST</b> <span id="ep"></span> · multipart/form-data, campo <b>file</b> · campo opcional <b>contexto</b></div>
       <div class="apinote">Parámetro opcional <b>?verificar=</b> <b>auto</b> (default: verifica si hay clave
-        de OpenRouter) · <b>1</b> (forzar verificación) · <b>0</b> (solo modelo local). Las categorías que el
-        contexto describe pero la foto no confirma vuelven en <b>categorias_contexto</b>.</div>
+        de OpenRouter) · <b>1</b> (forzar verificación) · <b>0</b> (sin verificación: respuesta degradada,
+        sin clasificación). Las categorías que el contexto describe pero la foto no confirma vuelven en
+        <b>categorias_contexto</b>.</div>
       <div class="tabs" id="tabs">
         <button class="tab active" data-l="curl">curl</button>
         <button class="tab" data-l="python">Python</button>
@@ -870,7 +942,7 @@ $('#tabs').onclick=e=>{const b=e.target.closest('.tab');if(!b)return;
   $('#code-'+b.dataset.l).classList.add('active');};
 fetch(O+'/salud'+SUF).then(r=>r.json()).then(h=>{
   const chip=$('#modechip');
-  chip.textContent=h.verificacion?'Análisis completo activo':'Modo básico: solo modelo local, sin verificación cruzada';
+  chip.textContent=h.verificacion?'Análisis completo activo':'Sin verificación cruzada: el análisis está suspendido';
   chip.title=h.verificacion?('Verificadores: '+h.verificadores.join(' + ')+(h.arbitro?' · árbitro: '+h.arbitro:'')):'Configurá OPENROUTER_API_KEY para activar la verificación';});
 const drop=$('#drop'),file=$('#file');
 drop.onclick=()=>file.click();
@@ -893,7 +965,8 @@ function seleccionar(f){
 }
 $('#copyjson').onclick=()=>{navigator.clipboard.writeText($('#json').textContent).then(()=>{
   $('#copyjson').textContent='Copiado ✓';setTimeout(()=>$('#copyjson').textContent='Copiar JSON',1500);});};
-const chip=(c,extra)=>`<div class="cat${extra?' ctx':''}"><b>${c.nombre}</b>${c.gravedad?`<span title="${(c.fuentes||[]).join(', ')}">${c.gravedad}/5 · ${GRAV[c.gravedad]||''} · ${(c.fuentes||[]).length} fuente${(c.fuentes||[]).length!==1?'s':''}</span>`:''}</div>`;
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const chip=(c,extra)=>`<div class="cat${extra?' ctx':''}"><b>${esc(c.nombre)}</b>${c.gravedad?`<span>${c.gravedad}/5 · ${GRAV[c.gravedad]||''}${typeof c.fuentes==='number'?` · ${c.fuentes} fuente${c.fuentes!==1?'s':''}`:''}</span>`:''}</div>`;
 let ctrl=null,cronoIv=null,ultimoArchivo=null;
 $('#reenviar').onclick=()=>{if(ultimoArchivo)enviar(ultimoArchivo);};
 function enviar(f){
@@ -903,9 +976,9 @@ function enviar(f){
   ultimoArchivo=f;
   $('#reenviar').style.display='none';
   $('#err').style.display='none';$('#err').textContent='';
-  $('#res').style.display='none';$('#cats').innerHTML='';$('#bars').innerHTML='';
+  $('#res').style.display='none';$('#cats').innerHTML='';$('#poscats').innerHTML='';
   $('#estado').textContent='';$('#votos').innerHTML='';$('#concl').textContent='';
-  ['descwrap','ctxwrap','preswrap','dudawrap'].forEach(id=>$('#'+id).style.display='none');
+  ['descwrap','ctxwrap','preswrap','dudawrap','poswrap'].forEach(id=>$('#'+id).style.display='none');
   const jw=$('#jsonwrap');jw.style.display='none';jw.removeAttribute('open');
   $('#json').textContent='';$('#jsonsize').textContent='';
   $('#espera').style.display='flex';
@@ -917,7 +990,12 @@ function enviar(f){
   img.src=URL.createObjectURL(f);img.style.display='block';
   const fd=new FormData();fd.append('file',f);
   const ctx=$('#ctx').value.trim();if(ctx)fd.append('contexto',ctx);
-  fetch(O+'/clasificar'+SUF+'?detalle=1',{method:'POST',body:fd,signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error('no pude leer la imagen');return r.json()})
+  fetch(O+'/clasificar'+SUF,{method:'POST',body:fd,signal:ctrl.signal}).then(async r=>{
+    if(!r.ok){const e=await r.json().catch(()=>null);
+      throw new Error(e&&e.detail?e.detail
+        :r.status===503?'el servidor está ocupado con otra foto; esperá unos segundos y reintentá'
+        :'no pude procesar la foto (HTTP '+r.status+')');}
+    return r.json()})
    .then(d=>{
      clearInterval(cronoIv);
      $('#espera').style.display='none';$('#res').style.display='block';
@@ -928,34 +1006,34 @@ function enviar(f){
      const aviso=(d.foto_valida===false&&d.hay_problema)
        ?' La foto no muestra lo que contaste: el reclamo se armó con tu descripción.'
        :(desc&&d.hay_problema?' Se dejaron de lado '+desc+' hallazgo(s) de la foto porque no venían al caso.':'');
-     $('#concl').textContent=(!d.hay_problema
-       ?(desc?'La foto muestra otra cosa y lo que contaste no corresponde a ningún reclamo.'
-             :'No se identificaron problemas en la foto.')
-       :(probs.length===0?'Hay un reclamo, pero todavía sin categoría confirmada'
-         :probs.length===1?'Se identificó 1 incidencia':'Se identificaron '+probs.length+' incidencias')
-         +(d.gravedad_maxima?` · gravedad máxima ${d.gravedad_maxima}/5 (${GRAV[d.gravedad_maxima]})`:'')+'.')+aviso;
+     $('#concl').textContent=(d.hay_problema
+       ?(probs.length===1?'Se identificó 1 incidencia':'Se identificaron '+probs.length+' incidencias')
+         +(d.gravedad_maxima?` · gravedad máxima ${d.gravedad_maxima}/5 (${GRAV[d.gravedad_maxima]})`:'')+'.'
+       :d.hay_reclamo?'Hay un reclamo en el texto, pero sin problema confirmado en la foto.'
+       :(desc?'La foto muestra otra cosa y lo que contaste no corresponde a ningún reclamo.'
+             :'No se identificaron problemas en la foto.'))+aviso;
      $('#cats').innerHTML=probs.map(c=>chip(c)).join('');
      if(d.descripcion){$('#desc').textContent=d.descripcion;$('#descwrap').style.display='block';}
      const cc=d.categorias_contexto||[];
      const RESPALDO={compatible:'la foto es compatible con el reclamo',neutral:'no visible en la foto',contradice:'la foto lo contradice'};
-     if(cc.length){$('#ctxcats').innerHTML=cc.map(c=>`<div class="cat ctx"><b>${c.nombre}</b><span>${RESPALDO[c.respaldo_visual]||'según el contexto'}</span></div>`).join('');$('#ctxwrap').style.display='block';}
+     if(cc.length){$('#ctxcats').innerHTML=cc.map(c=>`<div class="cat ctx"><b>${esc(c.nombre)}</b><span>${RESPALDO[c.respaldo_visual]||'según el contexto'}</span></div>`).join('');$('#ctxwrap').style.display='block';}
      const pres=d.elementos_detectados||[];
-     if(pres.length){$('#prescats').innerHTML=pres.map(c=>`<div class="cat"><b>${c.nombre}</b></div>`).join('');$('#preswrap').style.display='block';}
+     if(pres.length){$('#prescats').innerHTML=pres.map(c=>`<div class="cat"><b>${esc(c.nombre)}</b></div>`).join('');$('#preswrap').style.display='block';}
      if(d.en_duda.length){$('#dudas').textContent='Reportadas por una sola fuente y sin decisión del árbitro: '
        +d.en_duda.map(k=>k.replace(/_/g,' ')).join(', ')+'. No se incluyen entre las confirmadas.';
        $('#dudawrap').style.display='block';}
-     const v=d.detalle.verificacion;
-     $('#estado').textContent=v.activa
+     const pos=d.posibles||[];
+     if(pos.length){$('#poscats').innerHTML=pos.map(p=>`<div class="voto"><b>${esc((p.nombre||p.key||p.codigo||'').toString().replace(/_/g,' '))}</b>${
+       p.origen==='contexto_vecinal'?' · sugerida por tu texto':''}${
+       p.motivo?`<span> — ${esc(p.motivo)}</span>`:''}</div>`).join('');
+       $('#poswrap').style.display='block';}
+     $('#estado').textContent=d.verificacion_activa
        ?'Verificación cruzada completada en '+Math.round((Date.now()-t0)/1000)+' s.'
-       :'Sin verificación cruzada ('+v.motivo+'): resultado solo del modelo local.';
-     if(v.activa){$('#votos').innerHTML=v.verificadores.map(x=>x.ok
-       ?`<div class="voto"><b>${x.modelo}</b>: ${x.categorias.length?x.categorias.map(c=>c.key.replace(/_/g,' ')).join(', '):'sin hallazgos'}</div>`
-       :`<div class="voto"><b>${x.modelo}</b>: no respondió</div>`).join('')
-       +(v.arbitro&&v.arbitro.ok&&v.arbitro.decisiones.length
-         ?`<div class="voto"><b>árbitro</b>: ${v.arbitro.decisiones.map(dd=>dd.key.replace(/_/g,' ')+' '+(dd.veredicto==='confirmar'?'✓':'✗')).join(', ')}</div>`:'');}
-     $('#bars').innerHTML=d.detalle.modelo_local.top5.map(t=>`
-       <div class="row"><div class="name"><span>${t.nombre}</span><span class="pct">${Math.round(t.score*100)}%</span></div>
-       <div class="track"><i style="width:${Math.max(2,Math.round(t.score*100))}%"></i></div></div>`).join('');
+       :'Sin verificación cruzada ('+(d.verificacion_motivo||'desactivada')+'): no hay resultado confiable, solo un acuse de recibo.';
+     if(d.verificacion_activa){$('#votos').innerHTML=(d.modelos||[]).map(x=>x.ok
+       ?`<div class="voto"><b>${esc(x.modelo)}</b>: ${x.categorias.length?esc(x.categorias.map(c=>c.key.replace(/_/g,' ')).join(', ')):'sin hallazgos'}${
+         x.descripcion?`<span> — ${esc(x.descripcion)}</span>`:''}</div>`
+       :`<div class="voto"><b>${esc(x.modelo)}</b>: no respondió</div>`).join('');}
      const jtxt=JSON.stringify(d,null,2);
      $('#json').textContent=jtxt;
      $('#jsonsize').textContent='· '+(new Blob([jtxt]).size/1024).toFixed(1)+' KB';
