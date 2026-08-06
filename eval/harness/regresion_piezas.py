@@ -40,8 +40,31 @@ INTERES = {"retiro_muebles", "reparacion_contenedor",
            "reposicion_contenedor", "reparacion_cesto"}
 
 
+def seleccionar():
+    """Fotos cuyo gold toca alguna de las claves en juego y están en el cache.
+
+    Se arma acá y no en un archivo suelto de /tmp, para que el harness se
+    pueda correr desde cualquier clon sin pasos previos.
+    """
+    adj = json.load((DATOS / "adjudicacion.json").open())
+    por_n = {x["n"]: x for x in json.load((DATOS / "muestra.json").open())}
+    sel = []
+    for r in adj:
+        vis = set(r.get("visible") or [])
+        if not (vis & INTERES):
+            continue
+        ident = (por_n.get(r.get("n")) or {}).get("ident")
+        if ident and (FOTOS / (ident.replace("/", "-") + ".jpg")).exists():
+            sel.append({"n": r["n"], "ident": ident,
+                        "gold": sorted(vis & INTERES)})
+    return sel
+
+
 def main():
-    sel = json.load(open("/tmp/regresion_sel.json"))
+    sel = seleccionar()
+    if not sel:
+        raise SystemExit("no hay fotos del cache que toquen estas claves; "
+                         "hace falta eval/fotos_cache poblado")
     v3 = {f["ident"]: f for f in
           (json.loads(l) for l in (DATOS / "evidencia_rubrica_v3.jsonl").open())}
 
