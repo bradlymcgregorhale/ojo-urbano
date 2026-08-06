@@ -724,8 +724,14 @@ check("la descripción también pasa por el saneador (variante 'clasificador loc
 
 # El saneador, variante por variante: cada frase atada al mecanismo se
 # reemplaza entera; el lenguaje urbano legítimo pasa intacto.
-_nuked = ["Solo el modelo local la reporta.", "El clasificador propio dio 0.99.",
-          "El modelo interno le asigna score alto.", "probabilidades locales bajas"]
+_nuked = ["Solo el modelo local la reporta.",     # una frase por patrón: si un
+          "El clasificador local duda.",          # patrón desaparece, cae SU
+          "El clasificador propio dio 0.99.",     # frase y no la tapa otro
+          "El clasificador interno la descarta.",
+          "El modelo interno la descarta.",
+          "El score fue alto.",
+          "Las probabilidades locales son bajas.",
+          "La probabilidad local no alcanza."]
 check("el saneador ataja cada variante del mecanismo",
       all(servidor._sanear_motivo(t) == servidor._MOTIVO_GENERICO for t in _nuked),
       str([t for t in _nuked if servidor._sanear_motivo(t) != servidor._MOTIVO_GENERICO]))
