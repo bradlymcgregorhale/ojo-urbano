@@ -4,8 +4,9 @@ El modelo local propone categorías; varios modelos de visión (por defecto tres
 miran la foto de forma independiente. Una categoría queda confirmada cuando la
 reportan al menos 2 fuentes, contando el modelo local como una.
 Las categorías con una sola fuente van a un árbitro de texto (por defecto
-DeepSeek), que lee ambos veredictos y las probabilidades del modelo local y
-decide. Sin árbitro configurado, quedan marcadas "en_duda".
+DeepSeek), que lee los veredictos de todos los verificadores y las
+probabilidades del modelo local. Por defecto NO las confirma: quedan en
+"posibles", con el veredicto del árbitro y su motivo.
 
 Cada verificador devuelve además una descripción breve de la foto dentro de su
 misma respuesta (sin llamadas extra). La descripción final consolidada la
@@ -867,8 +868,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                   for c in v.get("categorias_contexto") or [] if c.get("key")}
 
     # Los verificadores NO son fuentes independientes entre sí: miran la misma foto
-    # con el mismo prompt, y ambos leen el contexto y cualquier texto escrito
-    # DENTRO de la imagen. Una sola inyección que funcione en los dos alcanza
+    # con el mismo prompt, y todos leen el contexto y cualquier texto escrito
+    # DENTRO de la imagen. Una sola inyección que funcione en dos de ellos alcanza
     # para el consenso y confirma sola, sin que el modelo local haya visto nada.
     # SOLO con CONSENSO_VLM_SOLO=arbitro una categoría sin respaldo del modelo
     # local se manda al árbitro en vez de confirmarse. NO es el default: con

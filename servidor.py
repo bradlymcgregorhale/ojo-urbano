@@ -747,7 +747,7 @@ const GRAV={1:'mínima',2:'leve',3:'alta',4:'grave',5:'muy grave'};
 const PRESENCIA=['contenedor_secos','contenedor_humedos_lateral','contenedor_humedos_bilateral'];
 const SNIP={
  curl:`curl -s -F "file=@foto.jpg" -F "contexto=vidrios rotos en la vereda" ${O}/clasificar`,
- python:`import requests\n\nwith open("foto.jpg", "rb") as f:\n    r = requests.post("${O}/clasificar", files={"file": f},\n                      data={"contexto": "vidrios rotos en la vereda"})\ndata = r.json()\nif data["hay_problema"]:\n    print(data["descripcion"])\n    for p in data["problemas"]:\n        print(p["key"], p["gravedad"], p["fuentes"])\nelse:\n    print("sin problema:", data["descripcion"])`,
+ python:`import requests\n\nwith open("foto.jpg", "rb") as f:\n    r = requests.post("${O}/clasificar", files={"file": f},\n                      data={"contexto": "vidrios rotos en la vereda"})\ndata = r.json()\nif data["hay_problema"]:\n    print(data["descripcion"])\n    for p in data["problemas"]:\n        print(p.get("key") or p.get("codigo"), p["gravedad"], p["fuentes"])\nelse:\n    print("sin problema:", data["descripcion"])`,
  js:`const fd = new FormData();\nfd.append("file", fileInput.files[0]);\nfd.append("contexto", "vidrios rotos en la vereda"); // opcional\nconst res = await fetch("${O}/clasificar", { method: "POST", body: fd });\nconst d = await res.json();\nif (d.hay_problema) console.log(d.problemas, d.descripcion);`
 };
 ['curl','python','js'].forEach(l=>$('#code-'+l).textContent=SNIP[l]);
@@ -809,11 +809,18 @@ function enviar(f){
      clearInterval(cronoIv);
      $('#espera').style.display='none';$('#res').style.display='block';
      const probs=d.problemas;
-     $('#concl').textContent=!d.hay_problema
-       ?'No se identificaron problemas en la foto.'
-       :(probs.length===0?(d.foto_valida===false?'La foto no muestra el problema, pero lo que contaste sí corresponde a un reclamo':'Lo que contaste corresponde a un reclamo; la foto no lo confirma')
+     const desc=(d.descartados_por_foto||[]).length;
+     // La foto puede no corresponder al reclamo AUNQUE haya problemas: en ese
+     // caso salieron del texto, no de la foto, y hay que decirlo.
+     const aviso=(d.foto_valida===false&&d.hay_problema)
+       ?' La foto no muestra lo que contaste: el reclamo se armó con tu descripción.'
+       :(desc&&d.hay_problema?' Se dejaron de lado '+desc+' hallazgo(s) de la foto porque no venían al caso.':'');
+     $('#concl').textContent=(!d.hay_problema
+       ?(desc?'La foto muestra otra cosa y lo que contaste no corresponde a ningún reclamo.'
+             :'No se identificaron problemas en la foto.')
+       :(probs.length===0?'Hay un reclamo, pero todavía sin categoría confirmada'
          :probs.length===1?'Se identificó 1 incidencia':'Se identificaron '+probs.length+' incidencias')
-         +(d.gravedad_maxima?` · gravedad máxima ${d.gravedad_maxima}/5 (${GRAV[d.gravedad_maxima]})`:'')+'.';
+         +(d.gravedad_maxima?` · gravedad máxima ${d.gravedad_maxima}/5 (${GRAV[d.gravedad_maxima]})`:'')+'.')+aviso;
      $('#cats').innerHTML=probs.map(c=>chip(c)).join('');
      if(d.descripcion){$('#desc').textContent=d.descripcion;$('#descwrap').style.display='block';}
      const cc=d.categorias_contexto||[];

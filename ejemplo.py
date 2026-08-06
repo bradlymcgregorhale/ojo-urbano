@@ -21,9 +21,16 @@ if not data["hay_problema"]:
 else:
     print(f"Gravedad máxima: {data['gravedad_maxima']}/5")
     for p in data["problemas"]:
-        print(f"{p['key']:30s} gravedad={p['gravedad']} fuentes={', '.join(p['fuentes'])}")
+        # Una entrada puede venir con "key" (categoría propia) o con "codigo"
+        # (prestación del catálogo completo de la Ciudad), nunca con las dos.
+        ident = p.get("key") or p.get("codigo")
+        print(f"{ident:30s} gravedad={p['gravedad']} fuentes={', '.join(p['fuentes'])}")
+if data.get("foto_valida") is False:
+    print("La foto no corresponde al reclamo; se reportó lo que contó el vecino.")
 for s in data["categorias_contexto"]:
-    print("Sugerido por el contexto:", s["key"])
+    print("Sugerido por el contexto:", s.get("key") or s.get("codigo"), "-", s["nombre"])
+for p in data.get("posibles") or []:
+    print("Posible (sin confirmar):", p.get("key") or p.get("codigo"))
 if data["en_duda"]:
     print("En duda:", ", ".join(data["en_duda"]))
 if data.get("descripcion"):
