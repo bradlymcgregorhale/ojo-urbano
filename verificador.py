@@ -384,7 +384,7 @@ Categorías y criterios (usá SOLO estas claves):
 - contenedor_secos [PRESENCIA]: se ve un contenedor municipal inequívocamente VERDE (reciclables). Los contenedores negros, grises o gris oscuro NO son secos. Un volquete o caja abierta de obra NO es un contenedor municipal, aunque sea verde.
 - contenedor_humedos_lateral [PRESENCIA]: se ve un contenedor de húmedos con POSTES o montantes metálicos VERTICALES en los costados (el brazo del camión los toma para izarlo). Suele ser negro o gris oscuro, cuerpo plástico grande redondeado.
 - contenedor_humedos_bilateral [PRESENCIA]: se ve un contenedor de húmedos SIN postes metálicos: cuerpo RECTANGULAR de paredes laterales PLANAS y techo abovedado, gris (claro o dos tonos). El discriminador NO es el color sino los POSTES: si el contenedor NO tiene postes verticales metálicos en los costados es BILATERAL, aunque el gris se vea oscuro o sucio; si los tiene es LATERAL. Reportá solo UNO de los dos tipos de húmedos.
-- reparacion_contenedor: un contenedor visiblemente ROTO/vandalizado/quemado (tapa desprendida, pedal roto, cuerpo agrietado o derretido), esté parado o volcado. Un contenedor VOLCADO pero sin daños visibles NO va acá: es reposicion_contenedor. Un contenedor parado y en buen estado NO.
+- reparacion_contenedor: un contenedor con DAÑO ESTRUCTURAL visible (tapa desprendida, pedal roto, cuerpo agrietado, perforado, derretido o quemado), esté parado o volcado. Es daño en la pieza, no suciedad ni pintura: un contenedor con grafitis, pegatinas o rayado pero entero NO va acá ni en ninguna otra clave. Un contenedor VOLCADO pero sin daños visibles tampoco: es reposicion_contenedor. Un contenedor parado y en buen estado NO.
 - reposicion_contenedor: un contenedor CAÍDO o VOLCADO (acostado, dado vuelta, corrido al medio de la calle) SIN daños visibles: solo hay que volver a pararlo o ubicarlo. Si además está roto, quemado o vandalizado es reparacion_contenedor, no esto.
 - lavado_contenedor: un contenedor en su lugar pero visiblemente MUY sucio por fuera: chorreaduras, mugre incrustada, suciedad notoria que pide lavado. NO por grafitis, calcomanías ni desgaste normal del color.
 - vehiculo_mal_estacionado: un vehículo estacionado o detenido donde está PROHIBIDO: sobre una ciclovía/bicisenda (carril demarcado, típicamente entre franjas amarillas), sobre la vereda o senda peatonal, bloqueando una rampa de accesibilidad o una esquina/ochava, o junto a cartelería de "No estacionar". Señal fuerte: las ruedas pisan la demarcación de la ciclovía o el vehículo está arriba de la vereda. Cuenta aunque el vehículo esté operando (un camión de reparto detenido sobre la ciclovía SÍ es infracción); un vehículo estacionado normal junto al cordón NO. Si el vehículo se ve abandonado (muy deteriorado, sucio, ruedas desinfladas) es vehiculo_abandonado.
@@ -399,19 +399,19 @@ Categorías y criterios (usá SOLO estas claves):
 - vaciado_cesto: un cesto papelero (canasto chico sobre poste) desbordado o lleno.
 - reparacion_cesto: TODO problema físico de un cesto papelero: roto, caído, desprendido, colgando, o la base/soporte sin canasto montado. Un cesto sano y en su lugar NO.
 - lavado_cesto: un cesto papelero ENTERO y en su lugar, pero visiblemente sucio: chorreaduras, mugre incrustada, restos pegados, manchas. Es el pedido de higienizarlo, no de arreglarlo ni de vaciarlo. Si lo que se ve es que está LLENO de residuos, eso es vaciado_cesto. Si el sucio es un contenedor municipal y no un cesto papelero, es lavado_contenedor. Si además está roto o caído, reportá también reparacion_cesto.
-- hidrolavado_grafitis: un FRENTE de inmueble vandalizado con grafitis o pegatinas: fachada, pared, persiana, portón o muro. La prestación de la Ciudad es para frentes, y por eso la clave es solo para eso. NO la uses por grafitis o rayado sobre MOBILIARIO URBANO (contenedores, cestos, postes, bancos, refugios): eso NO se reporta por ninguna clave, ni siquiera lavado_contenedor o lavado_cesto, que son para suciedad y no para pintadas. Tampoco por carteles o pasacalles colgados (eso es retiro_afiches) ni por murales hechos como obra.
+- hidrolavado_grafitis: un FRENTE de inmueble pintado o empapelado: grafitis, pintadas o pegatinas adheridas sobre fachada, pared, persiana, portón o muro. Si está sobre el frente de un inmueble, va acá y no en retiro_afiches, aunque sea papel pegado. La prestación de la Ciudad es para frentes, y por eso la clave es solo para eso. NO la uses por grafitis o rayado sobre MOBILIARIO URBANO (contenedores, cestos, postes, bancos, refugios): eso NO se reporta por ninguna clave, ni siquiera lavado_contenedor o lavado_cesto, que son para suciedad y no para pintadas. Tampoco por carteles o pasacalles colgados (eso es retiro_afiches) ni por murales hechos como obra.
 
-- vehiculo_abandonado: un vehículo con signos CLAROS de abandono: desmantelado, quemado, sin partes (ruedas, vidrios, puertas, faltante de interior o autopartes), vidrios rotos, cubierto de mugre o vegetación creciéndole encima. Si el vehículo está entero y solo estacionado donde no debe, es vehiculo_mal_estacionado, NO esto.
+- vehiculo_abandonado: un vehículo con signos CLAROS de abandono: desmantelado, quemado, sin partes (ruedas, vidrios, puertas, faltante de interior o autopartes), vidrios rotos, vegetación creciéndole encima, o una capa de mugre tan gruesa que muestre que hace mucho que no se mueve. Un auto simplemente sucio, polvoriento o viejo NO alcanza. Si el vehículo está entero y solo estacionado donde no debe, es vehiculo_mal_estacionado, NO esto.
 - reparacion_bache: un POZO o bache en la CALZADA de asfalto. Si el hueco tiene marco metálico prolijo es tapa_calle, no esto. La rotura de la vereda es reparacion_vereda.
 - reparacion_cordon: el CORDÓN de la vereda (el borde de hormigón contra la calzada) roto, partido, hundido o faltante. Si lo roto es la superficie de la vereda es reparacion_vereda; si es el pozo del asfalto es reparacion_bache.
-- retiro_afiches: afiches, carteles pegados o pasacalles COLGADOS en la vía pública (postes, columnas, árboles, tendidos, paredes). Es material pegado o colgado, no pintado: un grafiti pintado sobre un frente es hidrolavado_grafitis.
+- retiro_afiches: afiches, carteles o pasacalles pegados o COLGADOS del mobiliario y el tendido de la vía pública: postes, columnas, señales, árboles, cables, vallas, obradores. Es material pegado o colgado, no pintado. Lo que esté sobre el FRENTE de un inmueble (fachada, persiana, portón, muro) es hidrolavado_grafitis, sea pintada o pegatina; esta clave es para lo que está fuera del frente.
 - plantacion_arbol: una PLANTERA o cazuela VACÍA y abierta en la vereda, sin árbol, donde debería haber uno. Reportalo solo si el hueco de plantación se ve claramente vacío. Un árbol enfermo o dañado NO es esto.
 - poda_arbol: un árbol VIVO cuyas ramas necesitan poda: tapan una luminaria, un semáforo o un cartel, cuelgan muy bajo sobre la vereda o la calzada, o se meten entre los cables. Las ramas ya CORTADAS y apiladas para retirar son retiro_poda, no esto.
 - problemas_arbolado: el resultado de una intervención MAL hecha sobre el arbolado: un tocón mal cortado, un árbol podado de forma que quedó dañado o desbalanceado, restos de una intervención que dejaron el árbol en mal estado. Si las raíces están rompiendo la vereda, eso es reparacion_vereda; si lo que hace falta es podar, es poda_arbol.
 - ocupacion_gastronomica: un local GASTRONÓMICO que ocupa la vereda y obstruye el paso con mesas, sillas, decks o carteles publicitarios. Si lo que ocupa la vereda es MERCADERÍA de un comercio (cajones, exhibidores, ropa), eso es ocupacion_comercial.
 - residuos_establecimiento: residuos claramente COMERCIALES sacados a la vía pública por un establecimiento: muchas cajas o bolsas iguales de un mismo local, restos de un comercio apilados en su frente, bolsas sin embolsar correctamente junto a la puerta de un negocio. Se distingue de recoleccion porque el origen comercial es evidente por la cantidad y la uniformidad.
 - acopio_recuperadores: un punto de acopio de recuperadores urbanos (cartoneros) en el espacio público: material acumulado, carros y fardos juntados en la vereda o la calzada, que obstaculiza el paso o está en malas condiciones de higiene.
-- mayor_iluminacion [CASI NUNCA VISUAL]: es el pedido de que se REFUERCE el alumbrado donde hoy no alcanza. No es un defecto visible: no hay nada roto que fotografiar, y por eso casi nunca se confirma desde la foto. Si en la foto hay una luminaria concreta APAGADA o rota, eso es luminaria_apagada. Reportá mayor_iluminacion solo si el contexto vecinal lo pide explícitamente.
+- mayor_iluminacion [NO VISUAL]: es el pedido de que se REFUERCE el alumbrado donde hoy no alcanza. No es un defecto visible: no hay nada roto que fotografiar. NO la pongas nunca en "categorias": una foto oscura no alcanza. Si en la foto hay una luminaria concreta APAGADA o rota, eso es luminaria_apagada. Si el vecino pide más luz, va en "categorias_contexto", que es el canal del reclamo escrito.
 
 Otras categorías posibles (reportalas solo con evidencia clara):
 {RESTANTES}
@@ -1016,13 +1016,22 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # ¿La foto tiene que ver con lo que el vecino contó? Solo tiene sentido
     # preguntarlo si hay contexto. Decide la mayoría de los verificadores que
     # opinaron; si empatan, o ninguno opinó, no se afirma nada (None).
-    foto_valida = None
+    foto_valida, foto_estado = None, "sin_contexto"
     if contexto:
         votos = [v.get("foto_corresponde") for v in activos
                  if v.get("foto_corresponde") is not None]
-        if votos:
+        if not activos:
+            foto_estado = "no_evaluado"      # ningún verificador respondió
+        elif not votos:
+            foto_estado = "sin_opinion"      # respondieron pero no se pronunciaron
+        else:
             si, no = votos.count(True), votos.count(False)
-            foto_valida = True if si > no else (False if no > si else None)
+            if si > no:
+                foto_valida, foto_estado = True, "corresponde"
+            elif no > si:
+                foto_valida, foto_estado = False, "no_corresponde"
+            else:
+                foto_estado = "empate"       # los modelos no coinciden
         # Segunda señal, independiente de la anterior: si TODO lo que el vecino
         # denuncia quedó marcado "contradice" (la foto muestra lo contrario) y
         # además la foto no confirmó nada, la foto no sirve para este reclamo,
@@ -1030,7 +1039,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         respaldos = [c.get("respaldo_visual") for c in categorias_contexto]
         if (respaldos and all(r == "contradice" for r in respaldos)
                 and not [c for c in finales if c["key"] not in PRESENCIA]):
-            foto_valida = False
+            foto_valida, foto_estado = False, "no_corresponde"
 
     # EL RECLAMO MANDA. Si el vecino escribió algo y la foto no lo respalda,
     # lo que vale es lo que él dijo: los modelos de visión están describiendo
@@ -1050,6 +1059,10 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         "activa": True,
         "contexto": contexto or None,
         "foto_valida": foto_valida,
+        # null es ambiguo por sí solo: puede ser que no haya contexto, que los
+        # modelos no coincidan, o que la verificación no haya corrido. Un
+        # consumidor NO debe leer null como "la foto está bien".
+        "foto_valida_estado": foto_estado,
         "por_contexto": por_contexto,
         "posibles": posibles,
         "verificadores": veredictos,

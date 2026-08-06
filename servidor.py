@@ -4,8 +4,10 @@
 Un modelo propio (embeddings CLIP + DINOv2 + SigLIP2 con cabezal de regresión
 logística multi-etiqueta, entrenado con miles de fotos reales etiquetadas a
 mano) clasifica la foto localmente. Si hay una OPENROUTER_API_KEY configurada,
-dos modelos de visión verifican el resultado de forma independiente y un
-árbitro de texto resuelve los desacuerdos (ver verificador.py).
+varios modelos de visión (tres por defecto) verifican el resultado de forma
+independiente, y lo que ve una sola fuente queda como "posible" en vez de
+confirmarse. El contexto que escribe el vecino puede sostener un reclamo por
+sí solo cuando la foto no sirve (ver verificador.py).
 
 Uso:
     pip install -r requirements.txt
@@ -54,6 +56,12 @@ HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "8080"))
 UMBRAL = float(os.environ.get("UMBRAL", "0.5"))
 GRAV_MAX = 5
+# Versión del contrato de la respuesta. Se sube cuando cambia el SIGNIFICADO de
+# un campo que ya existía, no cuando se agrega uno nuevo. v2: hay_problema pasó
+# a incluir lo que sostiene solo el texto del vecino, problemas dejó de ser
+# solo visual, apareció "contexto_vecinal" como fuente, y el árbitro dejó de
+# confirmar hallazgos de una sola fuente (ver README, "Cambios de contrato").
+VERSION_API = "2"
 
 # Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y 2-3 llamadas
 # pagas a OpenRouter, así que el endpoint no puede quedar abierto sin techo.
@@ -315,6 +323,7 @@ def procesar(datos, contexto, verificar):
         # None = no se pudo juzgar (sin contexto, o los modelos no coincidieron)
         foto_valida = veri.get("foto_valida")
         posibles = veri.get("posibles") or []
+        foto_estado = veri.get("foto_valida_estado") or "sin_contexto"
     else:
         if sin_cuota:
             motivo = MOTIVO_CUOTA
@@ -329,6 +338,9 @@ def procesar(datos, contexto, verificar):
                       for p in local["predichas"] if p["key"] != "sin_problema"]
         en_duda, ctx_cats, descripcion, foto_valida = [], [], None, None
         posibles = []
+        # Sin verificación no se evaluó la foto: decirlo, para que nadie
+        # interprete el null como "la foto sirve".
+        foto_estado = "no_evaluado"
 
     # El veredicto primero; todo lo interno queda en "detalle".
     problemas = [c for c in categorias if c["key"] not in verificador.PRESENCIA]
@@ -381,6 +393,7 @@ def procesar(datos, contexto, verificar):
 
     gravedades = [c["gravedad"] for c in problemas if c.get("gravedad")]
     return {
+        "version": VERSION_API,
         # hay_problema es sobre EL RECLAMO: hay algo reportable acá, sea porque
         # se ve en la foto o porque el vecino lo describe. Si la foto no sirve
         # y el texto tampoco pide nada que exista en el catálogo, es false.
@@ -390,6 +403,7 @@ def procesar(datos, contexto, verificar):
         "descripcion": descripcion,
         "categorias_contexto": ctx_cats,
         "foto_valida": foto_valida,
+        "foto_valida_estado": foto_estado,
         "descartados_por_foto": descartados,
         # Lo que vio UNA sola fuente. No es un problema confirmado: se ofrece
         # para que el consumidor repregunte, no para reportarlo como un hecho.
@@ -623,8 +637,8 @@ PAGINA = """<!DOCTYPE html>
   <label class="ctxlabel" for="ctx">Contexto vecinal (opcional)</label>
   <input id="ctx" type="text" maxlength="500"
          placeholder="Contá algo que quizá no se vea en la foto, p. ej. «todo huele mal» o «hay ratas»">
-  <div class="ctxhint">Sirve de pista para interpretar la foto y para sugerir reportes. Lo que no se vea
-    en la foto vuelve como sugerencia aparte, nunca como confirmación. Podés escribirlo antes o después
+  <div class="ctxhint">Tiene peso propio: si la foto no muestra lo que contás, el reclamo se arma con
+    lo que escribiste y la foto se marca como no válida. Podés escribirlo antes o después
     de elegir la foto.</div>
 
   <div id="drop" role="button" tabindex="0" aria-label="Elegir una foto para analizar">
@@ -645,7 +659,7 @@ PAGINA = """<!DOCTYPE html>
         <div>
           <div aria-live="polite">
             <b>Analizando la foto</b>
-            <div class="esptxt">Modelo local + verificación cruzada con dos modelos de visión.
+            <div class="esptxt">Modelo local + verificación cruzada con varios modelos de visión.
               Suele tardar entre 20 y 60 segundos.</div>
           </div>
           <div class="esptxt" id="elapsed" aria-hidden="true">0 s</div>
@@ -680,8 +694,8 @@ PAGINA = """<!DOCTYPE html>
             <div id="votos"></div>
             <h3>Predicciones del modelo local (top 5)</h3>
             <div class="mini" style="margin:0 0 8px">Probabilidades del clasificador propio. La confirmación
-              final surge del consenso: una categoría queda confirmada con 2 de 3 fuentes (modelo local +
-              dos modelos de visión); las de una sola fuente las decide un árbitro de texto.</div>
+              final surge del consenso: una categoría queda confirmada con al menos 2 fuentes (el modelo
+              local cuenta como una). Lo que ve una sola fuente no se confirma: queda como posible.</div>
             <div id="bars"></div>
           </div>
         </details>
