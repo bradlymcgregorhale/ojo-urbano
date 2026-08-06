@@ -15,7 +15,9 @@ disputa, se elige localmente la descripción del verificador que más coincide
 con las categorías finales. Única excepción al conteo de llamadas: si todas
 las descripciones disponibles contradicen un subtipo ya resuelto (húmedos
 lateral/bilateral, tapa vereda/calle), se pide al árbitro una descripción
-correcta en una llamada extra de solo texto.
+correcta en una llamada extra. Con ARBITRO_VE_FOTO esa llamada lleva la foto
+adjunta, igual que el arbitraje normal: cuesta más, pero pedirle una
+descripción correcta a un modelo que no ve la escena no tiene sentido.
 
 Config por variables de entorno (ver .env.example):
     OPENROUTER_API_KEY   requerida para verificar; sin ella la API responde
@@ -950,9 +952,10 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # no, se elige la descripción del verificador que no contradiga un subtipo
     # ya resuelto y que más coincida con las categorías finales (a igual
     # coincidencia, la más detallada). Si TODAS las descripciones contradicen
-    # un subtipo resuelto, se hace una llamada extra al árbitro (solo texto,
-    # el único caso donde el conteo de llamadas crece) para no publicar una
-    # descripción con el subtipo equivocado.
+    # un subtipo resuelto, se hace una llamada extra al árbitro (el único caso
+    # donde el conteo de llamadas crece sin que haya habido disputa) para no
+    # publicar una descripción con el subtipo equivocado. Lleva la foto si
+    # ARBITRO_VE_FOTO está activo: si no la ve, no puede corregir nada.
     perdidos = {k for otros in subtipos_firmes.values() for k in otros}
     descripcion, descripcion_fuente = None, None
     if arbitro and arbitro.get("ok") and arbitro.get("descripcion"):
