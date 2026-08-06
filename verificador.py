@@ -12,14 +12,18 @@ Cada verificador devuelve además una descripción breve de la foto dentro de su
 misma respuesta (sin llamadas extra). La descripción final consolidada la
 redacta el árbitro cuando ya tiene que intervenir por una disputa; si no hay
 disputa, se elige localmente la descripción del verificador que más coincide
-con las categorías finales. Si todas las descripciones disponibles
-contradicen un subtipo ya resuelto (húmedos lateral/bilateral, tapa
-vereda/calle), se pide al árbitro una descripción correcta en una llamada
-extra. Las tres llamadas extra posibles, ninguna fija, son esa, la del
-arbitraje cuando hay una disputa, y la del encaminamiento del reclamo por
-texto cuando la foto no corresponde a lo que el vecino contó. Con ARBITRO_VE_FOTO esa llamada lleva la foto
-adjunta, igual que el arbitraje normal: cuesta más, pero pedirle una
-descripción correcta a un modelo que no ve la escena no tiene sentido.
+con las categorías finales.
+
+Llamadas por foto: una por verificador (tres por defecto). Ninguna de las
+extra es fija, y son tres:
+  1. el arbitraje, cuando queda una categoría en disputa;
+  2. el encaminamiento del reclamo por texto, cuando la foto no corresponde
+     a lo que el vecino contó;
+  3. una descripción de repuesto, cuando TODAS las disponibles contradicen un
+     subtipo ya resuelto (húmedos lateral/bilateral, tapa vereda/calle).
+Las tres van al árbitro, y con ARBITRO_VE_FOTO las que miran la escena
+llevan la foto adjunta: cuesta más, pero pedirle a un modelo que juzgue algo
+que no ve no tiene sentido.
 
 Config por variables de entorno (ver .env.example):
     OPENROUTER_API_KEY   requerida para verificar; sin ella la API responde
