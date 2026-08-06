@@ -304,6 +304,24 @@ def _cortar_conexion(resp):
         pass
 
 
+def _publicar(caja, sock):
+    """Deja el socket a la vista del guardia, y cierra la carrera.
+
+    Si el guardia venció JUSTO mientras se estaba conectando, no había
+    socket que cortar y se habría ido sin hacer nada: la conexión recién
+    abierta quedaría sin nadie que la corte. Por eso, apenas se publica, se
+    mira si ya venció y se corta acá mismo.
+    """
+    if caja is None:
+        return
+    caja["sock"] = sock
+    if caja.get("vencio"):
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except Exception:      # noqa: BLE001
+            pass
+
+
 class _HTTPEspiada(http.client.HTTPConnection):
     """Deja ver el socket apenas se conecta, antes de mandar el pedido.
 
@@ -316,8 +334,7 @@ class _HTTPEspiada(http.client.HTTPConnection):
 
     def connect(self):
         super().connect()
-        if self.caja is not None:
-            self.caja["sock"] = self.sock
+        _publicar(self.caja, self.sock)
 
 
 class _HTTPSEspiada(http.client.HTTPSConnection):
@@ -325,8 +342,7 @@ class _HTTPSEspiada(http.client.HTTPSConnection):
 
     def connect(self):
         super().connect()
-        if self.caja is not None:
-            self.caja["sock"] = self.sock
+        _publicar(self.caja, self.sock)
 
 
 def _opener_con_caja(caja):
@@ -363,11 +379,14 @@ def _pedir_http(req, timeout, vence):
     """
     # `caja` recibe el socket apenas se conecta, así el guardia puede cortar
     # aunque urlopen todavía no haya vuelto (headers que gotean).
-    caja = {"sock": None}
+    caja = {"sock": None, "vencio": False}
     estado = {"resp": None, "vencio": False}
 
     def cortar():
         estado["vencio"] = True
+        # Se marca en la caja ANTES de mirar el socket: si todavía no hay,
+        # el que esté conectando lo va a ver y cortar al publicarlo.
+        caja["vencio"] = True
         if estado["resp"] is not None:
             _cortar_conexion(estado["resp"])
         elif caja["sock"] is not None:

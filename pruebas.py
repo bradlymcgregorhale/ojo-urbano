@@ -337,7 +337,47 @@ _despues, _ = pedir("/clasificar", *_multipart("f.jpg", foto(812, 612))[::1])
 check("pasado el techo, el cupo vuelve y el servicio se recupera",
       _despues == 200, f"HTTP {_despues} (con el hilo viejo todavía trabado)")
 _trabado.set()
+
+# Agotar la reserva: si se pierden más trabajos que ABANDONO_MAX, aceptar uno
+# más lo mandaría a la cola del executor, que no tiene techo. El pedido no se
+# respondería nunca y encima seguiría pagando verificaciones. Tiene que
+# rechazar rápido.
+_libera_sat = threading.Event()
+def _procesar_saturante(*a, **k):
+    _libera_sat.wait(30)
+    return {"hay_problema": False, "problemas": [], "posibles": [],
+            "detalle": {"verificacion": {"activa": False, "motivo": "prueba"}}}
+
+
+S.procesar = _procesar_saturante
+_hilos_sat = []
+for _i in range(S.ABANDONO_MAX + 1):
+    _h = threading.Thread(
+        target=lambda i=_i: pedir(
+            "/clasificar", *_multipart("f.jpg", foto(820 + i, 620 + i))[::1]),
+        daemon=True)
+    _h.start()
+    _hilos_sat.append(_h)
+    time.sleep(1.3)          # cada uno pasa el techo y suelta su cupo
+_c_sat, _r_sat = pedir("/clasificar", *_multipart("f.jpg", foto(899, 699))[::1])
+check("con la reserva agotada rechaza rápido en vez de encolar sin techo",
+      _c_sat == 503 and "degradado" in str(_r_sat), f"HTTP {_c_sat} {_r_sat}")
+_libera_sat.set()
+time.sleep(0.6)
+S.procesar = _procesar_real2
+with S._perdidos["lock"]:
+    S._perdidos["vivos"] = 0
 S.TECHO_TRABAJO = _techo_real
+
+# La carrera del guardia: si vence justo mientras se está conectando, no hay
+# socket para cortar. El que conecta tiene que ver la marca y cortar él.
+_par_a, _par_b = socket.socketpair()
+_caja_r = {"sock": None, "vencio": True}
+V._publicar(_caja_r, _par_a)
+check("si el tope venció mientras conectaba, corta al publicar el socket",
+      _par_b.recv(16) == b"", "el socket quedó abierto")
+_par_a.close()
+_par_b.close()
 
 print("[#1] caché por foto")
 # No se mide por tiempo (el encoder stub es instantáneo): se cuenta cuántas

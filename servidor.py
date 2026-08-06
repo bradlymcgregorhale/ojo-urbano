@@ -196,11 +196,14 @@ _cupos = threading.BoundedSemaphore(CONCURRENCIA)
 # permanente, que es exactamente el incidente que ya pasó una vez. Pasado este
 # techo el trabajo se da por PERDIDO y se devuelve su cupo: el hilo sigue vivo
 # (a un hilo de Python no se lo puede matar), pero el servicio se recupera.
-TECHO_TRABAJO = int(os.environ.get("TECHO_TRABAJO", "600"))
+# Piso de 120 s: una clasificación normal tarda 25-60 s, así que un techo más
+# bajo declararía perdidos trabajos sanos, pasaría de CONCURRENCIA y llenaría
+# la reserva sin que hubiera fallado nada.
+TECHO_TRABAJO = max(120, int(os.environ.get("TECHO_TRABAJO", "600")))
 # Los hilos perdidos no pueden quedarse con los workers, o el próximo pedido
 # esperaría por uno libre en vez de correr. Se deja lugar para unos cuantos.
 ABANDONO_MAX = max(1, int(os.environ.get("ABANDONO_MAX", "4")))
-_perdidos = {"n": 0}
+_perdidos = {"vivos": 0, "total": 0, "lock": threading.Lock()}
 # Tantos hilos como cupos: con el semáforo de admisión, un trabajo aceptado
 # siempre encuentra un worker libre y no se queda encolado.
 _pool = concurrent.futures.ThreadPoolExecutor(
@@ -556,6 +559,14 @@ async def _clasificar_una(datos, contexto, verificar):
     """Corre el pipeline con el cupo tomado, fuera del event loop."""
     # Sin techo de concurrencia, cada pedido encolado retiene su imagen en RAM
     # y suma minutos de espera. Mejor rechazar rápido.
+    # Si ya hay tantos trabajos perdidos como lugar de reserva, aceptar uno
+    # más lo mandaría a la cola del executor, que no tiene techo: el pedido no
+    # se respondería nunca y encima seguiría pagando verificaciones. Mejor
+    # decir que no.
+    with _perdidos["lock"]:
+        saturado = _perdidos["vivos"] >= ABANDONO_MAX
+    if saturado:
+        raise HTTPException(503, "el servidor está degradado; reintentá más tarde")
     if not _cupos.acquire(blocking=False):
         raise HTTPException(503, "el servidor está ocupado; reintentá en un momento")
 
@@ -569,11 +580,20 @@ async def _clasificar_una(datos, contexto, verificar):
             if estado_cupo["suelto"]:
                 return False
             estado_cupo["suelto"] = True
-        if por_techo:
-            _perdidos["n"] += 1
-            print(f"[ojo] trabajo abandonado tras {TECHO_TRABAJO}s; "
-                  f"se devuelve el cupo (perdidos={_perdidos['n']})", flush=True)
+        # Primero el release y después el log: si el log explotara (stdout
+        # cerrado, colector caído), el cupo ya quedó marcado como suelto y
+        # nadie más lo iba a devolver. Eso es 503 permanente otra vez.
         _cupos.release()
+        if por_techo:
+            with _perdidos["lock"]:
+                _perdidos["vivos"] += 1
+                _perdidos["total"] += 1
+            try:
+                print(f"[ojo] trabajo abandonado tras {TECHO_TRABAJO}s; "
+                      f"se devolvió el cupo (perdidos={_perdidos['total']})",
+                      flush=True)
+            except Exception:      # noqa: BLE001 - loguear nunca puede romper
+                pass
         return True
 
     techo = threading.Timer(TECHO_TRABAJO, soltar_cupo, kwargs={"por_techo": True})
@@ -588,7 +608,11 @@ async def _clasificar_una(datos, contexto, verificar):
             return procesar(datos, contexto, verificar)
         finally:
             techo.cancel()
-            soltar_cupo()
+            # Si el techo ya lo había dado por perdido, al terminar devuelve
+            # su lugar de reserva: el pool vuelve a tener aire.
+            if not soltar_cupo():
+                with _perdidos["lock"]:
+                    _perdidos["vivos"] = max(0, _perdidos["vivos"] - 1)
 
     # El pipeline es sincrónico y tarda 25-60 s: fuera del event loop, o
     # bloquea /salud, la portada y cualquier otro pedido mientras corre.
