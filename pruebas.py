@@ -894,6 +894,23 @@ V.verificar(_Img(), CATS, SIN_LOCAL, "hay ratas por todos lados")
 msgs = capturado["m"]
 check("la rúbrica va en system", msgs[0]["role"] == "system"
       and "retiro_muebles:" in msgs[0]["content"])
+rubrica = msgs[0]["content"]
+check("la rúbrica obliga a recorrer la escena completa antes de clasificar",
+      "TODA la foto de borde a borde" in rubrica
+      and "encontrar bolsas y cartones NO termina el análisis" in rubrica)
+check("alfombras y tapetes grandes son voluminosos aunque sean textiles",
+      "ALFOMBRAS O TAPETES GRANDES" in rubrica
+      and "sigue siendo voluminoso aunque sea flexible o textil" in rubrica)
+check("un textil grande genérico no se confunde con una alfombra",
+      "trama o pelo de alfombra, reverso grueso, flecos o bordes terminados" in rubrica
+      and '"textil grande" genérico NO alcanza' in rubrica)
+check("cajones de madera no se confunden con cajas de cartón",
+      "DISTINGUÍ el cajón de MADERA de la caja de CARTÓN" in rubrica
+      and "listones, tablas, uniones, clavos o tornillos" in rubrica)
+check("una escena mixta conserva recolección y retiro de voluminosos",
+      "reportá recoleccion Y retiro_muebles" in rubrica)
+check("no queda la regla contradictoria que excluía toda clase de textil",
+      "la ropa/textiles y las bolsas de basura" not in rubrica)
 check("el contexto del usuario no entra al system",
       "ratas" in msgs[1]["content"][0]["text"] and "ratas" not in msgs[0]["content"])
 
