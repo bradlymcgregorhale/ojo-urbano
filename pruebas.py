@@ -941,6 +941,22 @@ check("una escena mixta conserva recolección y retiro de voluminosos",
       "reportá recoleccion Y retiro_muebles" in rubrica)
 check("no queda la regla contradictoria que excluía toda clase de textil",
       "la ropa/textiles y las bolsas de basura" not in rubrica)
+check("ocupacion_comercial cubre cualquier mercadería a la venta, sin exigir fachada",
+      "CUALQUIER producto puesto a la venta" in rubrica
+      and "No hace falta que la mercadería esté pegada a la fachada" in rubrica)
+check("y da señales concretas de exhibición comercial",
+      "césped sintético de exhibición" in rubrica
+      and "etiquetas de precio" in rubrica
+      and "ALINEADOS en fila" in rubrica)
+check("un cartel solo sigue siendo obstruccion; con mercadería es ocupacion_comercial",
+      "SOLO sobre la vereda, sin mercadería alrededor, NO es ocupacion_comercial" in rubrica
+      and "si el cartel acompaña mercadería exhibida, la escena entera es ocupacion_comercial" in rubrica)
+check("obstruccion queda definida como barrera, no como mercadería que estorba",
+      "BARRERA que reserva o bloquea espacio" in rubrica
+      and "eso es ocupacion_comercial, aunque también estorbe el paso" in rubrica)
+check("gastronomica no absorbe el cartel solo: mismo criterio que comercial",
+      "sin mesas alrededor, NO es ocupacion_gastronomica" in rubrica
+      and "carteles publicitarios" not in rubrica)
 check("el contexto del usuario no entra al system",
       "ratas" in msgs[1]["content"][0]["text"] and "ratas" not in msgs[0]["content"])
 
