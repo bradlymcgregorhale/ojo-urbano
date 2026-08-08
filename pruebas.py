@@ -1078,6 +1078,31 @@ check("la sospecha del modelo local de vehículo también dispara la lectura",
       r.get("patente") == "ABC123" and _n["n"] == 2,
       f"patente={r.get('patente')} llamadas={_n['n']}")
 
+# Desempate con un tercer modelo: una lectura válida + una nula no es
+# discrepancia; publica solo si el tercero lee EXACTO lo mismo.
+V.VERIFICADORES = ["vlm/uno", "vlm/dos", "vlm/tres"]
+_n = {"n": 0}
+V._llamar = _mock_dos_pasadas({"vlm/uno": "AB990LX", "vlm/dos": None,
+                               "vlm/tres": "ab 990 lx"}, _n)
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("lectura válida + nula: el tercer modelo desempata y publica",
+      r.get("patente") == "AB990LX" and _n["n"] == 3,
+      f"patente={r.get('patente')} llamadas={_n['n']}")
+
+_n = {"n": 0}
+V._llamar = _mock_dos_pasadas({"vlm/uno": "AB990LX", "vlm/dos": None,
+                               "vlm/tres": "AB998LX"}, _n)
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("si el tercero lee distinto, no se publica nada",
+      r.get("patente") is None)
+
+V.VERIFICADORES = ["vlm/uno", "vlm/dos"]
+_n = {"n": 0}
+V._llamar = _mock_dos_pasadas({"vlm/uno": "AB990LX", "vlm/dos": None}, _n)
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("sin tercer modelo configurado, la lectura suelta no alcanza",
+      r.get("patente") is None)
+
 # El top-1 de relleno del modelo local (score bajo el umbral) NO es señal.
 LOCAL_VEH_DEBIL = {"predichas": [{"key": "vehiculo_abandonado", "nombre": "VA",
                                   "score": 0.11}],
