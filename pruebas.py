@@ -980,6 +980,9 @@ check("acopio deslinda cascote, recoleccion, situacion_calle e interiores",
       and "Adentro de un local o depósito no es espacio público" in rubrica)
 check("escombros deriva el bolsón de reciclables a acopio, no a recoleccion",
       "llenos de cartón u otros reciclables estacionados en la vía pública son acopio_recuperadores" in rubrica)
+check("precedencia acopio/establecimiento en ambas puntas: el bolsón manda",
+      "la escena es acopio_recuperadores aunque haya un local atrás: el bolsón manda" in rubrica
+      and "en la puerta de su propio local, sin bolsones (eso es residuos_establecimiento)" in rubrica)
 check("el contexto del usuario no entra al system",
       "ratas" in msgs[1]["content"][0]["text"] and "ratas" not in msgs[0]["content"])
 
