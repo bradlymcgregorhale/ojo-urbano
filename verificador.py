@@ -1206,7 +1206,25 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     con_vehiculo = [e for e in finales if e["key"] in PATENTE_KEYS]
     vistos_vehiculo = {k for k in PATENTE_KEYS
                        if any(f != "modelo_local" for f in fuentes.get(k, []))}
-    if (patente_escena is None and len(vistos_vehiculo) == 1
+    # También dispara el contexto del vecino ("auto mal estacionado", vía
+    # categorias_contexto de los verificadores) y la sospecha del modelo
+    # local: en el flujo real el reporte de vehículo llega con contexto, y
+    # los modelos muchas veces no votan la infracción aunque la chapa esté
+    # perfectamente a la vista. La situación puede no confirmarse; la
+    # patente sirve igual (requisito del dueño del proyecto).
+    for v in veredictos:
+        if v.get("ok"):
+            vistos_vehiculo |= {c.get("key") for c in
+                                (v.get("categorias_contexto") or [])
+                                if c.get("key") in PATENTE_KEYS}
+    # La sospecha local cuenta solo por encima del umbral: predichas puede
+    # traer el top-1 de relleno con score bajísimo, y eso no es señal.
+    umbral_local = prediccion_local.get("umbral")
+    vistos_vehiculo |= {
+        p["key"] for p in prediccion_local["predichas"]
+        if p["key"] in PATENTE_KEYS
+        and (umbral_local is None or p.get("score", 0) >= umbral_local)}
+    if (patente_escena is None and vistos_vehiculo
             and len(con_vehiculo) <= 1 and not lecturas_totales):
         patente_escena = _leer_patente(img)
     # En la entrada confirmada la patente va solo si el vehículo es UNO:

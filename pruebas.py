@@ -1030,6 +1030,66 @@ check("con el vehículo solo en posibles, la patente igual se lee y sale top-lev
       r.get("patente") == "EIK122" and _vehiculo(r) is None and _n["n"] == 2,
       f"patente={r.get('patente')} llamadas={_n['n']}")
 
+# El contexto del vecino también dispara la lectura: los modelos no ven la
+# infracción (sin categorías) pero el texto dice que es un reporte de
+# vehículo → la chapa se lee igual.
+def _mock_ctx_vehiculo(lecturas_p2, conteo):
+    def fake(modelo, mensajes, **k):
+        if mensajes[0]["role"] == "user":
+            conteo["n"] += 1
+            return json.dumps({"patente": lecturas_p2.get(modelo)})
+        return json.dumps({"categorias": [], "sin_problema": True,
+                           "descripcion": "Un auto estacionado normal.",
+                           "categorias_contexto": [
+                               {"key": "vehiculo_mal_estacionado",
+                                "respaldo": "neutral"}]})
+    return fake
+
+
+_n = {"n": 0}
+V._llamar = _mock_ctx_vehiculo({"vlm/uno": "AB990LX", "vlm/dos": "AB990LX"}, _n)
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "hay un auto mal estacionado")
+check("el contexto vecinal de vehículo dispara la lectura de la chapa",
+      r.get("patente") == "AB990LX" and _n["n"] == 2,
+      f"patente={r.get('patente')} llamadas={_n['n']}")
+
+# Y la sospecha del modelo local también (vehiculo_abandonado es clase local).
+LOCAL_VEH = {"predichas": [{"key": "vehiculo_abandonado", "nombre": "VA",
+                            "score": 0.9}],
+             "probabilidades": [{"key": "vehiculo_abandonado", "nombre": "VA",
+                                 "score": 0.9}],
+             "gravedad": {"value": 3, "raw": 3.0}, "umbral": 0.5}
+
+
+def _mock_sin_nada(lecturas_p2, conteo):
+    def fake(modelo, mensajes, **k):
+        if mensajes[0]["role"] == "user":
+            conteo["n"] += 1
+            return json.dumps({"patente": lecturas_p2.get(modelo)})
+        return json.dumps({"categorias": [], "sin_problema": True,
+                           "descripcion": "Calle.", "categorias_contexto": []})
+    return fake
+
+
+_n = {"n": 0}
+V._llamar = _mock_sin_nada({"vlm/uno": "ABC123", "vlm/dos": "abc 123"}, _n)
+r = V.verificar(_Img(), CATS, LOCAL_VEH, "")
+check("la sospecha del modelo local de vehículo también dispara la lectura",
+      r.get("patente") == "ABC123" and _n["n"] == 2,
+      f"patente={r.get('patente')} llamadas={_n['n']}")
+
+# El top-1 de relleno del modelo local (score bajo el umbral) NO es señal.
+LOCAL_VEH_DEBIL = {"predichas": [{"key": "vehiculo_abandonado", "nombre": "VA",
+                                  "score": 0.11}],
+                   "probabilidades": [{"key": "vehiculo_abandonado",
+                                       "nombre": "VA", "score": 0.11}],
+                   "gravedad": {"value": 1, "raw": 1.0}, "umbral": 0.5}
+_n = {"n": 0}
+V._llamar = _mock_sin_nada({"vlm/uno": "ABC123", "vlm/dos": "ABC123"}, _n)
+r = V.verificar(_Img(), CATS, LOCAL_VEH_DEBIL, "")
+check("el relleno local bajo el umbral no paga la lectura",
+      r.get("patente") is None and _n["n"] == 0, f"llamadas={_n['n']}")
+
 # Modo "arbitro": los dos VLM leen la misma patente en la primera pasada
 # pero la categoría queda sin confirmar (árbitro caído/rechaza). La lectura
 # coincidente vale igual: sale top-level, sin segunda pasada.
