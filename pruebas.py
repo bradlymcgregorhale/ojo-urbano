@@ -957,6 +957,29 @@ check("obstruccion queda definida como barrera, no como mercadería que estorba"
 check("gastronomica no absorbe el cartel solo: mismo criterio que comercial",
       "sin mesas alrededor, NO es ocupacion_gastronomica" in rubrica
       and "carteles publicitarios" not in rubrica)
+check("acopio se define por los bolsones de reciclables, no por fardos genéricos",
+      "sacos grandes de rafia tejida" in rubrica
+      and "cartón aplastado asomando por la boca" in rubrica
+      and "material acumulado, carros y fardos juntados" not in rubrica)
+check("acopio no exige gente presente",
+      "NO hace falta que haya nadie presente" in rubrica)
+check("la carga comercial en tránsito nunca es acopio",
+      "carga comercial EN TRÁNSITO" in rubrica
+      and "fardos envueltos en film" in rubrica
+      and "carrito de reparto" in rubrica)
+check("el cartonero que circula no es un punto de acopio; el carro suma detenido",
+      "solo CIRCULA con su carro cargado" in rubrica
+      and "detenido e integrado a un puesto quieto" in rubrica)
+check("un bolsón cerrado u opaco no confirma acopio solo",
+      "un bolsón CERRADO u opaco sin contenido visible no alcanza solo" in rubrica
+      and "bolsones VACÍOS o desinflados sin material" in rubrica)
+check("acopio deslinda cascote, recoleccion, situacion_calle e interiores",
+      "bolsones llenos de CASCOTE (eso es retiro_escombros)" in rubrica
+      and "sin bolsones ni carros (eso es recoleccion)" in rubrica
+      and "un carro con pertenencias y alguien instalado viviendo" in rubrica
+      and "Adentro de un local o depósito no es espacio público" in rubrica)
+check("escombros deriva el bolsón de reciclables a acopio, no a recoleccion",
+      "llenos de cartón u otros reciclables estacionados en la vía pública son acopio_recuperadores" in rubrica)
 check("el contexto del usuario no entra al system",
       "ratas" in msgs[1]["content"][0]["text"] and "ratas" not in msgs[0]["content"])
 
