@@ -534,17 +534,23 @@ def _publica(r):
         fuentes = c.get("fuentes") or []
         return bool(set(fuentes) - {"modelo_local"})
 
-    def _entrada(c):
+    def _entrada(c, patente_ok=False):
         e = {k: v for k, v in c.items() if k != "fuentes"}
         # "fuentes" público es un CONTEO (cuántas fuentes del consenso la
         # sostienen), nunca la lista de nombres.
         e["fuentes"] = len(c.get("fuentes") or [])
         if "motivo" in e:
             e["motivo"] = _sanear_motivo(e["motivo"])
+        # La patente publicada vive SOLO en problemas confirmados: un
+        # hallazgo que cayó a posibles o a descartados_por_foto no la
+        # arrastra (README, contrato de `patente`).
+        if not patente_ok:
+            e.pop("patente", None)
         return e
 
     for campo in ("problemas", "posibles", "descartados_por_foto"):
-        pub[campo] = [_entrada(c) for c in (r.get(campo) or []) if _visible(c)]
+        pub[campo] = [_entrada(c, patente_ok=(campo == "problemas"))
+                      for c in (r.get(campo) or []) if _visible(c)]
 
     # elementos_detectados y en_duda también pueden nacer solo del modelo
     # local (modo sin verificación; árbitro caído): mismo filtro. en_duda es
@@ -1066,7 +1072,7 @@ function seleccionar(f){
 $('#copyjson').onclick=()=>{navigator.clipboard.writeText($('#json').textContent).then(()=>{
   $('#copyjson').textContent='Copiado ✓';setTimeout(()=>$('#copyjson').textContent='Copiar JSON',1500);});};
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-const chip=(c,extra)=>`<div class="cat${extra?' ctx':''}"><b>${esc(c.nombre)}</b>${c.gravedad?`<span>${c.gravedad}/5 · ${GRAV[c.gravedad]||''}${typeof c.fuentes==='number'?` · ${c.fuentes} fuente${c.fuentes!==1?'s':''}`:''}</span>`:''}</div>`;
+const chip=(c,extra)=>`<div class="cat${extra?' ctx':''}"><b>${esc(c.nombre)}</b>${c.gravedad?`<span>${c.gravedad}/5 · ${GRAV[c.gravedad]||''}${typeof c.fuentes==='number'?` · ${c.fuentes} fuente${c.fuentes!==1?'s':''}`:''}${c.patente?` · patente <b>${esc(c.patente)}</b>`:''}</span>`:''}</div>`;
 let ctrl=null,cronoIv=null,ultimoArchivo=null,reintentoT=null;
 // Presupuesto total de espera en cola antes de rendirse y mostrar el error.
 const ESPERA_MAX_MS=180000,REINTENTO_MS=6000,SIGUE=Symbol('encola');

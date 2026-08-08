@@ -868,6 +868,106 @@ check("con respaldo del modelo local sí confirma",
       "reparacion_contenedor" in {c["key"] for c in r["confirmadas"]})
 
 V.CONSENSO_VLM_SOLO = "confirma"
+
+print("[#6b] patente en reportes de vehículos")
+check("los cuatro formatos argentinos normalizan",
+      [V._patente_normalizada(s) for s in ("ab 123 cd", "abc123", "a303trt", "123-abc")]
+      == ["AB123CD", "ABC123", "A303TRT", "123ABC"])
+check("lecturas parciales o inválidas se descartan sin corregir",
+      all(V._patente_normalizada(s) is None
+          for s in ("AB12CD", "AB1O3CD", "AB123CDE", "PATENTE", "", None, 123)))
+
+
+def _mock_patentes(por_modelo, key="vehiculo_mal_estacionado"):
+    def fake(modelo, mensajes, **k):
+        cat = {"key": key, "gravedad": 4, "evidencia": "auto sobre la ochava"}
+        if por_modelo.get(modelo):
+            cat["patente"] = por_modelo[modelo]
+        return json.dumps({"categorias": [cat], "sin_problema": False,
+                           "descripcion": "Auto mal estacionado.",
+                           "categorias_contexto": []})
+    return fake
+
+
+def _vehiculo(r):
+    return next((c for c in r["confirmadas"]
+                 if c["key"] == "vehiculo_mal_estacionado"), None)
+
+
+V._llamar = _mock_patentes({"vlm/uno": "AB 123 CD", "vlm/dos": "ab123cd"})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("dos lecturas coincidentes publican la patente normalizada",
+      (_vehiculo(r) or {}).get("patente") == "AB123CD")
+
+V._llamar = _mock_patentes({"vlm/uno": "AB123CD", "vlm/dos": "AC123CD"})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("dos lecturas DISTINTAS no publican ninguna",
+      "patente" not in (_vehiculo(r) or {}))
+
+V._llamar = _mock_patentes({"vlm/uno": "AB123CD"})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("una sola lectura no alcanza (no se puede verificar)",
+      "patente" not in (_vehiculo(r) or {}))
+
+V._llamar = _mock_patentes({"vlm/uno": "AB-12", "vlm/dos": "AB-12"})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("una lectura que no matchea formato no entra ni con coincidencia",
+      "patente" not in (_vehiculo(r) or {}))
+
+V._llamar = _mock_patentes({"vlm/uno": "AB123CD", "vlm/dos": "AB123CD"},
+                           key="recoleccion")
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("una patente en una categoría que no es de vehículos se ignora",
+      all("patente" not in c for c in r["confirmadas"]))
+
+V.VERIFICADORES = ["vlm/uno", "vlm/dos", "vlm/tres"]
+V._llamar = _mock_patentes({"vlm/uno": "AB123CD", "vlm/dos": "AB123CD",
+                            "vlm/tres": "AB128CD"})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("una lectura discrepante anula la patente aunque pierda 2 a 1",
+      "patente" not in (_vehiculo(r) or {}))
+
+
+def _mock_dos_claves(modelo, mensajes, **k):
+    if modelo == "vlm/tres":
+        cat = {"key": "vehiculo_abandonado", "gravedad": 3,
+               "evidencia": "auto tapado de polvo", "patente": "AB128CD"}
+    else:
+        cat = {"key": "vehiculo_mal_estacionado", "gravedad": 4,
+               "evidencia": "auto sobre la ochava", "patente": "AB123CD"}
+    return json.dumps({"categorias": [cat], "sin_problema": False,
+                       "descripcion": "Autos.", "categorias_contexto": []})
+
+
+V._llamar = _mock_dos_claves
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("la discrepancia anula también si viene bajo la otra clave de vehículo",
+      all("patente" not in c for c in r["confirmadas"]))
+V.VERIFICADORES = ["vlm/uno", "vlm/dos"]
+
+# La patente publicada vive SOLO en problemas: si el hallazgo cae a posibles
+# o a descartados_por_foto (foto que no corresponde), la patente se pela.
+_rp = {"hay_problema": True, "hay_reclamo": True, "gravedad_maxima": 4,
+       "problemas": [{"key": "vehiculo_mal_estacionado", "nombre": "V",
+                      "gravedad": 4, "fuentes": ["vlm/uno", "vlm/dos"],
+                      "patente": "AB123CD"}],
+       "posibles": [{"key": "vehiculo_abandonado", "nombre": "VA", "gravedad": 3,
+                     "fuentes": ["vlm/uno", "vlm/dos"], "origen": "foto",
+                     "patente": "AC123CD"}],
+       "descartados_por_foto": [{"key": "vehiculo_mal_estacionado", "nombre": "V",
+                                 "gravedad": 4, "fuentes": ["vlm/uno", "vlm/dos"],
+                                 "patente": "AD123CD"}],
+       "elementos_detectados": [], "en_duda": [], "categorias_contexto": [],
+       "descripcion": None, "foto_valida": False,
+       "foto_valida_estado": "no_corresponde",
+       "detalle": {"verificacion": {"activa": True}}}
+_pp = servidor._publica(_rp)
+check("la patente publicada vive solo en problemas",
+      _pp["problemas"][0].get("patente") == "AB123CD"
+      and all("patente" not in c for c in _pp["posibles"])
+      and all("patente" not in c for c in _pp["descartados_por_foto"]))
+
+V._llamar = lambda modelo, mensajes, **k: (capturado.update(m=mensajes), RESP)[1]
 r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
 check("CONSENSO_VLM_SOLO=confirma restaura la regla vieja",
       "reparacion_contenedor" in {c["key"] for c in r["confirmadas"]})
@@ -983,6 +1083,10 @@ check("escombros deriva el bolsón de reciclables a acopio, no a recoleccion",
 check("precedencia acopio/establecimiento en ambas puntas: el bolsón manda",
       "la escena es acopio_recuperadores aunque haya un local atrás: el bolsón manda" in rubrica
       and "en la puerta de su propio local, sin bolsones (eso es residuos_establecimiento)" in rubrica)
+check("la rúbrica pide la patente completa, leída de la chapa, sin adivinar",
+      '"patente": "AB123CD"' in rubrica
+      and "Si UN solo carácter está borroso" in rubrica
+      and "no es una patente" in rubrica)
 check("el contexto del usuario no entra al system",
       "ratas" in msgs[1]["content"][0]["text"] and "ratas" not in msgs[0]["content"])
 
