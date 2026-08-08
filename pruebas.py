@@ -1001,6 +1001,73 @@ r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
 check("un fragmento inválido en la primera pasada no bloquea la segunda",
       (_vehiculo(r) or {}).get("patente") == "AE855XP" and _n["n"] == 2,
       f"patente={(_vehiculo(r) or {}).get('patente')} llamadas={_n['n']}")
+check("y la patente también sale top-level en el veredicto",
+      r.get("patente") == "AE855XP")
+
+
+# El vehículo visto por UN solo modelo no confirma la infracción, pero la
+# patente igual se lee y sale top-level: el dato le sirve al consumidor
+# aunque la situación no se confirme desde la foto.
+def _mock_vehiculo_solo_uno(lecturas_p2, conteo):
+    def fake(modelo, mensajes, **k):
+        if mensajes[0]["role"] == "user":
+            conteo["n"] += 1
+            return json.dumps({"patente": lecturas_p2.get(modelo)})
+        if modelo == "vlm/uno":
+            cat = [{"key": "vehiculo_mal_estacionado", "gravedad": 4,
+                    "evidencia": "auto sobre la rampa"}]
+        else:
+            cat = []
+        return json.dumps({"categorias": cat, "sin_problema": not cat,
+                           "descripcion": "Calle.", "categorias_contexto": []})
+    return fake
+
+
+_n = {"n": 0}
+V._llamar = _mock_vehiculo_solo_uno({"vlm/uno": "EIK122", "vlm/dos": "EIK 122"}, _n)
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("con el vehículo solo en posibles, la patente igual se lee y sale top-level",
+      r.get("patente") == "EIK122" and _vehiculo(r) is None and _n["n"] == 2,
+      f"patente={r.get('patente')} llamadas={_n['n']}")
+
+# Modo "arbitro": los dos VLM leen la misma patente en la primera pasada
+# pero la categoría queda sin confirmar (árbitro caído/rechaza). La lectura
+# coincidente vale igual: sale top-level, sin segunda pasada.
+_modo_prev = V.CONSENSO_VLM_SOLO
+V.CONSENSO_VLM_SOLO = "arbitro"
+_n = {"n": 0}
+V._llamar = _mock_dos_pasadas({"vlm/uno": "XX999XX", "vlm/dos": "XX999XX"}, _n,
+                              patente_p1=None)
+
+
+def _mock_p1_ambos(modelo, mensajes, **k):
+    if mensajes[0]["role"] == "user":
+        _n["n"] += 1
+        return json.dumps({"patente": "ZZ111ZZ"})
+    cat = {"key": "vehiculo_mal_estacionado", "gravedad": 4,
+           "evidencia": "auto sobre la rampa", "patente": "AB123CD"}
+    return json.dumps({"categorias": [cat], "sin_problema": False,
+                       "descripcion": "Auto.", "categorias_contexto": []})
+
+
+V._llamar = _mock_p1_ambos
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("lectura coincidente de la 1ra pasada vale aunque la categoría no confirme",
+      r.get("patente") == "AB123CD" and not r["confirmadas"] and _n["n"] == 0,
+      f"patente={r.get('patente')} confirmadas={len(r['confirmadas'])} llamadas={_n['n']}")
+V.CONSENSO_VLM_SOLO = _modo_prev
+
+# _abrir_imagen endereza el EXIF: una foto acostada (Orientation=6) llega a
+# los modelos con los píxeles ya rotados, no solo con la anotación.
+from PIL import Image as PIL_Image  # noqa: E402 - solo para esta prueba
+_ex = PIL_Image.new("RGB", (40, 20), (10, 10, 10))
+_exif = PIL_Image.Exif()
+_exif[274] = 6
+_buf = io.BytesIO()
+_ex.save(_buf, format="JPEG", exif=_exif)
+_abierta = S._abrir_imagen(_buf.getvalue())
+check("una foto con EXIF Orientation=6 se endereza al abrirla",
+      _abierta.size == (20, 40), str(_abierta.size))
 
 # La patente publicada vive SOLO en problemas: si el hallazgo cae a posibles
 # o a descartados_por_foto (foto que no corresponde), la patente se pela.
@@ -1018,9 +1085,11 @@ _rp = {"hay_problema": True, "hay_reclamo": True, "gravedad_maxima": 4,
        "descripcion": None, "foto_valida": False,
        "foto_valida_estado": "no_corresponde",
        "detalle": {"verificacion": {"activa": True}}}
+_rp["patente"] = "AB123CD"
 _pp = servidor._publica(_rp)
-check("la patente publicada vive solo en problemas",
+check("la patente publicada vive solo en problemas (y top-level)",
       _pp["problemas"][0].get("patente") == "AB123CD"
+      and _pp.get("patente") == "AB123CD"
       and all("patente" not in c for c in _pp["posibles"])
       and all("patente" not in c for c in _pp["descartados_por_foto"]))
 

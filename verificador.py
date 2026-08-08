@@ -1170,41 +1170,49 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # duda aunque cuelguen de claves diferentes (suele ser el mismo vehículo
     # fichado bajo otra categoría por un modelo).
     lecturas_totales = {pat for lect in patentes.values() for pat in lect}
+    # Patente de la escena según la primera pasada: UNA única cadena leída
+    # en total, por al menos dos verificadores distintos (contados a través
+    # de las claves: el mismo vehículo fichado bajo otra categoría sigue
+    # siendo la misma chapa). Se calcula ANTES e independiente de la
+    # confirmación de la categoría: en el modo "arbitro" el vehículo puede
+    # quedar en posibles y la lectura coincidente vale igual.
+    patente_escena = None
+    if len(lecturas_totales) == 1:
+        quienes = set()
+        for por_pat in patentes.values():
+            for lectores_pat in por_pat.values():
+                quienes.update(lectores_pat)
+        if len(quienes) >= 2:
+            patente_escena = next(iter(lecturas_totales))
     finales = []
     for k in sorted(confirmadas):
-        entrada = {
+        finales.append({
             "key": k,
             "nombre": categorias.get(k, {}).get("nombre", k),
             "gravedad": grav.get(k) or grav_local,
             "fuentes": fuentes.get(k, []),
-        }
-        # La patente se publica SOLO cuando hubo UNA única cadena leída en
-        # TODA la escena y al menos dos verificadores distintos leyeron esa
-        # misma cadena. Cualquier lectura discrepante — aunque pierda 2 a 1,
-        # aunque venga bajo la otra clave de vehículo — anula la publicación:
-        # en un dato que tiene que ser exacto, la discrepancia es evidencia
-        # de duda, no una votación que se gana.
-        lecturas = patentes.get(k) or {}
-        if len(lecturas_totales) == 1 and len(lecturas) == 1:
-            pat, quienes = next(iter(lecturas.items()))
-            if len(set(quienes)) >= 2:
-                entrada["patente"] = pat
-        finales.append(entrada)
+        })
 
     # Segunda pasada de patente, con la foto a mayor resolución: a LADO_MAX
     # una chapa a unos metros no se lee, así que la primera pasada casi
-    # nunca la trae. Corre SOLO si hay exactamente UN problema de vehículo
-    # confirmado sin patente y la primera pasada no leyó NINGUNA cadena
+    # nunca la trae. Corre cuando exactamente UNA clave de vehículo fue
+    # reportada por algún modelo de visión — confirmada O en posibles: el
+    # dato de la patente le sirve al consumidor aunque la infracción no se
+    # confirme desde la foto — y la primera pasada no leyó NINGUNA cadena
     # VÁLIDA (una lectura válida discrepante es duda activa: más llamadas
     # no la anulan). Los fragmentos inválidos de la primera pasada ("AB-12")
     # NO bloquean a propósito: son el garble de baja resolución que esta
     # pasada existe para resolver — se descartan al parsear y acá no cuentan.
     con_vehiculo = [e for e in finales if e["key"] in PATENTE_KEYS]
-    if (len(con_vehiculo) == 1 and not lecturas_totales
-            and "patente" not in con_vehiculo[0]):
-        pat = _leer_patente(img)
-        if pat:
-            con_vehiculo[0]["patente"] = pat
+    vistos_vehiculo = {k for k in PATENTE_KEYS
+                       if any(f != "modelo_local" for f in fuentes.get(k, []))}
+    if (patente_escena is None and len(vistos_vehiculo) == 1
+            and len(con_vehiculo) <= 1 and not lecturas_totales):
+        patente_escena = _leer_patente(img)
+    # En la entrada confirmada la patente va solo si el vehículo es UNO:
+    # con dos problemas de vehículo no hay a cuál atribuírsela.
+    if patente_escena and len(con_vehiculo) == 1:
+        con_vehiculo[0]["patente"] = patente_escena
 
     # Lo que quedó sin confirmar: una sola fuente lo vio. Se devuelve como
     # POSIBLE, con quién lo vio y qué dijo el árbitro, para que quien consume
@@ -1396,6 +1404,9 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         # El contexto del vecino NO se devuelve: el cliente ya tiene el texto
         # que envió, y el eco solo duplica PII (nombres, patentes, firmas)
         # hacia logs y capturas. Sigue entrando a los modelos como pista.
+        # La patente en cambio SÍ: se lee de la chapa fotografiada, nunca
+        # del texto (README, excepción deliberada).
+        "patente": patente_escena,
         "foto_valida": foto_valida,
         # null es ambiguo por sí solo: puede ser que no haya contexto, que los
         # modelos no coincidan, o que la verificación no haya corrido. Un

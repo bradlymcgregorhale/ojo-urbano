@@ -45,7 +45,7 @@ import numpy as np
 import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
-from PIL import Image
+from PIL import Image, ImageOps
 from sentence_transformers import SentenceTransformer
 
 import verificador
@@ -318,6 +318,11 @@ def _abrir_imagen(datos):
         ancho, alto = img.size
         if ancho * alto > MAX_PIXELES:
             raise HTTPException(400, demasiado)
+        # Las fotos de celular suelen venir acostadas, con la rotación solo
+        # anotada en el EXIF. convert() entrega los píxeles crudos y pierde
+        # esa anotación: sin este paso, los modelos ven la escena (y las
+        # patentes) de costado.
+        img = ImageOps.exif_transpose(img)
         return img.convert("RGB")
     except HTTPException:
         raise
@@ -468,7 +473,7 @@ def procesar(datos, contexto, verificar):
                                               if c["key"] not in verificador.PRESENCIA])
 
     gravedades = [c["gravedad"] for c in problemas if c.get("gravedad")]
-    return {
+    salida = {
         "version": VERSION_API,
         # Sobre el objeto INTERNO. _publica() recalcula los dos sobre lo que
         # queda visible después de filtrar lo solo-local, y ahí valen las
@@ -490,6 +495,11 @@ def procesar(datos, contexto, verificar):
         "en_duda": en_duda,
         "detalle": {"modelo_local": local, "verificacion": veri},
     }
+    # Patente leída de la chapa del vehículo reportado (dos lectores
+    # coincidentes; ver README). Campo aditivo: ausente cuando no la hay.
+    if veri.get("patente"):
+        salida["patente"] = veri["patente"]
+    return salida
 
 
 def _terminos_prohibidos():
@@ -1144,7 +1154,8 @@ function enviar(f){
          +(d.gravedad_maxima?` · gravedad máxima ${d.gravedad_maxima}/5 (${GRAV[d.gravedad_maxima]})`:'')+'.'
        :d.hay_reclamo?'Hay un reclamo en el texto, pero sin problema confirmado en la foto.'
        :(desc?'La foto muestra otra cosa y lo que contaste no corresponde a ningún reclamo.'
-             :'No se identificaron problemas en la foto.'))+aviso;
+             :'No se identificaron problemas en la foto.'))+aviso
+       +(d.patente?' Patente leída: '+d.patente+'.':'');
      $('#cats').innerHTML=probs.map(c=>chip(c)).join('');
      if(d.descripcion){$('#desc').textContent=d.descripcion;$('#descwrap').style.display='block';}
      const cc=d.categorias_contexto||[];
