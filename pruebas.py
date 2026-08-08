@@ -976,13 +976,24 @@ r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
 check("si los lectores de la segunda pasada no coinciden, no hay patente",
       "patente" not in (_vehiculo(r) or {}))
 
+# Una lectura suelta (válida, sin nadie en contra) ya no bloquea: la
+# segunda pasada la confirma si lee lo mismo, y si lee otra cosa el
+# conflicto entre pasadas suprime todo.
+_n = {"n": 0}
+V._llamar = _mock_dos_pasadas({"vlm/uno": "AB123CD", "vlm/dos": "AB123CD"}, _n,
+                              patente_p1="AB123CD")
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("la lectura suelta de la 1ra pasada se confirma en la segunda",
+      (_vehiculo(r) or {}).get("patente") == "AB123CD" and _n["n"] == 2,
+      f"patente={(_vehiculo(r) or {}).get('patente')} llamadas={_n['n']}")
+
 _n = {"n": 0}
 V._llamar = _mock_dos_pasadas({"vlm/uno": "AB128CD", "vlm/dos": "AB128CD"}, _n,
                               patente_p1="AB123CD")
 r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
-check("una lectura suelta en la primera pasada bloquea la segunda",
-      "patente" not in (_vehiculo(r) or {}) and _n["n"] == 0,
-      f"llamadas={_n['n']}")
+check("si la segunda pasada lee distinto que la suelta, conflicto: nada",
+      "patente" not in (_vehiculo(r) or {}) and r.get("patente") is None
+      and _n["n"] == 2, f"llamadas={_n['n']}")
 
 _n = {"n": 0}
 V._llamar = _mock_dos_pasadas({"vlm/uno": "AB123CD", "vlm/dos": "AB123CD"}, _n,

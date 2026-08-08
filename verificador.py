@@ -1204,15 +1204,17 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         })
 
     # Segunda pasada de patente, con la foto a mayor resolución: a LADO_MAX
-    # una chapa a unos metros no se lee, así que la primera pasada casi
-    # nunca la trae. Corre cuando exactamente UNA clave de vehículo fue
+    # una chapa a unos metros no se lee, así que la primera pasada rara vez
+    # la trae confirmada. Corre cuando alguna clave de vehículo fue
     # reportada por algún modelo de visión — confirmada O en posibles: el
     # dato de la patente le sirve al consumidor aunque la infracción no se
-    # confirme desde la foto — y la primera pasada no leyó NINGUNA cadena
-    # VÁLIDA (una lectura válida discrepante es duda activa: más llamadas
-    # no la anulan). Los fragmentos inválidos de la primera pasada ("AB-12")
-    # NO bloquean a propósito: son el garble de baja resolución que esta
-    # pasada existe para resolver — se descartan al parsear y acá no cuentan.
+    # confirme desde la foto — y la primera pasada no tiene un CONFLICTO
+    # (dos cadenas válidas distintas: eso es duda activa y más llamadas no
+    # la anulan). Una lectura suelta sin nadie en contra NO bloquea: es una
+    # candidata que la segunda pasada va a confirmar o callar — y si la
+    # segunda pasada publica una cadena DISTINTA de la suelta, eso también
+    # es conflicto y no sale nada. Los fragmentos inválidos ("AB-12") no
+    # cuentan: son el garble de baja resolución que esta pasada resuelve.
     con_vehiculo = [e for e in finales if e["key"] in PATENTE_KEYS]
     vistos_vehiculo = {k for k in PATENTE_KEYS
                        if any(f != "modelo_local" for f in fuentes.get(k, []))}
@@ -1235,8 +1237,10 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         if p["key"] in PATENTE_KEYS
         and (umbral_local is None or p.get("score", 0) >= umbral_local)}
     if (patente_escena is None and vistos_vehiculo
-            and len(con_vehiculo) <= 1 and not lecturas_totales):
-        patente_escena = _leer_patente(img)
+            and len(con_vehiculo) <= 1 and len(lecturas_totales) <= 1):
+        leida = _leer_patente(img)
+        if leida and (not lecturas_totales or leida in lecturas_totales):
+            patente_escena = leida
     # En la entrada confirmada la patente va solo si el vehículo es UNO:
     # con dos problemas de vehículo no hay a cuál atribuírsela.
     if patente_escena and len(con_vehiculo) == 1:
