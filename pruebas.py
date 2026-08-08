@@ -945,6 +945,63 @@ check("la discrepancia anula también si viene bajo la otra clave de vehículo",
       all("patente" not in c for c in r["confirmadas"]))
 V.VERIFICADORES = ["vlm/uno", "vlm/dos"]
 
+
+# Segunda pasada a mayor resolución: la primera casi nunca lee la chapa
+# (a LADO_MAX queda chica); si hay UN vehículo confirmado sin patente y la
+# primera pasada no leyó nada, se relee la foto solo para la chapa.
+def _mock_dos_pasadas(lecturas_p2, conteo, key="vehiculo_mal_estacionado",
+                      patente_p1=None):
+    def fake(modelo, mensajes, **k):
+        if mensajes[0]["role"] == "user":          # pasada de patente
+            conteo["n"] += 1
+            return json.dumps({"patente": lecturas_p2.get(modelo)})
+        cat = {"key": key, "gravedad": 4, "evidencia": "auto sobre la rampa"}
+        if patente_p1 and modelo == "vlm/uno":
+            cat["patente"] = patente_p1
+        return json.dumps({"categorias": [cat], "sin_problema": False,
+                           "descripcion": "Auto.", "categorias_contexto": []})
+    return fake
+
+
+_n = {"n": 0}
+V._llamar = _mock_dos_pasadas({"vlm/uno": "AE 855 XP", "vlm/dos": "ae855xp"}, _n)
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("la segunda pasada publica la lectura coincidente de ambos lectores",
+      (_vehiculo(r) or {}).get("patente") == "AE855XP" and _n["n"] == 2,
+      f"patente={( _vehiculo(r) or {}).get('patente')} llamadas={_n['n']}")
+
+_n = {"n": 0}
+V._llamar = _mock_dos_pasadas({"vlm/uno": "AE855XP", "vlm/dos": "AE855XR"}, _n)
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("si los lectores de la segunda pasada no coinciden, no hay patente",
+      "patente" not in (_vehiculo(r) or {}))
+
+_n = {"n": 0}
+V._llamar = _mock_dos_pasadas({"vlm/uno": "AB128CD", "vlm/dos": "AB128CD"}, _n,
+                              patente_p1="AB123CD")
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("una lectura suelta en la primera pasada bloquea la segunda",
+      "patente" not in (_vehiculo(r) or {}) and _n["n"] == 0,
+      f"llamadas={_n['n']}")
+
+_n = {"n": 0}
+V._llamar = _mock_dos_pasadas({"vlm/uno": "AB123CD", "vlm/dos": "AB123CD"}, _n,
+                              key="recoleccion")
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("sin vehículo confirmado no se paga la segunda pasada", _n["n"] == 0,
+      f"llamadas={_n['n']}")
+
+# Un fragmento INVÁLIDO en la primera pasada ("AB-12") no bloquea: es el
+# garble de baja resolución que la segunda pasada existe para resolver.
+# Solo una lectura VÁLIDA discrepante es duda activa.
+_n = {"n": 0}
+V._llamar = _mock_dos_pasadas({"vlm/uno": "AE855XP", "vlm/dos": "AE855XP"}, _n,
+                              patente_p1="AB-12")
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("un fragmento inválido en la primera pasada no bloquea la segunda",
+      (_vehiculo(r) or {}).get("patente") == "AE855XP" and _n["n"] == 2,
+      f"patente={(_vehiculo(r) or {}).get('patente')} llamadas={_n['n']}")
+
 # La patente publicada vive SOLO en problemas: si el hallazgo cae a posibles
 # o a descartados_por_foto (foto que no corresponde), la patente se pela.
 _rp = {"hay_problema": True, "hay_reclamo": True, "gravedad_maxima": 4,

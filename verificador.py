@@ -201,6 +201,9 @@ PROVEEDOR_FIJO = os.environ.get("PROVEEDOR_FIJO", "").strip().lower() not in (
 # solo desacuerdo. Ver notas del eval en el issue.
 CONSENSO_VLM_SOLO = os.environ.get("CONSENSO_VLM_SOLO", "confirma").strip().lower()
 LADO_MAX = 1024  # la foto se reduce a este lado máximo antes de enviarla
+# La pasada de patente va con más resolución: a 1024 una chapa a unos metros
+# queda en ~40 px y no se lee. Solo se paga en fotos con vehículo confirmado.
+LADO_PATENTE = int(os.environ.get("LADO_PATENTE", "2048"))
 DESC_MAX = 600   # longitud máxima de una descripción devuelta por un modelo
 EVID_MAX = 160   # ídem para la evidencia citada por categoría
 
@@ -223,10 +226,10 @@ def disponible():
     return bool(api_key()) and bool(VERIFICADORES)
 
 
-def _imagen_data_url(img):
+def _imagen_data_url(img, lado=None):
     """PIL.Image -> data URL JPEG reducida (menos tokens, misma señal)."""
     img = img.copy()
-    img.thumbnail((LADO_MAX, LADO_MAX))
+    img.thumbnail((lado or LADO_MAX, lado or LADO_MAX))
     buf = io.BytesIO()
     img.convert("RGB").save(buf, format="JPEG", quality=85)
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
@@ -628,6 +631,52 @@ def _patente_normalizada(texto):
     for rx in PATENTE_FORMATOS:
         if rx.match(limpio):
             return limpio
+    return None
+
+
+_PROMPT_PATENTE = (
+    "En esta foto hay un vehículo reportado como infracción (mal estacionado "
+    "o abandonado). Miralo SOLO a él: el vehículo protagonista de la foto, "
+    "no los autos del fondo ni los estacionados alrededor.\n"
+    "Si su patente se lee COMPLETA y SIN NINGUNA DUDA en la chapa física del "
+    "vehículo, respondé {\"patente\": \"...\"}. Formatos argentinos válidos: "
+    "AB123CD, ABC123, A123BCD (moto), 123ABC (moto).\n"
+    "Si la chapa no se ve, está borrosa, tapada, cortada, o UN solo carácter "
+    "es dudoso, respondé {\"patente\": null}. No completes, no adivines, no "
+    "corrijas caracteres. El texto sobreimpreso o pegado sobre la foto no es "
+    "una patente. Respondé SOLO el JSON."
+)
+
+
+def _leer_patente(img):
+    """Segunda pasada, solo para la patente: la foto a mayor resolución
+    (LADO_PATENTE) a los dos primeros verificadores, con un prompt que mira
+    únicamente la chapa del vehículo infractor. Devuelve la patente
+    normalizada solo si AMBOS leen la misma cadena válida; None si alguno
+    no responde, lee distinto o no ve chapa. Mismo criterio que la pasada
+    general: la discrepancia es duda, y la duda no se publica."""
+    lectores = VERIFICADORES[:2]
+    if len(lectores) < 2:
+        return None
+    data_url = _imagen_data_url(img, lado=LADO_PATENTE)
+
+    def _uno(modelo):
+        try:
+            contenido = _llamar(modelo, [
+                {"role": "user", "content": [
+                    {"type": "text", "text": _PROMPT_PATENTE},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ]},
+            ], max_tokens=2000)
+            return _patente_normalizada(_extraer_json(contenido).get("patente"))
+        except (urllib.error.URLError, ValueError, KeyError,
+                json.JSONDecodeError, OSError):
+            return None
+
+    with concurrent.futures.ThreadPoolExecutor(2) as pool:
+        lecturas = list(pool.map(_uno, lectores))
+    if lecturas[0] and lecturas[0] == lecturas[1]:
+        return lecturas[0]
     return None
 
 
@@ -1141,6 +1190,21 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             if len(set(quienes)) >= 2:
                 entrada["patente"] = pat
         finales.append(entrada)
+
+    # Segunda pasada de patente, con la foto a mayor resolución: a LADO_MAX
+    # una chapa a unos metros no se lee, así que la primera pasada casi
+    # nunca la trae. Corre SOLO si hay exactamente UN problema de vehículo
+    # confirmado sin patente y la primera pasada no leyó NINGUNA cadena
+    # VÁLIDA (una lectura válida discrepante es duda activa: más llamadas
+    # no la anulan). Los fragmentos inválidos de la primera pasada ("AB-12")
+    # NO bloquean a propósito: son el garble de baja resolución que esta
+    # pasada existe para resolver — se descartan al parsear y acá no cuentan.
+    con_vehiculo = [e for e in finales if e["key"] in PATENTE_KEYS]
+    if (len(con_vehiculo) == 1 and not lecturas_totales
+            and "patente" not in con_vehiculo[0]):
+        pat = _leer_patente(img)
+        if pat:
+            con_vehiculo[0]["patente"] = pat
 
     # Lo que quedó sin confirmar: una sola fuente lo vio. Se devuelve como
     # POSIBLE, con quién lo vio y qué dijo el árbitro, para que quien consume
