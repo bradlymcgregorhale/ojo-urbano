@@ -247,21 +247,44 @@ código, _ = pedir("/salud")
 demora_salud = time.monotonic() - t0
 check("/salud responde mientras se clasifica", código == 200 and demora_salud < 1.0,
       f"HTTP {código} en {demora_salud:.3f}s")
+# Con la cola de espera activa (defaults), una segunda clasificación en
+# paralelo ya no rebota: espera su turno y termina bien.
 c2, _ = pedir("/clasificar", *_multipart("f.jpg", foto(804, 604))[::1])
-check("una segunda clasificación en paralelo devuelve 503", c2 == 503, f"HTTP {c2}")
+check("una segunda clasificación en paralelo espera su turno y termina",
+      c2 == 200, f"HTTP {c2}")
 h.join()
 check("la primera termina bien", resultados["cls"][0] == 200)
+check("la cola queda vacía", not S._cola, f"{len(S._cola)} esperando")
 _demora["s"] = 0.0
 check("el cupo vuelve a quedar libre",
       pedir("/clasificar", *_multipart("f.jpg", foto(805, 605))[::1])[0] == 200)
 
+# Sin cola (COLA_MAX=0 o ESPERA_CUPO=0) se conserva el rechazo inmediato de
+# siempre: es el modo para operadores que prefieran rebotar rápido.
+_espera_real = S.ESPERA_CUPO
+S.ESPERA_CUPO = 0
+S._cupos.acquire()
+check("sin cola, con el cupo tomado se rechaza rápido",
+      pedir("/clasificar", *_multipart("f.jpg", foto(806, 606))[::1])[0] == 503)
+S._cupos.release()
+S.ESPERA_CUPO = _espera_real
+
+# Espera con techo: si el cupo no se libera en ESPERA_CUPO segundos, 503.
+S.ESPERA_CUPO = 1
+S._cupos.acquire()
+t0 = time.monotonic()
+c_timeout, _ = pedir("/clasificar", *_multipart("f.jpg", foto(807, 607))[::1])
+demora_timeout = time.monotonic() - t0
+S._cupos.release()
+S.ESPERA_CUPO = _espera_real
+check("la espera por el cupo tiene techo y devuelve 503",
+      c_timeout == 503 and 0.8 <= demora_timeout < 5.0,
+      f"HTTP {c_timeout} en {demora_timeout:.1f}s")
+check("y el que esperó salió de la cola", not S._cola, f"{len(S._cola)} esperando")
+
 print("[#2] el cupo lo suelta el hilo, no la corrutina cancelada")
 check("el semáforo de cupos arranca en CONCURRENCIA",
       S._cupos._initial_value == S.CONCURRENCIA)
-S._cupos.acquire()
-check("con el cupo tomado se rechaza",
-      pedir("/clasificar", *_multipart("f.jpg", foto(806, 606))[::1])[0] == 503)
-S._cupos.release()
 
 
 # Cancelar el await mientras el trabajo sigue ENCOLADO no debe perder el cupo:
@@ -328,7 +351,11 @@ _hilo = threading.Thread(
     daemon=True)
 _hilo.start()
 time.sleep(0.6)
+# Sin cola para esta sonda: lo que se prueba es que el cupo está tomado por
+# el hilo trabado, no la espera (que taparía el 503 vía el techo de 1 s).
+_espera_real2, S.ESPERA_CUPO = S.ESPERA_CUPO, 0
 _ocupado, _ = pedir("/clasificar", *_multipart("f.jpg", foto(811, 611))[::1])
+S.ESPERA_CUPO = _espera_real2
 check("mientras un trabajo corre, el siguiente recibe 503", _ocupado == 503,
       f"HTTP {_ocupado}")
 time.sleep(1.6)                # pasa el techo: el cupo tiene que volver
@@ -449,9 +476,11 @@ check("sin árbitro configurado, quedar en duda es estable y sí se cachea",
                         "activa": True, "verificadores": [{"ok": True}, {"ok": True}]}}}))
 V.ARBITRO = _arb_real
 
-# Sin deduplicación en vuelo (se sacó a propósito), el cupo es lo que impide
-# el pipeline duplicado: el segundo pedido simultáneo se lleva un 503 rápido
-# en vez de quedarse esperando y reteniendo su copia de la foto.
+# Sin deduplicación en vuelo (se sacó a propósito por la memoria sin techo),
+# la MISMA foto simultánea se resuelve igual con la cola + la caché escrita
+# por el hilo: uno paga el pipeline, los demás esperan su turno y al ver el
+# resultado en la caché salen con 200 sin pagar de nuevo. Es el caso
+# abortar+reintentar del demo.
 _corridas["n"] = 0
 S.procesar = _contando
 _demora["s"] = 1.5
@@ -471,8 +500,9 @@ for t in hilos:
 _demora["s"] = 0.0
 check("con CONCURRENCIA=1 solo corre un pipeline a la vez",
       _corridas["n"] == 1, f"{_corridas['n']} corridas")
-check("y los simultáneos se rechazan rápido en vez de acumular memoria",
-      sorted(salidas) == [200, 503, 503], str(salidas))
+check("y los simultáneos de la misma foto salen todos con el resultado",
+      salidas == [200, 200, 200], str(salidas))
+check("sin dejar a nadie en la cola", not S._cola, f"{len(S._cola)} esperando")
 S.procesar = _procesar_real
 
 print("[#1] límite por IP")

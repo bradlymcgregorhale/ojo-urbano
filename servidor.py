@@ -90,6 +90,16 @@ RATE_LIMITE = int(os.environ.get("RATE_LIMITE", "60"))  # 0 = sin límite
 RATE_VENTANA = int(os.environ.get("RATE_VENTANA", "3600"))
 API_TOKEN = os.environ.get("API_TOKEN", "").strip()
 CACHE_MAX = int(os.environ.get("CACHE_MAX", "128"))
+# Cola de espera por el cupo: en vez de rebotar con 503 apenas hay otra foto
+# en proceso, un pedido espera su turno un rato acotado. La espera máxima más
+# el trabajo (25-60 s) tiene que quedar bajo el techo de ~100 s del proxy
+# (Cloudflare corta la conexión del cliente); los que no entran en la cola o
+# se cansan de esperar siguen recibiendo 503, ahora con Retry-After.
+# COLA_MAX acota la memoria retenida (cada pedido en espera guarda su foto:
+# COLA_MAX x MAX_BYTES con los defaults son ~30 MB, no los ~600 MB que hacían
+# inviable la deduplicación en vuelo que se sacó en su momento).
+COLA_MAX = max(0, int(os.environ.get("COLA_MAX", "3")))
+ESPERA_CUPO = max(0, int(os.environ.get("ESPERA_CUPO", "30")))
 # Solo con esto activo se cree el X-Forwarded-For; si no, cualquiera podría
 # falsear su IP y saltarse el límite de tasa poniendo un header.
 CONFIAR_PROXY = os.environ.get("CONFIAR_PROXY", "").strip().lower() not in (
@@ -192,6 +202,15 @@ def clasificar_local(img):
 
 _pedidos = collections.defaultdict(collections.deque)  # ip -> timestamps
 _cache = collections.OrderedDict()                    # huella -> respuesta
+# La caché la escribe el HILO del pipeline al terminar (no la corrutina del
+# pedido: si el cliente aborta, la corrutina muere y el resultado se
+# perdería, que era exactamente lo que pasaba con el patrón abortar+reintentar
+# del demo). La leen el event loop y los hilos: siempre bajo lock.
+_cache_lock = threading.Lock()
+# Cola FIFO de pedidos esperando el cupo. Solo la toca el event loop (un
+# único hilo), por eso una deque pelada sin lock alcanza y la justicia FIFO
+# no tiene carreras.
+_cola = collections.deque()
 # El cupo lo suelta el HILO cuando termina de verdad, no la corrutina que lo
 # espera: cancelar un await NO corta el thread, así que soltarlo ahí dejaría
 # entrar pedidos nuevos mientras el pipeline anterior sigue quemando CPU.
@@ -333,6 +352,24 @@ def _cacheable(respuesta):
         return not (arbitro and not arbitro.get("ok"))
     # Sin clave o apagado por parámetro el resultado es estable; por cuota no.
     return veri.get("motivo") != MOTIVO_CUOTA
+
+
+def _cache_leer(huella):
+    with _cache_lock:
+        respuesta = _cache.get(huella)
+        if respuesta is not None:
+            _cache.move_to_end(huella)
+        return respuesta
+
+
+def _cache_guardar(huella, respuesta):
+    if CACHE_MAX <= 0 or not _cacheable(respuesta):
+        return
+    with _cache_lock:
+        _cache[huella] = respuesta
+        _cache.move_to_end(huella)
+        while len(_cache) > CACHE_MAX:
+            _cache.popitem(last=False)
 
 
 def procesar(datos, contexto, verificar):
@@ -598,6 +635,58 @@ def salud():
             "arbitro": verificador.ARBITRO or None}
 
 
+def _saturado():
+    # Si ya hay tantos trabajos perdidos como lugar de reserva, aceptar uno
+    # más lo mandaría a la cola del executor, que no tiene techo: el pedido no
+    # se respondería nunca y encima seguiría pagando verificaciones. Mejor
+    # decir que no.
+    with _perdidos["lock"]:
+        return _perdidos["vivos"] >= ABANDONO_MAX
+
+
+def _503(detalle, reintento=5):
+    # Retry-After para que cualquier cliente sepa cuándo vale la pena volver.
+    return HTTPException(503, detalle, headers={"Retry-After": str(reintento)})
+
+
+async def _esperar_cupo(huella):
+    """Espera el turno FIFO por el cupo. Devuelve "cupo" (quedó tomado) o
+    "cache" (un pedido idéntico terminó mientras esperábamos y el resultado
+    ya está guardado). Levanta 503 si la cola está llena o se agotó la
+    espera. Corre entero en el event loop: _cola no tiene lock y la justicia
+    FIFO depende de que un solo hilo la toque."""
+    # Sin nadie esperando, el camino rápido de siempre. Con cola, el nuevo
+    # se forma atrás: si pudiera tomar el cupo directo se lo robaría a los
+    # que llegaron antes.
+    if not _cola and _cupos.acquire(blocking=False):
+        return "cupo"
+    if len(_cola) >= COLA_MAX or ESPERA_CUPO <= 0:
+        raise _503("el servidor está ocupado; reintentá en un momento")
+    token = object()
+    _cola.append(token)
+    try:
+        vence = time.monotonic() + ESPERA_CUPO
+        while True:
+            # Si la misma foto terminó mientras esperábamos, no hace falta
+            # cupo ni volver a pagarla: el hilo ya la dejó en la caché.
+            if _cache_leer(huella) is not None:
+                return "cache"
+            # Solo el primero de la cola puede tomar el cupo.
+            if _cola[0] is token and _cupos.acquire(blocking=False):
+                return "cupo"
+            if time.monotonic() >= vence:
+                raise _503("el servidor está ocupado; reintentá en un momento")
+            await asyncio.sleep(0.3)
+    finally:
+        # Sale de la cola pase lo que pase: también si el cliente abortó y
+        # la corrutina se canceló en el sleep. Un token filtrado dejaría la
+        # cola llena para siempre.
+        try:
+            _cola.remove(token)
+        except ValueError:
+            pass
+
+
 @app.post("/clasificar")
 async def clasificar(request: Request, file: UploadFile = File(...),
                      verificar: str = "auto", contexto: str = Form("")):
@@ -609,41 +698,42 @@ async def clasificar(request: Request, file: UploadFile = File(...),
         datos + b"\x00" + contexto.encode() + b"\x00" + verificar.encode()).hexdigest()
     # La caché guarda el objeto INTERNO completo; la respuesta SIEMPRE pasa
     # por el serializador v4. No hay escotilla que devuelva los internals.
-    if huella in _cache:
-        _cache.move_to_end(huella)
-        return JSONResponse(_publica(_cache[huella]))
+    respuesta = _cache_leer(huella)
+    if respuesta is not None:
+        return JSONResponse(_publica(respuesta))
 
-    # Acá hubo una deduplicación de pedidos en vuelo (que el segundo pedido de
-    # la misma foto se colgara del primero en vez de pagarla dos veces). Se
-    # sacó a propósito: hacía esperar a los waiters reteniendo cada uno su
-    # copia de hasta MAX_BYTES, que con los defaults son ~600 MB de una sola
-    # IP, mucho peor que el problema que resolvía. Con CONCURRENCIA=1 el cupo
-    # ya evita el pipeline duplicado (el segundo se lleva un 503); subirla
-    # afloja esa garantía y se puede volver a pagar una foto simultánea.
-    respuesta = await _clasificar_una(datos, contexto, verificar)
+    # Acá hubo una deduplicación de pedidos en vuelo (que el segundo pedido
+    # de la misma foto se colgara del primero en vez de pagarla dos veces).
+    # Se sacó a propósito: hacía esperar a los waiters SIN TECHO, reteniendo
+    # cada uno su copia de hasta MAX_BYTES (~600 MB de una sola IP con los
+    # defaults). La cola de ahora recupera el efecto con memoria acotada:
+    # a lo sumo COLA_MAX pedidos esperan, y el que espera una foto idéntica
+    # la saca de la caché (que escribe el hilo) en vez de volver a pagarla.
+    if _saturado():
+        raise _503("el servidor está degradado; reintentá más tarde", 30)
 
-    if CACHE_MAX > 0 and _cacheable(respuesta):
-        _cache[huella] = respuesta
-        while len(_cache) > CACHE_MAX:
-            _cache.popitem(last=False)
+    turno = await _esperar_cupo(huella)
+    if turno == "cache":
+        respuesta = _cache_leer(huella)
+        if respuesta is not None:
+            return JSONResponse(_publica(respuesta))
+        # Entre el aviso y la lectura la caché se vació (rarísimo: CACHE_MAX
+        # entradas nuevas en milisegundos). Antes que complicar la cola:
+        raise _503("el servidor está ocupado; reintentá en un momento")
+
+    # Cupo tomado. El servicio pudo degradarse mientras esperábamos: el
+    # techo cuenta el perdido ANTES de soltar el cupo, así que acá la
+    # pérdida ya es visible y devolver el cupo es seguro.
+    if _saturado():
+        _cupos.release()
+        raise _503("el servidor está degradado; reintentá más tarde", 30)
+
+    respuesta = await _correr_con_cupo(datos, contexto, verificar, huella)
     return JSONResponse(_publica(respuesta))
 
 
-async def _clasificar_una(datos, contexto, verificar):
-    """Corre el pipeline con el cupo tomado, fuera del event loop."""
-    # Sin techo de concurrencia, cada pedido encolado retiene su imagen en RAM
-    # y suma minutos de espera. Mejor rechazar rápido.
-    # Si ya hay tantos trabajos perdidos como lugar de reserva, aceptar uno
-    # más lo mandaría a la cola del executor, que no tiene techo: el pedido no
-    # se respondería nunca y encima seguiría pagando verificaciones. Mejor
-    # decir que no.
-    with _perdidos["lock"]:
-        saturado = _perdidos["vivos"] >= ABANDONO_MAX
-    if saturado:
-        raise HTTPException(503, "el servidor está degradado; reintentá más tarde")
-    if not _cupos.acquire(blocking=False):
-        raise HTTPException(503, "el servidor está ocupado; reintentá en un momento")
-
+async def _correr_con_cupo(datos, contexto, verificar, huella):
+    """Corre el pipeline con el cupo YA tomado, fuera del event loop."""
     # El cupo lo suelta EL PRIMERO que llegue: el hilo al terminar, o el techo
     # si el trabajo se colgó. Nunca los dos (BoundedSemaphore explotaría).
     soltado = threading.Lock()
@@ -688,7 +778,17 @@ async def _clasificar_una(datos, contexto, verificar):
         # corrutina que espera se cancela (cliente que corta la conexión):
         # cancelar el await NO corta el hilo, que sigue quemando CPU.
         try:
-            return procesar(datos, contexto, verificar)
+            respuesta = procesar(datos, contexto, verificar)
+            # La caché se escribe ACÁ, en el hilo y antes de soltar el cupo:
+            # si el cliente abortó, la corrutina ya no está para guardarla, y
+            # el reintento de la misma foto tiene que encontrar el resultado
+            # (es el caso abortar+reintentar del demo). Nunca puede romper el
+            # retorno de un resultado bueno.
+            try:
+                _cache_guardar(huella, respuesta)
+            except Exception:  # noqa: BLE001 - cachear nunca puede romper
+                pass
+            return respuesta
         finally:
             techo.cancel()
             # Si el techo ya lo había dado por perdido, al terminar devuelve
@@ -708,7 +808,7 @@ async def _clasificar_una(datos, contexto, verificar):
     except RuntimeError:
         techo.cancel()
         soltar_cupo()
-        raise HTTPException(503, "el servidor se está apagando")
+        raise _503("el servidor se está apagando", 15)
     try:
         return await asyncio.wrap_future(tarea)
     except asyncio.CancelledError:
@@ -844,8 +944,8 @@ PAGINA = """<!DOCTYPE html>
         <div class="spin" aria-hidden="true"></div>
         <div>
           <div aria-live="polite">
-            <b>Analizando la foto</b>
-            <div class="esptxt">Modelo local + verificación cruzada con varios modelos de visión.
+            <b id="espmain">Analizando la foto</b>
+            <div class="esptxt" id="espsub">Modelo local + verificación cruzada con varios modelos de visión.
               Suele tardar entre 20 y 60 segundos.</div>
           </div>
           <div class="esptxt" id="elapsed" aria-hidden="true">0 s</div>
@@ -967,11 +1067,20 @@ $('#copyjson').onclick=()=>{navigator.clipboard.writeText($('#json').textContent
   $('#copyjson').textContent='Copiado ✓';setTimeout(()=>$('#copyjson').textContent='Copiar JSON',1500);});};
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const chip=(c,extra)=>`<div class="cat${extra?' ctx':''}"><b>${esc(c.nombre)}</b>${c.gravedad?`<span>${c.gravedad}/5 · ${GRAV[c.gravedad]||''}${typeof c.fuentes==='number'?` · ${c.fuentes} fuente${c.fuentes!==1?'s':''}`:''}</span>`:''}</div>`;
-let ctrl=null,cronoIv=null,ultimoArchivo=null;
+let ctrl=null,cronoIv=null,ultimoArchivo=null,reintentoT=null;
+// Presupuesto total de espera en cola antes de rendirse y mostrar el error.
+const ESPERA_MAX_MS=180000,REINTENTO_MS=6000,SIGUE=Symbol('encola');
+function esperaMsg(enCola){
+  $('#espmain').textContent=enCola?'Tu foto está en cola':'Analizando la foto';
+  $('#espsub').textContent=enCola
+    ?'Hay otra foto procesándose en este momento: la tuya espera su turno y se envía sola. No cierres la página.'
+    :'Modelo local + verificación cruzada con varios modelos de visión. Suele tardar entre 20 y 60 segundos.';
+}
 $('#reenviar').onclick=()=>{if(ultimoArchivo)enviar(ultimoArchivo);};
 function enviar(f){
   if(ctrl)ctrl.abort();
   if(cronoIv)clearInterval(cronoIv);
+  if(reintentoT){clearTimeout(reintentoT);reintentoT=null;}
   ctrl=new AbortController();
   ultimoArchivo=f;
   $('#reenviar').style.display='none';
@@ -990,13 +1099,31 @@ function enviar(f){
   img.src=URL.createObjectURL(f);img.style.display='block';
   const fd=new FormData();fd.append('file',f);
   const ctx=$('#ctx').value.trim();if(ctx)fd.append('contexto',ctx);
-  fetch(O+'/clasificar'+SUF,{method:'POST',body:fd,signal:ctrl.signal}).then(async r=>{
+  esperaMsg(false);
+  const miCtrl=ctrl;
+  intentar();
+  function intentar(){
+  fetch(O+'/clasificar'+SUF,{method:'POST',body:fd,signal:miCtrl.signal}).then(async r=>{
+    // 503 = hay otra foto usando el único lugar de procesamiento. No es un
+    // error para quien mira: quedamos en cola y reintentamos solos. El
+    // servidor cachea por foto, así que si la nuestra ya terminó en el
+    // medio, el reintento vuelve al instante con el resultado.
+    if(r.status===503&&Date.now()-t0<ESPERA_MAX_MS){
+      // El servidor dice cuándo volver (Retry-After): 5 s si está ocupado,
+      // 30 s si está degradado. Si el proxy se comió el header, 6 s.
+      const ra=parseInt(r.headers.get('Retry-After'),10);
+      const pausa=(isNaN(ra)||ra<1?6:Math.max(6,ra))*1000;
+      esperaMsg(true);
+      reintentoT=setTimeout(()=>{if(!miCtrl.signal.aborted)intentar();},pausa);
+      return SIGUE;
+    }
     if(!r.ok){const e=await r.json().catch(()=>null);
       throw new Error(e&&e.detail?e.detail
-        :r.status===503?'el servidor está ocupado con otra foto; esperá unos segundos y reintentá'
+        :r.status===503?'el servidor sigue ocupado con otras fotos; reintentá en unos minutos'
         :'no pude procesar la foto (HTTP '+r.status+')');}
     return r.json()})
    .then(d=>{
+     if(d===SIGUE)return;
      clearInterval(cronoIv);
      $('#espera').style.display='none';$('#res').style.display='block';
      const probs=d.problemas;
@@ -1045,6 +1172,7 @@ function enviar(f){
      $('#err').textContent=e.message+' · Reintentá con el botón o probá otra foto.';
      $('#err').style.display='block';
      mostrarReanalizar();});
+  }
 }
 function mostrarReanalizar(){
   const b=$('#reenviar');
