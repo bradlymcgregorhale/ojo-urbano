@@ -650,13 +650,15 @@ _PROMPT_PATENTE = (
 
 def _leer_patente(img):
     """Segunda pasada, solo para la patente: la foto a mayor resolución
-    (LADO_PATENTE) a los dos primeros verificadores, con un prompt que mira
-    únicamente la chapa del vehículo infractor. Publica solo con dos
-    lectores independientes leyendo la MISMA cadena válida: ambos directos,
-    o —si uno leyó y el otro no llegó— un tercer modelo que desempata
-    leyendo exactamente lo mismo. Dos lecturas válidas DISTINTAS son
-    discrepancia y no se publica nada: la duda no se desempata."""
-    lectores = VERIFICADORES[:2]
+    (LADO_PATENTE) a hasta tres verificadores EN PARALELO, con un prompt
+    que mira únicamente la chapa del vehículo infractor. Publica solo con
+    al menos dos lectores leyendo la MISMA cadena válida y ninguno leyendo
+    una distinta. La lectura nula no es discrepancia (chapa chica, reflejo,
+    un modelo conservador); la lectura válida distinta sí, y no se publica
+    nada: la duda no se vota."""
+    # Únicos, por si la config repite un modelo: el mismo lector dos veces
+    # no son dos lecturas independientes.
+    lectores = list(dict.fromkeys(VERIFICADORES))[:3]
     if len(lectores) < 2:
         return None
     data_url = _imagen_data_url(img, lado=LADO_PATENTE)
@@ -674,24 +676,18 @@ def _leer_patente(img):
                 json.JSONDecodeError, OSError):
             return None
 
-    with concurrent.futures.ThreadPoolExecutor(2) as pool:
+    with concurrent.futures.ThreadPoolExecutor(len(lectores)) as pool:
         lecturas = list(pool.map(_uno, lectores))
-    a, b = lecturas
-    if a and b:
-        # Dos lecturas válidas: o coinciden exacto, o es discrepancia y no
-        # se publica nada. Acá no hay desempate posible.
-        return a if a == b else None
-    valida = a or b
-    if not valida:
-        return None
-    # Una lectura válida y una nula NO es discrepancia: es un lector que no
-    # llegó (chapa chica, reflejo). Desempata un TERCER modelo distinto,
-    # que tiene que leer EXACTAMENTE lo mismo: la patente publicada sigue
-    # exigiendo dos lectores independientes con la misma cadena.
-    tercero = next((m for m in VERIFICADORES[2:] if m not in lectores), None)
-    if not tercero:
-        return None
-    return valida if _uno(tercero) == valida else None
+    validas = [p for p in lecturas if p]
+    # Publica con al menos DOS lectores leyendo la misma cadena y NINGUNO
+    # leyendo una distinta: la nula no es discrepancia (chapa chica,
+    # reflejo, un modelo conservador), la lectura válida distinta sí, y
+    # una sola lectura válida no se puede verificar. Los tres corren en
+    # paralelo: el desempate secuencial dependía de que el tercero llegara
+    # justo cuando uno de los dos primeros ya no había llegado.
+    if len(validas) >= 2 and len(set(validas)) == 1:
+        return validas[0]
+    return None
 
 
 def _verificar_uno(modelo, data_url, categorias, contexto=""):

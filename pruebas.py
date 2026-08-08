@@ -1096,6 +1096,21 @@ r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
 check("si el tercero lee distinto, no se publica nada",
       r.get("patente") is None)
 
+V.VERIFICADORES = ["vlm/uno", "vlm/dos", "vlm/tres"]
+_n = {"n": 0}
+V._llamar = _mock_dos_pasadas({"vlm/uno": "AB990LX", "vlm/dos": "AB990LX",
+                               "vlm/tres": "AB998LX"}, _n)
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("en la segunda pasada, dos iguales + una válida distinta suprimen",
+      r.get("patente") is None)
+
+V.VERIFICADORES = ["vlm/uno", "vlm/uno", "vlm/dos"]
+_n = {"n": 0}
+V._llamar = _mock_dos_pasadas({"vlm/uno": "AB990LX", "vlm/dos": None}, _n)
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("un verificador repetido en la config no cuenta como dos lectores",
+      r.get("patente") is None and _n["n"] == 2, f"llamadas={_n['n']}")
+
 V.VERIFICADORES = ["vlm/uno", "vlm/dos"]
 _n = {"n": 0}
 V._llamar = _mock_dos_pasadas({"vlm/uno": "AB990LX", "vlm/dos": None}, _n)
