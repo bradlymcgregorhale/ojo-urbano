@@ -553,9 +553,11 @@ def _publica(r):
             e["motivo"] = _sanear_motivo(e["motivo"])
         # La patente publicada vive SOLO en problemas confirmados: un
         # hallazgo que cayó a posibles o a descartados_por_foto no la
-        # arrastra (README, contrato de `patente`).
+        # arrastra (README, contrato de `patente`). "parte" (cesto/contenedor
+        # dañado: cuerpo/tapa/pedal) sigue el mismo contrato.
         if not patente_ok:
             e.pop("patente", None)
+            e.pop("parte", None)
         return e
 
     for campo in ("problemas", "posibles", "descartados_por_foto"):
@@ -1082,7 +1084,7 @@ function seleccionar(f){
 $('#copyjson').onclick=()=>{navigator.clipboard.writeText($('#json').textContent).then(()=>{
   $('#copyjson').textContent='Copiado ✓';setTimeout(()=>$('#copyjson').textContent='Copiar JSON',1500);});};
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-const chip=(c,extra)=>`<div class="cat${extra?' ctx':''}"><b>${esc(c.nombre)}</b>${c.gravedad?`<span>${c.gravedad}/5 · ${GRAV[c.gravedad]||''}${typeof c.fuentes==='number'?` · ${c.fuentes} fuente${c.fuentes!==1?'s':''}`:''}${c.patente?` · patente <b>${esc(c.patente)}</b>`:''}</span>`:''}</div>`;
+const chip=(c,extra)=>`<div class="cat${extra?' ctx':''}"><b>${esc(c.nombre)}</b>${c.gravedad?`<span>${c.gravedad}/5 · ${GRAV[c.gravedad]||''}${typeof c.fuentes==='number'?` · ${c.fuentes} fuente${c.fuentes!==1?'s':''}`:''}${c.patente?` · patente <b>${esc(c.patente)}</b>`:''}${c.parte?` · parte <b>${esc(c.parte)}</b>`:''}</span>`:''}</div>`;
 let ctrl=null,cronoIv=null,ultimoArchivo=null,reintentoT=null;
 // Presupuesto total de espera en cola antes de rendirse y mostrar el error.
 const ESPERA_MAX_MS=180000,REINTENTO_MS=6000,SIGUE=Symbol('encola');

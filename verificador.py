@@ -540,7 +540,7 @@ Categorías y criterios (usá SOLO estas claves):
 - contenedor_secos [PRESENCIA]: (regla general para TODAS las claves PRESENCIA: reportá solo el contenedor que se ve de forma clara e inequívoca en primer plano o plano medio. NO reportes uno "al fondo", de refilón, cortado por el borde, borroso, ni uno que estés infiriendo porque suele haber uno al lado. Si no podés decir el color y la forma con seguridad, NO lo reportes.)  se ve un contenedor municipal inequívocamente VERDE (reciclables). Los contenedores negros, grises o gris oscuro NO son secos. Un volquete o caja abierta de obra NO es un contenedor municipal, aunque sea verde.
 - contenedor_humedos_lateral [PRESENCIA]: se ve un contenedor de húmedos con POSTES o montantes metálicos VERTICALES en los costados (el brazo del camión los toma para izarlo). Suele ser negro o gris oscuro, cuerpo plástico grande redondeado.
 - contenedor_humedos_bilateral [PRESENCIA]: se ve un contenedor de húmedos SIN postes metálicos: cuerpo RECTANGULAR de paredes laterales PLANAS y techo abovedado, gris (claro o dos tonos). El discriminador NO es el color sino los POSTES: si el contenedor NO tiene postes verticales metálicos en los costados es BILATERAL, aunque el gris se vea oscuro o sucio; si los tiene es LATERAL. Reportá solo UNO de los dos tipos de húmedos.
-- reparacion_contenedor: un contenedor con DAÑO ESTRUCTURAL visible (tapa desprendida, pedal roto, cuerpo agrietado, perforado, derretido o quemado), esté parado o volcado. TAMBIÉN va acá cuando la pieza que falta está TIRADA EN EL PISO al lado o cerca del contenedor: cabezal, tapa, boca de carga, portón, compuerta o pieza antivandálica desprendida. El cuerpo puede verse entero y liso y aun así estar roto: mirá si le FALTA la parte de arriba, si tiene un hueco rectangular donde debería ir la boca de carga, o si hay una pieza del mismo color y material caída al lado. Ese es el caso típico y hay que reportarlo acá, no como objeto voluminoso descartado. Es daño en la pieza, no suciedad ni pintura: un contenedor con grafitis, pegatinas o rayado pero entero NO va acá ni en ninguna otra clave. Un contenedor VOLCADO pero sin daños visibles tampoco: es reposicion_contenedor. Un contenedor parado y en buen estado NO.
+- reparacion_contenedor: un contenedor con DAÑO ESTRUCTURAL visible (tapa desprendida, pedal roto, cuerpo agrietado, perforado, derretido o quemado), esté parado o volcado. TAMBIÉN va acá cuando la pieza que falta está TIRADA EN EL PISO al lado o cerca del contenedor: cabezal, tapa, boca de carga, portón, compuerta o pieza antivandálica desprendida. El cuerpo puede verse entero y liso y aun así estar roto: mirá si le FALTA la parte de arriba, si tiene un hueco rectangular donde debería ir la boca de carga, o si hay una pieza del mismo color y material caída al lado. Ese es el caso típico y hay que reportarlo acá, no como objeto voluminoso descartado. Es daño en la pieza, no suciedad ni pintura: un contenedor con grafitis, pegatinas o rayado pero entero NO va acá ni en ninguna otra clave. Un contenedor VOLCADO pero sin daños visibles tampoco: es reposicion_contenedor. Un contenedor parado y en buen estado NO. Si el daño se ubica con claridad, agregá "parte" adentro de la categoría: "tapa" (tapa/cabezal desprendido o roto), "pedal" (pedal roto) o "cuerpo" (agrietado, perforado, quemado, derretido). Si no se distingue, no pongas el campo.
 - reposicion_contenedor: un contenedor CAÍDO o VOLCADO (acostado, dado vuelta, corrido al medio de la calle) SIN daños visibles: solo hay que volver a pararlo o ubicarlo. Si además tiene daño estructural (roto, agrietado, quemado, tapa o pedal desprendido) es reparacion_contenedor, no esto. Los grafitis o pegatinas NO cuentan como daño.
 - lavado_contenedor: un contenedor en su lugar pero visiblemente MUY sucio por fuera: chorreaduras, mugre incrustada, suciedad notoria que pide lavado. NO por grafitis, calcomanías ni desgaste normal del color.
 - vehiculo_mal_estacionado: un vehículo estacionado o detenido donde está PROHIBIDO: sobre una ciclovía/bicisenda (carril demarcado, típicamente entre franjas amarillas), sobre la vereda o senda peatonal, bloqueando una rampa de accesibilidad o una esquina/ochava, o junto a cartelería de "No estacionar". Señal fuerte: las ruedas pisan la demarcación de la ciclovía o el vehículo está arriba de la vereda. Cuenta aunque el vehículo esté operando (un camión de reparto detenido sobre la ciclovía SÍ es infracción); un vehículo estacionado normal junto al cordón NO. CUIDADO CON LAS FOTOS DESDE ARRIBA (balcón, ventana, dron): mirando en picada, un auto estacionado bien contra el cordón PARECE estar sobre la vereda, porque la perspectiva aplasta la altura del cordón y superpone el auto con la baldosa. Esa advertencia vale SOLO para decidir si está sobre la vereda: en una foto cenital no uses esa superposición como prueba, exigí ver las RUEDAS apoyadas del lado de adentro del cordón. Un auto paralelo al cordón y alineado con los demás autos estacionados de la cuadra es un estacionamiento normal: NO lo reportes. Las otras infracciones de esta clave SÍ se ven bien desde arriba y se reportan normalmente: auto sobre la ciclovía, sobre la senda peatonal, tapando una rampa o la ochava, o junto a cartelería de "No estacionar". Tampoco confundas las marcas del pavimento: una línea discontinua BLANCA Y AZUL sobre la calzada es demarcación de estacionamiento medido, no una ciclovía; la ciclovía es un carril propio, continuo y ancho, normalmente pintado y separado del tránsito. Si el vehículo se ve abandonado (muy deteriorado, sucio, ruedas desinfladas) es vehiculo_abandonado.
@@ -553,7 +553,7 @@ Categorías y criterios (usá SOLO estas claves):
 - contenedor_desbordado: el contenedor mismo REBALSA por su boca, con residuos sobresaliendo por encima. La basura en el piso alrededor NO lo hace desbordado (eso es recoleccion).
 - vaciado_contenedor: contenedor lleno que necesita vaciado (residuos visibles hasta la boca), sin llegar a rebalsar.
 - vaciado_cesto: un cesto papelero (canasto chico sobre poste) desbordado o lleno.
-- reparacion_cesto: TODO problema físico de un cesto papelero: roto, caído, desprendido, colgando, o la base/soporte sin canasto montado. Un cesto sano y en su lugar NO.
+- reparacion_cesto: TODO problema físico de un cesto papelero: roto, caído, desprendido, colgando, o la base/soporte sin canasto montado. Un cesto sano y en su lugar NO. Si el daño se ubica con claridad, agregá "parte" adentro de la categoría: "tapa" SOLO si lo dañado es específicamente la tapa; caído, desprendido, partido, faltante o cualquier otro daño es "cuerpo". Ejemplo: {"key": "reparacion_cesto", "gravedad": 3, "evidencia": "cesto separado del poste en el piso", "parte": "cuerpo"}. Si no se distingue, no pongas el campo.
 - lavado_cesto: un cesto papelero ENTERO y en su lugar, pero visiblemente sucio: chorreaduras, mugre incrustada, restos pegados, manchas. Es el pedido de higienizarlo, no de arreglarlo ni de vaciarlo. Si lo que se ve es que está LLENO de residuos, eso es vaciado_cesto. Si el sucio es un contenedor municipal y no un cesto papelero, es lavado_contenedor. Si además está roto o caído, reportá también reparacion_cesto.
 - hidrolavado_grafitis: un FRENTE de inmueble pintado o empapelado: grafitis, pintadas o pegatinas adheridas sobre fachada, pared, persiana, portón o muro. Si está sobre el frente de un inmueble, va acá y no en retiro_afiches, aunque sea papel pegado. La prestación de la Ciudad es para frentes, y por eso la clave es solo para eso. NO la uses por grafitis o rayado sobre MOBILIARIO URBANO (contenedores, cestos, postes, bancos, refugios): eso NO se reporta por ninguna clave, ni siquiera lavado_contenedor o lavado_cesto, que son para suciedad y no para pintadas. Tampoco por carteles o pasacalles colgados (eso es retiro_afiches) ni por murales hechos como obra.
 
@@ -617,6 +617,16 @@ PATENTE_FORMATOS = (
 )
 # Solo estas categorías llevan patente.
 PATENTE_KEYS = {"vehiculo_mal_estacionado", "vehiculo_abandonado"}
+
+# Parte dañada por clave: campo aditivo OPCIONAL, publicado solo en problemas
+# confirmados. El formulario de la Ciudad pregunta "¿En qué parte detectaste
+# el problema?" para cestos (Cuerpo/Tapa) y contenedores (Tapa/Pedal/Cuerpo);
+# el consumidor la usa para responder ese cuestionario desde la foto en vez
+# de preguntarle al vecino.
+PARTE_KEYS = {
+    "reparacion_cesto": ("cuerpo", "tapa"),
+    "reparacion_contenedor": ("cuerpo", "tapa", "pedal"),
+}
 
 
 def _patente_normalizada(texto):
@@ -715,6 +725,14 @@ def _verificar_uno(modelo, data_url, categorias, contexto=""):
                     c["patente"] = pat
                 else:
                     c.pop("patente", None)
+                # "parte" se valida ACÁ, como la patente: solo las claves de
+                # PARTE_KEYS la llevan y solo con sus valores permitidos.
+                parte = c.get("parte")
+                permitidas = PARTE_KEYS.get(c["key"], ())
+                if isinstance(parte, str) and parte.strip().lower() in permitidas:
+                    c["parte"] = parte.strip().lower()
+                else:
+                    c.pop("parte", None)
                 vistas.append(c)
         ctx_cats = []
         for item in veredicto.get("categorias_contexto") or []:
@@ -1072,6 +1090,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     grav = {}      # key -> max gravedad reportada por verificadores
     fuentes = {}   # key -> lista de fuentes que la reportan
     patentes = {}  # key -> {patente normalizada: [modelos que la leyeron]}
+    partes = {}    # key -> {parte dañada: [modelos que la ubicaron]}
     for p in prediccion_local["predichas"]:
         if p["key"] != "sin_problema":
             fuentes.setdefault(p["key"], []).append("modelo_local")
@@ -1084,6 +1103,9 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             if c.get("patente") and k in PATENTE_KEYS:
                 patentes.setdefault(k, {}) \
                         .setdefault(c["patente"], []).append(v["modelo"])
+            if c.get("parte") and k in PARTE_KEYS:
+                partes.setdefault(k, {}) \
+                      .setdefault(c["parte"], []).append(v["modelo"])
             try:
                 grav[k] = max(grav.get(k, 0), min(5, max(1, int(c.get("gravedad", 1)))))
             except (TypeError, ValueError):
@@ -1202,6 +1224,16 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             "gravedad": grav.get(k) or grav_local,
             "fuentes": fuentes.get(k, []),
         })
+
+    # Parte dañada: gana la más votada entre los modelos que la ubicaron; en
+    # empate no se publica (el consumidor tiene su propio default, y un
+    # empate cuerpo/tapa es exactamente la duda que no hay que laundear).
+    for e in finales:
+        votos = partes.get(e["key"])
+        if votos:
+            orden = sorted(votos.items(), key=lambda kv: len(kv[1]), reverse=True)
+            if len(orden) == 1 or len(orden[0][1]) > len(orden[1][1]):
+                e["parte"] = orden[0][0]
 
     # Segunda pasada de patente, con la foto a mayor resolución: a LADO_MAX
     # una chapa a unos metros no se lee, así que la primera pasada rara vez
