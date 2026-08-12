@@ -347,7 +347,12 @@ def _cacheable(respuesta):
         # Con árbitro configurado, que queden categorías en duda significa que
         # el arbitraje falló o quedó incompleto (respondió sin decidirlas
         # todas). Cachearlo congela ese resultado a medio hacer para siempre.
-        if verificador.ARBITRO and respuesta.get("en_duda"):
+        # EXCEPTO las claves de PRESENCIA: esas no se arbitran nunca (un
+        # contenedor visto por una sola fuente queda en duda POR DISEÑO, es
+        # su estado final) y no deben volver incacheable cada foto donde un
+        # solo modelo vio un contenedor.
+        if verificador.ARBITRO and [k for k in respuesta.get("en_duda") or []
+                                    if k not in verificador.PRESENCIA]:
             return False
         # El encaminamiento del reclamo por texto falló: la respuesta puede
         # ser un falso "no hay problema" por un corte transitorio.

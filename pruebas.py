@@ -1635,6 +1635,140 @@ check("y se informa sobre cuántas boletas se contó", _d2.get("de") == 3, str(_
 V.ARBITRO_VOTOS = 1
 V.ARBITRO = ""
 
+print("[#8] presencia con una sola fuente: en duda, sin árbitro, no se pierde")
+# El caso real: un contenedor recortado por el borde que UNA sola fuente vio.
+# Antes, el árbitro lo "decidía" y la clave desaparecía de TODOS los campos
+# públicos (posibles saltea PRESENCIA, elementos_detectados solo lleva
+# confirmadas, en_duda descuenta lo decidido). Ahora la presencia disputada
+# no se arbitra: queda en en_duda, con su fuente rastreable.
+_estado_prev = (V.VERIFICADORES, V.ARBITRO, V.CONSENSO_VLM_SOLO, V._llamar)
+V.VERIFICADORES, V.ARBITRO = ["vlm/uno", "vlm/dos"], "arbitro/x"
+V.CONSENSO_VLM_SOLO = "confirma"
+_RESP_PRES = {
+    "vlm/uno": json.dumps({
+        "categorias": [
+            {"key": "recoleccion", "gravedad": 2, "evidencia": "bolsas"},
+            {"key": "reparacion_cesto", "gravedad": 3, "evidencia": "cesto roto"},
+            {"key": "contenedor_humedos_lateral", "gravedad": 1,
+             "evidencia": "contenedor a la derecha"}],
+        "sin_problema": False, "descripcion": "Bolsas junto a un contenedor.",
+        "categorias_contexto": []}),
+    "vlm/dos": json.dumps({
+        "categorias": [{"key": "recoleccion", "gravedad": 2, "evidencia": "bolsas"}],
+        "sin_problema": False, "descripcion": "Bolsas de residuos.",
+        "categorias_contexto": []}),
+}
+# El árbitro intenta decidir la presencia de contrabando: no debe contar.
+_ARB_PRES = json.dumps({"decisiones": [
+    {"key": "reparacion_cesto", "veredicto": "rechazar", "motivo": "solo uno lo vio"},
+    {"key": "contenedor_humedos_lateral", "veredicto": "rechazar",
+     "motivo": "no me lo preguntaron"}],
+    "descripcion": "Bolsas junto a un contenedor."})
+_arb_pres_llamadas = []
+
+
+def _llamar_pres(modelo, mensajes, **k):
+    if modelo == V.ARBITRO:
+        _arb_pres_llamadas.append(mensajes)
+        return _ARB_PRES
+    return _RESP_PRES[modelo]
+
+
+V._llamar = _llamar_pres
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("la presencia de una sola fuente queda en duda",
+      "contenedor_humedos_lateral" in r["en_duda"], str(r["en_duda"]))
+check("  aunque el árbitro la 'rechace' de contrabando, sigue en duda",
+      "contenedor_humedos_lateral" in r["en_duda"]
+      and "contenedor_humedos_lateral" not in {c["key"] for c in r["confirmadas"]})
+check("  no viaja en posibles (PRESENCIA nunca lo hace)",
+      "contenedor_humedos_lateral" not in {c["key"] for c in r["posibles"]})
+check("  con su fuente rastreable para el serializador",
+      r["fuentes_en_duda"].get("contenedor_humedos_lateral") == ["vlm/uno"],
+      str(r["fuentes_en_duda"]))
+_linea_disputa = next(
+    lin for lin in _arb_pres_llamadas[0][-1]["content"].splitlines()
+    if "Categorías en disputa" in lin)
+check("al árbitro no se le pregunta por la presencia",
+      "contenedor_humedos_lateral" not in _linea_disputa, _linea_disputa)
+check("  pero el problema no-PRESENCIA de una fuente sigue yendo al árbitro",
+      "reparacion_cesto" in _linea_disputa, _linea_disputa)
+check("  y sigue saliendo como posible",
+      "reparacion_cesto" in {c["key"] for c in r["posibles"]},
+      str([c["key"] for c in r["posibles"]]))
+
+# ARBITRO_CONFIRMA=1: el árbitro promueve lo que SÍ se le preguntó, pero una
+# presencia de contrabando sigue sin poder confirmarse: las boletas descartan
+# toda decisión cuya clave no esté entre las disputas reales.
+V.ARBITRO_CONFIRMA = True
+_ARB_PRES_CONFIRMA = json.dumps({"decisiones": [
+    {"key": "reparacion_cesto", "veredicto": "confirmar", "motivo": "se ve roto"},
+    {"key": "contenedor_humedos_lateral", "veredicto": "confirmar",
+     "motivo": "no me lo preguntaron"}],
+    "descripcion": "Bolsas junto a un contenedor."})
+V._llamar = lambda modelo, mensajes, **k: (
+    _ARB_PRES_CONFIRMA if modelo == V.ARBITRO else _RESP_PRES[modelo])
+r3 = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("con ARBITRO_CONFIRMA=1 el árbitro promueve la disputa real",
+      "reparacion_cesto" in {c["key"] for c in r3["confirmadas"]},
+      str([c["key"] for c in r3["confirmadas"]]))
+check("  pero NO la presencia de contrabando, que sigue en duda",
+      "contenedor_humedos_lateral" not in {c["key"] for c in r3["confirmadas"]}
+      and "contenedor_humedos_lateral" in r3["en_duda"],
+      str([c["key"] for c in r3["confirmadas"]]) + " " + str(r3["en_duda"]))
+V.ARBITRO_CONFIRMA = False
+V._llamar = _llamar_pres
+
+# Con una segunda fuente (el modelo local decide además el SUBTIPO), la
+# presencia se confirma y el voto VLM del otro subtipo se pliega: es el
+# camino que la alimenta a elementos_detectados.
+LOCAL_BILATERAL = {
+    "predichas": [{"key": "contenedor_humedos_bilateral", "nombre": "CHB",
+                   "score": 0.9},
+                  {"key": "recoleccion", "nombre": "Rec", "score": 0.9}],
+    "probabilidades": [{"key": "contenedor_humedos_bilateral", "nombre": "CHB",
+                        "score": 0.9}],
+    "gravedad": {"value": 2, "raw": 2.1}}
+r2 = V.verificar(_Img(), CATS, LOCAL_BILATERAL, "")
+check("local bilateral + VLM lateral se pliega y confirma BILATERAL",
+      "contenedor_humedos_bilateral" in {c["key"] for c in r2["confirmadas"]}
+      and "contenedor_humedos_lateral" not in {c["key"] for c in r2["confirmadas"]}
+      and "contenedor_humedos_lateral" not in r2["en_duda"],
+      str([c["key"] for c in r2["confirmadas"]]) + " " + str(r2["en_duda"]))
+
+# La caché: una presencia en duda es un estado FINAL por diseño, no un
+# arbitraje incompleto; no puede volver incacheable cada foto con contenedor.
+_arb_cache_prev = V.ARBITRO
+V.ARBITRO = "arbitro/x"
+_det_ok = {"detalle": {"verificacion": {
+    "activa": True, "verificadores": [{"ok": True}, {"ok": True}],
+    "arbitro": {"ok": True, "decisiones": []}}}}
+check("en_duda solo-PRESENCIA sí se cachea",
+      S._cacheable(dict(_det_ok, en_duda=["contenedor_humedos_lateral"])))
+check("  pero mezclada con una disputa real sigue sin cachearse",
+      not S._cacheable(dict(_det_ok, en_duda=["contenedor_humedos_lateral",
+                                              "reparacion_cesto"])))
+V.ARBITRO = _arb_cache_prev
+
+# La rúbrica: cada frase nueva, atada al mecanismo que la motivó.
+check("la rúbrica permite el contenedor recortado por el borde en primer plano",
+      "recortado por el borde de la foto SÍ se reporta" in V._RUBRICA)
+check("  exigiendo CUERPO de contenedor, no solo una calcomanía",
+      "no solo una calcomanía" in V._RUBRICA)
+check("  el chevrón identifica pero SOLO no alcanza",
+      "chevrones ROJO Y BLANCO" in V._RUBRICA
+      and "SOLA no alcanza" in V._RUBRICA)
+check("  y no discrimina subtipo",
+      "NO dice el subtipo" in V._RUBRICA)
+check("  subtipo del recortado: pared plana gris sin poste -> bilateral",
+      "pared PLANA vertical gris sin poste a la vista -> bilateral" in V._RUBRICA)
+check("  la entrada lateral advierte contra votar lateral por el color",
+      "NO lo reportes lateral por el color" in V._RUBRICA)
+check("  la entrada bilateral acepta el contenedor recortado en primer plano",
+      "Vale también recortado por el borde de la foto" in V._RUBRICA)
+
+V.VERIFICADORES, V.ARBITRO, V.CONSENSO_VLM_SOLO, V._llamar = _estado_prev
+
 print(f"\n{_ok} OK, {_fallos} fallas")
 _srv.should_exit = True
 sys.exit(1 if _fallos else 0)
