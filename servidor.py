@@ -491,7 +491,9 @@ def procesar(datos, contexto, verificar):
                 "fuentes": fuentes_esc,
                 "reclasificado_por": "modelo_local",
             })
-            if prob_local.get("recoleccion", 1.0) <= FUSION_ESCOMBROS_RECO_BAJA:
+            solo_escombros = (prob_local.get("recoleccion", 1.0)
+                              <= FUSION_ESCOMBROS_RECO_BAJA)
+            if solo_escombros:
                 problemas = [c for c in problemas if c["key"] != "recoleccion"]
                 if "recoleccion" not in vistos_pos:
                     vistos_pos.add("recoleccion")
@@ -499,6 +501,23 @@ def procesar(datos, contexto, verificar):
                         rec, origen="foto",
                         motivo="la pila de bolsas fue reclasificada como "
                                "escombros; basura común casi no se detecta"))
+            # La descripción la redactó el árbitro con lo que vieron los
+            # verificadores ("bolsas de residuos"); sin esta nota quedaría
+            # contradiciendo al veredicto reclasificado. Y si el árbitro
+            # negó escombros ("no se identifican escombros"), esa frase
+            # quedó obsoleta: se quita antes de agregar la nota. En
+            # castellano de vecino, sin claves internas.
+            if descripcion:
+                frases = [f for f in re.split(r"(?<=[.!?])\s+", descripcion)
+                          if f and "escombro" not in f.lower()]
+                descripcion = " ".join(frases)
+            nota = ("El análisis del material indica que las bolsas "
+                    "acumuladas contienen escombros de obra, no basura "
+                    "domiciliaria común." if solo_escombros else
+                    "El análisis del material indica que entre las bolsas "
+                    "hay también escombros de obra.")
+            descripcion = (descripcion.rstrip() + " " + nota
+                           if descripcion else nota)
 
     descartados = []
     if foto_valida is False:
