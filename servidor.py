@@ -88,6 +88,16 @@ CUOTA_DIARIA = int(os.environ.get("CUOTA_DIARIA", "500"))
 MOTIVO_CUOTA = "cuota diaria de verificación agotada"
 RATE_LIMITE = int(os.environ.get("RATE_LIMITE", "60"))  # 0 = sin límite
 RATE_VENTANA = int(os.environ.get("RATE_VENTANA", "3600"))
+# Fusión escombros: el modelo local (entrenado con fotos reales etiquetadas a
+# mano de esta ciudad) distingue escombros embolsados donde los modelos de
+# visión generalistas no llegan (medido: 7 modelos, 2 rúbricas y 2
+# resoluciones = 0 detecciones en fotos nocturnas donde el local da >=0.95;
+# y el local a ese umbral acertó 43/43 contra la etiqueta humana). Regla
+# acotada a ESA única categoría; ver procesar().
+FUSION_ESCOMBROS = os.environ.get(
+    "FUSION_ESCOMBROS", "1").strip().lower() not in ("0", "false", "no")
+FUSION_ESCOMBROS_UMBRAL = float(os.environ.get("FUSION_ESCOMBROS_UMBRAL", "0.95"))
+FUSION_ESCOMBROS_RECO_BAJA = float(os.environ.get("FUSION_ESCOMBROS_RECO_BAJA", "0.2"))
 API_TOKEN = os.environ.get("API_TOKEN", "").strip()
 CACHE_MAX = int(os.environ.get("CACHE_MAX", "128"))
 # Cola de espera por el cupo: en vez de rebotar con 503 apenas hay otra foto
@@ -454,6 +464,41 @@ def procesar(datos, contexto, verificar):
                 "origen": "contexto_vecinal",
                 "respaldo_visual": c.get("respaldo_visual"),
             })
+
+    # FUSIÓN ESCOMBROS: si el modelo local está prácticamente seguro
+    # (>= FUSION_ESCOMBROS_UMBRAL) de que hay escombros y algún verificador
+    # vio la misma pila de bolsas (recoleccion confirmada), el material lo
+    # reclasifica el especialista: escombros entra a problemas con las
+    # fuentes de esa pila más el local, marcado con reclasificado_por. Y si
+    # el local además dice que recolección casi no hay (la pila es SOLO
+    # escombros), la entrada recoleccion baja a posibles con su motivo.
+    # Sin recoleccion confirmada no se dispara: el voto local solo sigue
+    # sin publicarse (contrato v4).
+    if FUSION_ESCOMBROS and activar:
+        prob_local = {p["key"]: p["score"]
+                      for p in local.get("probabilidades") or []}
+        esc_local = prob_local.get("retiro_escombros", 0.0)
+        rec = next((c for c in problemas if c["key"] == "recoleccion"), None)
+        ya_esta = any(c["key"] == "retiro_escombros" for c in problemas)
+        if esc_local >= FUSION_ESCOMBROS_UMBRAL and rec is not None and not ya_esta:
+            fuentes_esc = ["modelo_local"] + [
+                f for f in (rec.get("fuentes") or []) if f != "modelo_local"]
+            problemas.append({
+                "key": "retiro_escombros",
+                "nombre": CATEGORIAS.get("retiro_escombros", {}).get(
+                    "nombre", "retiro_escombros"),
+                "gravedad": rec.get("gravedad"),
+                "fuentes": fuentes_esc,
+                "reclasificado_por": "modelo_local",
+            })
+            if prob_local.get("recoleccion", 1.0) <= FUSION_ESCOMBROS_RECO_BAJA:
+                problemas = [c for c in problemas if c["key"] != "recoleccion"]
+                if "recoleccion" not in vistos_pos:
+                    vistos_pos.add("recoleccion")
+                    posibles.append(dict(
+                        rec, origen="foto",
+                        motivo="la pila de bolsas fue reclasificada como "
+                               "escombros; basura común casi no se detecta"))
 
     descartados = []
     if foto_valida is False:
