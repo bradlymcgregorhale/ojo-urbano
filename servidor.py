@@ -588,12 +588,30 @@ def _publica(r):
     # motivos para que no cuente el mecanismo interno.
     pub["descripcion"] = _sanear_motivo(pub.get("descripcion"))
 
+    # Confianza por problema, derivada del CONTEO de fuentes (determinística,
+    # nada de porcentajes auto-reportados por los modelos): 3+ fuentes alta,
+    # 2 media. Lo de una sola fuente ya vive en "posibles", que ES el nivel
+    # bajo del contrato; ahí no se repite el campo.
+    for c in pub["problemas"]:
+        c["confianza"] = "alta" if c["fuentes"] >= 3 else "media"
+
     # Las invariantes del contrato valen sobre lo PUBLICADO: si el filtro
     # sacó el único problema (modo sin verificación), hay_problema es false.
     gravedades = [c["gravedad"] for c in pub["problemas"] if c.get("gravedad")]
     pub["hay_problema"] = bool(pub["problemas"])
     pub["hay_reclamo"] = bool(pub["problemas"]) or bool(pub.get("categorias_contexto"))
     pub["gravedad_maxima"] = max(gravedades) if gravedades else None
+
+    # Predominante: la categoría que domina la escena, para que el cliente
+    # pueda reportar "lo principal" sin reglas propias. Mayor gravedad gana;
+    # a igual gravedad desempatan las fuentes. Solo entre problemas
+    # confirmados; con un solo problema es ese.
+    if pub["problemas"]:
+        dom = max(pub["problemas"],
+                  key=lambda c: (c.get("gravedad") or 0, c.get("fuentes") or 0))
+        pub["predominante"] = dom.get("key") or dom.get("codigo")
+    else:
+        pub["predominante"] = None
 
     pub["verificacion_activa"] = bool(veri.get("activa"))
     if not veri.get("activa") and veri.get("motivo"):
