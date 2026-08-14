@@ -361,6 +361,12 @@ pedir(f"/trabajos?id={tD.get('trabajo')}", metodo="DELETE")
 S.TRABAJOS_MAX = _max_prev2
 código5, _ = pedir("/trabajos?id=nadie", metodo="DELETE")
 check("DELETE de un id desconocido devuelve 404", código5 == 404, f"HTTP {código5}")
+# el alias con POST (para proxies que rebotan DELETE) cancela igual
+código6, tF = pedir("/trabajos", *_multipart("t.jpg", foto(841, 641))[::1])
+código7, eF = pedir(f"/trabajos/cancelar?id={tF.get('trabajo')}", metodo="POST")
+check("POST /trabajos/cancelar cancela igual que DELETE",
+      código6 == 202 and código7 == 200 and eF.get("estado") == "cancelado",
+      f"HTTP {código6}/{código7} {eF}")
 
 # Prioridad: con un trabajo esperando el cupo, un sincrónico que llega
 # después igual gana el cupo; el trabajo recién corre cuando el sincrónico

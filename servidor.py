@@ -1180,6 +1180,19 @@ async def cancelar_trabajo(tid: str):
     return _cancelar_trabajo(tid)
 
 
+# Alias con POST: hay proxies que rebotan DELETE de plano (el nginx del
+# despliegue público devuelve 405 antes de llegar al forwarder). La portada
+# usa SIEMPRE esta forma; DELETE queda para consumidores directos. Queda
+# fuera de las guardas del middleware a propósito, igual que el GET: el id
+# impredecible es la autorización y cancelar no cuesta nada.
+@app.post("/trabajos/cancelar")
+@app.post("/trabajos/cancelar/")
+async def cancelar_trabajo_post(id: str = ""):
+    if not id:
+        raise HTTPException(400, "falta el parámetro id")
+    return _cancelar_trabajo(id)
+
+
 # El alias con query string va ANTES que el segmento dinámico y existe porque
 # el despliegue público pasa por un forwarder que solo rutea subcarpetas
 # fijas: /trabajos/abc123 jamás le llegaría, /trabajos/?id=abc123 sí.
@@ -1374,8 +1387,9 @@ PAGINA = r"""<!DOCTYPE html>
         {"trabajo": id, "estado": "en_cola", "posicion": n}<br>
         <b>GET</b> <span id="ep3"></span> · estado del trabajo: en_cola, procesando, listo (trae
         <b>resultado</b>) o error<br>
-        <b>DELETE</b> <span id="ep4"></span> · cancela un trabajo que sigue en cola y libera su lugar;
-        uno que ya está en análisis no se puede cancelar (409)</div>
+        <b>POST</b> <span id="ep4"></span> · cancela un trabajo que sigue en cola y libera su lugar;
+        uno que ya está en análisis no se puede cancelar (409). También existe como <b>DELETE
+        /trabajos?id=...</b> para despliegues sin proxy que filtre métodos</div>
       <div class="apinote">La vía asíncrona (<b>/trabajos</b>) es la recomendada para lotes: el servidor
         procesa de a una foto y encola el resto; hay un tope global de trabajos pendientes y otro por IP,
         y pasado el tope el POST devuelve 429/503 con <b>Retry-After</b> para reintentar. Los trabajos
@@ -1407,7 +1421,7 @@ const T=O+'/trabajos'+SUF;
 $('#ep').textContent=O+'/clasificar'+SUF;
 $('#ep2').textContent=T;
 $('#ep3').textContent=T+'?id=...';
-$('#ep4').textContent=T+'?id=...';
+$('#ep4').textContent=O+'/trabajos/cancelar'+SUF+'?id=...';
 const GRAV={1:'mínima',2:'leve',3:'alta',4:'grave',5:'muy grave'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const SNIP={
@@ -1580,7 +1594,7 @@ async function quitar(it){
   // el análisis arrancó en el medio: la foto ya no se puede quitar.
   if(it.estado==='en_cola'&&it.trabajo){
     try{
-      const r=await fetch(T+'?id='+encodeURIComponent(it.trabajo),{method:'DELETE'});
+      const r=await fetch(O+'/trabajos/cancelar'+SUF+'?id='+encodeURIComponent(it.trabajo),{method:'POST'});
       if(r.status===409){
         it.estado='procesando';if(!it.tProc)it.tProc=Date.now();pintar(it);
         return;

@@ -100,7 +100,7 @@ La vía sincrónica obliga a sostener la conexión los 25-60 s que dura el anál
 
 Después se consulta `GET /trabajos/{id}` (o el alias `GET /trabajos?id=...`, para proxies que solo rutean rutas fijas) hasta que el estado sea `listo` (trae `resultado`, con el contrato v4 idéntico al de `/clasificar`) o `error` (trae `detail`). Estados posibles: `en_cola` (con `posicion`; 1 = el próximo), `procesando`, `listo`, `error`.
 
-Un trabajo que sigue en cola se puede cancelar con `DELETE /trabajos/{id}` (o `DELETE /trabajos?id=...`): devuelve `{"estado": "cancelado"}` y libera al instante su lugar de pendientes (global y por IP) y los bytes de la foto. Uno que ya está `procesando` no se puede frenar (el análisis ya corre y ya se pagó): responde `409` y el cliente decide si sigue esperando el resultado. Sobre un trabajo terminado, `DELETE` borra el registro (`{"estado": "eliminado"}`).
+Un trabajo que sigue en cola se puede cancelar con `DELETE /trabajos/{id}` (o `DELETE /trabajos?id=...`, o el alias `POST /trabajos/cancelar?id=...` para proxies que rebotan el método DELETE; la portada usa esa forma): devuelve `{"estado": "cancelado"}` y libera al instante su lugar de pendientes (global y por IP) y los bytes de la foto. Uno que ya está `procesando` no se puede frenar (el análisis ya corre y ya se pagó): responde `409` y el cliente decide si sigue esperando el resultado. Sobre un trabajo terminado, `DELETE` borra el registro (`{"estado": "eliminado"}`).
 
 Reglas de operación:
 
