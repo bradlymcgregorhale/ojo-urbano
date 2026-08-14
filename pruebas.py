@@ -655,6 +655,20 @@ S.RATE_LIMITE = 2
 vistos = [pedir("/clasificar", *_multipart("f.jpg", foto(810 + i, 610))[::1])[0]
           for i in range(4)]
 check("corta al superar la cuota", vistos.count(429) == 2, str(vistos))
+# El 429 tiene que decir CUÁNDO volver: sin Retry-After el cliente reintenta
+# a ciegas, que es lo que satura el servicio. La espera es lo que falta para
+# que el pedido más viejo salga de la ventana.
+_cuerpo, _tipo429 = _multipart("f.jpg", foto(899, 699))
+_req429 = urllib.request.Request(BASE + "/clasificar", data=_cuerpo, method="POST")
+_req429.add_header("Content-Type", _tipo429)
+_ra = None
+try:
+    urllib.request.urlopen(_req429, timeout=60)
+except urllib.error.HTTPError as _e429:
+    _ra = _e429.headers.get("Retry-After")
+check("el 429 por cuota trae Retry-After",
+      _ra is not None and _ra.isdigit() and 0 < int(_ra) <= S.RATE_VENTANA,
+      f"Retry-After={_ra}")
 S._pedidos.clear()
 S.RATE_LIMITE = 10000
 check("las IPs viejas se purgan",

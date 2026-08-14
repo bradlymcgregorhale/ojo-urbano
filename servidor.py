@@ -309,9 +309,15 @@ def _purgar_pedidos(ahora):
 
 
 def _permitir(ip):
-    """Ventana deslizante por IP. Devuelve False si ya agotó su cuota."""
+    """Ventana deslizante por IP. Devuelve (permitido, espera_en_segundos).
+
+    Cuando NO alcanza, la espera es cuánto falta para que el pedido más viejo
+    salga de la ventana: es el momento exacto en que vuelve a haber lugar, y
+    viaja como Retry-After. Sin ese dato el cliente solo puede adivinar, y
+    reintentar a ciegas contra un 429 es justo lo que satura el servicio.
+    """
     if RATE_LIMITE <= 0:
-        return True
+        return True, 0
     ahora = time.monotonic()
     if len(_pedidos) > 1024:
         _purgar_pedidos(ahora)
@@ -319,9 +325,9 @@ def _permitir(ip):
     while cola and ahora - cola[0] > RATE_VENTANA:
         cola.popleft()
     if len(cola) >= RATE_LIMITE:
-        return False
+        return False, max(1, math.ceil(RATE_VENTANA - (ahora - cola[0])))
     cola.append(ahora)
-    return True
+    return True, 0
 
 
 async def _leer_acotado(archivo):
@@ -774,10 +780,11 @@ async def guardias(request, call_next):
             return JSONResponse(
                 {"detail": f"la foto supera el límite de {MAX_BYTES // (1024 * 1024)} MB"},
                 status_code=413)
-        if not _permitir(_ip_cliente(request)):
+        permitido, espera = _permitir(_ip_cliente(request))
+        if not permitido:
             return JSONResponse(
                 {"detail": "demasiados pedidos; probá de nuevo más tarde"},
-                status_code=429)
+                status_code=429, headers={"Retry-After": str(espera)})
     return await call_next(request)
 
 
@@ -1229,8 +1236,6 @@ PAGINA = r"""<!DOCTYPE html>
   h1{font-size:19px;letter-spacing:.14em;margin:0}
   .tagline{margin-top:3px;color:var(--muted);font-size:13px;font-weight:700}
   .sub{color:var(--muted2);font-size:13px;margin-top:5px;max-width:640px}
-  .mode{display:inline-block;font-size:12px;padding:3px 10px;border-radius:20px;
-        border:1px solid var(--line2);background:var(--surface);color:var(--muted)}
   .ctxlabel{display:block;margin-top:18px;font-size:12px;text-transform:uppercase;
             letter-spacing:.07em;color:var(--muted);font-weight:700}
   #ctx{width:100%;margin-top:6px;padding:9px 11px;border:1px solid var(--line2);
@@ -1303,6 +1308,13 @@ PAGINA = r"""<!DOCTYPE html>
   .grav.g0{background:var(--surface);color:var(--muted);border:1px solid var(--line2)}
   .tarbody{padding:10px 12px;display:flex;flex-direction:column;gap:8px;flex:1}
   .tarnombre{font-size:11.5px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ctxfoto{width:100%;padding:7px 9px;border:1px solid var(--line2);border-radius:6px;
+       font:12.5px inherit;background:var(--surface);color:var(--ink)}
+  .ctxfoto::placeholder{color:var(--muted2)}
+  .ctxfoto:focus{border-color:var(--ink);outline:none}
+  .ctxeco{font-size:12px;color:var(--muted);background:var(--soft);border:1px dashed var(--line2);
+       border-radius:6px;padding:6px 9px}
+  .ctxeco b{color:var(--ink)}
   .tarres{display:flex;flex-direction:column;gap:8px}
   .tarconcl{font-size:13.5px;font-weight:600}
   .minicats{display:flex;flex-wrap:wrap;gap:6px}
@@ -1324,16 +1336,48 @@ PAGINA = r"""<!DOCTYPE html>
        list-style-position:inside}
   details.det[open]>summary{border-bottom:1px solid var(--line);color:var(--ink)}
   details.det>.detbody{padding:14px}
-  .endpoint{font:13px ui-monospace,Menlo,monospace;background:var(--surface);
-            border:1px solid var(--line);border-radius:8px;padding:8px 11px;margin-bottom:10px}
-  .apinote{font-size:12.5px;color:var(--muted);margin-bottom:12px}
-  .tabs{display:flex;gap:6px;margin-bottom:8px}
+  .apiintro{font-size:13px;color:var(--muted);max-width:640px;margin-bottom:14px}
+  .apiciclo{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:10px 12px;
+            border:1px solid var(--line);border-radius:8px;background:var(--soft);margin-bottom:16px}
+  .cicl{font:11.5px ui-monospace,Menlo,monospace;border:1px solid var(--line2);border-radius:6px;
+        padding:3px 8px;background:var(--surface);color:var(--ink)}
+  .cicl.ciclini{background:var(--ink);border-color:var(--ink);color:#fff}
+  .cicl.ciclok{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);font-weight:700}
+  .cicl.ciclmal{color:var(--rojo);border-color:var(--rojo)}
+  .ciclf{color:var(--muted2);font-size:12px}
+  .eps{display:flex;flex-direction:column;gap:0;border:1px solid var(--line);border-radius:8px;
+       overflow:hidden;margin-bottom:14px}
+  .ep1{display:grid;grid-template-columns:64px 1fr;gap:4px 12px;padding:11px 13px;
+       background:var(--surface)}
+  .ep1+.ep1{border-top:1px solid var(--line)}
+  .met{font-size:10.5px;font-weight:700;letter-spacing:.06em;border-radius:5px;height:20px;
+       display:inline-flex;align-items:center;justify-content:center;align-self:start;margin-top:1px}
+  .met-post{background:var(--ink);color:#fff}
+  .met-get{border:1.5px solid var(--ink);color:var(--ink);background:var(--surface)}
+  .met-del{border:1.5px solid var(--rojo);color:var(--rojo);background:var(--surface)}
+  .ruta{font:12.5px ui-monospace,Menlo,monospace;color:var(--ink);word-break:break-all;align-self:center}
+  .epdesc{grid-column:2;font-size:12.5px;color:var(--muted);line-height:1.55}
+  .epdesc code{font:11.5px ui-monospace,Menlo,monospace;background:var(--soft);
+       border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--ink)}
+  .epdesc b{color:var(--ink)}
+  .apinota{font-size:12.5px;color:var(--muted);margin-bottom:14px;max-width:640px}
+  .apinota b{color:var(--ink)}
+  .tabs{display:flex;gap:6px;margin-bottom:8px;align-items:center}
   .tab{padding:5px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);
        cursor:pointer;font:13px inherit;color:var(--muted)}
   .tab.active{color:#fff;border-color:var(--ink);background:var(--ink)}
+  .copiabtn{margin-left:auto;font:12px inherit;border:1px solid var(--line2);border-radius:6px;
+       background:var(--surface);color:var(--muted);padding:4px 12px;cursor:pointer}
+  .copiabtn:hover{color:var(--ink);border-color:var(--ink)}
   pre.code{background:#111;color:#f2f2f2;padding:14px;border-radius:8px;overflow:auto;
        font:12.5px/1.55 ui-monospace,Menlo,monospace;margin:0;display:none}
   pre.code.active{display:block}
+  details.codigos{margin-top:12px}
+  details.codigos>summary{cursor:pointer;font-size:12.5px;font-weight:600;color:var(--muted)}
+  table.tcod{border-collapse:collapse;margin-top:8px;font-size:12.5px}
+  .tcod td{border:1px solid var(--line);padding:5px 11px;color:var(--muted)}
+  .tcod td:first-child{font:12px ui-monospace,Menlo,monospace;color:var(--ink);font-weight:700;
+       text-align:center;background:var(--soft)}
   @media (prefers-reduced-motion: reduce){
     .spin,.spinmini{animation-duration:2.4s}
     .pfill{transition:none}
@@ -1345,18 +1389,13 @@ PAGINA = r"""<!DOCTYPE html>
     <div class="tagline">Reconocimiento visual de incidencias urbanas</div>
     <div class="sub">Subí una o varias fotos de problemas en la vía pública (basura fuera del contenedor,
       muebles abandonados, veredas rotas, vehículos sobre la ciclovía) y el sistema identifica qué reporte
-      corresponde a cada una. Las fotos pasan de a una por el análisis: las demás esperan su turno en cola
-      y los resultados van apareciendo en esta misma página. Al final podés bajar todo en un CSV. La foto
-      y el contexto se envían a modelos de IA de terceros vía OpenRouter para la verificación cruzada.</div>
+      corresponde a cada una. Cada foto lleva su propio contexto vecinal opcional (contá lo que no se ve:
+      «todo huele mal», «hay ratas»); escribilo en la tarjeta antes de tocar «Analizar». Las fotos pasan
+      de a una por el análisis y los resultados van apareciendo en esta misma página; al final podés
+      bajar todo en un CSV. La foto y el contexto se envían a modelos de IA de terceros vía OpenRouter
+      para la verificación cruzada.</div>
   </header>
-  <span id="modechip" class="mode">cargando…</span>
-
-  <label class="ctxlabel" for="ctx">Contexto vecinal (opcional)</label>
-  <input id="ctx" type="text" maxlength="500"
-         placeholder="Contá algo que quizá no se vea en la foto, p. ej. «todo huele mal» o «hay ratas»">
-  <div class="ctxhint">Tiene peso propio: si la foto no muestra lo que contás, el reclamo se arma con
-    lo que escribiste y la foto se marca como no válida. Se aplica a todas las fotos del lote, así que
-    escribilo antes de tocar «Analizar».</div>
+  <div id="aviso" class="err" role="status"></div>
 
   <div id="drop" role="button" tabindex="0" aria-label="Elegir fotos para analizar">
     <p><strong>Arrastrá una o varias fotos acá</strong> o hacé clic para elegir</p>
@@ -1381,30 +1420,79 @@ PAGINA = r"""<!DOCTYPE html>
   <details class="det">
     <summary>API para desarrolladores</summary>
     <div class="detbody">
-      <div class="endpoint"><b>POST</b> <span id="ep"></span> · multipart/form-data, campo <b>file</b> ·
-        campo opcional <b>contexto</b> · espera el resultado en la misma conexión (25-60 s)</div>
-      <div class="endpoint"><b>POST</b> <span id="ep2"></span> · mismos campos · responde al instante con
-        {"trabajo": id, "estado": "en_cola", "posicion": n}<br>
-        <b>GET</b> <span id="ep3"></span> · estado del trabajo: en_cola, procesando, listo (trae
-        <b>resultado</b>) o error<br>
-        <b>POST</b> <span id="ep4"></span> · cancela un trabajo que sigue en cola y libera su lugar;
-        uno que ya está en análisis no se puede cancelar (409). También existe como <b>DELETE
-        /trabajos?id=...</b> para despliegues sin proxy que filtre métodos</div>
-      <div class="apinote">La vía asíncrona (<b>/trabajos</b>) es la recomendada para lotes: el servidor
-        procesa de a una foto y encola el resto; hay un tope global de trabajos pendientes y otro por IP,
-        y pasado el tope el POST devuelve 429/503 con <b>Retry-After</b> para reintentar. Los trabajos
-        viven en memoria: un 404 al consultar significa que el servidor se reinició y hay que reenviar la
-        foto. Parámetro opcional <b>?verificar=</b> <b>auto</b> (default: verifica si hay clave de
-        OpenRouter) · <b>1</b> (forzar) · <b>0</b> (sin verificación: respuesta degradada). Las categorías
-        que el contexto describe pero la foto no confirma vuelven en <b>categorias_contexto</b>.</div>
+      <div class="apiintro">Dos maneras de clasificar la misma foto: la <b>sincrónica</b> espera el
+        resultado en la conexión y la <b>asíncrona</b> encola y se consulta por id (la recomendada
+        para lotes: así funciona esta página). En las dos, el campo <b>contexto</b> viaja por foto,
+        dentro del mismo multipart. Todas las rutas aceptan barra final.</div>
+
+      <div class="apiciclo" aria-label="Ciclo de vida de un trabajo">
+        <span class="cicl ciclini">POST /trabajos</span><span class="ciclf">&#8594;</span>
+        <span class="cicl">en_cola</span><span class="ciclf">&#8594;</span>
+        <span class="cicl">procesando</span><span class="ciclf">&#8594;</span>
+        <span class="cicl ciclok">listo</span><span class="ciclf">o</span>
+        <span class="cicl ciclmal">error</span><span class="ciclf">o</span>
+        <span class="cicl ciclmal">cancelado</span>
+      </div>
+
+      <div class="eps">
+        <div class="ep1"><span class="met met-post">POST</span>
+          <code class="ruta" data-ep="clasificar"></code>
+          <div class="epdesc">Una foto, esperando el resultado en la misma conexión (25-60 s).
+            multipart/form-data con <b>file</b> (JPG/PNG/WEBP, máx. 10 MB) y <b>contexto</b> opcional
+            (máx. 500 caracteres). Ocupado: <code>503</code> con <b>Retry-After</b>.</div></div>
+        <div class="ep1"><span class="met met-post">POST</span>
+          <code class="ruta" data-ep="trabajos"></code>
+          <div class="epdesc">Mismos campos, respuesta inmediata: <code>202 {"trabajo": id, "estado":
+            "en_cola", "posicion": n}</code>. Una foto ya cacheada vuelve resuelta en el acto:
+            <code>{"estado": "listo", "resultado": ...}</code>. Hay tope global y por IP de trabajos
+            pendientes (<code>503</code>/<code>429</code> con <b>Retry-After</b>).</div></div>
+        <div class="ep1"><span class="met met-get">GET</span>
+          <code class="ruta" data-ep="consulta"></code>
+          <div class="epdesc">Estado del trabajo. <code>en_cola</code> trae <b>posicion</b> (1 = el
+            próximo); <code>listo</code> trae <b>resultado</b> con el contrato v4, idéntico al
+            sincrónico; <code>error</code> trae <b>detail</b>. Un <code>404</code> significa que el
+            servidor se reinició y perdió el registro: reenviá la foto. Forma directa:
+            <code>GET /trabajos/{id}</code>.</div></div>
+        <div class="ep1"><span class="met met-post">POST</span>
+          <code class="ruta" data-ep="cancelar"></code>
+          <div class="epdesc">Cancela un trabajo que sigue en cola y libera su lugar al instante. Uno
+            que ya está en análisis no se frena: <code>409</code>. Equivalente:
+            <code>DELETE /trabajos/{id}</code>, para despliegues sin proxy que filtre métodos.</div></div>
+        <div class="ep1"><span class="met met-get">GET</span>
+          <code class="ruta" data-ep="salud"></code>
+          <div class="epdesc">Estado del servicio: clases del modelo, si la verificación cruzada está
+            activa y con qué modelos.</div></div>
+      </div>
+
+      <div class="apinota">El <b>contexto</b> tiene peso propio: si la foto no muestra lo que cuenta,
+        el reclamo se arma con el texto y la foto queda marcada como no válida; lo que el texto
+        describe y la foto no confirma vuelve aparte en <b>categorias_contexto</b>. Parámetro opcional
+        <b>?verificar=</b> auto (default: verifica si hay clave de OpenRouter) · 1 (forzar) ·
+        0 (sin verificación: respuesta degradada).</div>
+
       <div class="tabs" id="tabs">
         <button class="tab active" data-l="curl">curl</button>
         <button class="tab" data-l="python">Python</button>
         <button class="tab" data-l="js">JavaScript</button>
+        <button class="copiabtn" id="copiasnip">Copiar</button>
       </div>
       <pre class="code active" id="code-curl"></pre>
       <pre class="code" id="code-python"></pre>
       <pre class="code" id="code-js"></pre>
+
+      <details class="codigos">
+        <summary>Códigos de respuesta</summary>
+        <table class="tcod">
+          <tr><td>202</td><td>trabajo encolado; consultá el estado con el id</td></tr>
+          <tr><td>400</td><td>falta el parámetro id, o la imagen no se pudo leer</td></tr>
+          <tr><td>401</td><td>falta o no coincide X-Api-Token (solo si el operador configuró token)</td></tr>
+          <tr><td>404</td><td>trabajo desconocido o vencido: reenviá la foto</td></tr>
+          <tr><td>409</td><td>el análisis ya arrancó; no se puede cancelar</td></tr>
+          <tr><td>413</td><td>la foto supera el tamaño máximo (10 MB)</td></tr>
+          <tr><td>429</td><td>límite de pedidos o de trabajos por IP; reintentá según Retry-After</td></tr>
+          <tr><td>503</td><td>servidor ocupado o cola llena; reintentá según Retry-After</td></tr>
+        </table>
+      </details>
     </div>
   </details>
 </div>
@@ -1418,30 +1506,34 @@ const $=s=>document.querySelector(s);
 const O=location.origin+location.pathname.replace(/\/$/,'');
 const SUF=location.pathname.replace(/\/$/,'')?'/':'';
 const T=O+'/trabajos'+SUF;
-$('#ep').textContent=O+'/clasificar'+SUF;
-$('#ep2').textContent=T;
-$('#ep3').textContent=T+'?id=...';
-$('#ep4').textContent=O+'/trabajos/cancelar'+SUF+'?id=...';
+const RUTAS={clasificar:O+'/clasificar'+SUF, trabajos:T, consulta:T+'?id=ID',
+             cancelar:O+'/trabajos/cancelar'+SUF+'?id=ID', salud:O+'/salud'+SUF};
+document.querySelectorAll('.ruta').forEach(el=>{el.textContent=RUTAS[el.dataset.ep]||'';});
 const GRAV={1:'mínima',2:'leve',3:'alta',4:'grave',5:'muy grave'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const SNIP={
  curl:`# una foto, esperando el resultado en la conexión (25-60 s)
-curl -s -F "file=@foto.jpg" -F "contexto=vidrios rotos" ${O}/clasificar${SUF}
+curl -s -F "file=@foto.jpg" -F "contexto=vidrios rotos en la vereda" ${RUTAS.clasificar}
 
-# lote: encolar al instante y consultar hasta que esté listo
-curl -s -F "file=@foto.jpg" ${T}
-curl -s "${T}?id=ID_DEVUELTO"`,
+# lote: encolar (respuesta inmediata con id)...
+curl -s -F "file=@foto.jpg" -F "contexto=hay ratas" ${T}
+# ...consultar hasta que esté listo o dé error...
+curl -s "${T}?id=ID"
+# ...y cancelar una que siga en cola
+curl -s -X POST "${O}/trabajos/cancelar${SUF}?id=ID"`,
  python:`import time, requests
 
+TRABAJOS = "${T}"
 with open("foto.jpg", "rb") as f:
-    t = requests.post("${T}", files={"file": f},
-                      data={"contexto": "vidrios rotos"}).json()
+    t = requests.post(TRABAJOS, files={"file": f},
+                      data={"contexto": "vidrios rotos en la vereda"}).json()
 while t["estado"] not in ("listo", "error"):
     time.sleep(4)
-    t = requests.get("${T}", params={"id": t["trabajo"]}).json()
+    t = requests.get(TRABAJOS, params={"id": t["trabajo"]}).json()
 print(t.get("resultado") or t)`,
  js:`const fd = new FormData();
 fd.append("file", fileInput.files[0]);
+fd.append("contexto", "vidrios rotos en la vereda"); // opcional, por foto
 let t = await (await fetch("${T}", { method: "POST", body: fd })).json();
 while (t.estado !== "listo" && t.estado !== "error") {
   await new Promise(r => setTimeout(r, 4000));
@@ -1454,10 +1546,21 @@ $('#tabs').onclick=e=>{const b=e.target.closest('.tab');if(!b)return;
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t===b));
   document.querySelectorAll('.code').forEach(c=>c.classList.remove('active'));
   $('#code-'+b.dataset.l).classList.add('active');};
+$('#copiasnip').onclick=()=>{
+  const activa=document.querySelector('.tab.active');
+  navigator.clipboard.writeText(SNIP[activa.dataset.l]).then(()=>{
+    $('#copiasnip').textContent='Copiado';
+    setTimeout(()=>$('#copiasnip').textContent='Copiar',1400);
+  });
+};
 fetch(O+'/salud'+SUF).then(r=>r.json()).then(h=>{
-  const chip=$('#modechip');
-  chip.textContent=h.verificacion?'Análisis completo activo':'Sin verificación cruzada: el análisis está suspendido';
-  chip.title=h.verificacion?('Verificadores: '+h.verificadores.join(' + ')+(h.arbitro?' · árbitro: '+h.arbitro:'')):'Configurá OPENROUTER_API_KEY para activar la verificación';});
+  // en la operación normal no hay nada para anunciar; solo se avisa si la
+  // verificación cruzada está caída (los resultados saldrían degradados)
+  if(!h.verificacion){
+    const a=$('#aviso');
+    a.textContent='La verificación cruzada está suspendida: los análisis no van a dar resultados confiables.';
+    a.style.display='block';
+  }}).catch(()=>{});
 
 // ---- lote de fotos ----------------------------------------------------------
 // Cada foto es una tarjeta con una banda de estado que cuenta su vida entera:
@@ -1486,7 +1589,7 @@ function agregar(lista){
   for(const f of lista){
     if(!f.type.startsWith('image/')){rechazadas++;continue;}
     const it={n:++seq,file:f,estado:'espera',trabajo:null,resultado:null,detalle:'',
-              posicion:null,reenvios:0,reenvios404:0,card:null,nota:'',noAntes:null,
+              posicion:null,reenvios:0,reenvios404:0,card:null,nota:'',noAntes:null,ctx:'',armada:false,
               tProc:null,tFin:null,dur:null};
     items.push(it);crearTarjeta(it);pintar(it);
   }
@@ -1508,6 +1611,11 @@ function crearTarjeta(it){
   const banda=document.createElement('div');banda.className='banda';
   const cuerpo=document.createElement('div');cuerpo.className='tarbody';
   cuerpo.innerHTML=`<div class="tarnombre" title="${esc(it.file.name)}">${esc(it.file.name)}</div><div class="tarres"></div>`;
+  const ctxi=document.createElement('input');
+  ctxi.className='ctxfoto';ctxi.type='text';ctxi.maxLength=500;
+  ctxi.placeholder='Contexto de esta foto (opcional): lo que no se ve';
+  ctxi.oninput=()=>{it.ctx=ctxi.value;};
+  cuerpo.insertBefore(ctxi,cuerpo.querySelector('.tarres'));
   el.appendChild(mini);el.appendChild(banda);el.appendChild(cuerpo);
   it.card=el;$('#tarjetas').appendChild(el);
 }
@@ -1522,7 +1630,7 @@ function bombear(){
   if(!items.some(i=>i.estado==='enviando')){
     for(const it of items){
       if(enVuelo()>=MAX_VUELO)break;
-      if(it.estado==='espera'&&(!it.noAntes||Date.now()>=it.noAntes)){
+      if(it.estado==='espera'&&it.armada&&(!it.noAntes||Date.now()>=it.noAntes)){
         enviar(it);
         break;
       }
@@ -1534,7 +1642,7 @@ function bombear(){
 async function enviar(it){
   it.estado='enviando';it.nota='';pintar(it);
   const fd=new FormData();fd.append('file',it.file);
-  const ctx=$('#ctx').value.trim();if(ctx)fd.append('contexto',ctx);
+  const ctx=(it.ctx||'').trim();if(ctx)fd.append('contexto',ctx.slice(0,500));
   try{
     // techo de subida: con la bomba serializada, una subida colgada
     // frenaría el lote entero; pasado el techo la tarjeta falla (con
@@ -1705,6 +1813,22 @@ function pintar(it){
     banda.className='banda mal';
     banda.innerHTML='Error<span class="der"></span>';
   }
+  const ctxi=it.card.querySelector('.ctxfoto');
+  if(ctxi){
+    const eco=it.card.querySelector('.ctxeco');
+    if(it.estado==='espera'){
+      ctxi.style.display='';
+      if(eco)eco.remove();
+    }else{
+      ctxi.style.display='none';
+      if((it.ctx||'').trim()&&!eco){
+        const e=document.createElement('div');
+        e.className='ctxeco';
+        e.innerHTML='<b>Contexto:</b> '+esc(it.ctx.trim());
+        ctxi.after(e);
+      }
+    }
+  }
   if(it.estado==='error'){
     res.innerHTML=`<div class="tardesc">${esc(it.detalle)}</div>`+
       `<button class="btn retrybtn" style="align-self:flex-start">Reintentar</button>`;
@@ -1770,16 +1894,16 @@ function actualizarBarra(){
   $('#pfill').style.width=(n?Math.round(100*(listas+errs)/n):0)+'%';
   const ba=$('#analizar');
   ba.textContent=iniciado?'Analizar nuevas':'Analizar '+(n===1?'1 foto':n+' fotos');
-  ba.disabled=!espera;
+  ba.disabled=!items.some(i=>i.estado==='espera'&&!i.armada);
   $('#csvbtn').disabled=!listas;
   $('#limpiar').disabled=!items.some(i=>i.estado==='listo'||i.estado==='error');
   $('#reerr').style.display=errs>1?'':'none';
 }
 
-$('#analizar').onclick=()=>{iniciado=true;bombear();arrancarPoll();};
+$('#analizar').onclick=()=>{items.forEach(i=>{if(i.estado==='espera')i.armada=true;});iniciado=true;bombear();arrancarPoll();};
 
 function reintentar(it){
-  it.estado='espera';it.detalle='';it.nota='';it.trabajo=null;it.reenvios=0;it.reenvios404=0;
+  it.estado='espera';it.armada=true;it.detalle='';it.nota='';it.trabajo=null;it.reenvios=0;it.reenvios404=0;
   it.noAntes=null;it.tProc=null;it.tFin=null;it.dur=null;
   pintar(it);
 }
@@ -1804,7 +1928,7 @@ $('#limpiar').onclick=()=>{
 };
 
 $('#csvbtn').onclick=()=>{
-  const cab=['archivo','estado','hay_problema','gravedad_maxima','predominante','problemas',
+  const cab=['archivo','contexto','estado','hay_problema','gravedad_maxima','predominante','problemas',
     'patente','elementos_detectados','posibles','en_duda','hay_reclamo','foto_valida_estado',
     'verificacion_activa','verificacion_motivo','descripcion','error','trabajo'];
   const filas=[cab];
@@ -1813,7 +1937,7 @@ $('#csvbtn').onclick=()=>{
     const probs=(d.problemas||[]).map(p=>
       (p.key||'')+(p.gravedad?' (g'+p.gravedad+(p.confianza?', '+p.confianza:'')+')':'')).join(' | ');
     const pat=(d.problemas||[]).map(p=>p.patente).filter(Boolean).join(' | ')||d.patente||'';
-    filas.push([it.file.name,it.estado,d.hay_problema??'',d.gravedad_maxima??'',d.predominante??'',
+    filas.push([it.file.name,(it.ctx||'').trim(),it.estado,d.hay_problema??'',d.gravedad_maxima??'',d.predominante??'',
       probs,pat,(d.elementos_detectados||[]).map(e=>e.key).join(' | '),
       (d.posibles||[]).map(p=>p.key||p.codigo).join(' | '),(d.en_duda||[]).join(' | '),
       d.hay_reclamo??'',d.foto_valida_estado??'',d.verificacion_activa??'',

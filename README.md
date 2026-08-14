@@ -198,7 +198,7 @@ Clasificar una foto cuesta 25-60 s de CPU y una llamada paga a OpenRouter por ve
 | `MAX_BYTES` | `10485760` (10 MB) | Tamaño máximo del upload; más grande devuelve `413`. |
 | `MAX_PIXELES` | `25000000` | Megapíxeles máximos; frena bombas de descompresión con `400`. |
 | `CONCURRENCIA` | `1` | Clasificaciones en paralelo; por encima devuelve `503`. |
-| `RATE_LIMITE` / `RATE_VENTANA` | `60` / `3600` | Pedidos por IP y ventana en segundos; por encima devuelve `429`. `0` desactiva. |
+| `RATE_LIMITE` / `RATE_VENTANA` | `60` / `3600` | Pedidos por IP y ventana en segundos; por encima devuelve `429` con `Retry-After` (cuánto falta para que el pedido más viejo salga de la ventana). `0` desactiva. |
 | `CUOTA_DIARIA` | `500` | Techo global de fotos verificadas por día. Pasado el techo la API sigue respondiendo, pero degradada (sin clasificación pública, con motivo). `0` desactiva. |
 | `API_TOKEN` | vacío | Si lo ponés, `POST /clasificar` exige el header `X-Api-Token`. |
 | `CACHE_MAX` | `128` | Respuestas cacheadas por hash de foto, para no pagar dos veces la misma. |
