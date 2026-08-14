@@ -1328,6 +1328,9 @@ PAGINA = r"""<!DOCTYPE html>
   details.tardet>.detbody{padding:0 12px 12px;display:flex;flex-direction:column;gap:6px}
   .voto{font-size:12px;color:var(--muted)}
   .voto b{color:var(--ink);font-weight:600}
+  .copyjson{align-self:flex-start;font:11.5px inherit;font-weight:600;border:1px solid var(--line2);
+       border-radius:6px;background:var(--surface);color:var(--muted);padding:4px 10px;cursor:pointer}
+  .copyjson:hover{color:var(--ink);border-color:var(--ink)}
   h4.mini{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:6px 0 0}
   pre.json{background:#111;color:#f2f2f2;padding:10px;border-radius:8px;overflow:auto;
        font:11.5px/1.5 ui-monospace,Menlo,monospace;margin:0;max-height:260px}
@@ -1873,7 +1876,8 @@ function renderResultado(d){
       ?`<div class="voto"><b>${esc(x.modelo)}</b>: ${(x.categorias||[]).length?esc(x.categorias.map(c=>c.key.replace(/_/g,' ')).join(', ')):'sin hallazgos'}${x.descripcion?' · '+esc(x.descripcion):''}</div>`
       :`<div class="voto"><b>${esc(x.modelo)}</b>: no respondió</div>`).join('');
   if(!d.verificacion_activa)det+=`<div class="voto">Sin verificación cruzada (${esc(d.verificacion_motivo||'desactivada')}): no hay resultado confiable.</div>`;
-  det+='<h4 class="mini">JSON</h4><pre class="json">'+esc(JSON.stringify(d,null,2))+'</pre>';
+  det+='<h4 class="mini">JSON</h4><button type="button" class="copyjson" data-copiar>Copiar JSON</button>'+
+       '<pre class="json">'+esc(JSON.stringify(d,null,2))+'</pre>';
   h+=`<details class="tardet"><summary>Más detalle</summary><div class="detbody">${det}</div></details>`;
   return h;
 }
@@ -1899,6 +1903,19 @@ function actualizarBarra(){
   $('#limpiar').disabled=!items.some(i=>i.estado==='listo'||i.estado==='error');
   $('#reerr').style.display=errs>1?'':'none';
 }
+
+// delegado: cada tarjeta se vuelve a dibujar al cambiar de estado, asi que
+// el listener vive en el contenedor y no en cada boton
+$('#tarjetas').addEventListener('click', e=>{
+  const b=e.target.closest('[data-copiar]');
+  if(!b)return;
+  const pre=b.parentElement.querySelector('pre.json');
+  if(!pre)return;
+  navigator.clipboard.writeText(pre.textContent).then(()=>{
+    b.textContent='Copiado';
+    setTimeout(()=>{b.textContent='Copiar JSON';},1400);
+  }).catch(()=>{b.textContent='No se pudo copiar';});
+});
 
 $('#analizar').onclick=()=>{items.forEach(i=>{if(i.estado==='espera')i.armada=true;});iniciado=true;bombear();arrancarPoll();};
 
