@@ -282,6 +282,98 @@ check("la espera por el cupo tiene techo y devuelve 503",
       f"HTTP {c_timeout} en {demora_timeout:.1f}s")
 check("y el que esperó salió de la cola", not S._cola, f"{len(S._cola)} esperando")
 
+print("[#T] trabajos asíncronos (POST /trabajos + consulta)")
+_demora["s"] = 1.0
+código, t = pedir("/trabajos", *_multipart("t.jpg", foto(830, 630))[::1])
+check("POST /trabajos responde al instante con el trabajo encolado",
+      código == 202 and t.get("estado") == "en_cola" and t.get("trabajo"),
+      f"HTTP {código} {str(t)[:100]}")
+_tid = t.get("trabajo") or "x"
+_fin = None
+for _ in range(150):
+    código, e = pedir(f"/trabajos?id={_tid}")
+    if código == 200 and e.get("estado") in ("listo", "error"):
+        _fin = e
+        break
+    time.sleep(0.2)
+check("la consulta por query string llega a estado listo",
+      _fin is not None and _fin.get("estado") == "listo", str(_fin)[:120])
+check("  con el contrato v4 en resultado",
+      bool(_fin) and (_fin.get("resultado") or {}).get("version") == "4"
+      and "problemas" in (_fin.get("resultado") or {}))
+código, e2 = pedir(f"/trabajos/{_tid}")
+check("  y el segmento directo /trabajos/{id} da lo mismo",
+      código == 200 and e2.get("estado") == "listo", f"HTTP {código}")
+_demora["s"] = 0.0
+
+# La misma foto de nuevo: sale de la caché en el POST, sin crear trabajo.
+código, t2 = pedir("/trabajos", *_multipart("t.jpg", foto(830, 630))[::1])
+check("repetir la foto devuelve listo directo desde la caché",
+      código == 200 and t2.get("estado") == "listo" and t2.get("trabajo") is None
+      and (t2.get("resultado") or {}).get("version") == "4", f"HTTP {código}")
+
+código, _ = pedir("/trabajos?id=noexiste")
+check("un id desconocido devuelve 404", código == 404, f"HTTP {código}")
+código, _ = pedir("/trabajos")
+check("consultar sin id devuelve 400", código == 400, f"HTTP {código}")
+
+S.API_TOKEN = "secreto"
+try:
+    código, _ = pedir("/trabajos", *_multipart("t.jpg", foto(835, 635))[::1])
+    check("POST /trabajos pasa por la guarda del token", código == 401,
+          f"HTTP {código}")
+finally:
+    S.API_TOKEN = ""
+
+# Techos de pendientes, por IP y global. Con el cupo tomado, los trabajos
+# quedan pendientes y los techos se ejercitan sin carreras.
+S._cupos.acquire()
+_por_ip_prev, _max_prev = S.TRABAJOS_POR_IP, S.TRABAJOS_MAX
+S.TRABAJOS_POR_IP = 1
+código, tA = pedir("/trabajos", *_multipart("t.jpg", foto(831, 631))[::1])
+código2, _ = pedir("/trabajos", *_multipart("t.jpg", foto(832, 632))[::1])
+check("el techo por IP devuelve 429", código == 202 and código2 == 429,
+      f"HTTP {código} / {código2}")
+S.TRABAJOS_POR_IP = 100
+S.TRABAJOS_MAX = 1
+código3, _ = pedir("/trabajos", *_multipart("t.jpg", foto(833, 633))[::1])
+check("el techo global devuelve 503", código3 == 503, f"HTTP {código3}")
+S.TRABAJOS_POR_IP, S.TRABAJOS_MAX = _por_ip_prev, _max_prev
+
+# Prioridad: con un trabajo esperando el cupo, un sincrónico que llega
+# después igual gana el cupo; el trabajo recién corre cuando el sincrónico
+# terminó.
+_demora["s"] = 0.6
+_res_sync = {}
+
+
+def _sync_prioritario():
+    _res_sync["r"] = pedir("/clasificar", *_multipart("p.jpg", foto(834, 634))[::1])
+
+
+hs = threading.Thread(target=_sync_prioritario)
+hs.start()
+time.sleep(0.8)          # el sincrónico ya está formado esperando el cupo
+S._cupos.release()       # se libera el cupo: debe ganarlo el sincrónico
+hs.join()
+código_a, ea = pedir(f"/trabajos?id={tA.get('trabajo')}")
+check("el sincrónico gana el cupo antes que el trabajo encolado",
+      _res_sync["r"][0] == 200 and código_a == 200
+      and ea.get("estado") != "listo",
+      f"sync HTTP {_res_sync['r'][0]}, trabajo {ea.get('estado')}")
+_fin_a = None
+for _ in range(150):
+    código_a, ea = pedir(f"/trabajos?id={tA.get('trabajo')}")
+    if ea.get("estado") in ("listo", "error"):
+        _fin_a = ea.get("estado")
+        break
+    time.sleep(0.2)
+check("  y el trabajo termina bien después", _fin_a == "listo", str(_fin_a))
+_demora["s"] = 0.0
+check("las colas quedan vacías", not S._cola and not S._cola_trab,
+      f"{len(S._cola)} sync, {len(S._cola_trab)} trabajos")
+check("no quedan trabajos pendientes", not S._trabajos_pendientes())
+
 print("[#2] el cupo lo suelta el hilo, no la corrutina cancelada")
 check("el semáforo de cupos arranca en CONCURRENCIA",
       S._cupos._initial_value == S.CONCURRENCIA)

@@ -90,6 +90,26 @@ Respuesta: el veredicto primero, y lo que dijo cada modelo de visión en `modelo
 - `en_duda`: categorías con una sola fuente que el árbitro no llegó a decidir. Por default el árbitro **no confirma** lo que vio una sola fuente (ver más abajo), así que lo de una sola fuente vive en `posibles`. La excepción son los contenedores (`contenedor_*` de presencia): esos no pasan por el árbitro ni viajan en `posibles`, así que un contenedor que vio una sola fuente queda acá **por diseño** — es su estado final, no un arbitraje incompleto. Con dos fuentes pasa a `elementos_detectados`.
 - `modelos`: lo que devolvió **cada modelo de visión**: sus categorías con evidencia, su descripción de la escena, si vio la foto acorde al reclamo. Es todo el "cómo" que se publica: el clasificador interno no aparece acá (participa del consenso, su voto no se expone) y no existe ningún parámetro que devuelva más internals.
 
+### `POST /trabajos` y `GET /trabajos/{id}` (asíncrono, para lotes)
+
+La vía sincrónica obliga a sostener la conexión los 25-60 s que dura el análisis, y detrás de un proxy con techo de conexión (Cloudflare corta a los ~100 s) eso limita cuánta cola se puede esperar. Para lotes de varias fotos está la vía asíncrona: `POST /trabajos` recibe el mismo `multipart/form-data` que `/clasificar` (con `contexto` y `?verificar=` incluidos) y responde al instante:
+
+```json
+{ "trabajo": "kJ9vX2...", "estado": "en_cola", "posicion": 1 }
+```
+
+Después se consulta `GET /trabajos/{id}` (o el alias `GET /trabajos?id=...`, para proxies que solo rutean rutas fijas) hasta que el estado sea `listo` (trae `resultado`, con el contrato v4 idéntico al de `/clasificar`) o `error` (trae `detail`). Estados posibles: `en_cola` (con `posicion`; 1 = el próximo), `procesando`, `listo`, `error`.
+
+Reglas de operación:
+
+- Si la foto ya está en caché, el `POST` devuelve `{"estado": "listo", "resultado": ...}` directo, sin crear trabajo.
+- Los pedidos sincrónicos tienen **prioridad** sobre los trabajos encolados: un lote grande no deja sin servicio a quien espera con la conexión abierta.
+- Techos: `TRABAJOS_MAX` pendientes en total (default 10, por encima `503` con `Retry-After`) y `TRABAJOS_POR_IP` por dirección (default 4, por encima `429`). El resultado terminado se retiene `TRABAJO_TTL` segundos (default 1800) y hasta `TRABAJOS_LISTOS_MAX` registros; un trabajo puede esperar su turno hasta `TRABAJO_ESPERA` segundos (default 900) antes de morir con `error`.
+- Los trabajos viven **en memoria del proceso**: un reinicio los pierde. Un `404` al consultar significa "desconocido o vencido": el cliente reenvía la foto (que probablemente salga de la caché al toque).
+- El `POST` pasa por las mismas guardas que `/clasificar` (token, `Content-Length`, límite por IP) y consume una unidad del límite de tasa; consultar el estado no consume.
+
+La portada (`GET /`) usa esta vía: acepta varias fotos, va llenando los resultados en la página y al final ofrece bajar todo en CSV.
+
 ### `GET /salud`
 
 Estado del servicio: clases del modelo, si la verificación está activa y con qué modelos.
