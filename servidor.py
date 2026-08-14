@@ -354,6 +354,10 @@ def _cacheable(respuesta):
     if veri.get("activa"):
         if any(not v.get("ok") for v in veri.get("verificadores") or []):
             return False
+        # La segunda mirada de escombros falló en alguna llamada: el "no
+        # confirmado" puede ser un corte transitorio, no un veredicto.
+        if (veri.get("segunda_mirada") or {}).get("fallo"):
+            return False
         # Con árbitro configurado, que queden categorías en duda significa que
         # el arbitraje falló o quedó incompleto (respondió sin decidirlas
         # todas). Cachearlo congela ese resultado a medio hacer para siempre.

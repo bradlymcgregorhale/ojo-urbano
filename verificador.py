@@ -125,6 +125,15 @@ VERIFICADORES = [m.strip() for m in os.environ.get(
     "VERIFICADORES",
     "openai/gpt-5-mini,google/gemini-3.5-flash-lite,openai/gpt-5.6-luna"
 ).split(",") if m.strip()]
+# Segunda mirada dirigida, SOLO para retiro_escombros (la categoría más
+# perdida): cuando UN verificador la reporta y los demás no, se les
+# re-pregunta solo por las bolsas, tri-estado y sin decirles qué vio el
+# disidente. Diseño revisado adversarialmente; expandible a otras categorías
+# únicamente con evaluación propia.
+SEGUNDA_MIRADA_ESCOMBROS = os.environ.get(
+    "SEGUNDA_MIRADA_ESCOMBROS", "1").strip().lower() not in ("0", "false", "no")
+LADO_SEGUNDA_MIRADA = int(os.environ.get("LADO_SEGUNDA_MIRADA", "1600"))
+
 ARBITRO = os.environ.get("ARBITRO", "deepseek/deepseek-v4-flash").strip()
 # Si el árbitro es un modelo con visión, conviene darle la foto: decidir sobre
 # descripciones ajenas es juzgar una compresión con pérdida del original.
@@ -702,6 +711,46 @@ def _leer_patente(img):
     return None
 
 
+_PROMPT_SEGUNDA_MIRADA = """Auditás UNA sola cosa en esta foto: las bolsas y los sacos. Recorrelos UNO POR UNO y decidí si alguno contiene escombros de obra.
+SEÑALES POSITIVAS (hace falta evidencia directa, o DOS señales independientes):
+- Evidencia directa: cascote, ladrillo, revoque o arena de obra a la vista (suelto, sobre las bolsas o asomando por una boca o rotura); una bolsa rasgada cuyo relleno visible es material denso de obra sin residuos domésticos reconocibles; un saco lleno y denso con etiqueta de material de construcción.
+- Señales: (1) porte de bolsa de arena: chica para ser de basura, densa, medio llena, parada sola y casi sin caída; (2) aristas de fragmentos angulosos marcando el plástico por TODA la bolsa; (3) polvo de obra blanquecino o gris sobre las bolsas o el piso alrededor; (4) sacos de rafia o arpillera chicos, llenos y densos.
+SEÑALES NEGATIVAS (bolsa común): grande, liviana, brillante, redondeada, atada con orejas, bultos blandos, rodeada de residuos domésticos reconocibles.
+Con UNA sola señal positiva o ninguna, NO es escombros. Decidí solo por lo que VES: si las bolsas no se distinguen bien (oscuridad, distancia), tu veredicto es "indeterminado", no adivines.
+Respondé SOLO con JSON válido: {"veredicto": "escombros" | "basura_comun" | "indeterminado", "evidencia": "qué viste, máx 15 palabras"}"""
+
+
+def _segunda_mirada_escombros(img, ya_reportaron):
+    """Re-consulta dirigida SOLO por retiro_escombros. Tri-estado y anti
+    sugestión: no se menciona qué vio el modelo disidente ni dónde. Devuelve
+    (confirmantes, negativas, fallo): las negativas dirigidas pesan más que
+    el silencio original y bloquean la confirmación; un fallo de red se
+    reporta para que la respuesta no se cachee como un "no" definitivo."""
+    data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+    confirmantes, negativas, fallo = [], [], False
+    for modelo in VERIFICADORES:
+        if modelo in ya_reportaron:
+            continue
+        try:
+            contenido = _llamar(modelo, [
+                {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA},
+                {"role": "user", "content": [
+                    {"type": "text", "text": "La foto:"},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ]},
+            ], max_tokens=400)
+            v = _extraer_json(contenido)
+            veredicto = str(v.get("veredicto", "")).strip().lower()
+            evidencia = _texto_limpio(v.get("evidencia"), EVID_MAX)
+            if veredicto == "escombros" and evidencia:
+                confirmantes.append((modelo, evidencia))
+            elif veredicto == "basura_comun" and evidencia:
+                negativas.append((modelo, evidencia))
+        except Exception:
+            fallo = True
+    return confirmantes, negativas, fallo
+
+
 def _verificar_uno(modelo, data_url, categorias, contexto=""):
     try:
         contenido = _llamar(modelo, [
@@ -1215,6 +1264,31 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     presencia_dudosa = disputadas & PRESENCIA
     disputadas -= presencia_dudosa
 
+    # SEGUNDA MIRADA (solo escombros): corre ANTES del árbitro para que
+    # posibles y descripción no queden contradiciendo una confirmación.
+    # Confirma únicamente una nueva evidencia concreta SIN ninguna negativa
+    # dirigida en contra.
+    segunda_mirada = None
+    if SEGUNDA_MIRADA_ESCOMBROS and "retiro_escombros" in disputadas:
+        vlm_escombros = [f for f in fuentes.get("retiro_escombros", [])
+                         if f != "modelo_local"]
+        if vlm_escombros:
+            confirmantes, negativas, fallo_sm = _segunda_mirada_escombros(
+                img, set(vlm_escombros))
+            segunda_mirada = {
+                "confirmaron": [{"modelo": m, "evidencia": e}
+                                for m, e in confirmantes],
+                "negaron": [{"modelo": m, "evidencia": e}
+                            for m, e in negativas],
+                "fallo": fallo_sm,
+            }
+            if confirmantes and not negativas:
+                for m, _ in confirmantes:
+                    if m not in fuentes["retiro_escombros"]:
+                        fuentes["retiro_escombros"].append(m)
+                confirmadas.add("retiro_escombros")
+                disputadas.discard("retiro_escombros")
+
     arbitro = None
     en_duda = []
     if disputadas and activos:
@@ -1266,12 +1340,16 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             patente_escena = next(iter(lecturas_totales))
     finales = []
     for k in sorted(confirmadas):
-        finales.append({
+        entrada = {
             "key": k,
             "nombre": categorias.get(k, {}).get("nombre", k),
             "gravedad": grav.get(k) or grav_local,
             "fuentes": fuentes.get(k, []),
-        })
+        }
+        if (k == "retiro_escombros" and segunda_mirada
+                and segunda_mirada.get("confirmaron")):
+            entrada["segunda_mirada"] = True
+        finales.append(entrada)
 
     # Parte dañada: gana la más votada entre los modelos que la ubicaron; en
     # empate no se publica (el consumidor tiene su propio default, y un
@@ -1531,6 +1609,9 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         "posibles": posibles,
         "verificadores": veredictos,
         "arbitro": arbitro,
+        # Metadata de la segunda mirada de escombros (None si no corrió):
+        # el cache la mira para no congelar un "no" hecho con fallos de red.
+        "segunda_mirada": segunda_mirada,
         "confirmadas": finales,
         "en_duda": en_duda,
         # Interno, para que el serializador pueda filtrar en_duda por fuente:
