@@ -552,8 +552,13 @@ def procesar(datos, contexto, verificar):
             # pila mixta, la descripción vigente ya cuenta las dos cosas.
             if agrego_escombros or solo_escombros:
                 if descripcion:
+                    # También "cascote" y "material de obra": el árbitro niega
+                    # escombros con esas palabras ("no hay evidencia clara de
+                    # cascote") y la frase quedaría contradiciendo la nota.
+                    _niega = re.compile(r"escombro|cascote|material(?:es)? de obra",
+                                        re.IGNORECASE)
                     frases = [f for f in re.split(r"(?<=[.!?])\s+", descripcion)
-                              if f and "escombro" not in f.lower()]
+                              if f and not _niega.search(f)]
                     descripcion = " ".join(frases)
                 nota = ("El análisis del material indica que las bolsas "
                         "acumuladas contienen escombros de obra, no basura "
