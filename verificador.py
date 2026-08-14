@@ -1146,16 +1146,26 @@ def verificar(img, categorias, prediccion_local, contexto=""):
 
     subtipos_firmes = {}  # subtipo elegido -> subtipos descartados
 
-    # Un contenedor de húmedos es lateral O bilateral, nunca ambos. Los modelos
-    # de visión confunden el subtipo seguido; el modelo local es el experto acá,
-    # así que sus votos deciden el subtipo y los votos VLM del otro subtipo
-    # cuentan como "hay un contenedor de húmedos".
+    # Un contenedor de húmedos es lateral O bilateral, nunca ambos. Los votos
+    # de los modelos de visión (testigos de ESTA foto) deciden por mayoría;
+    # el modelo local solo desempata (o decide si ningún VLM se pronunció).
+    # Antes el local decidía siempre y en fotos que no vio en entrenamiento
+    # pisaba al único testigo correcto: un VLM reportó "contenedor negro con
+    # postes" (lateral) y se publicó bilateral porque el local lo dijo.
     grises = {"contenedor_humedos_lateral", "contenedor_humedos_bilateral"}
     vistos = grises & set(fuentes)
     if len(vistos) > 1:
-        local_gris = next((p["key"] for p in prediccion_local["predichas"]
-                           if p["key"] in grises), None)
-        elegido = local_gris or max(vistos, key=lambda k: len(fuentes[k]))
+        votos_vlm_gris = {k: sum(1 for f in fuentes[k] if f != "modelo_local")
+                          for k in vistos}
+        tope = max(votos_vlm_gris.values())
+        lideres = [k for k, v in votos_vlm_gris.items() if v == tope]
+        if len(lideres) == 1:
+            elegido = lideres[0]
+        else:
+            local_gris = next((p["key"] for p in prediccion_local["predichas"]
+                               if p["key"] in grises), None)
+            elegido = (local_gris if local_gris in lideres else
+                       max(lideres, key=lambda k: len(fuentes[k])))
         subtipos_firmes[elegido] = sorted(vistos - {elegido})
         _plegar_en(elegido, vistos - {elegido})
 
