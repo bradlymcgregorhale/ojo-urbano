@@ -498,29 +498,39 @@ def procesar(datos, contexto, verificar):
     # FUSIÓN ESCOMBROS: si el modelo local está prácticamente seguro
     # (>= FUSION_ESCOMBROS_UMBRAL) de que hay escombros y algún verificador
     # vio la misma pila de bolsas (recoleccion confirmada), el material lo
-    # reclasifica el especialista: escombros entra a problemas con las
-    # fuentes de esa pila más el local, marcado con reclasificado_por. Y si
-    # el local además dice que recolección casi no hay (la pila es SOLO
-    # escombros), la entrada recoleccion baja a posibles con su motivo.
-    # Sin recoleccion confirmada no se dispara: el voto local solo sigue
-    # sin publicarse (contrato v4).
+    # decide el especialista. Dos situaciones:
+    # (a) escombros NO estaba confirmado: entra a problemas con las fuentes
+    #     de esa pila más el local, marcado con reclasificado_por.
+    # (b) escombros YA estaba confirmado (p. ej. vía la segunda mirada): no
+    #     se agrega nada, pero la demotion de abajo aplica igual. Antes este
+    #     caso se salteaba entero y la misma pila salía DOBLE (recoleccion +
+    #     escombros), con una descripción que podía seguir negando escombros.
+    # En los dos casos, si el local además dice que recolección casi no hay
+    # (la pila es SOLO escombros), la entrada recoleccion baja a posibles
+    # con su motivo. Una pila genuinamente mixta (recoleccion local > umbral
+    # bajo) conserva las dos categorías, como siempre. Sin recoleccion
+    # confirmada no se dispara: el voto local solo sigue sin publicarse
+    # (contrato v4).
     if FUSION_ESCOMBROS and activar:
         prob_local = {p["key"]: p["score"]
                       for p in local.get("probabilidades") or []}
         esc_local = prob_local.get("retiro_escombros", 0.0)
         rec = next((c for c in problemas if c["key"] == "recoleccion"), None)
         ya_esta = any(c["key"] == "retiro_escombros" for c in problemas)
-        if esc_local >= FUSION_ESCOMBROS_UMBRAL and rec is not None and not ya_esta:
-            fuentes_esc = ["modelo_local"] + [
-                f for f in (rec.get("fuentes") or []) if f != "modelo_local"]
-            problemas.append({
-                "key": "retiro_escombros",
-                "nombre": CATEGORIAS.get("retiro_escombros", {}).get(
-                    "nombre", "retiro_escombros"),
-                "gravedad": rec.get("gravedad"),
-                "fuentes": fuentes_esc,
-                "reclasificado_por": "modelo_local",
-            })
+        if esc_local >= FUSION_ESCOMBROS_UMBRAL and rec is not None:
+            agrego_escombros = False
+            if not ya_esta:
+                fuentes_esc = ["modelo_local"] + [
+                    f for f in (rec.get("fuentes") or []) if f != "modelo_local"]
+                problemas.append({
+                    "key": "retiro_escombros",
+                    "nombre": CATEGORIAS.get("retiro_escombros", {}).get(
+                        "nombre", "retiro_escombros"),
+                    "gravedad": rec.get("gravedad"),
+                    "fuentes": fuentes_esc,
+                    "reclasificado_por": "modelo_local",
+                })
+                agrego_escombros = True
             solo_escombros = (prob_local.get("recoleccion", 1.0)
                               <= FUSION_ESCOMBROS_RECO_BAJA)
             if solo_escombros:
@@ -536,18 +546,22 @@ def procesar(datos, contexto, verificar):
             # contradiciendo al veredicto reclasificado. Y si el árbitro
             # negó escombros ("no se identifican escombros"), esa frase
             # quedó obsoleta: se quita antes de agregar la nota. En
-            # castellano de vecino, sin claves internas.
-            if descripcion:
-                frases = [f for f in re.split(r"(?<=[.!?])\s+", descripcion)
-                          if f and "escombro" not in f.lower()]
-                descripcion = " ".join(frases)
-            nota = ("El análisis del material indica que las bolsas "
-                    "acumuladas contienen escombros de obra, no basura "
-                    "domiciliaria común." if solo_escombros else
-                    "El análisis del material indica que entre las bolsas "
-                    "hay también escombros de obra.")
-            descripcion = (descripcion.rstrip() + " " + nota
-                           if descripcion else nota)
+            # castellano de vecino, sin claves internas. Solo se toca la
+            # descripción cuando la fusión cambió el veredicto (agregó
+            # escombros o bajó recoleccion): con escombros ya confirmado y
+            # pila mixta, la descripción vigente ya cuenta las dos cosas.
+            if agrego_escombros or solo_escombros:
+                if descripcion:
+                    frases = [f for f in re.split(r"(?<=[.!?])\s+", descripcion)
+                              if f and "escombro" not in f.lower()]
+                    descripcion = " ".join(frases)
+                nota = ("El análisis del material indica que las bolsas "
+                        "acumuladas contienen escombros de obra, no basura "
+                        "domiciliaria común." if solo_escombros else
+                        "El análisis del material indica que entre las bolsas "
+                        "hay también escombros de obra.")
+                descripcion = (descripcion.rstrip() + " " + nota
+                               if descripcion else nota)
 
     descartados = []
     if foto_valida is False:

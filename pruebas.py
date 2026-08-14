@@ -1618,6 +1618,73 @@ else:
               _r["en_duda"], _r["detalle"]["verificacion"].get("arbitro")))
     V._clasificar_contexto = _previo["_clasificar_contexto"]
 
+    # FUSIÓN ESCOMBROS: el especialista local decide el material de la pila.
+    # Tres caminos: escombros ya confirmado por los verificadores (la
+    # demotion de recoleccion tiene que aplicar igual: era el hueco por el
+    # que la misma pila salía doble), pila mixta (conserva las dos), y el
+    # camino original donde el local agrega escombros reclasificando.
+    print("[#F] fusión escombros: demotion también con escombros ya confirmado")
+    _local_prev = servidor.clasificar_local
+
+    def _local_con(esc, rec_s):
+        probs = [{"key": "retiro_escombros", "nombre": "Retiro de escombros",
+                  "score": esc},
+                 {"key": "recoleccion", "nombre": "Recolección de residuos",
+                  "score": rec_s},
+                 {"key": "sin_problema", "nombre": "Sin problema", "score": 0.01}]
+        predichas = [p for p in probs if p["score"] >= 0.5] or probs[:1]
+        return {"predichas": predichas, "top5": probs, "probabilidades": probs,
+                "gravedad": {"value": 3, "raw": 3.0}, "umbral": 0.5}
+
+    try:
+        # escombros confirmado por los DOS verificadores y local dice pila
+        # pura: recoleccion baja a posibles y la descripción cuenta el material
+        servidor.clasificar_local = lambda img: _local_con(0.99, 0.0)
+        V._verificar_uno = _mock(["recoleccion", "retiro_escombros"], [], None)
+        _r = _pedir(_bytes, "", "1")
+        _keys = {p["key"] for p in _r["problemas"]}
+        check("escombros ya confirmado + pila pura: recoleccion baja",
+              _keys == {"retiro_escombros"}, str(_keys))
+        check("  la entrada bajada queda en posibles con motivo",
+              any(p.get("key") == "recoleccion" and p.get("motivo")
+                  for p in _r["posibles"]), str(_r["posibles"])[:120])
+        check("  sin reclasificado_por (lo confirmaron los verificadores)",
+              not any(p.get("reclasificado_por") for p in _r["problemas"]))
+        check("  y la descripción cuenta el material",
+              "escombros de obra" in (_r["descripcion"] or ""),
+              str(_r["descripcion"])[:90])
+        check("  sin recoleccion duplicada en posibles",
+              sum(1 for p in _r["posibles"]
+                  if p.get("key") == "recoleccion") == 1)
+
+        # pila mixta según el local: se conservan las dos categorías y la
+        # descripción vigente no se toca
+        servidor.clasificar_local = lambda img: _local_con(0.99, 0.6)
+        V._verificar_uno = _mock(["recoleccion", "retiro_escombros"], [], None)
+        _r = _pedir(_bytes, "", "1")
+        _keys = {p["key"] for p in _r["problemas"]}
+        check("pila mixta según el local: conserva las dos categorías",
+              _keys == {"recoleccion", "retiro_escombros"}, str(_keys))
+        check("  y la descripción no se toca",
+              "escombros de obra" not in (_r["descripcion"] or ""),
+              str(_r["descripcion"])[:90])
+
+        # camino original intacto: los verificadores no vieron escombros y
+        # el local lo agrega reclasificando
+        servidor.clasificar_local = lambda img: _local_con(0.99, 0.0)
+        V._verificar_uno = _mock(["recoleccion"], [], None)
+        _r = _pedir(_bytes, "", "1")
+        _esc = next((p for p in _r["problemas"]
+                     if p["key"] == "retiro_escombros"), None)
+        check("verificadores sin escombros: el local lo agrega reclasificando",
+              _esc is not None
+              and _esc.get("reclasificado_por") == "modelo_local",
+              str(_r["problemas"])[:140])
+        check("  y recoleccion también baja",
+              "recoleccion" not in {p["key"] for p in _r["problemas"]})
+    finally:
+        servidor.clasificar_local = _local_prev
+
     # Invariante sobre las respuestas REALES de arriba: el booleano y el
     # estado nunca pueden contradecirse. Un true con estado "sin_contexto"
     # (o un null con estado "corresponde") sería un contrato roto.
