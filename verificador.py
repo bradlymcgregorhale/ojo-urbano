@@ -716,7 +716,11 @@ SEÑALES POSITIVAS (hace falta evidencia directa, o DOS señales independientes)
 - Evidencia directa: cascote, ladrillo, revoque o arena de obra a la vista (suelto, sobre las bolsas o asomando por una boca o rotura); una bolsa rasgada cuyo relleno visible es material denso de obra sin residuos domésticos reconocibles; un saco lleno y denso con etiqueta de material de construcción.
 - Señales: (1) porte de bolsa de arena: chica para ser de basura, densa, medio llena, parada sola y casi sin caída; (2) aristas de fragmentos angulosos marcando el plástico por TODA la bolsa; (3) polvo de obra blanquecino o gris sobre las bolsas o el piso alrededor; (4) sacos de rafia o arpillera chicos, llenos y densos.
 SEÑALES NEGATIVAS (bolsa común): grande, liviana, brillante, redondeada, atada con orejas, bultos blandos, rodeada de residuos domésticos reconocibles.
-Con UNA sola señal positiva o ninguna, NO es escombros. Decidí solo por lo que VES: si las bolsas no se distinguen bien (oscuridad, distancia), tu veredicto es "indeterminado", no adivines.
+CÓMO ELEGIR EL VEREDICTO, con cuidado porque los tres significan cosas distintas:
+- "escombros": hay evidencia directa, o DOS señales positivas independientes.
+- "basura_comun": ves SEÑALES NEGATIVAS y ninguna positiva. Es un "no" sobre lo que ves, no un "no me alcanza para afirmarlo".
+- "indeterminado": todo el resto. En particular va acá el caso de UNA sola señal positiva sin llegar a dos, y el de bolsas que no se distinguen bien (oscuridad, distancia).
+Una señal positiva sola NUNCA es "basura_comun": es "indeterminado". Decidí solo por lo que VES, no adivines.
 Respondé SOLO con JSON válido: {"veredicto": "escombros" | "basura_comun" | "indeterminado", "evidencia": "qué viste, máx 15 palabras"}"""
 
 
@@ -725,7 +729,16 @@ def _segunda_mirada_escombros(img, ya_reportaron):
     sugestión: no se menciona qué vio el modelo disidente ni dónde. Devuelve
     (confirmantes, negativas, fallo): las negativas dirigidas pesan más que
     el silencio original y bloquean la confirmación; un fallo de red se
-    reporta para que la respuesta no se cachee como un "no" definitivo."""
+    reporta para que la respuesta no se cachee como un "no" definitivo.
+
+    Solo "basura_comun" veta. "indeterminado" es neutro A PROPÓSITO: ahí cae
+    el modelo que vio UNA señal positiva pero no llegó a las dos que pide la
+    rúbrica. Medido en producción, un modelo contestaba "basura_comun" con la
+    evidencia "sacos de rafia blancos, pequeños y densos", que es textual la
+    señal (4) de la rúbrica: había visto evidencia A FAVOR y su respuesta
+    terminaba vetando la confirmación. El prompt ahora manda ese caso a
+    "indeterminado"; el listón para confirmar no se movió (sigue haciendo
+    falta que alguien diga "escombros")."""
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
     confirmantes, negativas, fallo = [], [], False
     for modelo in VERIFICADORES:
