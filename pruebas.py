@@ -340,6 +340,28 @@ código3, _ = pedir("/trabajos", *_multipart("t.jpg", foto(833, 633))[::1])
 check("el techo global devuelve 503", código3 == 503, f"HTTP {código3}")
 S.TRABAJOS_POR_IP, S.TRABAJOS_MAX = _por_ip_prev, _max_prev
 
+# Cancelación de un trabajo en cola. OJO: el cupo sigue tomado desde el
+# bloque de techos (lo suelta recién la prueba de prioridad), así que acá
+# NO se toca el semáforo; tA sigue encolado a propósito.
+código, tC = pedir("/trabajos", *_multipart("t.jpg", foto(838, 638))[::1])
+código2, eC = pedir(f"/trabajos?id={tC.get('trabajo')}", metodo="DELETE")
+check("DELETE cancela un trabajo en cola",
+      código == 202 and código2 == 200 and eC.get("estado") == "cancelado",
+      f"HTTP {código}/{código2} {eC}")
+código3, e3 = pedir(f"/trabajos?id={tC.get('trabajo')}")
+check("  y la consulta lo muestra cancelado",
+      código3 == 200 and e3.get("estado") == "cancelado", str(e3)[:80])
+# el lugar de pendientes se libera al instante: con techo 2 y tA pendiente,
+# un trabajo nuevo entra solo si el cancelado ya no cuenta
+_max_prev2, S.TRABAJOS_MAX = S.TRABAJOS_MAX, 2
+código4, tD = pedir("/trabajos", *_multipart("t.jpg", foto(839, 639))[::1])
+check("  el lugar de pendientes queda libre al instante",
+      código4 == 202, f"HTTP {código4}")
+pedir(f"/trabajos?id={tD.get('trabajo')}", metodo="DELETE")
+S.TRABAJOS_MAX = _max_prev2
+código5, _ = pedir("/trabajos?id=nadie", metodo="DELETE")
+check("DELETE de un id desconocido devuelve 404", código5 == 404, f"HTTP {código5}")
+
 # Prioridad: con un trabajo esperando el cupo, un sincrónico que llega
 # después igual gana el cupo; el trabajo recién corre cuando el sincrónico
 # terminó.
@@ -370,6 +392,30 @@ for _ in range(150):
     time.sleep(0.2)
 check("  y el trabajo termina bien después", _fin_a == "listo", str(_fin_a))
 _demora["s"] = 0.0
+
+# Un trabajo YA EN ANÁLISIS no se puede cancelar: 409, y termina igual.
+_demora["s"] = 2.5
+código, tE = pedir("/trabajos", *_multipart("t.jpg", foto(840, 640))[::1])
+_tid_e = tE.get("trabajo")
+_cancel_409 = None
+for _ in range(50):
+    time.sleep(0.2)
+    _c, _e = pedir(f"/trabajos?id={_tid_e}")
+    if _e.get("estado") == "procesando":
+        _cancel_409, _ = pedir(f"/trabajos?id={_tid_e}", metodo="DELETE")
+        break
+    if _e.get("estado") in ("listo", "error"):
+        break
+check("un trabajo procesando no se puede cancelar (409)",
+      _cancel_409 == 409, f"HTTP {_cancel_409}")
+for _ in range(100):
+    _c, _e = pedir(f"/trabajos?id={_tid_e}")
+    if _e.get("estado") in ("listo", "error"):
+        break
+    time.sleep(0.2)
+check("  y termina bien igual", _e.get("estado") == "listo", str(_e.get("estado")))
+_demora["s"] = 0.0
+
 check("las colas quedan vacías", not S._cola and not S._cola_trab,
       f"{len(S._cola)} sync, {len(S._cola_trab)} trabajos")
 check("no quedan trabajos pendientes", not S._trabajos_pendientes())

@@ -1011,7 +1011,7 @@ def _podar_trabajos():
     pendientes: un trabajo aceptado siempre llega a listo o error."""
     ahora = time.monotonic()
     vencidos = [tid for tid, t in _trabajos.items()
-                if t["estado"] in ("listo", "error")
+                if t["estado"] in ("listo", "error", "cancelado")
                 and ahora - t["fin"] > TRABAJO_TTL]
     for tid in vencidos:
         del _trabajos[tid]
@@ -1019,7 +1019,7 @@ def _podar_trabajos():
     # un trabajo viejo que recién termina no puede ser el primero en caer
     # antes de que su dueño lo pase a buscar.
     terminados = sorted((tid for tid, t in _trabajos.items()
-                         if t["estado"] in ("listo", "error")),
+                         if t["estado"] in ("listo", "error", "cancelado")),
                         key=lambda tid: _trabajos[tid]["fin"])
     for tid in terminados[:max(0, len(terminados) - TRABAJOS_LISTOS_MAX)]:
         del _trabajos[tid]
@@ -1071,9 +1071,12 @@ async def _correr_trabajo(t):
     except asyncio.TimeoutError:
         t["estado"], t["detalle"] = "error", "el análisis superó el tiempo máximo"
     except asyncio.CancelledError:
-        # Apagado del servidor: el registro muere con el proceso igual, pero
-        # que no quede "procesando" si alguien consulta en la ventana final.
-        t["estado"], t["detalle"] = "error", "el servidor se está apagando"
+        # Dos motivos posibles: el cliente canceló el trabajo (el estado ya
+        # dice "cancelado"; se respeta) o el servidor se está apagando (el
+        # registro muere con el proceso igual, pero que no quede
+        # "procesando" si alguien consulta en la ventana final).
+        if t["estado"] != "cancelado":
+            t["estado"], t["detalle"] = "error", "el servidor se está apagando"
         raise
     except Exception:  # noqa: BLE001 - un trabajo jamás muere sin estado final
         t["estado"], t["detalle"] = "error", "falla interna al procesar la foto"
@@ -1131,9 +1134,50 @@ def _estado_trabajo(tid):
         r["posicion"] = _posicion_trabajo(t)
     elif t["estado"] == "listo":
         r["resultado"] = t["resultado"]
-    elif t["estado"] == "error":
+    elif t["estado"] in ("error", "cancelado"):
         r["detail"] = t["detalle"]
     return r
+
+
+def _cancelar_trabajo(tid):
+    """Cancela un trabajo QUE TODAVÍA NO ARRANCÓ. Uno en análisis no se puede
+    frenar (el hilo ya está quemando CPU y llamadas pagas): 409, y el cliente
+    decide si sigue esperando el resultado. Cancelar libera al instante el
+    lugar de pendientes (global y por IP) y los bytes de la foto."""
+    t = _trabajos.get(tid)
+    if t is None:
+        raise HTTPException(404, "trabajo desconocido o vencido")
+    if t["estado"] == "procesando":
+        raise HTTPException(409, "el análisis ya arrancó; no se puede cancelar")
+    if t["estado"] == "en_cola":
+        # El estado se marca ANTES de cancelar la tarea: su manejador de
+        # CancelledError distingue por esto una cancelación pedida de un
+        # apagado del servidor. fin y datos se fijan ACÁ y no solo en el
+        # finally de la tarea: una tarea cancelada antes de su primer paso
+        # nunca ejecuta ese finally, y sin esto el registro quedaría sin
+        # fecha de vencimiento reteniendo la foto.
+        t["estado"], t["detalle"] = "cancelado", "cancelado por el cliente"
+        t["fin"], t["datos"] = time.monotonic(), None
+        tarea = t.get("tarea")
+        if tarea is not None:
+            tarea.cancel()
+        return {"trabajo": tid, "estado": "cancelado"}
+    # listo / error / cancelado: borrar el registro alcanza
+    del _trabajos[tid]
+    return {"trabajo": tid, "estado": "eliminado"}
+
+
+@app.delete("/trabajos")
+@app.delete("/trabajos/")
+async def cancelar_trabajo_query(id: str = ""):
+    if not id:
+        raise HTTPException(400, "falta el parámetro id")
+    return _cancelar_trabajo(id)
+
+
+@app.delete("/trabajos/{tid}")
+async def cancelar_trabajo(tid: str):
+    return _cancelar_trabajo(tid)
 
 
 # El alias con query string va ANTES que el segmento dinámico y existe porque
@@ -1222,6 +1266,10 @@ PAGINA = r"""<!DOCTYPE html>
           display:flex;align-items:center;justify-content:center;padding:0 9px;letter-spacing:.03em}
   .velo{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
         background:rgba(17,17,17,.28)}
+  .quitarbtn{position:absolute;top:8px;left:8px;width:30px;height:30px;border-radius:15px;
+          border:none;background:rgba(17,17,17,.82);color:#fff;font-size:15px;line-height:1;
+          cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+  .quitarbtn:hover{background:var(--rojo)}
   .velo .spin{width:34px;height:34px;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;
         border-radius:50%;animation:gira .8s linear infinite}
   @keyframes gira{to{transform:rotate(360deg)}}
@@ -1325,7 +1373,9 @@ PAGINA = r"""<!DOCTYPE html>
       <div class="endpoint"><b>POST</b> <span id="ep2"></span> · mismos campos · responde al instante con
         {"trabajo": id, "estado": "en_cola", "posicion": n}<br>
         <b>GET</b> <span id="ep3"></span> · estado del trabajo: en_cola, procesando, listo (trae
-        <b>resultado</b>) o error</div>
+        <b>resultado</b>) o error<br>
+        <b>DELETE</b> <span id="ep4"></span> · cancela un trabajo que sigue en cola y libera su lugar;
+        uno que ya está en análisis no se puede cancelar (409)</div>
       <div class="apinote">La vía asíncrona (<b>/trabajos</b>) es la recomendada para lotes: el servidor
         procesa de a una foto y encola el resto; hay un tope global de trabajos pendientes y otro por IP,
         y pasado el tope el POST devuelve 429/503 con <b>Retry-After</b> para reintentar. Los trabajos
@@ -1357,6 +1407,7 @@ const T=O+'/trabajos'+SUF;
 $('#ep').textContent=O+'/clasificar'+SUF;
 $('#ep2').textContent=T;
 $('#ep3').textContent=T+'?id=...';
+$('#ep4').textContent=T+'?id=...';
 const GRAV={1:'mínima',2:'leve',3:'alta',4:'grave',5:'muy grave'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const SNIP={
@@ -1514,6 +1565,7 @@ async function sondear(){
         const d=await r.json();
         if(d.estado==='listo')resolver(it,d.resultado);
         else if(d.estado==='error')fallar(it,d.detail||'falla en el análisis');
+        else if(d.estado==='cancelado')fallar(it,'el trabajo fue cancelado');
         else{
           if(d.estado==='procesando'&&!it.tProc)it.tProc=Date.now();
           it.estado=d.estado;it.posicion=d.posicion;pintar(it);
@@ -1521,6 +1573,29 @@ async function sondear(){
       }catch(e){/* corte de red transitorio: la próxima pasada lo cubre */}
     }
   }finally{sondeando=false;}
+}
+
+async function quitar(it){
+  // Encolada en el servidor: se cancela allá primero. Un 409 significa que
+  // el análisis arrancó en el medio: la foto ya no se puede quitar.
+  if(it.estado==='en_cola'&&it.trabajo){
+    try{
+      const r=await fetch(T+'?id='+encodeURIComponent(it.trabajo),{method:'DELETE'});
+      if(r.status===409){
+        it.estado='procesando';if(!it.tProc)it.tProc=Date.now();pintar(it);
+        return;
+      }
+    }catch(e){/* si el servidor no contesta, igual se quita de la página */}
+  }else if(!['espera','en_cola'].includes(it.estado)){
+    return;
+  }
+  const img=it.card.querySelector('img');
+  if(img&&img.src.startsWith('blob:'))URL.revokeObjectURL(img.src);
+  it.card.remove();
+  items=items.filter(x=>x!==it);
+  if(!items.length)iniciado=false;
+  actualizarBarra();
+  bombear();
 }
 
 function resolver(it,resultado){
@@ -1555,11 +1630,18 @@ function pintar(it){
   const banda=it.card.querySelector('.banda');
   const mini=it.card.querySelector('.miniatura');
   const res=it.card.querySelector('.tarres');
-  mini.querySelectorAll('.puesto,.velo').forEach(x=>x.remove());
+  mini.querySelectorAll('.puesto,.velo,.quitarbtn').forEach(x=>x.remove());
   it.card.classList.toggle('activa',it.estado==='procesando');
   it.card.classList.toggle('fallida',it.estado==='error');
   it.card.classList.toggle('apagada',it.estado==='espera'||it.estado==='en_cola'||it.estado==='enviando');
   banda.className='banda';
+  if(it.estado==='espera'||it.estado==='en_cola'){
+    const q=document.createElement('button');
+    q.className='quitarbtn';q.textContent='\u2715';
+    q.title='Quitar esta foto';q.setAttribute('aria-label','Quitar '+it.file.name);
+    q.onclick=()=>quitar(it);
+    mini.appendChild(q);
+  }
   if(it.estado==='espera'){
     banda.innerHTML='Por enviar'+(it.nota?`<span class="der">${esc(it.nota)}</span>`:'<span class="der">todavía en tu navegador</span>');
   }else if(it.estado==='enviando'){
