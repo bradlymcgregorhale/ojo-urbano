@@ -1516,9 +1516,17 @@ function enVuelo(){return items.filter(i=>['enviando','en_cola','procesando'].in
 
 function bombear(){
   if(!iniciado)return;
-  for(const it of items){
-    if(enVuelo()>=MAX_VUELO)break;
-    if(it.estado==='espera'&&(!it.noAntes||Date.now()>=it.noAntes))enviar(it);
+  // una sola subida a la vez: si hubiera varias en paralelo, la foto más
+  // liviana llegaría primero y el servidor procesaría fuera de orden; el
+  // que termina de subir vuelve a llamar a bombear() para la siguiente
+  if(!items.some(i=>i.estado==='enviando')){
+    for(const it of items){
+      if(enVuelo()>=MAX_VUELO)break;
+      if(it.estado==='espera'&&(!it.noAntes||Date.now()>=it.noAntes)){
+        enviar(it);
+        break;
+      }
+    }
   }
   actualizarBarra();
 }
@@ -1528,7 +1536,17 @@ async function enviar(it){
   const fd=new FormData();fd.append('file',it.file);
   const ctx=$('#ctx').value.trim();if(ctx)fd.append('contexto',ctx);
   try{
-    const r=await fetch(T,{method:'POST',body:fd});
+    // techo de subida: con la bomba serializada, una subida colgada
+    // frenaría el lote entero; pasado el techo la tarjeta falla (con
+    // Reintentar) y la bomba sigue con la siguiente
+    const corte=new AbortController();
+    const corteT=setTimeout(()=>corte.abort(),120000);
+    let r;
+    try{
+      r=await fetch(T,{method:'POST',body:fd,signal:corte.signal});
+    }finally{
+      clearTimeout(corteT);
+    }
     if(r.status===429||r.status===503){
       // servidor lleno: la tarjeta vuelve a la espera y se reintenta sola
       const ra=parseInt(r.headers.get('Retry-After'),10);
@@ -1547,8 +1565,9 @@ async function enviar(it){
     const d=await r.json();
     if(d.estado==='listo'&&d.resultado){it.tProc=it.tProc||Date.now();resolver(it,d.resultado);return;}
     it.trabajo=d.trabajo;it.posicion=d.posicion;it.estado='en_cola';pintar(it);
+    bombear();
   }catch(e){
-    fallar(it,'no se pudo enviar: '+e.message);
+    fallar(it,e.name==='AbortError'?'la subida tardó demasiado':'no se pudo enviar: '+e.message);
   }
   actualizarBarra();
 }
@@ -1581,8 +1600,10 @@ async function sondear(){
         else if(d.estado==='error')fallar(it,d.detail||'falla en el análisis');
         else if(d.estado==='cancelado')fallar(it,'el trabajo fue cancelado');
         else{
+          const cambio=it.estado!==d.estado||it.posicion!==d.posicion;
           if(d.estado==='procesando'&&!it.tProc)it.tProc=Date.now();
-          it.estado=d.estado;it.posicion=d.posicion;pintar(it);
+          it.estado=d.estado;it.posicion=d.posicion;
+          if(cambio)pintar(it);
         }
       }catch(e){/* corte de red transitorio: la próxima pasada lo cubre */}
     }
@@ -1668,7 +1689,8 @@ function pintar(it){
     }
   }else if(it.estado==='procesando'){
     banda.className='banda proc';
-    banda.innerHTML='<span class="spinmini"></span>Analizando<span class="der">0 s</span>';
+    const seg=it.tProc?Math.round((Date.now()-it.tProc)/1000):0;
+    banda.innerHTML='<span class="spinmini"></span>Analizando<span class="der">'+seg+' s</span>';
     const v=document.createElement('div');v.className='velo';v.innerHTML='<div class="spin"></div>';
     mini.appendChild(v);
   }else if(it.estado==='listo'){
