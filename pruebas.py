@@ -1944,22 +1944,61 @@ check("  pero NO la presencia de contrabando, que sigue en duda",
 V.ARBITRO_CONFIRMA = False
 V._llamar = _llamar_pres
 
-# Con una segunda fuente (el modelo local decide además el SUBTIPO), la
-# presencia se confirma y el voto VLM del otro subtipo se pliega: es el
-# camino que la alimenta a elementos_detectados.
-LOCAL_BILATERAL = {
-    "predichas": [{"key": "contenedor_humedos_bilateral", "nombre": "CHB",
-                   "score": 0.9},
-                  {"key": "recoleccion", "nombre": "Rec", "score": 0.9}],
-    "probabilidades": [{"key": "contenedor_humedos_bilateral", "nombre": "CHB",
-                        "score": 0.9}],
-    "gravedad": {"value": 2, "raw": 2.1}}
-r2 = V.verificar(_Img(), CATS, LOCAL_BILATERAL, "")
-check("local bilateral + VLM lateral se pliega y confirma BILATERAL",
-      "contenedor_humedos_bilateral" in {c["key"] for c in r2["confirmadas"]}
-      and "contenedor_humedos_lateral" not in {c["key"] for c in r2["confirmadas"]}
-      and "contenedor_humedos_lateral" not in r2["en_duda"],
-      str([c["key"] for c in r2["confirmadas"]]) + " " + str(r2["en_duda"]))
+# SUBTIPO del contenedor de húmedos: lateral o bilateral, nunca los dos. El
+# local vale como voto propio solo si está decidido (margen >= umbral) Y algún
+# verificador vio lo mismo. Las dos condiciones se prueban por separado porque
+# cada una nació de un incidente distinto en producción.
+def _local_gris(bil, lat):
+    """Predicción local con el subtipo ganador y su margen explícitos."""
+    gana = "contenedor_humedos_bilateral" if bil > lat else "contenedor_humedos_lateral"
+    return {"predichas": [{"key": gana, "nombre": "CH", "score": max(bil, lat)},
+                          {"key": "recoleccion", "nombre": "Rec", "score": 0.9}],
+            "probabilidades": [
+                {"key": "contenedor_humedos_bilateral", "nombre": "CHB", "score": bil},
+                {"key": "contenedor_humedos_lateral", "nombre": "CHL", "score": lat},
+                {"key": "recoleccion", "nombre": "Rec", "score": 0.9}],
+            "gravedad": {"value": 2, "raw": 2.1}}
+
+# (a) El local está decidido pero NINGÚN verificador lo acompaña: manda el
+# testigo de la foto. Es el incidente de "contenedor negro con postes".
+r2 = V.verificar(_Img(), CATS, _local_gris(0.99, 0.01), "")
+check("local bilateral SIN respaldo VLM: gana el testigo, LATERAL",
+      "contenedor_humedos_lateral" in {c["key"] for c in r2["confirmadas"]}
+      and "contenedor_humedos_bilateral" not in {c["key"] for c in r2["confirmadas"]},
+      str([c["key"] for c in r2["confirmadas"]]))
+check("  y el subtipo perdedor se pliega, no queda en duda",
+      "contenedor_humedos_bilateral" not in r2["en_duda"], str(r2["en_duda"]))
+
+# (b) El local decidido Y un verificador lo acompaña, contra DOS que dicen lo
+# otro: gana el local. Es la foto real que salió publicada como lateral siendo
+# bilateral (local 1.000 contra 0.027, y un verificador acertando solo).
+_prev_ver, _prev_llamar = V.VERIFICADORES, V._llamar
+V.VERIFICADORES = ["vlm/uno", "vlm/dos", "vlm/tres"]
+def _resp_subtipo(clave):
+    return json.dumps({"categorias": [
+        {"key": "recoleccion", "gravedad": 2, "evidencia": "bolsas"},
+        {"key": clave, "gravedad": 1, "evidencia": "contenedor"}],
+        "sin_problema": False, "descripcion": "Bolsas junto a un contenedor.",
+        "categorias_contexto": []})
+_MAYORIA_LATERAL = {"vlm/uno": _resp_subtipo("contenedor_humedos_lateral"),
+                    "vlm/dos": _resp_subtipo("contenedor_humedos_lateral"),
+                    "vlm/tres": _resp_subtipo("contenedor_humedos_bilateral")}
+V._llamar = lambda modelo, mensajes, **k: (
+    _ARB_PRES if modelo == V.ARBITRO else _MAYORIA_LATERAL[modelo])
+r4 = V.verificar(_Img(), CATS, _local_gris(1.0, 0.027), "")
+check("local decidido + 1 VLM que lo acompaña le gana a 2 VLM: BILATERAL",
+      "contenedor_humedos_bilateral" in {c["key"] for c in r4["confirmadas"]}
+      and "contenedor_humedos_lateral" not in {c["key"] for c in r4["confirmadas"]},
+      str([c["key"] for c in r4["confirmadas"]]))
+
+# (c) Mismo reparto de votos, pero el local NO está decidido: manda la mayoría
+# de los verificadores. El umbral es lo que separa un caso del otro.
+r5 = V.verificar(_Img(), CATS, _local_gris(0.55, 0.45), "")
+check("local indeciso con el mismo reparto: manda la mayoría VLM, LATERAL",
+      "contenedor_humedos_lateral" in {c["key"] for c in r5["confirmadas"]}
+      and "contenedor_humedos_bilateral" not in {c["key"] for c in r5["confirmadas"]},
+      str([c["key"] for c in r5["confirmadas"]]))
+V.VERIFICADORES, V._llamar = _prev_ver, _prev_llamar
 
 # La caché: una presencia en duda es un estado FINAL por diseño, no un
 # arbitraje incompleto; no puede volver incacheable cada foto con contenedor.

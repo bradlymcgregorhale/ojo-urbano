@@ -133,6 +133,15 @@ VERIFICADORES = [m.strip() for m in os.environ.get(
 SEGUNDA_MIRADA_ESCOMBROS = os.environ.get(
     "SEGUNDA_MIRADA_ESCOMBROS", "1").strip().lower() not in ("0", "false", "no")
 LADO_SEGUNDA_MIRADA = int(os.environ.get("LADO_SEGUNDA_MIRADA", "1600"))
+# Subtipo del contenedor de húmedos (lateral vs bilateral): margen mínimo del
+# modelo local (|bilateral - lateral|) para que su voto valga como voto y no
+# solo como desempate. Medido sobre las 70 fotos del set revisado que tienen
+# subtipo humano: el local acierta 67/70 en general, pero de 0.95 para arriba
+# acierta 60/60, y su único error confiado se queda en 0.886. El margen es lo
+# que separa "lo tengo clarísimo" de "no vi bien el contenedor": promedia
+# 0.921 cuando acierta y 0.310 cuando falla. Mismo umbral que usa la fusión
+# de escombros, por la misma razón.
+SUBTIPO_LOCAL_MARGEN = float(os.environ.get("SUBTIPO_LOCAL_MARGEN", "0.95"))
 
 ARBITRO = os.environ.get("ARBITRO", "deepseek/deepseek-v4-flash").strip()
 # Si el árbitro es un modelo con visión, conviene darle la foto: decidir sobre
@@ -1214,26 +1223,43 @@ def verificar(img, categorias, prediccion_local, contexto=""):
 
     subtipos_firmes = {}  # subtipo elegido -> subtipos descartados
 
-    # Un contenedor de húmedos es lateral O bilateral, nunca ambos. Los votos
-    # de los modelos de visión (testigos de ESTA foto) deciden por mayoría;
-    # el modelo local solo desempata (o decide si ningún VLM se pronunció).
-    # Antes el local decidía siempre y en fotos que no vio en entrenamiento
-    # pisaba al único testigo correcto: un VLM reportó "contenedor negro con
-    # postes" (lateral) y se publicó bilateral porque el local lo dijo.
+    # Un contenedor de húmedos es lateral O bilateral, nunca ambos. Deciden
+    # los votos de los modelos de visión, que son los testigos de ESTA foto,
+    # con UNA excepción: el modelo local (entrenado con estos contenedores de
+    # esta ciudad) vale como voto propio cuando está decidido de verdad Y
+    # algún verificador vio lo mismo que él. Las dos condiciones importan y
+    # cada una arregla un incidente real:
+    #  - sin la del margen, el local pisaba al único testigo correcto en fotos
+    #    que no había visto (un VLM reportó "contenedor negro con postes" y se
+    #    publicó bilateral porque el local lo dijo);
+    #  - sin la de la corroboración, dos generalistas en mayoría pisaban al
+    #    local y al verificador que sí habían acertado (contenedor bilateral
+    #    publicado como lateral, con el local en 1.000 contra 0.027).
+    # Medido: con margen >= SUBTIPO_LOCAL_MARGEN el local acierta 60/60 en el
+    # set revisado; su único error confiado se queda abajo del umbral.
     grises = {"contenedor_humedos_lateral", "contenedor_humedos_bilateral"}
     vistos = grises & set(fuentes)
     if len(vistos) > 1:
         votos_vlm_gris = {k: sum(1 for f in fuentes[k] if f != "modelo_local")
                           for k in vistos}
-        tope = max(votos_vlm_gris.values())
-        lideres = [k for k, v in votos_vlm_gris.items() if v == tope]
-        if len(lideres) == 1:
-            elegido = lideres[0]
+        prob_gris = {p["key"]: p.get("score", 0.0)
+                     for p in prediccion_local.get("probabilidades") or []
+                     if p.get("key") in grises}
+        local_gris = max(prob_gris, key=prob_gris.get) if prob_gris else None
+        margen = abs(prob_gris.get("contenedor_humedos_bilateral", 0.0)
+                     - prob_gris.get("contenedor_humedos_lateral", 0.0))
+        # el local decide solo si está decidido Y no está solo
+        if (local_gris in vistos and margen >= SUBTIPO_LOCAL_MARGEN
+                and votos_vlm_gris.get(local_gris, 0) >= 1):
+            elegido = local_gris
         else:
-            local_gris = next((p["key"] for p in prediccion_local["predichas"]
-                               if p["key"] in grises), None)
-            elegido = (local_gris if local_gris in lideres else
-                       max(lideres, key=lambda k: len(fuentes[k])))
+            tope = max(votos_vlm_gris.values())
+            lideres = [k for k, v in votos_vlm_gris.items() if v == tope]
+            if len(lideres) == 1:
+                elegido = lideres[0]
+            else:
+                elegido = (local_gris if local_gris in lideres else
+                           max(lideres, key=lambda k: len(fuentes[k])))
         subtipos_firmes[elegido] = sorted(vistos - {elegido})
         _plegar_en(elegido, vistos - {elegido})
 
