@@ -2139,13 +2139,17 @@ check("  el chevrón identifica pero SOLO no alcanza",
 check("  y no discrimina subtipo",
       "NO dice el subtipo" in V._RUBRICA)
 check("  subtipo del recortado: pared plana gris sin poste -> bilateral",
-      "pared PLANA vertical gris sin poste a la vista -> bilateral" in V._RUBRICA)
+      "pared PLANA vertical gris sin poste a la vista -> bilateral" in V._RUBRICA
+      and "cuerpo negro o azul, redondeado" in V._RUBRICA)
 check("  la entrada lateral advierte contra votar lateral por el color",
       "NO lo reportes lateral por el color" in V._RUBRICA)
 check("  pero el negro decide: negro es siempre lateral, nunca bilateral",
       "NEGRO es SIEMPRE lateral" in V._RUBRICA
-      and "no existe un bilateral negro" in V._RUBRICA
+      and "no existe un bilateral negro ni azul" in V._RUBRICA
       and "no lo reportes bilateral nunca" in V._RUBRICA)
+check("  y el azul tampoco es bilateral: el único color de bilateral es gris",
+      "el AZUL también" in V._RUBRICA
+      and "NEGRO o AZUL es siempre lateral" in V._RUBRICA)
 check("  con la salvaguarda del negro de verdad vs gris ensombrecido",
       "NEGRO DE VERDAD" in V._RUBRICA
       and "no uses el color y decidí por los postes" in V._RUBRICA)
@@ -2198,7 +2202,15 @@ def _correr_base(votos, dirigidas, dano=None):
     dano: modelo -> veredicto de la pasada dirigida del daño."""
     def _llamar_b(modelo, mensajes, **k):
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_BASE:
-            return json.dumps({"veredicto": dirigidas[modelo],
+            _v = dirigidas[modelo]
+            if _v == "base_sin_estructura":
+                # el modelo sugestionado: contesta "base" pero admite que no
+                # hay ninguna estructura -> la compuerta lo descarta
+                return json.dumps({"hay_estructura": False,
+                                   "veredicto": "base_de_contenedor",
+                                   "evidencia": "lo que vi"})
+            return json.dumps({"hay_estructura": _v != "indeterminado",
+                               "veredicto": _v,
                                "evidencia": "lo que vi"})
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_DANO:
             return json.dumps({"veredicto": (dano or {})[modelo],
@@ -2312,6 +2324,22 @@ _rep_b = next((c for c in _r["confirmadas"]
                if c["key"] == "reparacion_contenedor"), {})
 check("  y una 'parte' ajena al hallazgo de la base no se publica",
       "parte" not in _rep_b, str(_rep_b))
+
+# 2d-bis) COMPUERTA DE EXISTENCIA: la pregunta dirigida no puede inducir la
+# base. Un "base_de_contenedor" con hay_estructura false no cuenta, así que
+# sin estructura real no hay promoción (caso real: reparación fantasma
+# promovida en una foto sin ninguna base a la vista).
+_r = _correr_base(
+    {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "contenedor ladeado y fuera de su base"},
+                dict(_CONT)], "Contenedor ladeado."),
+     "b/dos": ([dict(_CONT)], "Contenedor a la vista."),
+     "b/tres": ([dict(_CONT)], "Contenedor a la vista.")},
+    {"b/uno": "base_sin_estructura", "b/dos": "base_sin_estructura",
+     "b/tres": "indeterminado"})
+_claves = {c["key"] for c in _r["confirmadas"]}
+check("sin estructura real la sugestión no promueve la reparación",
+      "reparacion_contenedor" not in _claves, str(sorted(_claves)))
 
 # 2e) Tapas dadas vuelta para el cirujeo + fierros ajenos: dos modelos
 # confirman "tapas rotas y desprendidas" (caso real: 3 de 6 corridas). La
