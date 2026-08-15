@@ -1415,7 +1415,7 @@ evid = r["verificadores"][0]["categorias"][0]["evidencia"]
 check("la evidencia también", all(c == "\n" or c >= " " for c in evid), repr(evid))
 check("y acotadas", len(V._texto_limpio("x" * 9000, V.DESC_MAX)) == V.DESC_MAX)
 
-V.verificar(_Img(), CATS, SIN_LOCAL, "hay ratas por todos lados")
+V.verificar(_Img(), CATS, SIN_LOCAL, "hay ratas del tamaño de un perro en la esquina")
 msgs = capturado["m"]
 check("la rúbrica va en system", msgs[0]["role"] == "system"
       and "retiro_muebles:" in msgs[0]["content"])
@@ -1482,8 +1482,12 @@ check("la rúbrica pide la patente completa, leída de la chapa, sin adivinar",
       '"patente": "AB123CD"' in rubrica
       and "Si UN solo carácter está borroso" in rubrica
       and "no es una patente" in rubrica)
+# El canario es una FRASE del vecino, no una palabra suelta: "ratas" es
+# vocabulario legítimo de la rúbrica (la regla de contexto la nombra) y daba
+# un falso positivo que no probaba ninguna filtración.
 check("el contexto del usuario no entra al system",
-      "ratas" in msgs[1]["content"][0]["text"] and "ratas" not in msgs[0]["content"])
+      "del tamaño de un perro" in msgs[1]["content"][0]["text"]
+      and "del tamaño de un perro" not in msgs[0]["content"])
 
 V.ARBITRO = "arbitro/x"
 V.verificar(_Img(), CATS, SIN_LOCAL, "hay ratas")
@@ -1767,6 +1771,54 @@ else:
   finally:
     for _n, _v in _previo.items():
         setattr(V, _n, _v)
+
+print("[#G] gravedad: mediana de los verificadores, no el maximo")
+# El maximo era un veto de una sola mano hacia arriba: con tres muestras
+# ruidosas corre siempre por encima del centro (medido: 58% de las fotos
+# en 4). La mediana aguanta un modelo alarmista; con 2 votos se redondea
+# para abajo, que es el lado que empuja contra la inflacion.
+_prev_g = (V.VERIFICADORES, V.ARBITRO, V._llamar, V.CONSENSO_VLM_SOLO)
+V.VERIFICADORES, V.ARBITRO = ["g/uno", "g/dos", "g/tres"], ""
+V.CONSENSO_VLM_SOLO = "confirma"
+_LOCAL_G = {"predichas": [], "probabilidades": [], "gravedad": {"value": 2, "raw": 2.0}}
+
+def _resp_g(g):
+    return json.dumps({"categorias": [
+        {"key": "recoleccion", "gravedad": g, "evidencia": "bolsas"}],
+        "sin_problema": False, "descripcion": "Bolsas.", "categorias_contexto": []})
+
+def _grav_con(votos):
+    """Corre el consenso real con esos votos de gravedad y devuelve el publicado."""
+    mapa = dict(zip(V.VERIFICADORES, votos))
+    V._llamar = lambda modelo, mensajes, **k: _resp_g(mapa[modelo])
+    r = V.verificar(_Img(), CATS, _LOCAL_G, "")
+    ent = next((c for c in r["confirmadas"] if c["key"] == "recoleccion"), None)
+    return ent and ent["gravedad"]
+
+check("un modelo alarmista NO arrastra la gravedad (3,3,5 -> 3)",
+      _grav_con([3, 3, 5]) == 3, str(_grav_con([3, 3, 5])))
+check("  votos escalonados dan la del medio (3,4,5 -> 4)",
+      _grav_con([3, 4, 5]) == 4, str(_grav_con([3, 4, 5])))
+check("  acuerdo unanime se respeta (5,5,5 -> 5)",
+      _grav_con([5, 5, 5]) == 5, str(_grav_con([5, 5, 5])))
+V.VERIFICADORES = ["g/uno", "g/dos"]
+check("con 2 verificadores redondea para abajo (3,4 -> 3)",
+      _grav_con([3, 4]) == 3, str(_grav_con([3, 4])))
+V.VERIFICADORES, V.ARBITRO, V._llamar, V.CONSENSO_VLM_SOLO = _prev_g
+
+print("[#G] la rubrica define la escala y sus compuertas")
+_rub = V._prompt_sistema(CATS)
+check("la rubrica define que significa cada nivel", "3 TÍPICO" in _rub and "5 CRÍTICO" in _rub)
+check("  con la compuerta de 4 y 5", "COMPUERTA de 4 y 5" in _rub)
+check("  y el desempate hacia abajo", "elegí el MENOR" in _rub)
+check("  prohibe usar la fraccion del encuadre", "PROHIBIDO usar qué fracción de la foto" in _rub)
+check("  topea en 3 la foto sin referencia de escala", "no puede pasar de 3" in _rub)
+check("  el contexto mueve un solo nivel y nunca llega a 5",
+      "un solo nivel" in _rub and "NUNCA la puede llevar a 5" in _rub)
+check("  situacion_calle nunca baja de 3", "nunca pongas 1 ni 2" in _rub)
+check("  recoleccion y muebles tienen anclas por nivel",
+      "GRAVEDAD: 1 una bolsa o un residuo suelto aislado" in _rub
+      and "1 un objeto chico o único" in _rub)
 
 print("[config] cantidad de verificadores elegible por el operador")
 # El que despliega elige CUÁNTOS modelos de visión y CUÁL árbitro. La regla de
