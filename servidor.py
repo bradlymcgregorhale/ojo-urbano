@@ -400,6 +400,10 @@ def _cacheable(respuesta):
         # Ídem la del volcado.
         if (veri.get("segunda_mirada_volcado") or {}).get("fallo"):
             return False
+        # Una repregunta con fallo de red: el "no confirmado" puede ser un
+        # corte transitorio, no un veredicto.
+        if any(r.get("fallo") for r in veri.get("repreguntas") or []):
+            return False
         # Con árbitro configurado, que queden categorías en duda significa que
         # el arbitraje falló o quedó incompleto (respondió sin decidirlas
         # todas). Cachearlo congela ese resultado a medio hacer para siempre.

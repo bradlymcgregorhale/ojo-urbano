@@ -2218,11 +2218,16 @@ def _correr_base(votos, dirigidas, dano=None):
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_VOLCADO:
             return json.dumps({"veredicto": _volcado_resp[modelo],
                                "evidencia": "lo que vi"})
+        if str(mensajes[0].get("content", "")).startswith("Buscá UNA sola cosa"):
+            return json.dumps(dict(_repregunta_resp.get(
+                modelo, {"veredicto": "no_se_distingue", "ubicacion": None,
+                         "estado": None}), evidencia="lo que vi"))
         return _resp_b(votos[modelo][0], votos[modelo][1])
     V._llamar = _llamar_b
     return V.verificar(_Img(), CATS, _LOCAL_B, "")
 
 
+_repregunta_resp = {}
 _METAL = {"key": "retiro_muebles", "gravedad": 3,
           "evidencia": "estructura metálica larga tirada sobre la vereda"}
 _CONT = {"key": "contenedor_humedos_bilateral", "gravedad": 1,
@@ -2279,6 +2284,10 @@ check("  pero el sillón real sobrevive como posible",
 check("  y sin dos 'base' no se promueve reparacion_contenedor",
       "reparacion_contenedor" not in _claves
       and not any(p["key"] == "reparacion_contenedor" for p in _r["posibles"]))
+check("  y el voto retirado NO se repregunta (no resucita por la ventana)",
+      not any(q["key"] == "retiro_muebles"
+              for q in _r.get("repreguntas") or []),
+      str(_r.get("repreguntas")))
 
 # 2b) Voto MIXTO: el mismo modelo nombra el sillón Y la estructura metálica
 # en una sola evidencia (cada modelo tiene UNA entrada por categoría).
@@ -2505,6 +2514,140 @@ _claves = {c["key"] for c in _r["confirmadas"]}
 check("volcado real confirmado por la pasada dirigida: se publica",
       "reposicion_contenedor" in _claves, str(sorted(_claves)))
 
+print("[#Q] repregunta dirigida entre modelos")
+check("el objeto sale de la evidencia sin calificativos de estado",
+      V._objeto_de_evidencia("heladera dañada tirada en la vereda")
+      == "heladera en la vereda"
+      and V._objeto_de_evidencia("heladera danada tirada en la vereda")
+      == "heladera en la vereda")
+check("  sin puntuación colgante",
+      V._objeto_de_evidencia("sillón descartado, junto al cordón")
+      == "sillón, junto al cordón")
+check("  y lo demasiado corto no genera pregunta",
+      V._objeto_de_evidencia("cuna rota") is None
+      and V._objeto_de_evidencia(None) is None)
+# 5a) el voluminoso que un solo modelo vio (la torre de PC del caso real):
+# los otros lo encuentran con ubicación propia -> segunda fuente, confirmado.
+_repregunta_resp = {
+    "b/dos": {"veredicto": "presente", "ubicacion": "esquina inferior izquierda",
+              "estado": "descartado"},
+    "b/tres": {"veredicto": "no_se_distingue", "ubicacion": None, "estado": None}}
+_r = _correr_base(
+    {"b/uno": ([{"key": "retiro_muebles", "gravedad": 1,
+                 "evidencia": "gabinete de computadora en la vereda"},
+                dict(_CONT)], "Un gabinete de PC junto al contenedor."),
+     "b/dos": ([dict(_CONT)], "Contenedor y basura."),
+     "b/tres": ([dict(_CONT)], "Contenedor a la vista.")},
+    {})
+_claves = {c["key"] for c in _r["confirmadas"]}
+check("el objeto visto por uno y hallado por otro se confirma",
+      "retiro_muebles" in _claves, str(sorted(_claves)))
+_rq = (_r.get("repreguntas") or [{}])[0]
+check("  con la repregunta registrada y confirmada",
+      _rq.get("confirmo") is True and _rq.get("key") == "retiro_muebles",
+      str(_rq)[:120])
+_ent_q = next(c for c in _r["confirmadas"] if c["key"] == "retiro_muebles")
+check("  marcada como repregunta, con dos fuentes justas",
+      _ent_q.get("repregunta") is True and len(_ent_q["fuentes"]) == 2,
+      str(_ent_q))
+
+# la gravedad de una confirmación por repregunta se topea en 3: la mediana
+# anti-inflación no existe con un solo voto libre
+_repregunta_resp = {
+    "b/dos": {"veredicto": "presente", "ubicacion": "vereda",
+              "estado": "descartado"},
+    "b/tres": {"veredicto": "no_se_distingue", "ubicacion": None, "estado": None}}
+_r = _correr_base(
+    {"b/uno": ([{"key": "retiro_muebles", "gravedad": 5,
+                 "evidencia": "ropero enorme tirado en la vereda"},
+                dict(_CONT)], "Un ropero."),
+     "b/dos": ([dict(_CONT)], "Contenedor."),
+     "b/tres": ([dict(_CONT)], "Contenedor.")},
+    {})
+_ent_q = next((c for c in _r["confirmadas"] if c["key"] == "retiro_muebles"), {})
+check("la gravedad confirmada por repregunta se topea en 3",
+      _ent_q.get("gravedad") == 3, str(_ent_q))
+
+# con CONSENSO_VLM_SOLO=arbitro una confirmación solo-VLM NO se publica
+# directo: la regla de fuentes correlacionadas vale también acá
+V.CONSENSO_VLM_SOLO = "arbitro"
+_r = _correr_base(
+    {"b/uno": ([{"key": "retiro_muebles", "gravedad": 2,
+                 "evidencia": "gabinete de computadora en la vereda"},
+                dict(_CONT)], "Un gabinete."),
+     "b/dos": ([dict(_CONT)], "Contenedor."),
+     "b/tres": ([dict(_CONT)], "Contenedor.")},
+    {})
+check("CONSENSO_VLM_SOLO=arbitro no se puentea con la repregunta",
+      "retiro_muebles" not in {c["key"] for c in _r["confirmadas"]},
+      str([c["key"] for c in _r["confirmadas"]]))
+V.CONSENSO_VLM_SOLO = "confirma"
+
+# 5b) presente pero EN USO: la bicicleta estacionada del experimento. El
+# estado bloquea la confirmación aunque el objeto exista.
+_repregunta_resp = {
+    "b/dos": {"veredicto": "presente", "ubicacion": "junto al cordón",
+              "estado": "en_uso"},
+    "b/tres": {"veredicto": "no_se_distingue", "ubicacion": None, "estado": None}}
+_r = _correr_base(
+    {"b/uno": ([{"key": "retiro_muebles", "gravedad": 1,
+                 "evidencia": "bicicleta descartada junto al contenedor"},
+                dict(_CONT)], "Una bicicleta junto al contenedor."),
+     "b/dos": ([dict(_CONT)], "Contenedor."),
+     "b/tres": ([dict(_CONT)], "Contenedor.")},
+    {})
+check("presente pero en uso NO confirma el voluminoso",
+      "retiro_muebles" not in {c["key"] for c in _r["confirmadas"]}
+      and any(p["key"] == "retiro_muebles" for p in _r["posibles"]))
+
+# 5c) AUSENTE dirigido: tampoco confirma (queda para el árbitro, como antes)
+_repregunta_resp = {
+    "b/dos": {"veredicto": "ausente", "ubicacion": None, "estado": None},
+    "b/tres": {"veredicto": "presente", "ubicacion": "en la vereda",
+               "estado": "descartado"}}
+_r = _correr_base(
+    {"b/uno": ([{"key": "retiro_muebles", "gravedad": 1,
+                 "evidencia": "sillon viejo en la vereda"},
+                dict(_CONT)], "Un sillon."),
+     "b/dos": ([dict(_CONT)], "Contenedor."),
+     "b/tres": ([dict(_CONT)], "Contenedor.")},
+    {})
+check("un 'ausente' dirigido bloquea la confirmación",
+      "retiro_muebles" not in {c["key"] for c in _r["confirmadas"]})
+
+# 5d) presencia de contenedor vista por UNO (el recortado al borde): la
+# repregunta la confirma y sale en confirmadas en vez de morir en en_duda.
+_repregunta_resp = {
+    "b/dos": {"veredicto": "presente", "ubicacion": "borde derecho"},
+    "b/tres": {"veredicto": "no_se_distingue", "ubicacion": None}}
+_r = _correr_base(
+    {"b/uno": ([{"key": "contenedor_humedos_lateral", "gravedad": 1,
+                 "evidencia": "contenedor negro lateral recortado al borde"}],
+               "Contenedor recortado al borde."),
+     "b/dos": ([{"key": "recoleccion", "gravedad": 2,
+                 "evidencia": "bolsas de residuos en la vereda"}], "Bolsas."),
+     "b/tres": ([{"key": "recoleccion", "gravedad": 2,
+                  "evidencia": "bolsas llenas junto al cordón"}], "Bolsas.")},
+    {})
+check("la presencia vista por uno se rescata con la repregunta",
+      "contenedor_humedos_lateral" in {c["key"] for c in _r["confirmadas"]}
+      and "contenedor_humedos_lateral" not in _r["en_duda"],
+      str(_r["en_duda"]))
+
+# 5e) "presente" SIN ubicación se degrada: no hay avistaje de compromiso
+_repregunta_resp = {
+    "b/dos": {"veredicto": "presente", "ubicacion": None, "estado": "descartado"},
+    "b/tres": {"veredicto": "no_se_distingue", "ubicacion": None, "estado": None}}
+_r = _correr_base(
+    {"b/uno": ([{"key": "retiro_muebles", "gravedad": 1,
+                 "evidencia": "ropero viejo en la vereda"},
+                dict(_CONT)], "Un ropero."),
+     "b/dos": ([dict(_CONT)], "Contenedor."),
+     "b/tres": ([dict(_CONT)], "Contenedor.")},
+    {})
+check("presente sin ubicación no cuenta como avistaje",
+      "retiro_muebles" not in {c["key"] for c in _r["confirmadas"]})
+
 (V.VERIFICADORES, V.ARBITRO, V.CONSENSO_VLM_SOLO, V._llamar,
  V.SEGUNDA_MIRADA_BASE, V.SEGUNDA_MIRADA_ESCOMBROS) = _prev_b
 
@@ -2534,6 +2677,10 @@ check("junto a un contenedor la vara de recoleccion es mas alta",
 check("la cuna es voluminoso, no cesto roto",
       "CUNAS, corralitos y muebles infantiles" in _rub_b
       and "NO es un cesto roto ni un contenedor chico desmontado" in _rub_b)
+check("la vara del voluminoso: no entra en una bolsa; la tablita suelta no alcanza",
+      "NO entraría en una bolsa de residuos común" in _rub_b
+      and "listón chico suelto" in _rub_b
+      and "aunque sean chicos (una torre de PC" in _rub_b)
 check("el cerco de madera del cantero no es un palet descartado",
       "CERCO DE MADERA de un cantero" in _rub_b
       and "no plantado alrededor de la tierra" in _rub_b)

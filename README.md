@@ -178,7 +178,7 @@ Todo por variables de entorno o `.env` (ver [`.env.example`](.env.example)):
 | Variable | Default | Qué hace |
 |---|---|---|
 | `OPENROUTER_API_KEY` | vacía | Habilita la verificación cruzada. **Nunca la comitees.** |
-| `VERIFICADORES` | tres modelos (ver `.env.example`) | Modelos de visión, separados por coma. Podés poner **uno, dos, tres o los que quieras**: la regla es siempre la misma (una categoría se confirma con ≥2 fuentes y el modelo local cuenta como una). Más modelos = más recall y más costo. |
+| `VERIFICADORES` | tres modelos (ver `.env.example`) | Modelos de visión, separados por coma. Podés poner **uno, dos, tres o los que quieras**: la regla es siempre la misma (una categoría se confirma con ≥2 fuentes y el modelo local cuenta como una). Más modelos = más recall y más costo. Las pasadas dirigidas (segundas miradas y repregunta) agregan llamadas extra solo cuando se disparan; la **repregunta entre modelos** corre únicamente con 3+ verificadores, que es la configuración con la que se midió (con dos, el chequeo cruzado pierde independencia). |
 | `ARBITRO` | `deepseek/deepseek-v4-flash` | Modelo que resuelve desacuerdos. Vacío = sin árbitro. Puede ser de texto o con visión. |
 | `ARBITRO_VE_FOTO` | apagado | Si el árbitro tiene visión, le pasa también la foto en vez de hacerlo decidir sobre las descripciones ajenas. |
 | `ARBITRO_CONFIRMA` | apagado | Si el árbitro puede promover a confirmado lo de una sola fuente. Apagado por medición (ver arriba). |
