@@ -1752,6 +1752,18 @@ else:
               str(_r["problemas"])[:140])
         check("  y recoleccion también baja",
               "recoleccion" not in {p["key"] for p in _r["problemas"]})
+
+        # la firma ambivalente (escombros 1.0 Y recoleccion 1.0) NO inyecta:
+        # los dos falsos positivos revisados a mano de la ronda de agosto
+        # daban exactamente eso; los rescates nocturnos reales dan
+        # recoleccion 0.00-0.16. Si el local dice las dos cosas, no decide.
+        servidor.clasificar_local = lambda img: _local_con(0.999, 0.98)
+        V._verificar_uno = _mock(["recoleccion"], [], None)
+        _r = _pedir(_bytes, "", "1")
+        _keys = {p["key"] for p in _r["problemas"]}
+        check("local ambivalente (escombros Y recoleccion altos): no inyecta",
+              "retiro_escombros" not in _keys and "recoleccion" in _keys,
+              str(_keys))
     finally:
         servidor.clasificar_local = _local_prev
 

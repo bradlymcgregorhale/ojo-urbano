@@ -515,11 +515,12 @@ def procesar(datos, contexto, verificar):
     #     se agrega nada, pero la demotion de abajo aplica igual. Antes este
     #     caso se salteaba entero y la misma pila salía DOBLE (recoleccion +
     #     escombros), con una descripción que podía seguir negando escombros.
-    # En los dos casos, si el local además dice que recolección casi no hay
-    # (la pila es SOLO escombros), la entrada recoleccion baja a posibles
-    # con su motivo. Una pila genuinamente mixta (recoleccion local > umbral
-    # bajo) conserva las dos categorías, como siempre. Sin recoleccion
-    # confirmada no se dispara: el voto local solo sigue sin publicarse
+    # El bloque entero corre SOLO con la firma "escombros alto Y recoleccion
+    # baja" del modelo local: ahí la entrada recoleccion baja a posibles con
+    # su motivo. Si el local puntúa alto en las dos (pila "mixta" según él),
+    # NO decide nada: las categorías quedan como las dejaron los
+    # verificadores (las dos, si ellos confirmaron las dos). Sin recoleccion
+    # confirmada tampoco se dispara: el voto local solo sigue sin publicarse
     # (contrato v4).
     if FUSION_ESCOMBROS and activar:
         prob_local = {p["key"]: p["score"]
@@ -527,7 +528,18 @@ def procesar(datos, contexto, verificar):
         esc_local = prob_local.get("retiro_escombros", 0.0)
         rec = next((c for c in problemas if c["key"] == "recoleccion"), None)
         ya_esta = any(c["key"] == "retiro_escombros" for c in problemas)
-        if esc_local >= FUSION_ESCOMBROS_UMBRAL and rec is not None:
+        # LA FIRMA DEL RESCATE NOCTURNO ES "escombros Y NO recoleccion". El
+        # score de escombros solo NO alcanza para inyectar: medido sobre la
+        # ronda de agosto, los dos falsos positivos revisados a mano (bolsas
+        # blandas de día, cajas junto a un cesto) daban escombros 1.000 y
+        # 0.999 CON recoleccion 0.640 y 0.982; los verdaderos (revisados o
+        # de la ronda 1 nocturna) dan recoleccion 0.000-0.164. Un umbral de
+        # escombros no los separa (los FP puntúan MÁS que los TP); la
+        # ambivalencia del propio modelo local sí, 5/5 en los casos
+        # revisados. Si el local dice "las dos cosas", no decide nada.
+        if (esc_local >= FUSION_ESCOMBROS_UMBRAL and rec is not None
+                and prob_local.get("recoleccion", 1.0)
+                <= FUSION_ESCOMBROS_RECO_BAJA):
             agrego_escombros = False
             if not ya_esta:
                 fuentes_esc = ["modelo_local"] + [
