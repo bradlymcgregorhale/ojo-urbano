@@ -2085,6 +2085,183 @@ check("  la entrada bilateral acepta el contenedor recortado en primer plano",
 
 V.VERIFICADORES, V.ARBITRO, V.CONSENSO_VLM_SOLO, V._llamar = _estado_prev
 
+print("[#B] segunda mirada de la base del contenedor")
+# Caso real: contenedor corrido de su base metálica, de noche. En 1 de 5
+# corridas DOS modelos leían la base como chatarra y retiro_muebles se
+# confirmaba al reporte. La pasada dirigida tiene que poder desautorizar esos
+# votos (invariante del dueño: la base NUNCA sale como voluminoso) sin
+# tocar un mueble real de la misma escena.
+check("evidencia metálica dispara el patrón",
+      V._evidencia_metalica("estructura metálica larga tirada sobre la vereda")
+      and V._evidencia_metalica("pieza metálica larga tirada")
+      and V._evidencia_metalica("bastidor con rieles junto al cordón"))
+check("  la estructura de madera NO lo dispara",
+      not V._evidencia_metalica("estructura de madera junto al contenedor")
+      and not V._evidencia_metalica("escalera de madera descartada")
+      and not V._evidencia_metalica("sillón viejo descartado en la vereda"))
+check("  el metal explícito gana aunque la frase nombre plástico o cartón",
+      V._evidencia_metalica("estructura metálica junto a bolsas plásticas")
+      and V._evidencia_metalica("chatarra entre cajas de cartón"))
+check("  el patrón de muebles respeta bordes de palabra",
+      not V._PATRON_MUEBLE.search(V._norm_texto("estructura metálica frente al inmueble"))
+      and not V._PATRON_MUEBLE.search(V._norm_texto("compuerta metálica del contenedor"))
+      and V._PATRON_MUEBLE.search(V._norm_texto("sillones viejos descartados")))
+
+_prev_b = (V.VERIFICADORES, V.ARBITRO, V.CONSENSO_VLM_SOLO, V._llamar,
+           V.SEGUNDA_MIRADA_BASE, V.SEGUNDA_MIRADA_ESCOMBROS)
+V.VERIFICADORES, V.ARBITRO = ["b/uno", "b/dos", "b/tres"], ""
+V.CONSENSO_VLM_SOLO = "confirma"
+V.SEGUNDA_MIRADA_BASE, V.SEGUNDA_MIRADA_ESCOMBROS = True, False
+_LOCAL_B = {"predichas": [], "probabilidades": [],
+            "gravedad": {"value": 2, "raw": 2.0}}
+
+
+def _resp_b(cats, desc):
+    return json.dumps({"categorias": cats, "sin_problema": False,
+                       "descripcion": desc, "categorias_contexto": []})
+
+
+def _correr_base(votos, dirigidas):
+    """votos: modelo -> lista de categorias del veredicto principal.
+    dirigidas: modelo -> veredicto de la pasada dirigida de la base."""
+    def _llamar_b(modelo, mensajes, **k):
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_BASE:
+            return json.dumps({"veredicto": dirigidas[modelo],
+                               "evidencia": "lo que vi"})
+        return _resp_b(votos[modelo][0], votos[modelo][1])
+    V._llamar = _llamar_b
+    return V.verificar(_Img(), CATS, _LOCAL_B, "")
+
+
+_METAL = {"key": "retiro_muebles", "gravedad": 3,
+          "evidencia": "estructura metálica larga tirada sobre la vereda"}
+_CONT = {"key": "contenedor_humedos_bilateral", "gravedad": 1,
+         "evidencia": "contenedor gris junto al cordón"}
+
+# 1) El fallo correlacionado: dos modelos leen la base como chatarra, la
+# pasada dirigida la reconoce (2 "base") -> retiro_muebles desaparece y
+# reparacion_contenedor se confirma con la gravedad típica.
+_r = _correr_base(
+    {"b/uno": ([dict(_METAL), dict(_CONT)], "Estructura metálica tirada."),
+     "b/dos": ([dict(_METAL)], "Chatarra larga en la vereda."),
+     "b/tres": ([{"key": "recoleccion", "gravedad": 2,
+                  "evidencia": "bolsas junto al contenedor"}], "Bolsas.")},
+    {"b/uno": "base_de_contenedor", "b/dos": "base_de_contenedor",
+     "b/tres": "indeterminado"})
+_claves = {c["key"] for c in _r["confirmadas"]}
+check("dos votos metálicos + dos 'base' dirigidos retiran el voluminoso",
+      "retiro_muebles" not in _claves, str(sorted(_claves)))
+check("  y confirman reparacion_contenedor",
+      "reparacion_contenedor" in _claves, str(sorted(_claves)))
+_rep = next((c for c in _r["confirmadas"]
+             if c["key"] == "reparacion_contenedor"), {})
+check("  con dos fuentes y gravedad típica",
+      len(_rep.get("fuentes", [])) == 2 and _rep.get("gravedad") == 3,
+      str(_rep))
+check("  el voluminoso tampoco queda en posibles",
+      not any(p["key"] == "retiro_muebles" for p in _r["posibles"]))
+_anulados = [c for v in _r["verificadores"] for c in v.get("categorias", [])
+             if c.get("anulada_por") == "segunda_mirada_base"]
+check("  el voto retirado vuelve ANOTADO al registro público",
+      len(_anulados) == 2
+      and all(c["key"] == "retiro_muebles" for c in _anulados),
+      str(_anulados))
+check("  la descripción explica la base",
+      "base" in (_r.get("descripcion") or "").lower(),
+      str(_r.get("descripcion")))
+
+# 2) Escena mixta: un modelo ve la base como chatarra, otro ve un sillón
+# real. Un solo "base" dirigido alcanza para retirar el voto metálico, pero
+# el sillón queda (una fuente -> posible), y sin dos "base" no se promueve.
+_r = _correr_base(
+    {"b/uno": ([dict(_METAL), dict(_CONT)], "Estructura metálica tirada."),
+     "b/dos": ([{"key": "retiro_muebles", "gravedad": 2,
+                 "evidencia": "sillón viejo descartado en la vereda"}],
+               "Un sillón viejo."),
+     "b/tres": ([dict(_CONT)], "Contenedor sano.")},
+    {"b/uno": "base_de_contenedor", "b/dos": "indeterminado",
+     "b/tres": "indeterminado"})
+_claves = {c["key"] for c in _r["confirmadas"]}
+check("en escena mixta el voto metálico se retira quirúrgicamente",
+      "retiro_muebles" not in _claves, str(sorted(_claves)))
+check("  pero el sillón real sobrevive como posible",
+      any(p["key"] == "retiro_muebles" for p in _r["posibles"]))
+check("  y sin dos 'base' no se promueve reparacion_contenedor",
+      "reparacion_contenedor" not in _claves
+      and not any(p["key"] == "reparacion_contenedor" for p in _r["posibles"]))
+
+# 2b) Voto MIXTO: el mismo modelo nombra el sillón Y la estructura metálica
+# en una sola evidencia (cada modelo tiene UNA entrada por categoría).
+# Retirar ese voto borraría el sillón real: no es candidato, y si era el
+# único metálico la pasada dirigida ni corre.
+_r = _correr_base(
+    {"b/uno": ([{"key": "retiro_muebles", "gravedad": 3,
+                 "evidencia": "sillón viejo y estructura metálica larga"},
+                dict(_CONT)], "Un sillón y una estructura."),
+     "b/dos": ([dict(_CONT)], "Contenedor sano."),
+     "b/tres": ([dict(_CONT)], "Contenedor sano.")},
+    {})  # cualquier llamada dirigida acá reventaría con KeyError
+check("un voto que nombra un mueble real no se toca (y la pasada no corre)",
+      _r.get("segunda_mirada_base") is None
+      and any(p["key"] == "retiro_muebles" for p in _r["posibles"]))
+
+# 2c) TODAS las descripciones venían de modelos desautorizados: la que queda
+# como último recurso no puede seguir vendiendo la chatarra sin aclaración.
+_r = _correr_base(
+    {"b/uno": ([dict(_METAL), dict(_CONT)],
+               "Una estructura metálica larga tirada en la vereda."),
+     "b/dos": ([dict(_CONT)], ""),
+     "b/tres": ([dict(_CONT)], "")},
+    {"b/uno": "base_de_contenedor", "b/dos": "indeterminado",
+     "b/tres": "indeterminado"})
+check("retiro sin promoción agrega la aclaración a la descripción heredada",
+      "podría ser la base" in (_r.get("descripcion") or ""),
+      str(_r.get("descripcion")))
+
+# 2d) UN solo modelo vio la base (sin que nadie la lea como chatarra): la
+# categoría quedaba en disputa y moría como posible rechazado. La pasada
+# dirigida junta el segundo voto y la confirma.
+_r = _correr_base(
+    {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "base metálica del contenedor vacía en la vereda"},
+                dict(_CONT)], "La base del contenedor está vacía."),
+     "b/dos": ([dict(_CONT)], "Contenedor a la vista."),
+     "b/tres": ([dict(_CONT)], "Contenedor a la vista.")},
+    {"b/uno": "base_de_contenedor", "b/dos": "base_de_contenedor",
+     "b/tres": "indeterminado"})
+_claves = {c["key"] for c in _r["confirmadas"]}
+check("un hallazgo de base en disputa se re-pregunta y se confirma",
+      "reparacion_contenedor" in _claves, str(sorted(_claves)))
+
+# 3) Descarte metálico REAL: la pasada dirigida dice dos veces
+# "objeto_descartado" -> no se toca nada, el voluminoso se publica.
+_r = _correr_base(
+    {"b/uno": ([{"key": "retiro_muebles", "gravedad": 3,
+                 "evidencia": "reja de hierro suelta apoyada en la vereda"},
+                dict(_CONT)], "Una reja descartada."),
+     "b/dos": ([{"key": "retiro_muebles", "gravedad": 3,
+                 "evidencia": "portón metálico tirado de canto"}],
+               "Un portón viejo tirado."),
+     "b/tres": ([dict(_CONT)], "Contenedor sano.")},
+    {"b/uno": "objeto_descartado", "b/dos": "objeto_descartado",
+     "b/tres": "indeterminado"})
+_claves = {c["key"] for c in _r["confirmadas"]}
+check("dos 'objeto_descartado' dirigidos dejan el voluminoso confirmado",
+      "retiro_muebles" in _claves, str(sorted(_claves)))
+
+(V.VERIFICADORES, V.ARBITRO, V.CONSENSO_VLM_SOLO, V._llamar,
+ V.SEGUNDA_MIRADA_BASE, V.SEGUNDA_MIRADA_ESCOMBROS) = _prev_b
+
+print("[#B] la rubrica cubre la base y el pedregullo del cantero")
+_rub_b = V._prompt_sistema(CATS)
+check("el descarte de retiro_muebles cubre la base del contenedor",
+      "El MISMO descarte vale para la BASE del contenedor" in _rub_b)
+check("  y desactiva la trampa de 'obstruye el paso'",
+      "NO la convierte en voluminoso" in _rub_b)
+check("el pedregullo mezclado en la tierra del cantero no es escombros",
+      "MEZCLADOS EN LA TIERRA de una cantera o cantero" in _rub_b
+      and "unos fragmentos dispersos en la tierra no se reportan" in _rub_b)
+
 print(f"\n{_ok} OK, {_fallos} fallas")
 _srv.should_exit = True
 sys.exit(1 if _fallos else 0)

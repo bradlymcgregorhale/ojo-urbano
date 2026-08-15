@@ -390,6 +390,10 @@ def _cacheable(respuesta):
         # confirmado" puede ser un corte transitorio, no un veredicto.
         if (veri.get("segunda_mirada") or {}).get("fallo"):
             return False
+        # Ídem la de la base del contenedor: un fallo de red ahí puede dejar
+        # pasar un voluminoso que la pasada completa habría retirado.
+        if (veri.get("segunda_mirada_base") or {}).get("fallo"):
+            return False
         # Con árbitro configurado, que queden categorías en duda significa que
         # el arbitraje falló o quedó incompleto (respondió sin decidirlas
         # todas). Cachearlo congela ese resultado a medio hacer para siempre.
@@ -739,8 +743,13 @@ def _publica(r):
         {"modelo": v.get("modelo"), "ok": v.get("ok"),
          "sin_problema": v.get("sin_problema"),
          "foto_corresponde": v.get("foto_corresponde"),
+         # anulada_por: el voto existió pero una pasada dirigida lo retiró
+         # del consenso (p. ej. la base del contenedor leída como chatarra).
+         # Se publica anotado: el veredicto crudo del modelo no se falsifica.
          "categorias": [{"key": c.get("key"), "gravedad": c.get("gravedad"),
-                         "evidencia": c.get("evidencia")}
+                         "evidencia": c.get("evidencia"),
+                         **({"anulada_por": c["anulada_por"]}
+                            if c.get("anulada_por") else {})}
                         for c in (v.get("categorias") or [])],
          "descripcion": v.get("descripcion")}
         for v in (veri.get("verificadores") or [])]
