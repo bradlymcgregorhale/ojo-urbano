@@ -2080,6 +2080,15 @@ check("  subtipo del recortado: pared plana gris sin poste -> bilateral",
       "pared PLANA vertical gris sin poste a la vista -> bilateral" in V._RUBRICA)
 check("  la entrada lateral advierte contra votar lateral por el color",
       "NO lo reportes lateral por el color" in V._RUBRICA)
+check("  pero el negro decide: negro es siempre lateral, nunca bilateral",
+      "NEGRO es SIEMPRE lateral" in V._RUBRICA
+      and "no existe un bilateral negro" in V._RUBRICA
+      and "no lo reportes bilateral nunca" in V._RUBRICA)
+check("  con la salvaguarda del negro de verdad vs gris ensombrecido",
+      "NEGRO DE VERDAD" in V._RUBRICA
+      and "no uses el color y decidí por los postes" in V._RUBRICA)
+check("  y el lateral recortado con herrajes de izado a la vista cuenta",
+      "postes/herrajes metálicos de izado a la vista" in V._RUBRICA)
 check("  la entrada bilateral acepta el contenedor recortado en primer plano",
       "Vale también recortado por el borde de la foto" in V._RUBRICA)
 
