@@ -2271,6 +2271,26 @@ check("el pedregullo mezclado en la tierra del cantero no es escombros",
       "MEZCLADOS EN LA TIERRA de una cantera o cantero" in _rub_b
       and "unos fragmentos dispersos en la tierra no se reportan" in _rub_b)
 
+print("[#R] rubrica: falsos positivos reportados en la revision de agosto")
+check("el saco cerrado sin contenido a la vista no es escombros",
+      "un saco CERRADO cuyo contenido no se ve NO es evidencia directa" in _rub_b
+      and "aunque sea blanco, de rafia o tejido" in _rub_b)
+check("lo colgado del contenedor no es daño",
+      "COLGANDO del borde, la boca o el costado tampoco son daño" in _rub_b
+      and "no material ajeno encima" in _rub_b)
+check("la ranura con cerdas del contenedor verde es diseño, no rotura",
+      "CERDAS o flecos NEGROS de cepillo" in _rub_b
+      and "ES EL DISEÑO de la boca" in _rub_b)
+check("junto a un contenedor la vara de recoleccion es mas alta",
+      "al lado de un contenedor la vara es MÁS ALTA" in _rub_b
+      and "hace falta al menos una bolsa llena, una caja descartada" in _rub_b)
+check("la cuna es voluminoso, no cesto roto",
+      "CUNAS, corralitos y muebles infantiles" in _rub_b
+      and "NO es un cesto roto ni un contenedor chico desmontado" in _rub_b)
+check("el cerco de madera del cantero no es un palet descartado",
+      "CERCO DE MADERA de un cantero" in _rub_b
+      and "no plantado alrededor de la tierra" in _rub_b)
+
 print(f"\n{_ok} OK, {_fallos} fallas")
 _srv.should_exit = True
 sys.exit(1 if _fallos else 0)
