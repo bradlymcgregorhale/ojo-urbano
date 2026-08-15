@@ -2302,6 +2302,13 @@ check("la cuna es voluminoso, no cesto roto",
 check("el cerco de madera del cantero no es un palet descartado",
       "CERCO DE MADERA de un cantero" in _rub_b
       and "no plantado alrededor de la tierra" in _rub_b)
+check("las mismas bolsas no salen como escombros Y recoleccion",
+      "NO cuentes las MISMAS bolsas en las dos categorías" in _rub_b
+      and "exige otras bolsas, cajas o residuos domésticos aparte" in _rub_b)
+check("una caja trabando la tapa no es desbordado",
+      "MIRÁ ADENTRO ANTES DE DECIDIR" in _rub_b
+      and "UNA caja o UN bulto solo" in _rub_b
+      and "dejan la tapa calzada así todo el tiempo" in _rub_b)
 
 print(f"\n{_ok} OK, {_fallos} fallas")
 _srv.should_exit = True
