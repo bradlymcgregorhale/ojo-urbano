@@ -1415,7 +1415,12 @@ evid = r["verificadores"][0]["categorias"][0]["evidencia"]
 check("la evidencia también", all(c == "\n" or c >= " " for c in evid), repr(evid))
 check("y acotadas", len(V._texto_limpio("x" * 9000, V.DESC_MAX)) == V.DESC_MAX)
 
+# Las pasadas dirigidas (base/daño) llaman a _llamar DESPUÉS de la pasada
+# principal y pisarían la captura: se apagan solo para esta corrida.
+_smb_prev = V.SEGUNDA_MIRADA_BASE
+V.SEGUNDA_MIRADA_BASE = False
 V.verificar(_Img(), CATS, SIN_LOCAL, "hay ratas del tamaño de un perro en la esquina")
+V.SEGUNDA_MIRADA_BASE = _smb_prev
 msgs = capturado["m"]
 check("la rúbrica va en system", msgs[0]["role"] == "system"
       and "retiro_muebles:" in msgs[0]["content"])
@@ -1752,6 +1757,51 @@ else:
               str(_r["problemas"])[:140])
         check("  y recoleccion también baja",
               "recoleccion" not in {p["key"] for p in _r["problemas"]})
+
+        # MISMAS BOLSAS EN DOS CATEGORÍAS: escombros confirmado por dos
+        # verificadores y recoleccion sostenida por UNO solo cuya evidencia
+        # nombra únicamente bolsas -> recoleccion baja a posibles.
+        servidor.clasificar_local = lambda img: _local_con(0.3, 0.9)
+
+        def _mock_dup(modelo, data_url, categorias, contexto=""):
+            if modelo == V.VERIFICADORES[0]:
+                cats = [{"key": "retiro_escombros", "gravedad": 2,
+                         "evidencia": "sacos densos con polvo alrededor"},
+                        {"key": "recoleccion", "gravedad": 2,
+                         "evidencia": "dos bolsas de residuos junto al contenedor"}]
+            else:
+                cats = [{"key": "retiro_escombros", "gravedad": 2,
+                         "evidencia": "sacos de arena densos en el cordón"}]
+            return {"modelo": modelo, "ok": True, "sin_problema": False,
+                    "categorias": cats, "descripcion": "Sacos en el cordón.",
+                    "categorias_contexto": [], "foto_corresponde": None}
+        V._verificar_uno = _mock_dup
+        _r = _pedir(_bytes, "", "1")
+        _keys = {p["key"] for p in _r["problemas"]}
+        check("mismas bolsas: recoleccion de un solo modelo baja a posibles",
+              _keys == {"retiro_escombros"}
+              and any(p.get("key") == "recoleccion" and p.get("motivo")
+                      for p in _r["posibles"]), str(_keys))
+
+        # escena mixta REAL: la evidencia de recoleccion nombra cajas ademas
+        # de bolsas -> se conservan las dos categorías
+        def _mock_mixta(modelo, data_url, categorias, contexto=""):
+            if modelo == V.VERIFICADORES[0]:
+                cats = [{"key": "retiro_escombros", "gravedad": 2,
+                         "evidencia": "sacos densos con polvo alrededor"},
+                        {"key": "recoleccion", "gravedad": 2,
+                         "evidencia": "bolsas y cajas de cartón en el piso"}]
+            else:
+                cats = [{"key": "retiro_escombros", "gravedad": 2,
+                         "evidencia": "sacos de arena densos en el cordón"}]
+            return {"modelo": modelo, "ok": True, "sin_problema": False,
+                    "categorias": cats, "descripcion": "Sacos y cajas.",
+                    "categorias_contexto": [], "foto_corresponde": None}
+        V._verificar_uno = _mock_mixta
+        _r = _pedir(_bytes, "", "1")
+        _keys = {p["key"] for p in _r["problemas"]}
+        check("  escena mixta (bolsas y cajas): conserva las dos",
+              _keys == {"recoleccion", "retiro_escombros"}, str(_keys))
 
         # la firma ambivalente (escombros 1.0 Y recoleccion 1.0) NO inyecta:
         # los dos falsos positivos revisados a mano de la ronda de agosto
@@ -2142,12 +2192,16 @@ def _resp_b(cats, desc):
                        "descripcion": desc, "categorias_contexto": []})
 
 
-def _correr_base(votos, dirigidas):
+def _correr_base(votos, dirigidas, dano=None):
     """votos: modelo -> lista de categorias del veredicto principal.
-    dirigidas: modelo -> veredicto de la pasada dirigida de la base."""
+    dirigidas: modelo -> veredicto de la pasada dirigida de la base.
+    dano: modelo -> veredicto de la pasada dirigida del daño."""
     def _llamar_b(modelo, mensajes, **k):
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_BASE:
             return json.dumps({"veredicto": dirigidas[modelo],
+                               "evidencia": "lo que vi"})
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_DANO:
+            return json.dumps({"veredicto": (dano or {})[modelo],
                                "evidencia": "lo que vi"})
         return _resp_b(votos[modelo][0], votos[modelo][1])
     V._llamar = _llamar_b
@@ -2244,7 +2298,8 @@ check("retiro sin promoción agrega la aclaración a la descripción heredada",
 # dirigida junta el segundo voto y la confirma.
 _r = _correr_base(
     {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3,
-                 "evidencia": "base metálica del contenedor vacía en la vereda"},
+                 "evidencia": "base metálica del contenedor vacía en la vereda",
+                 "parte": "tapa"},
                 dict(_CONT)], "La base del contenedor está vacía."),
      "b/dos": ([dict(_CONT)], "Contenedor a la vista."),
      "b/tres": ([dict(_CONT)], "Contenedor a la vista.")},
@@ -2252,6 +2307,101 @@ _r = _correr_base(
      "b/tres": "indeterminado"})
 _claves = {c["key"] for c in _r["confirmadas"]}
 check("un hallazgo de base en disputa se re-pregunta y se confirma",
+      "reparacion_contenedor" in _claves, str(sorted(_claves)))
+_rep_b = next((c for c in _r["confirmadas"]
+               if c["key"] == "reparacion_contenedor"), {})
+check("  y una 'parte' ajena al hallazgo de la base no se publica",
+      "parte" not in _rep_b, str(_rep_b))
+
+# 2e) Tapas dadas vuelta para el cirujeo + fierros ajenos: dos modelos
+# confirman "tapas rotas y desprendidas" (caso real: 3 de 6 corridas). La
+# pasada dirigida del daño dice "sin_dano_visible" -> reparacion se retira
+# entera y los votos vuelven anotados.
+_r = _correr_base(
+    {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "tapas rotas y desprendidas del contenedor"},
+                dict(_CONT)], "Contenedor con tapas rotas."),
+     "b/dos": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "piezas sueltas de la tapa junto al contenedor"}],
+               "Tapas caídas."),
+     "b/tres": ([dict(_CONT)], "Contenedor entero, tapas abiertas.")},
+    {},  # la pasada de la base no corre: no hay votos metálicos de muebles
+    {"b/uno": "sin_dano_visible", "b/dos": "indeterminado",
+     "b/tres": "sin_dano_visible"})
+_claves = {c["key"] for c in _r["confirmadas"]}
+check("tapas volcadas leídas como rotas: la pasada del daño las retira",
+      "reparacion_contenedor" not in _claves
+      and not any(p["key"] == "reparacion_contenedor" for p in _r["posibles"]),
+      str(sorted(_claves)))
+_anul_d = [c for v in _r["verificadores"] for c in v.get("categorias", [])
+           if c.get("anulada_por") == "segunda_mirada_dano"]
+check("  y los votos vuelven anotados con la pasada del daño",
+      len(_anul_d) == 2, str(_anul_d))
+
+# 2e-bis) Si la reparación SOBREVIVE por otras fuentes tras el retiro de un
+# voto de tapa, la "parte" del voto anulado no puede seguir publicándose
+# (bug reproducido por codex en la revisión integral).
+_LOCAL_REP = {"predichas": [{"key": "reparacion_contenedor",
+                             "nombre": "Rep", "score": 0.9}],
+              "probabilidades": [{"key": "reparacion_contenedor",
+                                  "nombre": "Rep", "score": 0.9}],
+              "gravedad": {"value": 3, "raw": 3.0}}
+
+
+def _correr_rep(votos, dano):
+    def _llamar_r(modelo, mensajes, **k):
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_DANO:
+            return json.dumps({"veredicto": dano[modelo],
+                               "evidencia": "lo que vi"})
+        return _resp_b(votos[modelo][0], votos[modelo][1])
+    V._llamar = _llamar_r
+    return V.verificar(_Img(), CATS, _LOCAL_REP, "")
+
+
+_r = _correr_rep(
+    {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "tapas rotas y desprendidas",
+                 "parte": "tapa"}, dict(_CONT)], "Tapas rotas."),
+     "b/dos": ([dict(_CONT)], "Contenedor entero."),
+     "b/tres": ([dict(_CONT)], "Contenedor entero.")},
+    {"b/uno": "sin_dano_visible", "b/dos": "sin_dano_visible",
+     "b/tres": "indeterminado"})
+_rep_e = next((c for c in _r["confirmadas"]
+               if c["key"] == "reparacion_contenedor"), None)
+check("la 'parte' de un voto anulado no se publica con las fuentes restantes",
+      _rep_e is None or "parte" not in _rep_e, str(_rep_e))
+
+# 2e-ter) TODAS las descripciones venían de modelos desautorizados por el
+# veto del daño: la heredada no puede seguir afirmando "tapas rotas".
+_r = _correr_base(
+    {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "tapas rotas y desprendidas del contenedor"},
+                dict(_CONT)], "Contenedor con tapas rotas y desprendidas."),
+     "b/dos": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "piezas sueltas de la tapa junto al contenedor"}],
+               ""),
+     "b/tres": ([dict(_CONT)], "")},
+    {},
+    {"b/uno": "sin_dano_visible", "b/dos": "indeterminado",
+     "b/tres": "sin_dano_visible"})
+_desc = _r.get("descripcion") or ""
+check("la descripción heredada no sigue vendiendo las tapas rotas",
+      "rotas" not in _desc and "el contenedor está entero" in _desc,
+      str(_desc))
+
+# 2f) Daño REAL: la pasada dirigida lo confirma dos veces -> no se toca.
+_r = _correr_base(
+    {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "tapa partida al medio con pedazo faltante"},
+                dict(_CONT)], "Tapa partida."),
+     "b/dos": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "cuerpo agrietado y tapa rota"}], "Roto."),
+     "b/tres": ([dict(_CONT)], "Contenedor dañado.")},
+    {},
+    {"b/uno": "dano_estructural", "b/dos": "dano_estructural",
+     "b/tres": "indeterminado"})
+_claves = {c["key"] for c in _r["confirmadas"]}
+check("daño real confirmado por la pasada dirigida: se publica",
       "reparacion_contenedor" in _claves, str(sorted(_claves)))
 
 # 3) Descarte metálico REAL: la pasada dirigida dice dos veces
@@ -2309,6 +2459,15 @@ check("una caja trabando la tapa no es desbordado",
       "MIRÁ ADENTRO ANTES DE DECIDIR" in _rub_b
       and "UNA caja o UN bulto solo" in _rub_b
       and "dejan la tapa calzada así todo el tiempo" in _rub_b)
+check("las tapas dadas vuelta para el cirujeo no son daño",
+      "tapas DADAS VUELTA por completo hacia atrás" in _rub_b
+      and "no tapas abiertas de par en par" in _rub_b)
+check("el metal ajeno no es pieza del contenedor",
+      "son de PLÁSTICO negro o gris" in _rub_b
+      and "NO puede ser una pieza del contenedor" in _rub_b)
+check("describir un problema obliga a votarlo",
+      "COHERENCIA ENTRE DESCRIPCIÓN Y VOTOS" in _rub_b
+      and "Describir un problema sin votarlo es un error" in _rub_b)
 
 print(f"\n{_ok} OK, {_fallos} fallas")
 _srv.should_exit = True

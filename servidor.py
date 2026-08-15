@@ -394,6 +394,9 @@ def _cacheable(respuesta):
         # pasar un voluminoso que la pasada completa habría retirado.
         if (veri.get("segunda_mirada_base") or {}).get("fallo"):
             return False
+        # Ídem la del daño del contenedor.
+        if (veri.get("segunda_mirada_dano") or {}).get("fallo"):
+            return False
         # Con árbitro configurado, que queden categorías en duda significa que
         # el arbitraje falló o quedó incompleto (respondió sin decidirlas
         # todas). Cachearlo congela ese resultado a medio hacer para siempre.
@@ -589,6 +592,44 @@ def procesar(datos, contexto, verificar):
                         "hay también escombros de obra.")
                 descripcion = (descripcion.rstrip() + " " + nota
                                if descripcion else nota)
+
+    # MISMAS BOLSAS, DOS CATEGORÍAS: con escombros confirmado por los
+    # verificadores, una recoleccion sostenida por UN solo modelo de visión
+    # cuya evidencia solo nombra bolsas o sacos (ningún otro residuo) es casi
+    # siempre la MISMA pila leída dos veces: el modelo que la ve como basura
+    # no sabe que son escombros, así que la instrucción de la rúbrica de no
+    # duplicar no lo alcanza. Caso real: dos sacos densos con polvo,
+    # escombros confirmado por dos verificadores, y el tercero votando "dos
+    # bolsas de residuos" sobre los mismos bultos. Con DOS modelos viendo
+    # basura común, o con la evidencia nombrando otra cosa además de las
+    # bolsas (cajas, cartones, restos sueltos, comida), no se toca nada: las
+    # escenas mixtas son legítimas y protegidas.
+    rec_dup = next((c for c in problemas if c["key"] == "recoleccion"), None)
+    if rec_dup is not None and any(c["key"] == "retiro_escombros"
+                                   for c in problemas):
+        vlm_rec = [f for f in (rec_dup.get("fuentes") or [])
+                   if f != "modelo_local"]
+        evid_rec = ""
+        for v in (veri.get("verificadores") or []):
+            if vlm_rec and v.get("modelo") == vlm_rec[0]:
+                for c in v.get("categorias") or []:
+                    if c.get("key") == "recoleccion":
+                        evid_rec = verificador._norm_texto(
+                            c.get("evidencia") or "")
+        solo_bolsas = bool(
+            len(vlm_rec) == 1
+            and re.search(r"\bbolsas?\b|\bsacos?\b", evid_rec)
+            and not re.search(r"caja|carton|papel|envoltorio|suelt|desparram|"
+                              r"restos|comida|panal|organic|mezcla|botella|"
+                              r"envase|lata\b|latas\b", evid_rec))
+        if solo_bolsas:
+            problemas = [c for c in problemas if c["key"] != "recoleccion"]
+            if "recoleccion" not in vistos_pos:
+                vistos_pos.add("recoleccion")
+                posibles.append(dict(
+                    rec_dup, origen="foto",
+                    motivo="las bolsas descritas parecen ser los mismos sacos "
+                           "ya reportados como escombros"))
 
     descartados = []
     if foto_valida is False:
