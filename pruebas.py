@@ -2215,6 +2215,9 @@ def _correr_base(votos, dirigidas, dano=None):
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_DANO:
             return json.dumps({"veredicto": (dano or {})[modelo],
                                "evidencia": "lo que vi"})
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_VOLCADO:
+            return json.dumps({"veredicto": _volcado_resp[modelo],
+                               "evidencia": "lo que vi"})
         return _resp_b(votos[modelo][0], votos[modelo][1])
     V._llamar = _llamar_b
     return V.verificar(_Img(), CATS, _LOCAL_B, "")
@@ -2448,6 +2451,60 @@ _claves = {c["key"] for c in _r["confirmadas"]}
 check("dos 'objeto_descartado' dirigidos dejan el voluminoso confirmado",
       "retiro_muebles" in _claves, str(sorted(_claves)))
 
+# 4) VOLCADO FANTASMA: dos modelos ven "volcado" en un lateral parado de
+# noche; la pasada dirigida (postes verticales) lo desautoriza.
+_volcado_resp = {"b/uno": "parado", "b/dos": "indeterminado",
+                 "b/tres": "parado"}
+_r = _correr_base(
+    {"b/uno": ([{"key": "reposicion_contenedor", "gravedad": 3,
+                 "evidencia": "contenedor volcado sobre la calzada"},
+                dict(_CONT)], "Contenedor volcado en la calzada."),
+     "b/dos": ([{"key": "reposicion_contenedor", "gravedad": 3,
+                 "evidencia": "contenedor tumbado de costado"}], ""),
+     "b/tres": ([dict(_CONT)], "")},
+    {})
+_claves = {c["key"] for c in _r["confirmadas"]}
+check("volcado fantasma: la pasada dirigida lo retira",
+      "reposicion_contenedor" not in _claves
+      and not any(p["key"] == "reposicion_contenedor" for p in _r["posibles"]),
+      str(sorted(_claves)))
+check("  y la descripción no sigue afirmando el volcado",
+      "volcado en la calzada" not in (_r.get("descripcion") or "")
+      and "está parado" in (_r.get("descripcion") or ""),
+      str(_r.get("descripcion")))
+
+# contenedor PARADO pero MAL UBICADO: reposicion legítima; "parado" es
+# verdad y NO la refuta (hallazgo de codex). El veto no corre porque
+# ninguna evidencia afirma un volcado.
+_volcado_resp = {"b/uno": "parado", "b/dos": "parado", "b/tres": "parado"}
+_r = _correr_base(
+    {"b/uno": ([{"key": "reposicion_contenedor", "gravedad": 3,
+                 "evidencia": "contenedor parado corrido al medio de la calzada"},
+                dict(_CONT)], "Contenedor corrido al medio de la calle."),
+     "b/dos": ([{"key": "reposicion_contenedor", "gravedad": 3,
+                 "evidencia": "contenedor desplazado de su lugar en la calzada"}],
+               "Desplazado."),
+     "b/tres": ([dict(_CONT)], "Contenedor a la vista.")},
+    {})
+_claves = {c["key"] for c in _r["confirmadas"]}
+check("el mal ubicado (parado) no se veta: sigue confirmado",
+      "reposicion_contenedor" in _claves, str(sorted(_claves)))
+
+# volcado REAL: la pasada dirigida lo confirma dos veces -> se publica
+_volcado_resp = {"b/uno": "volcado", "b/dos": "volcado",
+                 "b/tres": "indeterminado"}
+_r = _correr_base(
+    {"b/uno": ([{"key": "reposicion_contenedor", "gravedad": 3,
+                 "evidencia": "contenedor acostado con las ruedas a la vista"},
+                dict(_CONT)], "Contenedor acostado."),
+     "b/dos": ([{"key": "reposicion_contenedor", "gravedad": 3,
+                 "evidencia": "contenedor tumbado sobre la calzada"}], "Tumbado."),
+     "b/tres": ([dict(_CONT)], "Contenedor caído.")},
+    {})
+_claves = {c["key"] for c in _r["confirmadas"]}
+check("volcado real confirmado por la pasada dirigida: se publica",
+      "reposicion_contenedor" in _claves, str(sorted(_claves)))
+
 (V.VERIFICADORES, V.ARBITRO, V.CONSENSO_VLM_SOLO, V._llamar,
  V.SEGUNDA_MIRADA_BASE, V.SEGUNDA_MIRADA_ESCOMBROS) = _prev_b
 
@@ -2496,6 +2553,10 @@ check("el metal ajeno no es pieza del contenedor",
 check("describir un problema obliga a votarlo",
       "COHERENCIA ENTRE DESCRIPCIÓN Y VOTOS" in _rub_b
       and "Describir un problema sin votarlo es un error" in _rub_b)
+check("el volcado exige evidencia inequívoca y postes horizontales",
+      "VOLCADO exige evidencia INEQUÍVOCA" in _rub_b
+      and "LA SEÑAL DECISIVA SON LOS POSTES" in _rub_b
+      and "postes o montantes metálicos están VERTICALES" in _rub_b)
 
 print(f"\n{_ok} OK, {_fallos} fallas")
 _srv.should_exit = True

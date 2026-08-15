@@ -155,6 +155,10 @@ SEGUNDA_MIRADA_BASE = os.environ.get(
 # leídas como rotas, fierros ajenos atribuidos al contenedor).
 SEGUNDA_MIRADA_DANO = os.environ.get(
     "SEGUNDA_MIRADA_DANO", "1").strip().lower() not in ("0", "false", "no")
+# Segunda mirada dirigida para el VOLCADO (el techo en pendiente de los
+# laterales, de esquina y de noche, se lee como contenedor tumbado).
+SEGUNDA_MIRADA_VOLCADO = os.environ.get(
+    "SEGUNDA_MIRADA_VOLCADO", "1").strip().lower() not in ("0", "false", "no")
 # Subtipo del contenedor de húmedos (lateral vs bilateral): margen mínimo del
 # modelo local (|bilateral - lateral|) para que su voto valga como voto y no
 # solo como desempate. Medido sobre las 70 fotos del set revisado que tienen
@@ -581,7 +585,7 @@ Categorías y criterios (usá SOLO estas claves):
 - contenedor_humedos_lateral [PRESENCIA]: se ve un contenedor de húmedos con POSTES o montantes metálicos VERTICALES en los costados (el brazo del camión los toma para izarlo). Cuerpo plástico grande redondeado, negro o gris oscuro. EL COLOR DECIDE EN UN SOLO SENTIDO: un contenedor de húmedos NEGRO es SIEMPRE lateral, y el AZUL también: el ÚNICO color de bilateral es el gris claro, así que cualquier contenedor de húmedos que claramente NO es gris (negro, azul, verde oscuro) es lateral, aunque los postes queden del otro lado o fuera del encuadre; no existe un bilateral negro ni azul. Tiene que ser NEGRO DE VERDAD (el plástico se ve negro también donde le pega la luz), no un gris ensombrecido, sucio o a contraluz: si dudás entre negro y gris oscurecido por la escena, no uses el color y decidí por los postes. Vale también recortado por el borde de la foto en primer plano o plano medio: un costado o una esquina NEGROS de contenedor, o los postes/herrajes metálicos de izado a la vista sobre el borde, alcanzan para reportar lateral aunque se vea solo una franja del cuerpo. OJO: la cautela con el color vale para el GRIS, que puede ser cualquiera de los dos: si lo que se ve es gris y NO hay ningún poste vertical metálico, NO lo reportes lateral por el color: un cuerpo gris de pared plana sin poste a la vista es BILATERAL.
 - contenedor_humedos_bilateral [PRESENCIA]: se ve un contenedor de húmedos SIN postes metálicos: cuerpo RECTANGULAR de paredes laterales PLANAS y techo abovedado, gris CLARO (o dos tonos de gris). Entre los grises el discriminador NO es el tono sino los POSTES: un contenedor gris sin postes verticales metálicos en los costados es BILATERAL, aunque el gris se vea sucio o en sombra; con postes es LATERAL. El NEGRO y el AZUL no entran en esa regla: un contenedor de cuerpo NEGRO o AZUL es siempre lateral, se le vean o no los postes; no lo reportes bilateral nunca (el único color de bilateral es el gris claro). Vale también recortado por el borde de la foto si está en primer plano: una pared PLANA vertical gris con calcomanía de chevrones rojo/blanco en la esquina y sin poste a la vista es un bilateral, aunque se vea solo una parte del cuerpo (los residuos suelen amontonarse justo al lado, así que el contenedor recortado al borde de la escena es lo normal, no la excepción). Reportá solo UNO de los dos tipos de húmedos.
 - reparacion_contenedor: un contenedor con DAÑO ESTRUCTURAL visible (tapa desprendida, pedal roto, cuerpo agrietado, perforado, derretido o quemado), esté parado o volcado. TAMBIÉN va acá cuando la pieza que falta está TIRADA EN EL PISO al lado o cerca del contenedor: cabezal, tapa, boca de carga, portón, compuerta o pieza antivandálica desprendida. El cuerpo puede verse entero y liso y aun así estar roto: mirá si le FALTA la parte de arriba, si tiene un hueco rectangular donde debería ir la boca de carga, o si hay una pieza del mismo color y material caída al lado. Ese es el caso típico y hay que reportarlo acá, no como objeto voluminoso descartado. LA BASE DEL CONTENEDOR CUENTA COMO PARTE DEL CONTENEDOR. Los contenedores municipales se apoyan sobre una BASE o plataforma metálica anclada al piso: un bastidor bajo de hierro o chapa galvanizada, del largo del contenedor (más o menos dos metros), con rieles o guías paralelas y a veces una rampita o un tope en las puntas; vista sola y vacía parece una parrilla, un bastidor o una estructura metálica larga tirada en la vereda. NO es chatarra descartada ni un objeto voluminoso ni una obstrucción: es el lugar donde va el contenedor. Reportá reparacion_contenedor cuando la base está a la vista y el contenedor NO está encima: la base vacía con el contenedor corrido al costado, en la calzada o contra el cordón, o la base arrancada, dada vuelta o suelta sobre la vereda. Y NO escribas que el contenedor está "en su lugar" si su base se ve vacía: justamente eso es lo que hay que reportar. Si el contenedor está sobre su base y sano, no hay nada que reportar por la base. Es daño en la pieza, no suciedad ni pintura: un contenedor con grafitis, pegatinas o rayado pero entero NO va acá ni en ninguna otra clave. Y una tapa o portón ABIERTO pero ENTERO y aparentemente articulado en su bisagra o eje NO es daño, aunque esté sostenido abierto con un cartón, palo, bolsa o bulto encajado: es uso (vecinos o recuperadores lo dejan así). Lo mismo las tapas DADAS VUELTA por completo hacia atrás, paradas verticales o colgando hacia la espalda del contenedor, incluso las DOS a la vez y en ángulos distintos: los recuperadores las dejan volcadas así para revolver, se ve caótico pero no hay nada roto; "tapas desprendidas" exige ver la tapa SEPARADA del cuerpo o el herraje arrancado, no tapas abiertas de par en par. Y FIJATE DE QUÉ MATERIAL es lo que atribuís al contenedor: el cuerpo y las tapas de los contenedores de húmedos son de PLÁSTICO negro o gris; un perfil, una viga, un caño o una caja de METAL (blanco, galvanizado, oxidado) tirado al lado NO puede ser una pieza del contenedor y no es evidencia de reparación: es un objeto descartado ajeno (retiro_muebles). La única parte metálica propia es la BASE anclada al piso descrita arriba, que no se parece a una viga suelta ni a una caja. El hueco oscuro o el interior visible por una tapa abierta NO cuenta como pieza faltante: reportá daño solo con evidencia de pieza rota, desprendida de su bisagra, deformada, colgando fuera de alineación, ausente, o tirada en el piso como parte separada. Las bolsas, plásticos, telas o residuos COLGANDO del borde, la boca o el costado tampoco son daño: son basura ajena apoyada o enganchada por los vecinos o los recuperadores, no "plástico del contenedor colgando" ni un cabezal roto; daño exige reconocer una PIEZA DEL CONTENEDOR (tapa, cabezal, compuerta, pedal) rota, desprendida o ausente, no material ajeno encima. Y en el contenedor VERDE de reciclables la boca de carga es una RANURA ancha en el cabezal cubierta por CERDAS o flecos NEGROS de cepillo (o una goma partida al medio): ese hueco oscuro con pelos ES EL DISEÑO de la boca, no una rotura ni una pieza faltante. Un contenedor VOLCADO pero sin daños visibles tampoco: es reposicion_contenedor. Un contenedor parado y en buen estado NO. Si el daño se ubica con claridad, agregá "parte" adentro de la categoría: "tapa" (tapa/cabezal desprendido o roto), "pedal" (pedal roto) o "cuerpo" (agrietado, perforado, quemado, derretido). Si no se distingue, no pongas el campo.
-- reposicion_contenedor: un contenedor CAÍDO o VOLCADO (acostado, dado vuelta, corrido al medio de la calle) SIN daños visibles: solo hay que volver a pararlo o ubicarlo. Si además tiene daño estructural (roto, agrietado, quemado, tapa o pedal desprendido) es reparacion_contenedor, no esto. Los grafitis o pegatinas NO cuentan como daño.
+- reposicion_contenedor: un contenedor CAÍDO o VOLCADO (acostado, dado vuelta, corrido al medio de la calle) SIN daños visibles: solo hay que volver a pararlo o ubicarlo. VOLCADO exige evidencia INEQUÍVOCA de que el contenedor está ACOSTADO: se ven las ruedas o la cara de abajo despegadas del piso, o el cuerpo apoyado sobre una cara lateral con la boca o la tapa mirando al piso o de costado. OJO CON EL TECHO EN PENDIENTE: el techo abovedado de los contenedores laterales CAE en pendiente hacia atrás, y visto de esquina o de noche parece que el contenedor está inclinado o tumbado sin estarlo. LA SEÑAL DECISIVA SON LOS POSTES de izado: si los postes o montantes metálicos están VERTICALES, el contenedor está PARADO y no hay volcado que reportar; en un contenedor volcado de verdad los postes quedan horizontales o en diagonal junto con el cuerpo. Ante la duda entre "volcado" e "inclinado por el ángulo de la foto", no lo reportes. Si además tiene daño estructural (roto, agrietado, quemado, tapa o pedal desprendido) es reparacion_contenedor, no esto. Los grafitis o pegatinas NO cuentan como daño.
 - lavado_contenedor: un contenedor en su lugar pero visiblemente MUY sucio por fuera: chorreaduras, mugre incrustada, suciedad notoria que pide lavado. NO por grafitis, calcomanías ni desgaste normal del color.
 - vehiculo_mal_estacionado: un vehículo estacionado o detenido donde está PROHIBIDO: sobre una ciclovía/bicisenda (carril demarcado, típicamente entre franjas amarillas), sobre la vereda o senda peatonal, bloqueando una rampa de accesibilidad o una esquina/ochava, o junto a cartelería de "No estacionar". Señal fuerte: las ruedas pisan la demarcación de la ciclovía o el vehículo está arriba de la vereda. Cuenta aunque el vehículo esté operando, cargando o con el motor en marcha, PERO solo si NO hay ocupantes visibles: si se ve con claridad una persona ADENTRO del habitáculo o la cabina, o MONTADA o sentada sobre la moto o bici, NO lo reportes: el reporte exige el vehículo sin ocupantes a la vista y sería rechazado. Personas caminando, paradas al lado, tocando el vehículo, empujándolo o cargando y descargando DESDE AFUERA no invalidan nada. Ante duda por reflejos, sombras o visibilidad parcial, no asumas ocupante: omití el reporte solo cuando la persona adentro o arriba sea inequívoca. Un vehículo estacionado normal junto al cordón NO se reporta. CUIDADO CON LAS FOTOS DESDE ARRIBA (balcón, ventana, dron): mirando en picada, un auto estacionado bien contra el cordón PARECE estar sobre la vereda, porque la perspectiva aplasta la altura del cordón y superpone el auto con la baldosa. Esa advertencia vale SOLO para decidir si está sobre la vereda: en una foto cenital no uses esa superposición como prueba, exigí ver las RUEDAS apoyadas del lado de adentro del cordón. Un auto paralelo al cordón y alineado con los demás autos estacionados de la cuadra es un estacionamiento normal: NO lo reportes. Las otras infracciones de esta clave SÍ se ven bien desde arriba y se reportan normalmente: auto sobre la ciclovía, sobre la senda peatonal, tapando una rampa o la ochava, o junto a cartelería de "No estacionar". Tampoco confundas las marcas del pavimento: una línea discontinua BLANCA Y AZUL sobre la calzada es demarcación de estacionamiento medido, no una ciclovía; la ciclovía es un carril propio, continuo y ancho, normalmente pintado y separado del tránsito. Si el vehículo se ve abandonado (muy deteriorado, sucio, ruedas desinfladas) es vehiculo_abandonado. EXCEPCIÓN DE LAS DOS FOTOS: en este sistema los reportes vehiculares llegan en dos fotos: primero un PRIMER PLANO de la patente y después la foto de contexto que muestra la infracción. Si la foto es un primer plano deliberado de un solo vehículo estacionado con su patente legible como protagonista del encuadre (la chapa al centro, sin otra incidencia visible en escena), NO la despaches como sin_problema: reportá vehiculo_mal_estacionado con gravedad 1 y evidencia "primer plano de patente; falta la foto de contexto". Y si ese primer plano además muestra señales de ABANDONO (vehículo tapado con lona o funda, muy deteriorado, cubierto de tierra, gomas desinfladas), reportá TAMBIÉN vehiculo_abandonado con gravedad 1: son las dos hipótesis del reporte en curso y la foto de contexto decide cuál queda. Es la mitad de un reporte vehicular, no una calle sin problemas. Esto vale SOLO para primeros planos deliberados de la chapa: un auto estacionado normal dentro de una escena de calle sigue sin reportarse. GRAVEDAD (es el grado de OBSTRUCCIÓN, no la infracción en sí): 1 infracción menor sin obstrucción, o el primer plano de patente sin escena; 2 lugar prohibido pero sin bloquear paso ni accesos; 3 sobre la vereda o la senda obligando a esquivar, o tapando una entrada de vehículos (caso típico); 4 bloquea una rampa de accesibilidad, una parada de colectivo o la ciclovía, u obliga a los peatones a bajar a la calzada; 5 bloquea una bocacalle, un hidrante, una salida de emergencia o un carril de circulación.
 - columna_poste_cable: una columna, un poste o cables de servicios AÚN INSTALADOS y con problema PROPIO visible: cable cortado, caído, colgando, suelto o a baja altura; poste o columna inclinado, roto o deteriorado. Los cables CAÍDOS, tendidos o serpenteando POR EL PISO de la vereda o la calzada SÍ van acá, aunque pasen junto a un árbol o crucen su cantera: son un riesgo propio. La única exclusión es el cable EN el árbol cuyo defecto principal es dañar al árbol (apoyado, atado o tensado contra el tronco, clavándose en la corteza, sin otro riesgo propio): eso es problemas_arbolado. Un poste o caño SUELTO tirado en el piso como descarte es retiro_muebles, NO esto.
@@ -892,6 +896,39 @@ _PROMPT_SEGUNDA_MIRADA_DANO = """Auditás UNA sola cosa en esta foto: el estado 
 - "indeterminado": el contenedor no se ve bien (oscuridad, distancia, tapado) o no llegás a decidir.
 OJO: el cuerpo y las tapas de estos contenedores son de PLÁSTICO negro o gris. Una pieza de METAL en el piso no puede ser una tapa. Decidí solo por lo que VES.
 Respondé SOLO con JSON válido: {"veredicto": "dano_estructural" | "sin_dano_visible" | "indeterminado", "evidencia": "qué viste, máx 15 palabras"}"""
+
+
+_PROMPT_SEGUNDA_MIRADA_VOLCADO = """Auditás UNA sola cosa en esta foto: si el contenedor de basura está PARADO o VOLCADO. Decidí:
+- "volcado": el contenedor está ACOSTADO de verdad: se ven las ruedas o la cara de abajo despegadas del piso, o el cuerpo apoyado sobre una cara lateral, con la boca o la tapa mirando al piso o de costado. En un volcado real los POSTES o montantes metálicos de izado quedan horizontales o en diagonal junto con el cuerpo.
+- "parado": el contenedor está de pie sobre sus ruedas o su base. LA SEÑAL DECISIVA SON LOS POSTES: si los postes metálicos de izado están VERTICALES, el contenedor está parado, punto. OJO: el techo abovedado de los laterales CAE en pendiente hacia atrás; visto de esquina o de noche el cuerpo parece inclinado o tumbado SIN estarlo. Un contenedor parado con el techo en pendiente es "parado".
+- "indeterminado": el contenedor no se ve bien (oscuridad, distancia, tapado) o no llegás a decidir.
+Decidí solo por lo que VES. Respondé SOLO con JSON válido: {"veredicto": "volcado" | "parado" | "indeterminado", "evidencia": "qué viste, máx 15 palabras"}"""
+
+
+def _segunda_mirada_volcado(img):
+    """Re-consulta dirigida por el volcado. Mismo esquema que la del daño:
+    pregunta a TODOS los verificadores y puede desautorizar votos."""
+    data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+    volcado, parado, fallo = [], [], False
+    for modelo in VERIFICADORES:
+        try:
+            contenido = _llamar(modelo, [
+                {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_VOLCADO},
+                {"role": "user", "content": [
+                    {"type": "text", "text": "La foto:"},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ]},
+            ], max_tokens=400)
+            v = _extraer_json(contenido)
+            veredicto = str(v.get("veredicto", "")).strip().lower()
+            evidencia = _texto_limpio(v.get("evidencia"), EVID_MAX)
+            if veredicto == "volcado" and evidencia:
+                volcado.append((modelo, evidencia))
+            elif veredicto == "parado" and evidencia:
+                parado.append((modelo, evidencia))
+        except Exception:
+            fallo = True
+    return volcado, parado, fallo
 
 
 def _segunda_mirada_dano(img):
@@ -1679,6 +1716,61 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                     confirmadas.discard("reparacion_contenedor")
                     disputadas.add("reparacion_contenedor")
 
+    # SEGUNDA MIRADA (volcado): el techo en pendiente de los laterales, de
+    # esquina y de noche, produce "contenedor volcado" en dos modelos a la
+    # vez sobre un contenedor parado (medido: 2 de 3 corridas con la rúbrica
+    # ya advertida). Mismo esquema de veto que el daño; la señal decisiva
+    # (postes verticales = parado) va en la pregunta dirigida.
+    segunda_mirada_volcado = None
+    if SEGUNDA_MIRADA_VOLCADO and "reposicion_contenedor" in confirmadas:
+        # SOLO los votos que afirman el VOLCADO son candidatos al veto: la
+        # categoría también cubre el contenedor PARADO pero mal ubicado
+        # (corrido al medio de la calle), y para ese caso "parado" es
+        # verdad y no lo refuta (hallazgo de codex, reproducido).
+        _volcado_claim = re.compile(r"volcad|caid|tumbad|acostad|dado vuelta")
+        repos = {}
+        for v in activos:
+            for c in v["categorias"]:
+                if (c["key"] == "reposicion_contenedor"
+                        and _volcado_claim.search(
+                            _norm_texto(c.get("evidencia") or ""))):
+                    repos[v["modelo"]] = c
+        if repos:
+            volc_sm, parado_sm, fallo_sv = _segunda_mirada_volcado(img)
+            retira_volc = len(parado_sm) >= 1 and len(volc_sm) < 2
+            segunda_mirada_volcado = {
+                "volcado": [{"modelo": m, "evidencia": e} for m, e in volc_sm],
+                "parado": [{"modelo": m, "evidencia": e} for m, e in parado_sm],
+                "retiro_votos": retira_volc,
+                "fallo": fallo_sv,
+            }
+            if retira_volc:
+                for v in activos:
+                    c = repos.get(v["modelo"])
+                    if c is None:
+                        continue
+                    v["categorias"] = [x for x in v["categorias"] if x is not c]
+                    votos_anulados.append((v, c, "segunda_mirada_volcado"))
+                    if v["modelo"] in fuentes.get("reposicion_contenedor", []):
+                        fuentes["reposicion_contenedor"].remove(v["modelo"])
+                    try:
+                        g = min(5, max(1, int(c.get("gravedad", 1))))
+                    except (TypeError, ValueError):
+                        g = 1
+                    votos_g = grav_votos.get("reposicion_contenedor")
+                    if votos_g and g in votos_g:
+                        votos_g.remove(g)
+                    desc_desautorizadas.add(v["modelo"])
+                restantes = fuentes.get("reposicion_contenedor", [])
+                if not restantes:
+                    fuentes.pop("reposicion_contenedor", None)
+                    grav_votos.pop("reposicion_contenedor", None)
+                    confirmadas.discard("reposicion_contenedor")
+                    disputadas.discard("reposicion_contenedor")
+                elif len(restantes) == 1:
+                    confirmadas.discard("reposicion_contenedor")
+                    disputadas.add("reposicion_contenedor")
+
     arbitro = None
     en_duda = []
     if disputadas and activos:
@@ -1890,6 +1982,22 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             descripcion = (" ".join(limpias).strip() + " " + nota).strip() \
                 if limpias else nota
 
+    # Ídem con el veto del volcado: la prosa heredada no puede seguir
+    # afirmando el contenedor tumbado.
+    if (segunda_mirada_volcado and segunda_mirada_volcado.get("retiro_votos")
+            and descripcion):
+        _volc_txt = re.compile(r"volcad|caid|tumbad|acostad|dado vuelta")
+        _cont_txt2 = re.compile(r"contenedor")
+        frases = re.split(r"(?<=[.!?])\s+", descripcion)
+        limpias = [f for f in frases
+                   if not (_volc_txt.search(_norm_texto(f))
+                           and _cont_txt2.search(_norm_texto(f)))]
+        if len(limpias) < len(frases):
+            nota = ("Visto de cerca, el contenedor está parado: la "
+                    "inclinación es del ángulo de la foto, no un volcado.")
+            descripcion = (" ".join(limpias).strip() + " " + nota).strip() \
+                if limpias else nota
+
     # Categorías que el contexto vecinal describe pero la foto no confirma:
     # unión de lo que reportaron los verificadores, sin las ya confirmadas.
     # No cuentan para gravedad_maxima ni sin_problema (no son evidencia visual),
@@ -2056,6 +2164,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         "segunda_mirada_base": segunda_mirada_base,
         # Ídem para la del daño del contenedor (tapas dadas vuelta, fierros).
         "segunda_mirada_dano": segunda_mirada_dano,
+        # Ídem para la del volcado (techo en pendiente leído como tumbado).
+        "segunda_mirada_volcado": segunda_mirada_volcado,
         "confirmadas": finales,
         "en_duda": en_duda,
         # Interno, para que el serializador pueda filtrar en_duda por fuente:
