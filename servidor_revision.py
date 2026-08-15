@@ -33,6 +33,14 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(cuerpo)
 
+    def end_headers(self):
+        # Sin esto el navegador se queda con la copia vieja de index.html. Ya
+        # pasó: el mismo puerto sirvió antes una versión con los nombres de
+        # archivo rotos y el navegador la siguió mostrando, sin fotos.
+        if not self.path.startswith("/fotos/"):
+            self.send_header("Cache-Control", "no-store, must-revalidate")
+        super().end_headers()
+
     def do_GET(self):
         if self.path.rstrip("/") == "/estado":
             with _lock:
