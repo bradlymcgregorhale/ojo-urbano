@@ -1512,7 +1512,7 @@ const T=O+'/trabajos'+SUF;
 const RUTAS={clasificar:O+'/clasificar'+SUF, trabajos:T, consulta:T+'?id=ID',
              cancelar:O+'/trabajos/cancelar'+SUF+'?id=ID', salud:O+'/salud'+SUF};
 document.querySelectorAll('.ruta').forEach(el=>{el.textContent=RUTAS[el.dataset.ep]||'';});
-const GRAV={1:'mínima',2:'leve',3:'alta',4:'grave',5:'muy grave'};
+const GRAV={1:'registro',2:'leve',3:'típico',4:'grave',5:'crítico'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const SNIP={
  curl:`# una foto, esperando el resultado en la conexión (25-60 s)
@@ -1809,7 +1809,7 @@ function pintar(it){
     const d=it.resultado||{};
     const g=d.gravedad_maxima;
     const insignia=d.hay_problema
-      ?`<span class="grav">G ${g||'?'}</span>`
+      ?`<span class="grav" title="Gravedad ${g||'?'} de 5: ${GRAV[g]||''}">G${g||'?'} ${GRAV[g]||''}</span>`
       :'<span class="grav g0">sin problema</span>';
     banda.innerHTML=`${insignia} Listo<span class="der">${it.dur?it.dur+' s':''}</span>`;
   }else{
@@ -1857,7 +1857,7 @@ function renderResultado(d){
   let h=`<div class="tarconcl">${esc(concl+aviso)}</div>`;
   if(probs.length)h+='<div class="minicats">'+probs.map(c=>
     `<div class="minicat"><b>${esc(c.nombre)}</b><span>${c.gravedad?c.gravedad+'/5':''}`+
-    `${c.confianza?' · conf. '+esc(c.confianza):''}${c.patente?' · patente '+esc(c.patente):''}</span></div>`).join('')+'</div>';
+    `${c.fuentes?' · '+c.fuentes+(c.fuentes===1?' fuente':' fuentes'):''}${c.patente?' · patente '+esc(c.patente):''}</span></div>`).join('')+'</div>';
   const cc=d.categorias_contexto||[];
   if(cc.length)h+='<div class="minicats">'+cc.map(c=>
     `<div class="minicat ctx"><b>${esc(c.nombre)}</b><span>según tu texto</span></div>`).join('')+'</div>';
