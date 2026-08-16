@@ -2139,8 +2139,8 @@ check("  el chevrón identifica pero SOLO no alcanza",
 check("  y no discrimina subtipo",
       "NO dice el subtipo" in V._RUBRICA)
 check("  subtipo del recortado: pared plana gris sin poste -> bilateral",
-      "pared PLANA vertical gris sin poste a la vista -> bilateral" in V._RUBRICA
-      and "cuerpo negro o azul, redondeado" in V._RUBRICA)
+      "pared PLANA vertical gris CLARO de aristas rectas sin poste a la vista -> bilateral" in V._RUBRICA
+      and "cuerpo REDONDEADO o panzón (de cualquier color)" in V._RUBRICA)
 check("  la entrada lateral advierte contra votar lateral por el color",
       "NO lo reportes lateral por el color" in V._RUBRICA)
 check("  pero el negro decide: negro es siempre lateral, nunca bilateral",
@@ -2150,6 +2150,13 @@ check("  pero el negro decide: negro es siempre lateral, nunca bilateral",
 check("  y el azul tampoco es bilateral: el único color de bilateral es gris",
       "el AZUL también" in V._RUBRICA
       and "NEGRO o AZUL es siempre lateral" in V._RUBRICA)
+check("  la forma decide sola: redondeado es lateral aunque no se vean postes",
+      "LA FORMA DECIDE SOLA" in V._RUBRICA
+      and "postes queden OCULTOS detrás del cuerpo" in V._RUBRICA
+      and "REDONDEADO o panzón NO es bilateral" in V._RUBRICA)
+check("  con el chequeo forzado del contenedor antes de votar subtipo",
+      '"revision_contenedor"' in V._RUBRICA
+      and "EL DE ESTE CHEQUEO" in V._RUBRICA)
 check("  con la salvaguarda del negro de verdad vs gris ensombrecido",
       "NEGRO DE VERDAD" in V._RUBRICA
       and "no uses el color y decidí por los postes" in V._RUBRICA)
@@ -2209,8 +2216,14 @@ def _correr_base(votos, dirigidas, dano=None):
                 return json.dumps({"hay_estructura": False,
                                    "veredicto": "base_de_contenedor",
                                    "evidencia": "lo que vi"})
+            if _v == "base_sin_corrido":
+                return json.dumps({"hay_estructura": True,
+                                   "veredicto": "base_de_contenedor",
+                                   "contenedor_corrido": False,
+                                   "evidencia": "lo que vi"})
             return json.dumps({"hay_estructura": _v != "indeterminado",
                                "veredicto": _v,
+                               "contenedor_corrido": _v == "base_de_contenedor",
                                "evidencia": "lo que vi"})
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_DANO:
             return json.dumps({"veredicto": (dano or {})[modelo],
@@ -2352,6 +2365,23 @@ _r = _correr_base(
 _claves = {c["key"] for c in _r["confirmadas"]}
 check("sin estructura real la sugestión no promueve la reparación",
       "reparacion_contenedor" not in _claves, str(sorted(_claves)))
+
+# 2d-ter) LA FIRMA DE LA ESCENA: "base" sin contenedor corrido no cuenta.
+# Caso real T013: restos oscuros de noche, contenedores apoyados normales;
+# la promoción fabricaba una reparación Y el retiro se llevaba los
+# voluminosos reales.
+_r = _correr_base(
+    {"b/uno": ([dict(_METAL), dict(_CONT)], "Restos y estructura metálica."),
+     "b/dos": ([{"key": "retiro_muebles", "gravedad": 3,
+                 "evidencia": "estructura metálica rota en la calzada"}],
+               "Restos oscuros."),
+     "b/tres": ([dict(_CONT)], "Contenedor normal.")},
+    {"b/uno": "base_sin_corrido", "b/dos": "base_sin_corrido",
+     "b/tres": "indeterminado"})
+_claves = {c["key"] for c in _r["confirmadas"]}
+check("'base' con contenedores apoyados normales no promueve ni retira",
+      "reparacion_contenedor" not in _claves
+      and "retiro_muebles" in _claves, str(sorted(_claves)))
 
 # 2e) Tapas dadas vuelta para el cirujeo + fierros ajenos: dos modelos
 # confirman "tapas rotas y desprendidas" (caso real: 3 de 6 corridas). La
