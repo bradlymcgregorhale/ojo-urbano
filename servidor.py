@@ -404,6 +404,12 @@ def _cacheable(respuesta):
         # corte transitorio, no un veredicto.
         if any(r.get("fallo") for r in veri.get("repreguntas") or []):
             return False
+        # Ídem la mirada dirigida del subtipo.
+        if (veri.get("segunda_mirada_subtipo") or {}).get("fallo"):
+            return False
+        # Ídem la firma de identidad del voluminoso.
+        if (veri.get("segunda_mirada_voluminoso") or {}).get("fallo"):
+            return False
         # Con árbitro configurado, que queden categorías en duda significa que
         # el arbitraje falló o quedó incompleto (respondió sin decidirlas
         # todas). Cachearlo congela ese resultado a medio hacer para siempre.

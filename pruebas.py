@@ -1989,7 +1989,7 @@ _RESP_PRES = {
             {"key": "recoleccion", "gravedad": 2, "evidencia": "bolsas"},
             {"key": "reparacion_cesto", "gravedad": 3, "evidencia": "cesto roto"},
             {"key": "contenedor_humedos_lateral", "gravedad": 1,
-             "evidencia": "contenedor a la derecha"}],
+             "evidencia": "contenedor negro con postes a la derecha"}],
         "sin_problema": False, "descripcion": "Bolsas junto a un contenedor.",
         "categorias_contexto": []}),
     "vlm/dos": json.dumps({
@@ -2151,9 +2151,14 @@ check("  y el azul tampoco es bilateral: el único color de bilateral es gris",
       "el AZUL también" in V._RUBRICA
       and "NEGRO o AZUL es siempre lateral" in V._RUBRICA)
 check("  la forma decide sola: redondeado es lateral aunque no se vean postes",
-      "LA FORMA DECIDE SOLA" in V._RUBRICA
+      "LA FORMA ES LA DE LAS PAREDES, NO LA DEL TECHO" in V._RUBRICA
       and "postes queden OCULTOS detrás del cuerpo" in V._RUBRICA
-      and "REDONDEADO o panzón NO es bilateral" in V._RUBRICA)
+      and "paredes planas + techo curvo + gris claro = bilateral" in V._RUBRICA
+      and "si las paredes no se ven, NO decidas por forma" in V._RUBRICA)
+check("  el verde oscuro no es un secos ni se duplica",
+      "VERDE BRILLANTE" in V._RUBRICA
+      and "verde oscuro de cuerpo redondeado es un lateral" in V._RUBRICA
+      and "UNA sola clave" in V._RUBRICA)
 check("  con el chequeo forzado del contenedor antes de votar subtipo",
       '"revision_contenedor"' in V._RUBRICA
       and "EL DE ESTE CHEQUEO" in V._RUBRICA)
@@ -2231,6 +2236,10 @@ def _correr_base(votos, dirigidas, dano=None):
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_VOLCADO:
             return json.dumps({"veredicto": _volcado_resp[modelo],
                                "evidencia": "lo que vi"})
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_VOLUMINOSO:
+            return json.dumps(dict(_voluminoso_resp.get(
+                modelo, {"veredicto": "no_se_distingue", "objeto": None}),
+                evidencia="lo que vi"))
         if str(mensajes[0].get("content", "")).startswith("Buscá UNA sola cosa"):
             return json.dumps(dict(_repregunta_resp.get(
                 modelo, {"veredicto": "no_se_distingue", "ubicacion": None,
@@ -2241,6 +2250,7 @@ def _correr_base(votos, dirigidas, dano=None):
 
 
 _repregunta_resp = {}
+_voluminoso_resp = {}
 _METAL = {"key": "retiro_muebles", "gravedad": 3,
           "evidencia": "estructura metálica larga tirada sobre la vereda"}
 _CONT = {"key": "contenedor_humedos_bilateral", "gravedad": 1,
@@ -2678,6 +2688,106 @@ _r = _correr_base(
 check("presente sin ubicación no cuenta como avistaje",
       "retiro_muebles" not in {c["key"] for c in _r["confirmadas"]})
 
+print("[#V] firma de identidad del voluminoso marginal")
+_LOCAL_MUEB = {"predichas": [{"key": "retiro_muebles", "nombre": "RM",
+                              "score": 0.9}],
+               "probabilidades": [{"key": "retiro_muebles", "nombre": "RM",
+                                   "score": 0.9}],
+               "gravedad": {"value": 2, "raw": 2.0}}
+
+def _correr_vol(evidencia, vol_resp):
+    global _voluminoso_resp
+    _voluminoso_resp = vol_resp
+    def _llamar_v(modelo, mensajes, **k):
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_VOLUMINOSO:
+            return json.dumps(dict(vol_resp.get(
+                modelo, {"veredicto": "no_se_distingue", "objeto": None}),
+                evidencia="lo que vi"))
+        if str(mensajes[0].get("content", "")).startswith("Buscá UNA sola cosa"):
+            return json.dumps({"veredicto": "no_se_distingue",
+                               "ubicacion": None, "estado": None,
+                               "evidencia": "lo que vi"})
+        if modelo == "b/uno":
+            return _resp_b([{"key": "retiro_muebles", "gravedad": 2,
+                             "evidencia": evidencia}, dict(_CONT)],
+                           "Posibles muebles.")
+        return _resp_b([dict(_CONT)], "Contenedor.")
+    V._llamar = _llamar_v
+    r = V.verificar(_Img(), CATS, _LOCAL_MUEB, "")
+    return r
+
+# nadie identifica un objeto -> baja a posibles y la repregunta no lo revive
+_r = _correr_vol("posibles muebles bajo una manta en la vereda", {})
+check("voluminoso marginal sin objeto identificado: baja a posibles",
+      "retiro_muebles" not in {c["key"] for c in _r["confirmadas"]}
+      and any(p["key"] == "retiro_muebles" for p in _r["posibles"]),
+      str([c["key"] for c in _r["confirmadas"]]))
+check("  y la repregunta no lo resucita",
+      not any(q["key"] == "retiro_muebles"
+              for q in _r.get("repreguntas") or []))
+# un modelo NOMBRA el objeto y lo ubica -> se mantiene confirmado
+_r = _correr_vol("sillón grande descartado en la vereda",
+                 {"b/dos": {"veredicto": "objeto_identificado",
+                            "objeto": "sillón de dos cuerpos",
+                            "ubicacion": "junto al cordón"}})
+check("con el objeto nombrado y ubicado se mantiene confirmado",
+      "retiro_muebles" in {c["key"] for c in _r["confirmadas"]},
+      str([c["key"] for c in _r["confirmadas"]]))
+_voluminoso_resp = {}
+
+print("[#S] el local corrige el subtipo unánimemente equivocado")
+def _correr_sub(key_vlm, lat, bil, dirigida="no_se_distingue",
+                evidencia="contenedor visible en primer plano"):
+    pred = [{"key": k, "nombre": k, "score": s} for k, s in
+            [("contenedor_humedos_lateral", lat),
+             ("contenedor_humedos_bilateral", bil)] if s >= 0.5]
+    local = {"predichas": pred, "probabilidades": [
+        {"key": "contenedor_humedos_lateral", "nombre": "L", "score": lat},
+        {"key": "contenedor_humedos_bilateral", "nombre": "B", "score": bil}],
+        "gravedad": {"value": 2, "raw": 2.0}}
+    def _llamar_s(modelo, mensajes, **k):
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_SUBTIPO:
+            return json.dumps({"veredicto": dirigida, "evidencia": "señales"})
+        return _resp_b([{"key": key_vlm, "gravedad": 1,
+                         "evidencia": evidencia}], "Un contenedor.")
+    V._llamar = _llamar_s
+    r = V.verificar(_Img(), CATS, local, "")
+    juntos = {c["key"] for c in r["confirmadas"]} | set(r["en_duda"])
+    return juntos
+
+# (a) T005: los tres votan bilateral; local lateral 1.000 (margen 0.993);
+# la mirada dirigida ratifica al local -> corrige a lateral
+_v = _correr_sub("contenedor_humedos_bilateral", 1.0, 0.007, dirigida="lateral")
+check("discrepancia fuerte + mirada dirigida: corrige el subtipo",
+      "contenedor_humedos_lateral" in _v
+      and "contenedor_humedos_bilateral" not in _v, str(sorted(_v)))
+# (b) T044: los tres votan lateral; local lateral 0.000 / bilateral 0.07;
+# nadie ve las señales (no_se_distingue) -> decide el local
+_v = _correr_sub("contenedor_humedos_lateral", 0.0, 0.07)
+check("  sin mayoría dirigida decide el local (exclusión práctica)",
+      "contenedor_humedos_bilateral" in _v
+      and "contenedor_humedos_lateral" not in _v, str(sorted(_v)))
+# la mirada dirigida RATIFICA a los VLM -> el local no pisa nada
+_v = _correr_sub("contenedor_humedos_bilateral", 1.0, 0.007, dirigida="bilateral")
+check("  si la mirada dirigida ratifica a los VLM, mandan los VLM",
+      "contenedor_humedos_bilateral" in _v
+      and "contenedor_humedos_lateral" not in _v, str(sorted(_v)))
+# guardia del incidente: el testigo citó los POSTES -> no se toca nada
+_v = _correr_sub("contenedor_humedos_lateral", 0.01, 0.99,
+                 evidencia="contenedor negro con postes a la vista")
+check("  el testigo que cita los postes no se pisa (incidente real)",
+      "contenedor_humedos_lateral" in _v
+      and "contenedor_humedos_bilateral" not in _v, str(sorted(_v)))
+# control: local de acuerdo -> la pasada ni corre
+_v = _correr_sub("contenedor_humedos_lateral", 0.98, 0.01)
+check("  local de acuerdo: no toca nada",
+      "contenedor_humedos_lateral" in _v, str(sorted(_v)))
+# control: local ambivalente -> manda el voto de los VLM
+_v = _correr_sub("contenedor_humedos_bilateral", 0.4, 0.3)
+check("  local ambivalente: manda el voto de los VLM",
+      "contenedor_humedos_bilateral" in _v
+      and "contenedor_humedos_lateral" not in _v, str(sorted(_v)))
+
 (V.VERIFICADORES, V.ARBITRO, V.CONSENSO_VLM_SOLO, V._llamar,
  V.SEGUNDA_MIRADA_BASE, V.SEGUNDA_MIRADA_ESCOMBROS) = _prev_b
 
@@ -2704,6 +2814,17 @@ check("la ranura con cerdas del contenedor verde es diseño, no rotura",
 check("junto a un contenedor la vara de recoleccion es mas alta",
       "al lado de un contenedor la vara es MÁS ALTA" in _rub_b
       and "hace falta al menos una bolsa llena, una caja descartada" in _rub_b)
+check("el vaciado tambien exige ver el interior lleno",
+      "UNA caja o bulto calzado trabando la tapa, con el interior oscuro o sin verse, NO indica" in _rub_b)
+check("la boca antivandálica del bilateral con basura no es desborde",
+      "la tapa antivandálica ABIERTA con residuos apoyados o encajados en la boca NO es desborde" in _rub_b)
+check("las latas de pintura cuentan como voluminoso aunque sean chicas",
+      "LATAS Y BALDES DE PINTURA" in _rub_b
+      and "no son basura de bolsa, llevan retiro aparte" in _rub_b)
+check("el colchón es una plancha rígida; lo que cae en pliegues es textil",
+      "PLANCHA RÍGIDA de bordes rectos" in _rub_b
+      and "CAE EN PLIEGUES" in _rub_b
+      and "no lo votes colchón por el tamaño" in _rub_b)
 check("la cuna es voluminoso, no cesto roto",
       "CUNAS, corralitos y muebles infantiles" in _rub_b
       and "NO es un cesto roto ni un contenedor chico desmontado" in _rub_b)
