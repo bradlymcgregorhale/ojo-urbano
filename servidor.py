@@ -570,7 +570,14 @@ def procesar(datos, contexto, verificar):
         # escombros no los separa (los FP puntúan MÁS que los TP); la
         # ambivalencia del propio modelo local sí, 5/5 en los casos
         # revisados. Si el local dice "las dos cosas", no decide nada.
+        # Si una pasada dirigida ya adjudicó los escombros (por ejemplo la
+        # validación cruzada: los otros modelos miraron ESE objeto y dijeron
+        # que no está), la fusión NO los vuelve a inyectar por la ventana
+        # marcados como "reclasificado_por: modelo_local" (hallazgo de codex).
+        _esc_adjudicado = "retiro_escombros" in set(
+            veri.get("adjudicadas_dirigidas") or [])
         if (esc_local >= FUSION_ESCOMBROS_UMBRAL and rec is not None
+                and not _esc_adjudicado
                 and prob_local.get("recoleccion", 1.0)
                 <= FUSION_ESCOMBROS_RECO_BAJA):
             agrego_escombros = False

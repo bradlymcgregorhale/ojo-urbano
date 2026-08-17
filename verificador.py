@@ -1107,6 +1107,11 @@ def _segunda_mirada_dano(img):
     return dano, sin_dano, fallo
 
 
+_PATRON_DUDOSO = re.compile(
+    r"\b(?:posible|posibles|probable|probables|parece|parecen|parecia|"
+    r"parecian|pareceria|podria|podrian|podia|quiza|quizas|tal vez|aparente|"
+    r"aparentemente|aparenta|aparentan|presuntamente|se ve como|similar a|"
+    r"da la impresion|no se distingue|indeterminad)")
 _ESTADO_QUALIF = re.compile(
     r"\b(descartad[oa]s?|tirad[oa]s?|abandonad[oa]s?|rot[oa]s?|volcad[oa]s?|"
     r"dañad[oa]s?|danad[oa]s?|en desuso)\b", re.IGNORECASE)
@@ -1983,8 +1988,52 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # posibles y descripción no queden contradiciendo una confirmación.
     # Confirma únicamente una nueva evidencia concreta SIN ninguna negativa
     # dirigida en contra.
+    # Registro compartido por todas las pasadas dirigidas: la primera que
+    # puede retirar votos es la de escombros, así que se declara acá arriba.
+    desc_desautorizadas = set()  # modelos cuya descripción quedó desautorizada
+    votos_anulados = []  # (veredicto, voto retirado, pasada que lo anuló)
+    adjudicadas_dirigidas = set()  # claves bajadas por una pasada dirigida:
+                                   # el árbitro no las puede volver a subir
+
+    # VALIDACIÓN CRUZADA de los reclamos que MANDAN UN CAMIÓN DISTINTO
+    # (voluminosos y escombros): si el objeto lo vio UN SOLO modelo, a los
+    # otros se les pregunta dirigido por ESE objeto. Pueden habérselo perdido
+    # en la primera lectura, así que la pregunta puede confirmar (2 de 3 y se
+    # publica) o negar (y entonces no se publica). Los chequeos genéricos solo
+    # corren cuando NO hay un objeto nombrable que preguntar: preguntar por el
+    # objeto concreto es mejor en las dos direcciones (medido: 7 de 7 objetos
+    # reales encontrados, 0 de 9 plantados aceptados).
+    def _objeto_de_un_solo_vlm(key):
+        vlm = [f for f in fuentes.get(key, []) if f != "modelo_local"]
+        if len(vlm) != 1:
+            return None, None
+        c = next((c for v in activos if v["modelo"] == vlm[0]
+                  for c in v["categorias"] if c["key"] == key), None)
+        objeto = _objeto_de_evidencia((c or {}).get("evidencia"))
+        # Una evidencia DUDOSA ("posibles muebles", "parece un colchón") no se
+        # convierte en pregunta dirigida: preguntar por algo que el propio
+        # testigo no afirma es una pregunta sugestiva. Esos casos van a los
+        # chequeos genéricos, que piden NOMBRAR el objeto.
+        if objeto and _PATRON_DUDOSO.search(_norm_texto(objeto)):
+            return None, None
+        return objeto, vlm[0]
+
+    _hay_cruzada = bool(REPREGUNTA_OBJETOS and activos
+                        and len(VERIFICADORES) >= 3)
+
     segunda_mirada = None
-    if SEGUNDA_MIRADA_ESCOMBROS and "retiro_escombros" in disputadas:
+    _obj_escombros, _ = (_objeto_de_un_solo_vlm("retiro_escombros")
+                         if _hay_cruzada else (None, None))
+    # Además del caso en disputa (el histórico), corre con los escombros
+    # CONFIRMADOS por un solo VLM más el modelo local y evidencia dudosa: sin
+    # esto, un "posibles escombros" con respaldo del local se publicaba sin
+    # pasar por ningún control (hallazgo de codex).
+    _esc_confirmado_flaco = (
+        "retiro_escombros" in confirmadas and not _obj_escombros
+        and sum(1 for f in fuentes.get("retiro_escombros", [])
+                if f != "modelo_local") == 1)
+    if SEGUNDA_MIRADA_ESCOMBROS and ("retiro_escombros" in disputadas
+                                     or _esc_confirmado_flaco):
         vlm_escombros = [f for f in fuentes.get("retiro_escombros", [])
                          if f != "modelo_local"]
         if vlm_escombros:
@@ -2003,6 +2052,28 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                         fuentes["retiro_escombros"].append(m)
                 confirmadas.add("retiro_escombros")
                 disputadas.discard("retiro_escombros")
+            elif _esc_confirmado_flaco and negativas and not confirmantes:
+                # Publicado por un solo VLM con evidencia dudosa, y los otros,
+                # mirando las mismas bolsas, dicen que no hay escombros: es
+                # otro camión, no se manda con una sola mirada.
+                segunda_mirada["retiro_votos"] = True
+                confirmadas.discard("retiro_escombros")
+                disputadas.add("retiro_escombros")
+                adjudicadas_dirigidas.add("retiro_escombros")
+                for v in activos:
+                    c = next((c for c in v["categorias"]
+                              if c["key"] == "retiro_escombros"), None)
+                    if c is None:
+                        continue
+                    v["categorias"] = [x for x in v["categorias"] if x is not c]
+                    votos_anulados.append((v, c, "segunda_mirada_escombros"))
+                    desc_desautorizadas.add(v["modelo"])
+                    if v["modelo"] in fuentes.get("retiro_escombros", []):
+                        fuentes["retiro_escombros"].remove(v["modelo"])
+                if not fuentes.get("retiro_escombros"):
+                    fuentes.pop("retiro_escombros", None)
+                    grav_votos.pop("retiro_escombros", None)
+                    disputadas.discard("retiro_escombros")
 
     # SEGUNDA MIRADA (base del contenedor): también antes del árbitro. La
     # dispara un voto de retiro_muebles con evidencia de estructura metálica
@@ -2013,10 +2084,6 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # dirigidos afirmen que es descarte real; promover reparacion_contenedor,
     # en cambio, pide DOS "base" y ninguna en contra.
     segunda_mirada_base = None
-    desc_desautorizadas = set()  # modelos cuya descripción quedó desautorizada
-    votos_anulados = []  # (veredicto, voto retirado, pasada que lo anuló)
-    adjudicadas_dirigidas = set()  # claves bajadas por una pasada dirigida:
-                                   # el árbitro no las puede volver a subir
     if SEGUNDA_MIRADA_BASE:
         metalicos = {}  # modelo -> voto de retiro_muebles con evidencia metálica
         for v in activos:
@@ -2294,13 +2361,28 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # con voluminosos. Con retiro_muebles confirmado por <=1 fuente VLM, se
     # exige que algún modelo NOMBRE el objeto y lo ubique; si nadie puede
     # (o dicen que son solo bolsas/cartones/textiles), baja a posibles.
+    _obj_muebles, _ = (_objeto_de_un_solo_vlm("retiro_muebles")
+                       if _hay_cruzada else (None, None))
+
     segunda_mirada_voluminoso = None
     if (SEGUNDA_MIRADA_VOLUMINOSO and "retiro_muebles" in confirmadas
             and sum(1 for f in fuentes.get("retiro_muebles", [])
                     if f != "modelo_local") <= 1
+            and not _obj_muebles
             and not (segunda_mirada_base or {}).get("retiro_votos")):
         ident_sm, neg_sm, desc_sm, fallo_vol = _segunda_mirada_voluminoso(img)
-        mantiene = bool(ident_sm)
+        # MAYORÍA, no "alcanza con uno". El caso que lo obligó es U003 (foto de
+        # 270 px): un modelo dijo "tablones de madera apoyados al costado del
+        # contenedor" y los otros DOS, preguntados dirigido por el mismo lugar,
+        # contestaron "cajas y paneles de CARTÓN, sin objetos voluminosos". Con
+        # la regla vieja ese único voto sostenía el reclamo y salía un pedido
+        # de camión por un voluminoso que probablemente no existe. Cuando los
+        # negativos dirigidos son MÁS que las identificaciones, no hay objeto:
+        # baja a en_duda. El empate mantiene, como en las pasadas hermanas.
+        # Sigue haciendo falta AL MENOS UNA identificación (si nadie puede
+        # nombrar el objeto, no está: esa es la regla original), y además esa
+        # identificación no puede quedar en minoría contra los negativos.
+        mantiene = bool(ident_sm) and len(ident_sm) >= len(neg_sm)
         segunda_mirada_voluminoso = {
             "identificados": [{"modelo": m, "objeto": o} for m, o in ident_sm],
             "negativos": [{"modelo": m, "evidencia": e} for m, e in neg_sm],
@@ -2320,26 +2402,34 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # el "ausente" que bloquea solo puede venir del único repreguntado y el
     # chequeo cruzado deja de ser independiente. La repregunta corre solo
     # con la configuración medida (hallazgo de la revisión de Opus).
-    if REPREGUNTA_OBJETOS and activos and len(VERIFICADORES) >= 3:
+    if _hay_cruzada:
         pendientes = []
-        vlm_m = [f for f in fuentes.get("retiro_muebles", [])
-                 if f != "modelo_local"]
-        # Si la pasada de la base RETIRÓ votos de retiro_muebles, o la firma
-        # de identidad del voluminoso lo ACABA de bajar, ese reclamo ya fue
-        # adjudicado dirigido: repreguntarlo lo resucitaría (hallazgo de
-        # Opus, reproducido; ídem para la firma de identidad).
-        _muebles_ya_adjudicado = (
-            (segunda_mirada_base or {}).get("retiro_votos")
-            or (segunda_mirada_voluminoso is not None
-                and not segunda_mirada_voluminoso.get("mantiene")))
-        if ("retiro_muebles" in disputadas and len(vlm_m) == 1
-                and not _muebles_ya_adjudicado):
-            c = next((c for v in activos if v["modelo"] == vlm_m[0]
-                      for c in v["categorias"]
-                      if c["key"] == "retiro_muebles"), None)
-            objeto = _objeto_de_evidencia((c or {}).get("evidencia"))
-            if objeto:
-                pendientes.append(("retiro_muebles", objeto, vlm_m[0], True))
+        # Los dos reclamos de CAMIÓN: el voluminoso y los escombros. Da igual
+        # que el reclamo haya quedado confirmado (un VLM más el modelo local
+        # ya suman dos fuentes) o en disputa: si lo VIO uno solo, se pregunta.
+        # Lo que ya adjudicó otra pasada dirigida no se toca: repreguntarlo lo
+        # resucitaría (hallazgo de Opus, reproducido).
+        for _k in ("retiro_muebles", "retiro_escombros"):
+            if _k in adjudicadas_dirigidas:
+                continue
+            if _k == "retiro_muebles" and (
+                    (segunda_mirada_base or {}).get("retiro_votos")
+                    or (segunda_mirada_voluminoso is not None
+                        and not segunda_mirada_voluminoso.get("mantiene"))):
+                continue
+            if _k not in confirmadas and _k not in disputadas:
+                continue
+            # Si la mirada dirigida de las bolsas ya trajo negativas sobre los
+            # escombros, la cruzada no puede confirmarlos por otro camino
+            # ignorando esa negativa (hallazgo de fable): es la misma regla
+            # que aplica el confirmo estricto.
+            if _k == "retiro_escombros" and (segunda_mirada or {}).get("negaron"):
+                continue
+            _obj, _votante = _objeto_de_un_solo_vlm(_k)
+            if _obj:
+                # el estado (descartado / en uso) se pregunta aparte solo para
+                # el voluminoso: la bicicleta ESTACIONADA del experimento
+                pendientes.append((_k, _obj, _votante, _k == "retiro_muebles"))
         # La pregunta de presencia lleva SIEMPRE el descriptor canónico del
         # subtipo: un "presente" tiene que atestiguar ESE contenedor (negro
         # con postes / gris claro sin postes / verde), no "un contenedor"
@@ -2360,8 +2450,20 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                 objeto = ("un contenedor municipal de basura " + _desc_cont[k]
                           + " (aunque sea recortado por el borde del encuadre)")
                 pendientes.append((k, objeto, vlm_p[0], False))
+        # Una pendiente SIN jurado disponible no puede consumir uno de los dos
+        # cupos: si lo hace, se come el turno de la que sí tenía a quién
+        # preguntarle (hallazgo de fable).
+        def _hay_jurado(votante):
+            return any(v["modelo"] != votante
+                       and v["modelo"] not in desc_desautorizadas
+                       for v in activos)
+
+        pendientes = [p for p in pendientes if _hay_jurado(p[2])]
         repreguntas = []
         for k, objeto, votante, con_estado in pendientes[:REPREGUNTA_MAX]:
+            # si el reclamo ya estaba confirmado, la pregunta lo VALIDA: si
+            # ningún otro modelo ve el objeto, no se publica
+            era_confirmada = k in confirmadas
             # Solo modelos que RESPONDIERON la pasada principal (un modelo
             # caído no puede ser fuente) y cuyos votos no fueron
             # desautorizados por una pasada dirigida (un voto anulado no
@@ -2380,6 +2482,20 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             en_uso = [r for r in resultados
                       if con_estado and r["veredicto"] == "presente"
                       and r.get("estado") == "en_uso"]
+            # Confirma el que lo reportó MÁS UNO que lo ve dirigido, siempre
+            # que NADIE lo contradiga. El "2 de 3 alcanza aunque el tercero
+            # diga que no" se probó en la foto U003 y no se sostiene: ahí el
+            # mismo modelo que en su lectura libre había dicho DOS VECES
+            # "cajas y paneles de cartón" contestó "presente" cuando se le
+            # preguntó por «varias tablas largas», mientras el otro mantuvo
+            # "se ven cartones y una caja, no tablas largas". Un sí que
+            # contradice lo que ese mismo modelo vio solo no es evidencia
+            # nueva: es sugestión. Con un "ausente" explícito enfrente, el
+            # reclamo queda en posibles para que lo mire una persona, que es
+            # barato; mandar el camión no lo es. Sin nadie que contradiga, un
+            # solo dirigido alcanza: ese es el caso de "se les pasó en la
+            # primera lectura". El "está EN USO" bloquea aparte: ahí no se
+            # discute la existencia sino que sea un descarte.
             confirmo = bool(presentes) and not ausentes and not en_uso
             # La regla de fuentes correlacionadas se respeta TAMBIÉN acá:
             # con CONSENSO_VLM_SOLO=arbitro, una confirmación sin respaldo
@@ -2404,6 +2520,61 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                 disputadas.discard(k)
                 presencia_dudosa.discard(k)
                 repregunta_confirmadas.add(k)
+            elif en_uso:
+                # ALGUIEN LO VIO, pero en uso. El objeto existe: no se manda
+                # el camión, pero el voto NO se anula. Va antes que la rama de
+                # los ausentes justamente para que un "ausente" de otro no
+                # anule algo que un dirigido acaba de ver (hallazgo de fable:
+                # el orden de los elif contradecía al comentario).
+                if era_confirmada:
+                    confirmadas.discard(k)
+                    disputadas.add(k)
+                    adjudicadas_dirigidas.add(k)
+            elif len(ausentes) >= 2:
+                # CONTRADICHO POR MAYORÍA: los otros miraron ESE objeto y
+                # dicen que NO ESTÁ. Hace falta más de uno: con un solo
+                # "ausente" y otro que no pudo decidir, el empate 1 a 1 entre
+                # el testigo y el dirigido no alcanza para borrar el reclamo
+                # (hallazgo de fable; es la misma vara de las pasadas
+                # hermanas, donde el empate mantiene). No se manda el camión, y
+                # el voto se retira ANOTADO, confirmado o en disputa:
+                # si solo se limpiaba el confirmado, el disputado se quedaba
+                # entero en fuentes y el árbitro podía promoverlo (hallazgo de
+                # codex).
+                confirmadas.discard(k)
+                disputadas.add(k)
+                adjudicadas_dirigidas.add(k)
+                for v in activos:
+                    c = next((c for c in v["categorias"] if c["key"] == k),
+                             None)
+                    if c is None:
+                        continue
+                    v["categorias"] = [x for x in v["categorias"] if x is not c]
+                    votos_anulados.append((v, c, "repregunta_cruzada"))
+                    desc_desautorizadas.add(v["modelo"])
+                    if v["modelo"] in fuentes.get(k, []):
+                        fuentes[k].remove(v["modelo"])
+                    # la gravedad del voto anulado tampoco puede quedar
+                    # pesando cuando sobrevive el modelo local (hallazgo de
+                    # fable; las pasadas hermanas ya la sacaban)
+                    try:
+                        g = min(5, max(1, int(c.get("gravedad", 1))))
+                    except (TypeError, ValueError):
+                        g = 1
+                    if grav_votos.get(k) and g in grav_votos[k]:
+                        grav_votos[k].remove(g)
+                if not fuentes.get(k):
+                    fuentes.pop(k, None)
+                    grav_votos.pop(k, None)
+                    disputadas.discard(k)
+            elif era_confirmada:
+                # NADIE PUDO DECIDIR: ni dos que lo vean descartado, ni una
+                # mayoría que lo desmienta. No se publica, pero el voto NO se
+                # anula: el reclamo queda como lo que es, algo que vio una
+                # sola fuente.
+                confirmadas.discard(k)
+                disputadas.add(k)
+                adjudicadas_dirigidas.add(k)
             repreguntas.append({"key": k, "objeto": objeto,
                                 "respuestas": resultados,
                                 "confirmo": confirmo, "fallo": fallo_r})
@@ -2796,6 +2967,45 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             descripcion = (" ".join(limpias).strip() + " " + nota).strip() \
                 if limpias else nota
 
+    # Ídem con la validación cruzada: si el objeto que sostenía el reclamo
+    # quedó anulado porque los otros modelos no lo ven, la prosa no puede
+    # seguir describiéndolo (hallazgo de fable: la descripción del votante
+    # anulado podía volver por el camino de repuesto).
+    # Cada clave tiene SU vocabulario, con borde de palabra ("sobran" no es
+    # "obra", "inmueble" no es "mueble"), y una frase no se borra si habla de
+    # una clave que SIGUE confirmada: si no, la prosa terminaba desmintiendo
+    # un reclamo vigente en el mismo payload (hallazgo de fable, reproducido).
+    _VOCAB_CLAVE = {
+        # el vocabulario de muebles es el MISMO de _PATRON_MUEBLE más lo que
+        # solo aparece en prosa: dos listas divergentes se despegan solas
+        # (deuda que marcó fable)
+        "retiro_muebles": re.compile(
+            _PATRON_MUEBLE.pattern.rstrip(r")\b")
+            + r"|tablas?|tablon(?:es)?|maderas?|chatarra|voluminosos?|"
+              r"canastos?|cajon(?:es)?)\b"),
+        "retiro_escombros": re.compile(
+            r"\b(?:escombro|escombros|cascote|cascotes)\b|"
+            r"\b(?:material|materiales|restos|bolsas|sacos) de obra\b"),
+    }
+    _anuladas_cruzada = {c["key"] for _v, c, pasada in votos_anulados
+                         if pasada == "repregunta_cruzada"} & set(_VOCAB_CLAVE)
+    if _anuladas_cruzada and descripcion:
+        _protegidas = [p for k, p in _VOCAB_CLAVE.items()
+                       if k in confirmadas and k not in _anuladas_cruzada]
+        frases = re.split(r"(?<=[.!?])\s+", descripcion)
+        limpias = []
+        for f in frases:
+            _n = _norm_texto(f)
+            if (any(_VOCAB_CLAVE[k].search(_n) for k in _anuladas_cruzada)
+                    and not any(p.search(_n) for p in _protegidas)):
+                continue
+            limpias.append(f)
+        if len(limpias) < len(frases):
+            nota = ("Mirado de cerca, ese objeto no se distingue en la foto: "
+                    "no se reporta un retiro por él.")
+            descripcion = (" ".join(limpias).strip() + " " + nota).strip() \
+                if limpias else nota
+
     # Ídem con el veto del volcado: la prosa heredada no puede seguir
     # afirmando el contenedor tumbado.
     if (segunda_mirada_volcado and segunda_mirada_volcado.get("retiro_votos")
@@ -3003,6 +3213,10 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         "segunda_mirada_presencia": segunda_mirada_presencia,
         # Veto de presencia POR CLAVE: {clave: {...}}, vacío si no corrió.
         "segunda_mirada_presencia_clave": segunda_mirada_presencia_clave,
+        # Claves que una pasada dirigida ya adjudicó (bajó o corrigió). Interno:
+        # ninguna capa de más arriba puede volver a inyectarlas (la fusión de
+        # escombros del servidor las resucitaba; hallazgo de codex).
+        "adjudicadas_dirigidas": sorted(adjudicadas_dirigidas),
         "confirmadas": finales,
         "en_duda": en_duda,
         # Interno, para que el serializador pueda filtrar en_duda por fuente:
