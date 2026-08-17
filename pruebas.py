@@ -2297,6 +2297,21 @@ def _correr_base(votos, dirigidas, dano=None):
             return json.dumps(dict(_voluminoso_resp.get(
                 modelo, {"veredicto": "no_se_distingue", "objeto": None}),
                 evidencia="lo que vi"))
+        if mensajes[0].get("content") == V._PROMPT_PREGUNTA_ABIERTA:
+            # la pregunta abierta no nombra el objeto: la respuesta del
+            # fixture se traduce a "qué hay en el piso"
+            _v = _repregunta_resp.get(modelo, {}).get("veredicto",
+                                                      "no_se_distingue")
+            if _v == "presente":
+                return json.dumps({"veredicto": "identificado",
+                                   "que_es": _abierta_que_es,
+                                   "ubicacion": "junto al cordón",
+                                   "evidencia": "lo que vi"})
+            if _v == "ausente":
+                return json.dumps({"veredicto": "nada", "que_es": None,
+                                   "ubicacion": None, "evidencia": "lo que vi"})
+            return json.dumps({"veredicto": "no_identificable", "que_es": None,
+                               "ubicacion": None, "evidencia": "lo que vi"})
         if str(mensajes[0].get("content", "")).startswith("Buscá UNA sola cosa"):
             return json.dumps(dict(_repregunta_resp.get(
                 modelo, {"veredicto": "no_se_distingue", "ubicacion": None,
@@ -2307,6 +2322,7 @@ def _correr_base(votos, dirigidas, dano=None):
 
 
 _repregunta_resp = {}
+_abierta_que_es = "mueble descartado"
 _voluminoso_resp = {}
 _desborde_resp = {}
 _presencia_resp = {}
@@ -2645,6 +2661,9 @@ check("  y lo demasiado corto no genera pregunta",
       and V._objeto_de_evidencia(None) is None)
 # 5a) el voluminoso que un solo modelo vio (la torre de PC del caso real):
 # los otros lo encuentran con ubicación propia -> segunda fuente, confirmado.
+# La pregunta va ABIERTA, así que el modelo nombra lo suyo: para corroborar
+# tiene que caer en la misma familia que el objeto reclamado.
+_abierta_que_es = "gabinete de computadora descartado"
 _repregunta_resp = {
     "b/dos": {"veredicto": "presente", "ubicacion": "esquina inferior izquierda",
               "estado": "descartado"},
@@ -3137,6 +3156,134 @@ _r = _correr_desb({"b/uno": {"veredicto": "rebalsa_visible"},
 check("  el rebalse ratificado se publica",
       "contenedor_desbordado" in {c["key"] for c in _r["confirmadas"]})
 _desborde_resp = {}
+
+print("[#AB] pregunta abierta: la recolección marginal no se sugestiona")
+_LOCAL_REC = {"predichas": [{"key": "recoleccion", "nombre": "R", "score": 0.9}],
+              "probabilidades": [{"key": "recoleccion", "nombre": "R",
+                                  "score": 0.9}],
+              "gravedad": {"value": 2, "raw": 2.0}}
+
+
+def _correr_abierta(respuestas):
+    """Un solo VLM vota recoleccion; a los otros se les pregunta ABIERTO qué
+    hay en el piso. respuestas: modelo -> (veredicto, que_es)."""
+    def _llamar_ab(modelo, mensajes, **k):
+        sis = str(mensajes[0].get("content", ""))
+        if sis == V._PROMPT_PREGUNTA_ABIERTA:
+            v, que = respuestas.get(modelo, ("no_identificable", None))
+            return json.dumps({"veredicto": v, "que_es": que,
+                               "ubicacion": "junto al cordón" if que else None,
+                               "evidencia": "lo que vi"})
+        if sis.startswith("Buscá UNA sola cosa"):
+            return json.dumps({"veredicto": "no_se_distingue",
+                               "ubicacion": None, "estado": None,
+                               "evidencia": "lo que vi"})
+        if modelo == "b/uno":
+            return _resp_b([{"key": "recoleccion", "gravedad": 2,
+                             "evidencia": "bolsas de residuos en el piso"}],
+                           "Bolsas junto a los contenedores.")
+        return _resp_b([], "Contenedores.")
+    V._llamar = _llamar_ab
+    r = V.verificar(_Img(), CATS, _LOCAL_REC, "")
+    return {c["key"] for c in r["confirmadas"]}
+
+
+# U030: preguntados sin sugerencia, uno nombra PODA -> eso desmiente las bolsas
+_c = _correr_abierta({"b/dos": ("identificado", "ramas o restos de poda"),
+                      "b/tres": ("identificado", "bolsas de residuos")})
+check("el que nombra otra cosa desmiente el reclamo",
+      "recoleccion" not in _c, str(sorted(_c)))
+# recolección real: los dos nombran bolsas o cajas sin que nadie lo sugiera
+_c = _correr_abierta({"b/dos": ("identificado", "bolsas de residuos negras"),
+                      "b/tres": ("identificado", "cajas de cartón")})
+check("  si la nombran sola, se confirma", "recoleccion" in _c, str(sorted(_c)))
+# nadie puede identificar: no se publica, pero tampoco se anula
+_c = _correr_abierta({})
+check("  con todos 'no identificable' no se publica",
+      "recoleccion" not in _c, str(sorted(_c)))
+# una respuesta GENÉRICA no desmiente: no confirma, pero tampoco anula
+_c = _correr_abierta({"b/dos": ("identificado", "basura acumulada"),
+                      "b/tres": ("identificado", "residuos sueltos")})
+check("  lo genérico no confirma pero tampoco desmiente",
+      "recoleccion" not in _c, str(sorted(_c)))
+_r_gen = None
+
+
+def _correr_abierta_r(respuestas):
+    """igual que _correr_abierta pero devuelve el resultado completo"""
+    def _llamar_ab(modelo, mensajes, **k):
+        sis = str(mensajes[0].get("content", ""))
+        if sis == V._PROMPT_PREGUNTA_ABIERTA:
+            v, que = respuestas.get(modelo, ("no_identificable", None))
+            return json.dumps({"veredicto": v, "que_es": que,
+                               "ubicacion": "junto al cordón" if que else None,
+                               "evidencia": "lo que vi"})
+        if sis.startswith("Buscá UNA sola cosa"):
+            return json.dumps({"veredicto": "no_se_distingue",
+                               "ubicacion": None, "estado": None,
+                               "evidencia": "lo que vi"})
+        if modelo == "b/uno":
+            return _resp_b([{"key": "recoleccion", "gravedad": 2,
+                             "evidencia": "bolsas de residuos en el piso"}],
+                           "Bolsas junto a los contenedores.")
+        return _resp_b([], "Contenedores.")
+    V._llamar = _llamar_ab
+    return V.verificar(_Img(), CATS, _LOCAL_REC, "")
+
+
+_r_gen = _correr_abierta_r({"b/dos": ("identificado", "basura acumulada"),
+                            "b/tres": ("identificado", "residuos sueltos")})
+check("  y con dos genéricos el voto NO se anula",
+      not any(c.get("anulada_por") == "repregunta_cruzada"
+              for v in _r_gen["verificadores"]
+              for c in v.get("categorias", [])),
+      str([c for v in _r_gen["verificadores"] for c in v.get("categorias", [])]))
+# la negación dentro de "qué es" no confirma: "ramas, no bolsas"
+_c = _correr_abierta({"b/dos": ("identificado", "ramas, no bolsas"),
+                      "b/tres": ("identificado", "ramas o restos de poda")})
+check("  'ramas, no bolsas' no confirma las bolsas",
+      "recoleccion" not in _c, str(sorted(_c)))
+# el candado no se saltea con evidencia CORTA o DUDOSA: la pregunta abierta no
+# necesita el objeto, así que igual se pregunta (hallazgo de fable)
+def _correr_abierta_ev(evidencia, respuestas):
+    def _llamar_ev(modelo, mensajes, **k):
+        sis = str(mensajes[0].get("content", ""))
+        if sis == V._PROMPT_PREGUNTA_ABIERTA:
+            v, que = respuestas.get(modelo, ("no_identificable", None))
+            return json.dumps({"veredicto": v, "que_es": que,
+                               "ubicacion": "junto al cordón" if que else None,
+                               "evidencia": "lo que vi"})
+        if sis.startswith("Buscá UNA sola cosa"):
+            return json.dumps({"veredicto": "no_se_distingue",
+                               "ubicacion": None, "estado": None,
+                               "evidencia": "lo que vi"})
+        if modelo == "b/uno":
+            return _resp_b([{"key": "recoleccion", "gravedad": 2,
+                             "evidencia": evidencia}], "Algo en el piso.")
+        return _resp_b([], "Contenedores.")
+    V._llamar = _llamar_ev
+    r = V.verificar(_Img(), CATS, _LOCAL_REC, "")
+    return {c["key"] for c in r["confirmadas"]}
+
+
+for _ev in ("bolsas", "posibles bolsas apoyadas en el piso"):
+    _c = _correr_abierta_ev(_ev, {"b/dos": ("identificado", "ramas de poda"),
+                                  "b/tres": ("identificado", "ramas y hojas")})
+    check("  con evidencia '" + _ev[:22] + "' igual se pregunta",
+          "recoleccion" not in _c, str(sorted(_c)))
+# "bolsas de escombros" nombra las dos cosas: no confirma recoleccion
+_c = _correr_abierta({"b/dos": ("identificado", "bolsas de escombros"),
+                      "b/tres": ("identificado", "cajas con cascotes")})
+check("  lo que nombra las dos cosas no confirma", "recoleccion" not in _c,
+      str(sorted(_c)))
+# "bolsón" y "cajón" sí corroboran (son bolsas y cajas)
+_c = _correr_abierta({"b/dos": ("identificado", "bolsones de residuos"),
+                      "b/tres": ("identificado", "cajones de verdura")})
+check("  'bolsón' y 'cajón' corroboran", "recoleccion" in _c, str(sorted(_c)))
+# no hay nada en el piso: desmentido
+_c = _correr_abierta({"b/dos": ("nada", None), "b/tres": ("nada", None)})
+check("  y si dicen que no hay NADA en el piso, tampoco se publica",
+      "recoleccion" not in _c, str(sorted(_c)))
 
 print("[#PR] saneo de la prosa: el objeto que vio uno solo no se afirma")
 

@@ -17,10 +17,10 @@ Estado: **fijado** (hay prueba), **medido** (se midió y se decidió no cambiar)
 | U013 | contenedor roto no reportado | techo | la señal es "la tapa está salida del eje del lado derecho" (la dio el dueño mirando la foto). Se midió como pregunta dirigida y NO separa: U013 da 2 de 3 "un extremo salido", pero T160 y T175 (dos fantasmas que el dueño rechazó) dan exactamente el mismo 2 de 3, y T008 (contenedor quemado, roto de verdad) da 2 de 3 "ambos en su eje". La reformulación posicional anterior también falló, confirmando el fantasma T109. Se revirtió incluso el texto de rúbrica: los modelos afirman "torcida" en contenedores sanos, así que invitarlos a buscarla suma fantasmas |
 | U014 | dos bolsas opacas sin reportar recolección | fijado | rúbrica de `retiro_poda`: en escena mixta se reportan las dos |
 | U022 | bilateral publicado como lateral | fijado | chequeo de los postes citados: mayoría "sin postes" levanta la guardia |
-| U030 | foto ilegible, no debería emitirse juicio | abierto | sus métricas caen en la mediana del corpus; suprimir ahí suprime la mitad de las fotos buenas |
+| U030 | foto ilegible, no debería emitirse juicio | fijado | no era calidad: era un fantasma. Un solo modelo votó recolección con la evidencia "bolsas y BULTOS", el local la respaldó con 0,995 y se publicó. Preguntando ABIERTO (sin nombrar el objeto) los modelos se parten y uno dice "ramas o restos de poda": la recolección deja de publicarse. Sus métricas de calidad son las de la mediana del corpus, así que una compuerta por calidad no era el camino |
 | U032 | la descripción inventa una caja de cartón | abierto | familia "la prosa afirma lo que las categorías no sostienen" |
 | U035 | escombros afirmados en foto que no lo permite | abierto | ídem; sale de la fusión con el modelo local |
-| U042 | vehículo sin evidencia de infracción; cartón como voluminoso | abierto | |
+| U042 | vehículo sin evidencia de infracción; cartón como voluminoso | abierto | el voluminoso: pedir la firma de identidad cuando los dos votantes nombran cosas distintas se midió y se revirtió (ver abajo). El vehículo: la pregunta dirigida por DÓNDE PISAN LAS RUEDAS da 3 de 3 "vereda", o sea que los modelos sostienen la infracción; falta aclarar con el dueño qué vio él (mencionó el cordón amarillo) |
 | U049 | la descripción afirma tablas donde hay cajas | abierto | ídem U032/U035 |
 
 ## Ronda 4 (T001-T200, 2026-08-16/17)
