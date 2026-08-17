@@ -20,7 +20,7 @@ Estado: **fijado** (hay prueba), **medido** (se midió y se decidió no cambiar)
 | U030 | foto ilegible, no debería emitirse juicio | fijado | no era calidad: era un fantasma. Un solo modelo votó recolección con la evidencia "bolsas y BULTOS", el local la respaldó con 0,995 y se publicó. Preguntando ABIERTO (sin nombrar el objeto) los modelos se parten y uno dice "ramas o restos de poda": la recolección deja de publicarse. Sus métricas de calidad son las de la mediana del corpus, así que una compuerta por calidad no era el camino |
 | U032 | la descripción inventa una caja de cartón | abierto | familia "la prosa afirma lo que las categorías no sostienen" |
 | U035 | escombros afirmados en foto que no lo permite | abierto | ídem; sale de la fusión con el modelo local |
-| U042 | vehículo sin evidencia de infracción; cartón como voluminoso | abierto | el voluminoso: pedir la firma de identidad cuando los dos votantes nombran cosas distintas se midió y se revirtió (ver abajo). El vehículo: la pregunta dirigida por DÓNDE PISAN LAS RUEDAS da 3 de 3 "vereda", o sea que los modelos sostienen la infracción; falta aclarar con el dueño qué vio él (mencionó el cordón amarillo) |
+| U042 | vehículo sin evidencia de infracción; cartón como voluminoso | techo (vehículo) / abierto (cartón) | El dueño confirmó: las ruedas están sobre el ASFALTO, y su regla es que un auto contra un cordón AMARILLO está en infracción. Las dos cosas entraron a la rúbrica. Pero el falso positivo no se mueve: la pregunta dirigida por dónde pisan las ruedas da 3 de 3 "vereda" y el texto nuevo tampoco lo corrige. Es el mismo techo que U013. El cartón sigue publicándose como voluminoso; ver la nota de la pregunta abierta abajo |
 | U049 | la descripción afirma tablas donde hay cajas | abierto | ídem U032/U035 |
 
 ## Ronda 4 (T001-T200, 2026-08-16/17)
@@ -58,6 +58,22 @@ nada.)
   línea de categorías, ninguna categoría alterada, y lo que se borra son casi
   siempre frases de AUSENCIA ("no se identifican restos de escombros"), que
   tampoco debería afirmar una sola fuente.
+
+## Lo próximo, ya especificado: la pregunta abierta para el voluminoso
+
+El cartón leído como voluminoso (U003, U042, U049) es lo que más repitió el
+dueño: "es extremadamente importante no marcar como voluminoso algo que es
+cartón". El instrumento que funcionó para la recolección (preguntar ABIERTO
+qué hay en el piso, sin nombrar el objeto, y exigir que la respuesta nombre
+la familia que el reclamo necesita) es el candidato natural, porque el que ve
+cartón dice cartón cuando nadie le sugiere "tablas".
+
+Lo que hace falta para shippearlo, medido en un intento que se revirtió por no
+estar listo: la pregunta abierta tiene que llevar el estado DESCARTADO / EN USO
+(si no, muere la protección de la bicicleta estacionada), y hay que re-espectar
+ocho pruebas que hoy alimentan la pregunta NOMBRADA, más la verificación en
+vivo contra los 74 positivos etiquetados de retiro_muebles, que es donde
+murieron los dos intentos anteriores de tocar esta clave.
 
 ## Límites conocidos del saneo de prosa (documentados, no bugs sueltos)
 
