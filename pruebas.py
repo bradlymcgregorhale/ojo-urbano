@@ -2814,6 +2814,10 @@ check("la ranura con cerdas del contenedor verde es diseño, no rotura",
 check("junto a un contenedor la vara de recoleccion es mas alta",
       "al lado de un contenedor la vara es MÁS ALTA" in _rub_b
       and "hace falta al menos una bolsa llena, una caja descartada" in _rub_b)
+check("el cesto lleno tambien hay que VERLO; el balde del piso no es el cesto",
+      "residuos rebalsando o asomando por la boca del cesto" in _rub_b
+      and "cuerpo CERRADO (los metálicos tipo buzón)" in _rub_b
+      and "no vuelve lleno al cesto de arriba" in _rub_b)
 check("el vaciado tambien exige ver el interior lleno",
       "UNA caja o bulto calzado trabando la tapa, con el interior oscuro o sin verse, NO indica" in _rub_b)
 check("la boca antivandálica del bilateral con basura no es desborde",
