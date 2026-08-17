@@ -42,6 +42,45 @@ Estado: **fijado** (hay prueba), **medido** (se midió y se decidió no cambiar)
 | T152 | balde fusionado con el cesto | abierto | |
 | T160 | reparación por daño estético | fijado | la vara de la reparación es el uso |
 
+## Cuánto cuesta el saneo de prosa (medido)
+
+Medición pareada sobre 20 fotos de la ronda 4: se graban las respuestas de los
+modelos UNA vez y se reproduce `verificar()` dos veces sobre las MISMAS
+respuestas, con `SANEO_PROSA` prendido y apagado. (Correr la foto dos veces
+contra la API no sirve: los modelos redactan distinto cada vez y cambia el
+100% de las descripciones por ruido, que fue el primer intento y no medía
+nada.)
+
+- Corroborando por PALABRA exacta: cambia el 65% de las descripciones, y
+  varias pierden justo la frase informativa (un modelo dice "cajas" y otro
+  "cartones" para la misma pila). Descartado por eso.
+- Corroborando por FAMILIA de objeto: cambia el 30%, ningún fallback a la
+  línea de categorías, ninguna categoría alterada, y lo que se borra son casi
+  siempre frases de AUSENCIA ("no se identifican restos de escombros"), que
+  tampoco debería afirmar una sola fuente.
+
+## Límites conocidos del saneo de prosa (documentados, no bugs sueltos)
+
+La corroboración de objetos entre fuentes es por bolsa de palabras, sin
+análisis sintáctico. Eso deja tres esquinas angostas, todas encontradas y
+reproducidas en revisión:
+
+- **"restos de obra" contra "frente a una obra en construcción"**: la obra como
+  MATERIAL y la obra como SITIO son la misma palabra. La categoría escombros
+  igual necesita sus dos fuentes por su propio camino; lo que puede colarse es
+  la frase en la prosa.
+- **La ventana de adyacencia es de una palabra**: "puerta de vidrio apoyada"
+  tiene dos palabras entre el objeto y la señal de descarte y no se sanea.
+  Agrandar la ventana reabre el caso inverso ("bolsas apiladas contra la
+  ventana"), así que es un canje, no un descuido.
+- **"cajón" respalda a "caja" y "silla" respalda a "mesa"**: la corroboración
+  es por familia, así que dos modelos que ven objetos distintos de la misma
+  familia se respaldan. Es el precio de no borrar el 65% de las descripciones
+  (ver la medición de arriba).
+
+Con `SANEO_PROSA=0` se publica la descripción cruda (comportamiento viejo), que
+es como se mide qué detalle cuesta el saneo.
+
 ## Mediciones que cerraron una idea (no volver a intentarlas sin datos nuevos)
 
 - **Compuerta por calidad de foto**: no sirve. Los falsos positivos por

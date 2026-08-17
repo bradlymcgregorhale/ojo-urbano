@@ -626,11 +626,17 @@ def procesar(datos, contexto, verificar):
                     frases = [f for f in re.split(r"(?<=[.!?])\s+", descripcion)
                               if f and not _niega.search(f)]
                     descripcion = " ".join(frases)
-                nota = ("El análisis del material indica que las bolsas "
-                        "acumuladas contienen escombros de obra, no basura "
-                        "domiciliaria común." if solo_escombros else
-                        "El análisis del material indica que entre las bolsas "
-                        "hay también escombros de obra.")
+                # La nota NO afirma lo que nadie puede ver en la foto: dice
+                # que las bolsas PARECEN de obra y que hay que confirmarlo.
+                # El caso que lo obligó (U035) es una pila chica y lejana al
+                # atardecer donde el texto anterior ("el análisis del material
+                # indica que las bolsas contienen escombros de obra") sonaba a
+                # peritaje y no se sostenía mirando la foto.
+                nota = ("Por su forma y su porte, las bolsas parecen contener "
+                        "escombros de obra y no basura domiciliaria común; "
+                        "conviene confirmarlo en el lugar." if solo_escombros
+                        else "Entre las bolsas parece haber también escombros "
+                        "de obra; conviene confirmarlo en el lugar.")
                 descripcion = (descripcion.rstrip() + " " + nota
                                if descripcion else nota)
 

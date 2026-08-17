@@ -231,6 +231,11 @@ SUBTIPO_LOCAL_MARGEN = float(os.environ.get("SUBTIPO_LOCAL_MARGEN", "0.95"))
 # testigo cita postes que ningún modelo puede ver (ver el comentario del caso).
 SEGUNDA_MIRADA_POSTES = os.environ.get(
     "SEGUNDA_MIRADA_POSTES", "1").strip().lower() not in ("0", "false", "no")
+# Saneo de la prosa: la descripción no afirma un objeto concreto que nombre
+# una sola fuente. Con SANEO_PROSA=0 se publica la descripción cruda, que es
+# el comportamiento viejo (sirve para medir qué detalle cuesta el saneo).
+SANEO_PROSA = os.environ.get(
+    "SANEO_PROSA", "1").strip().lower() not in ("0", "false", "no")
 
 ARBITRO = os.environ.get("ARBITRO", "deepseek/deepseek-v4-flash").strip()
 # Si el árbitro es un modelo con visión, conviene darle la foto: decidir sobre
@@ -1148,6 +1153,139 @@ def _segunda_mirada_dano(img):
     return dano, sin_dano, fallo
 
 
+# Objetos CONCRETOS que una descripción puede nombrar. Se usan para el saneo
+# de la prosa: si el objeto lo nombra una sola fuente, no se afirma. Son
+# nombres de cosas identificables, no palabras genéricas ("residuos",
+# "basura", "bolsas") que aparecen en todas las descripciones y no comprometen
+# nada.
+_OBJETOS_CONCRETOS = {k: re.compile(v) for k, v in {
+    "carton": r"\b(?:caja|cajas|cajon(?:es)?|carton(?:es)?)\b",
+    "madera": r"\b(?:tabla|tablas|tablon(?:es)?|madera|maderas|palet(?:s)?|"
+              r"pallet(?:s)?|listones?)\b",
+    "colchon": r"\b(?:colchon(?:es)?|somier(?:es)?)\b",
+    "mueble": r"\b(?:mueble|muebles|sillon(?:es)?|sofas?|sillas?|mesas?|"
+              r"ropero|placard|estanteria|comoda|banqueta)\b",
+    "electro": r"\b(?:heladera|lavarropas|microondas|televisor|monitor|"
+               r"impresora|aire acondicionado|electrodomestico\w*)\b",
+    "maceta": r"\b(?:maceta|macetero|macetas|maceteros)\b",
+    "escombro": r"\b(?:escombro(?:s)?|cascote(?:s)?|revoque|mamposteria)\b|"
+                r"\b(?:material(?:es)?|restos) de obra\b",
+    "sanitario": r"\b(?:inodoro|bidet|lavatorio|banadera|sanitario(?:s)?)\b",
+    "alfombra": r"\b(?:alfombra(?:s)?|tapete(?:s)?)\b",
+    "bicicleta": r"\b(?:bicicleta(?:s)?|moto(?:s)?)\b",
+    "valija": r"\b(?:valija(?:s)?|mochila(?:s)?)\b",
+    # "fuente de plástico" salió de acá: "fuente" es comodín y "plástico"
+    # está en todas las descripciones (las bolsas son de plástico), así que
+    # ese match se corroboraba solo (hallazgo de fable)
+    "bandeja": r"\b(?:bandeja(?:s)?)\b",
+    # el contenido que se le atribuye a una bolsa cerrada también es una
+    # afirmación sobre un objeto que hay que ver (caso U014)
+    "vegetal": r"\b(?:material(?:es)? vegetal(?:es)?|restos vegetales|"
+               r"ramas?|hojas?|poda|pasto|cesped)\b",
+}.items()}
+
+# Palabras que nombran un objeto reclamable SOLO si la frase dice que está
+# descartado: la puerta de un garaje, las rejas de una ventana, los ladrillos
+# de una pared o las ruedas del contenedor son la ESCENA, y borrar la frase
+# por nombrarlas se llevaba puesta prosa correcta (reproducido por fable). Con
+# la señal de descarte al lado, en cambio, son un camión (hallazgo de codex).
+_OBJETOS_SEGUN_CONTEXTO = re.compile(
+    r"\b(?:puerta(?:s)?|ventana(?:s)?|persiana(?:s)?|chatarra|hierros?|"
+    r"canos?|rejas?|viga(?:s)?|ladrillo(?:s)?|neumatico(?:s)?|cubierta(?:s)?|"
+    # el inodoro y los sanitarios NO están acá: en la vía pública son siempre
+    # un descarte, así que van en la lista incondicional
+    r"cesto(?:s)?|papelero(?:s)?)\b")
+_PATRON_DESCARTE = re.compile(
+    r"\bdescartad|\btirad|\bapilad|\bapoyad|\bamontonad|\babandonad|"
+    r"\bacumulad|\barrancad|\bdesprendid|\bsuelt[oa]s?\b|\ben desuso\b|"
+    r"\bpara retirar\b|\bde descarte\b|\brot[oa]s?\b|\bvoluminos|"
+    r"\bretiro\b|\bdesecho|\bviej[oa]s?\b|\bdestruid|\bdesarmad")
+
+
+# Lo que un modelo NIEGA no corrobora a otro: "se ven cartones y una caja, NO
+# tablas largas" contiene la palabra "tablas" y estaba alcanzando para
+# respaldar justamente el objeto fantasma que esa frase desmiente (hallazgo de
+# fable; esa respuesta es textual de un modelo en producción).
+_PATRON_NEGACION = re.compile(
+    r"\b(?:no|sin|ni|ningun\w*|tampoco|nunca|jamas|carece\w*|nada de)\b")
+# Negación que alcanza HACIA ATRÁS: en "las tablas no se distinguen" el
+# sustantivo va ANTES del "no", así que el alcance hacia adelante lo dejaba
+# vivo y ese desmentido terminaba corroborando las tablas fantasma de otro
+# modelo (hallazgo de fable). Acá el tramo entero se descarta.
+_PATRON_NEGACION_ATRAS = re.compile(
+    r"\bno\s+(?:se\s+)?(?:ve|ven|distingue|distinguen|aprecia|aprecian|"
+    r"observa|observan|hay|aparece|aparecen|llega|llegan a ver)\b")
+# Sustantivos comodín: no identifican nada por sí solos, así que no sirven
+# para corroborar un objeto concreto ("material", "restos").
+_PALABRAS_COMODIN = {"de", "del", "la", "el", "los", "las", "un", "una",
+                     "material", "materiales", "resto", "restos", "cosa",
+                     "cosas", "elemento", "elementos", "objeto", "objetos",
+                     "fuente", "fuentes"}
+
+
+def _cerca_del_descarte(texto, m, hueco=1):
+    """¿La señal de descarte califica a ESTE objeto?
+
+    Se mide en PALABRAS, no en caracteres: "puerta vieja apoyada" califica a
+    la puerta (una palabra de por medio), pero "bolsas acumuladas frente a la
+    puerta" no, porque entre el participio y el sustantivo hay tres palabras y
+    el participio es de las bolsas.
+    """
+    palabras = list(re.finditer(r"[a-zñ]+", texto))
+    idx = [i for i, p in enumerate(palabras)
+           if p.start() < m.end() and p.end() > m.start()]
+    if not idx:
+        return False
+    for i, p in enumerate(palabras):
+        if not _PATRON_DESCARTE.search(p.group(0)):
+            continue
+        if any(abs(i - j) - 1 <= hueco for j in idx):
+            return True
+    return False
+
+
+def _sin_negado(texto):
+    """El texto sin sus tramos negados, para que lo que un modelo DESMIENTE no
+    respalde lo que otro afirma ("se ven cartones, no tablas largas")."""
+    trozos = []
+    for tramo in re.split(r"[,;.]| pero ", _norm_texto(texto)):
+        if _PATRON_NEGACION_ATRAS.search(tramo):
+            continue  # "las tablas no se distinguen": cae entero
+        m = _PATRON_NEGACION.search(tramo)
+        trozos.append(tramo[:m.start()] if m else tramo)
+    return " ".join(trozos)
+
+
+def _stems(texto, sin_negados=False):
+    """Palabras de 4+ letras con sus variantes de plural, para corroborar por
+    PALABRA (dos fuentes tienen que nombrar LA MISMA cosa).
+
+    Con `sin_negados`, la negación ALCANZA HACIA ADELANTE hasta el final de su
+    tramo: de "colchón sin funda tirado" sobrevive "colchón" (lo que la frase
+    sí afirma) y se pierde "funda"; de "no hay tablas y maderas largas" no
+    sobrevive nada, porque la negación cubre lo coordinado. Descartar el tramo
+    entero, como estaba antes, se comía el sujeto afirmado (hallazgo de fable).
+    """
+    t = _norm_texto(texto)
+    if sin_negados:
+        # " pero " sí corta: introduce una afirmación ("no hay tablas pero sí
+        # maderas").
+        trozos = []
+        for tramo in re.split(r"[,;.]| pero ", t):
+            if _PATRON_NEGACION_ATRAS.search(tramo):
+                continue  # "las tablas no se distinguen": cae entero
+            m = _PATRON_NEGACION.search(tramo)
+            trozos.append(tramo[:m.start()] if m else tramo)
+        t = " ".join(trozos)
+    palabras = re.findall(r"[a-zñ]{4,}", t)
+    formas = set()
+    for p in palabras:
+        formas.add(p)
+        if p.endswith("es") and len(p) > 5:
+            formas.add(p[:-2])
+        if p.endswith("s") and len(p) > 4:
+            formas.add(p[:-1])
+    return formas
 _PATRON_DUDOSO = re.compile(
     r"\b(?:posible|posibles|probable|probables|parece|parecen|parecia|"
     r"parecian|pareceria|podria|podrian|podia|quiza|quizas|tal vez|aparente|"
@@ -2922,12 +3060,131 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             descripcion, descripcion_fuente = arbitro["descripcion"], ARBITRO
         elif mejor:
             descripcion, descripcion_fuente = mejor[1]["descripcion"], mejor[1]["modelo"]
+    # EL OBJETO QUE VIO UNO SOLO NO SE AFIRMA. La regla existía únicamente en
+    # el prompt del árbitro, así que no se aplicaba cuando no había disputa (la
+    # descripción del verificador elegido se publicaba tal cual) y, medido en
+    # U032, tampoco cuando el árbitro sí corría: los tres modelos nombraron
+    # objetos DISTINTOS (una maceta rota, un cesto arrancado, una caja de
+    # cartón) y el árbitro publicó igual uno de esos, que ninguna otra fuente
+    # respalda. Acá se aplica mecánicamente: se borra la frase que nombra un
+    # objeto concreto que no menciona ninguna otra fuente. Es la misma cirugía
+    # de las pasadas dirigidas, con el mismo criterio conservador (borrar de
+    # más solo cuesta detalle; afirmar de más manda un camión).
+    if descripcion and len(activos) > 1 and SANEO_PROSA:
+        _fuentes_txt = []
+        for v in activos:
+            _t = " ".join([_norm_texto(v.get("descripcion") or "")]
+                          + [_norm_texto(c.get("evidencia") or "")
+                             for c in v.get("categorias") or []])
+            _fuentes_txt.append(_t)
+        # Las miradas dirigidas TAMBIÉN son fuentes: si la repregunta cruzada
+        # confirmó el sillón, o la firma de identidad lo nombró, ese objeto
+        # está respaldado y la prosa lo puede decir. Sin esto, el sistema
+        # confirmaba un voluminoso y después se negaba a describirlo
+        # (hallazgo de codex, reproducido).
+        for q in (repreguntas or []):
+            for r in q.get("respuestas") or []:
+                # el mismo predicado que usa la confirmación, no uno parecido:
+                # solo respalda el que vio el objeto Y lo vio DESCARTADO. Un
+                # "presente pero EN USO" (o un estado que el modelo no pudo
+                # determinar) no sostiene la prosa del descarte, que era lo
+                # que dejaba publicar "hay un sillón descartado" justo cuando
+                # la pasada dirigida acababa de decir que está en uso
+                # (hallazgo de fable; el estado ambiguo lo agregó codex).
+                if (r.get("veredicto") == "presente"
+                        and (r.get("estado") or "descartado") == "descartado"):
+                    _fuentes_txt.append(_norm_texto(
+                        str(q.get("objeto") or "") + " "
+                        + str(r.get("evidencia") or "")))
+        for d in ((segunda_mirada_voluminoso or {}).get("identificados") or []):
+            _fuentes_txt.append(_norm_texto(str(d.get("objeto") or "")))
+        for d in ((segunda_mirada or {}).get("confirmaron") or []):
+            _fuentes_txt.append(_norm_texto(
+                "escombros " + str(d.get("evidencia") or "")))
+        # el texto de cada fuente SIN sus tramos negados: lo que un modelo
+        # desmiente no respalda a otro
+        _fuentes_negadas = [_sin_negado(t) for t in _fuentes_txt]
+
+        def _sanear(texto):
+            """Saca las frases que nombran un objeto que vio una sola fuente.
+
+            La corroboración es por PALABRA, no por familia: que otro modelo
+            haya dicho "cajón" no habilita publicar "caja" (hallazgo de codex,
+            reproducido con caja/cajón y con mesa/silla).
+            """
+            frases = re.split(r"(?<=[.!?])\s+", texto)
+            limpias, saco = [], False
+            for f in frases:
+                _n = _norm_texto(f)
+                solo = False
+                _pats = list(_OBJETOS_CONCRETOS.values())
+                # Los ambiguos entran solo si la señal de descarte está PEGADA
+                # al objeto. A nivel frase no servía: "bolsas acumuladas frente
+                # a la puerta de un garaje" tiene "acumuladas" (que califica a
+                # las bolsas) y "puerta" (que es la escena), y la frase entera
+                # se borraba (hallazgo de fable).
+                _amb = [m.group(0) for m in _OBJETOS_SEGUN_CONTEXTO.finditer(_n)
+                        if _cerca_del_descarte(_n, m)]
+                if _amb:
+                    _pats.append(re.compile(
+                        "|".join(re.escape(a) for a in _amb)))
+                for pat in _pats:
+                    if not pat.search(_n):
+                        continue
+                    # La corroboración es por FAMILIA de objeto, no por la
+                    # palabra exacta. Exigir el mismo sustantivo se midió y
+                    # sale carísimo: sobre 20 fotos cambiaba el 65% de las
+                    # descripciones y varias perdían justo la frase
+                    # informativa, porque un modelo dice "cajas" y otro
+                    # "cartones" para la misma pila. Con la familia, los
+                    # cuatro casos del dueño se siguen cazando (en U032 los
+                    # tres objetos eran de familias DISTINTAS: maceta, cesto y
+                    # caja) y la prosa correcta sobrevive. El residuo conocido
+                    # es que "cajón" respalda "caja": ver CASOS.md.
+                    if sum(1 for t in _fuentes_negadas if pat.search(t)) < 2:
+                        solo = True
+                        break
+                if solo:
+                    saco = True
+                    continue
+                limpias.append(f)
+            return " ".join(limpias).strip(), saco
+
+        _saneada, _saco = _sanear(descripcion)
+        if _saco:
+            # Si la elegida se queda sin nada, se prueba con las otras: es
+            # mejor la prosa de otro modelo que sobrevive entera que una línea
+            # armada con los nombres de las categorías.
+            if not _saneada:
+                for v in activos:
+                    otra = _texto_limpio(v.get("descripcion"), DESC_MAX)
+                    if not otra or v["modelo"] in desc_desautorizadas:
+                        continue
+                    # el repuesto tampoco puede traer de vuelta el subtipo que
+                    # se descartó: para eso existe toda la maquinaria de
+                    # arriba, que hasta paga una llamada extra al árbitro
+                    # (hallazgo de fable)
+                    if {c["key"] for c in v["categorias"]} & perdidos:
+                        continue
+                    cand, _ = _sanear(otra)
+                    if len(cand) > len(_saneada):
+                        _saneada, descripcion_fuente = cand, v["modelo"]
+            if not _saneada:
+                # nadie sobrevive: queda el veredicto, que es lo respaldado
+                _nombres = [categorias.get(k, {}).get("nombre", k)
+                            for k in sorted(confirmadas - PRESENCIA)]
+                _saneada = ("En la foto se ve " + ", ".join(_nombres) + "."
+                            if _nombres else
+                            "No se distingue con claridad qué hay en la foto.")
+            descripcion = _saneada
+            descripcion_fuente = (descripcion_fuente or "") + " (saneada)"
+
     # Si la pasada dirigida CONFIRMÓ que la estructura metálica es la base del
-    # contenedor y la descripción elegida no lo dice, se lo agrega: publicar
-    # la categoría sin explicarla dejaría al vecino sin saber qué se reportó.
-    # Vale también para la descripción del árbitro (el bloque corre después de
-    # ambas ramas) y para el caso en que TODAS las descripciones venían de
-    # modelos desautorizados y una quedó igual como último recurso.
+    # contenedor y la descripción elegida no lo dice, se lo agrega: publicar la
+    # categoría sin explicarla dejaría al vecino sin saber qué se reportó. Vale
+    # también para la descripción del árbitro (el bloque corre después de ambas
+    # ramas) y para el caso en que TODAS las descripciones venían de modelos
+    # desautorizados y una quedó igual como último recurso.
     if segunda_mirada_base and descripcion:
         if (segunda_mirada_base.get("promovio")
                 and "base" not in _norm_texto(descripcion)):

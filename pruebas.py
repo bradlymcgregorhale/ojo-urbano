@@ -1774,6 +1774,13 @@ else:
               str(_r["problemas"])[:140])
         check("  y recoleccion también baja",
               "recoleccion" not in {p["key"] for p in _r["problemas"]})
+        # la nota no puede AFIRMAR lo que nadie ve en la foto (caso U035):
+        # dice que las bolsas PARECEN de obra y que hay que confirmarlo
+        check("  la nota de la fusión no afirma, propone confirmar",
+              "parecen contener escombros" in (_r.get("descripcion") or "")
+              and "conviene confirmarlo en el lugar" in (_r.get("descripcion") or "")
+              and "análisis del material indica" not in (_r.get("descripcion") or ""),
+              str(_r.get("descripcion"))[:160])
 
         # ...pero si una pasada dirigida YA adjudicó los escombros, la fusión
         # no los vuelve a inyectar por la ventana (hallazgo de codex): un
@@ -3130,6 +3137,247 @@ _r = _correr_desb({"b/uno": {"veredicto": "rebalsa_visible"},
 check("  el rebalse ratificado se publica",
       "contenedor_desbordado" in {c["key"] for c in _r["confirmadas"]})
 _desborde_resp = {}
+
+print("[#PR] saneo de la prosa: el objeto que vio uno solo no se afirma")
+
+
+def _correr_prosa_saneo(descs):
+    """descs: modelo -> descripción. Todos votan lo mismo (recoleccion), así
+    que no hay disputa y la descripción se elige localmente."""
+    def _llamar_ps(modelo, mensajes, **k):
+        if str(mensajes[0].get("content", "")).startswith("Auditás UNA sola"):
+            return json.dumps({"veredicto": "indeterminado",
+                               "evidencia": "lo que vi"})
+        return _resp_b([{"key": "recoleccion", "gravedad": 2,
+                         "evidencia": "bolsas de residuos en la vereda"}],
+                       descs.get(modelo, "Bolsas en la vereda."))
+    V._llamar = _llamar_ps
+    return V.verificar(_Img(), CATS, _LOCAL_B, "")
+
+
+# el cesto arrancado de U032: la señal de descarte lo vuelve reclamable, y con
+# una sola fuente no se publica (la descripción elegida es LA MÁS LARGA, así
+# que se la hace ganar para que la prueba ejercite de verdad la supresión)
+_r = _correr_prosa_saneo({
+    "b/uno": ("Se ve un cesto papelero municipal arrancado de su poste, "
+              "tirado sobre la vereda junto a la esquina del edificio."),
+    "b/dos": "Hay bolsas.",
+    "b/tres": "Hay bolsas."})
+_d = _r.get("descripcion") or ""
+V.SANEO_PROSA = False
+_r = _correr_prosa_saneo({
+    "b/uno": "Hay bolsas en la vereda. Hay una caja de cartón descartada.",
+    "b/dos": "Hay bolsas en la vereda.",
+    "b/tres": "Hay bolsas en la vereda."})
+check("con SANEO_PROSA=0 se publica la descripción cruda",
+      "caja de cartón" in (_r.get("descripcion") or ""),
+      str(_r.get("descripcion")))
+V.SANEO_PROSA = True
+
+check("el cesto arrancado que vio uno solo no se publica",
+      "cesto" not in _d and "papelero" not in _d, str(_d))
+# la puerta "apoyada contra" también es descarte, no escena
+_r = _correr_prosa_saneo({
+    "b/uno": ("Hay una puerta vieja apoyada contra el árbol de la vereda, "
+              "ocupando parte del paso peatonal de la cuadra."),
+    "b/dos": "Hay bolsas.",
+    "b/tres": "Hay bolsas."})
+_d = _r.get("descripcion") or ""
+check("  la puerta apoyada contra el árbol tampoco", "puerta" not in _d, str(_d))
+# el objeto que la repregunta ve EN USO no respalda la prosa del descarte
+_repregunta_resp = {
+    "b/dos": {"veredicto": "presente", "ubicacion": "junto al cordón",
+              "estado": "en_uso"},
+    "b/tres": {"veredicto": "presente", "ubicacion": "junto al cordón",
+               "estado": "en_uso"}}
+_r = _correr_base(
+    {"b/uno": ([{"key": "retiro_muebles", "gravedad": 2,
+                 "evidencia": "sillon descartado en la vereda"},
+                dict(_CONT)], "Hay un sillon descartado junto al cordón."),
+     "b/dos": ([dict(_CONT)], "Se ve un contenedor gris."),
+     "b/tres": ([dict(_CONT)], "Se ve un contenedor gris.")},
+    {})
+_repregunta_resp = {
+    "b/dos": {"veredicto": "presente", "ubicacion": "junto al cordón",
+              "estado": "no_claro"},
+    "b/tres": {"veredicto": "presente", "ubicacion": "junto al cordón",
+               "estado": "no_claro"}}
+_r2 = _correr_base(
+    {"b/uno": ([{"key": "retiro_muebles", "gravedad": 2,
+                 "evidencia": "sillon descartado en la vereda"},
+                dict(_CONT)], "Hay un sillon descartado junto al cordón."),
+     "b/dos": ([dict(_CONT)], "Se ve un contenedor gris."),
+     "b/tres": ([dict(_CONT)], "Se ve un contenedor gris.")},
+    {})
+check("el estado que el modelo no pudo determinar tampoco respalda el descarte",
+      "sillon" not in V._norm_texto(_r2.get("descripcion") or ""),
+      str(_r2.get("descripcion")))
+check("el 'presente pero EN USO' no respalda la prosa del descarte",
+      "retiro_muebles" not in {c["key"] for c in _r["confirmadas"]}
+      and "sillon" not in V._norm_texto(_r.get("descripcion") or ""),
+      str(_r.get("descripcion")))
+_repregunta_resp = {}
+
+# U032: los tres nombran objetos DISTINTOS; ninguno queda afirmado
+_r = _correr_prosa_saneo({
+    "b/uno": "Hay bolsas en la vereda. A la izquierda hay una maceta rota.",
+    "b/dos": "Hay bolsas en la vereda. Se ve un cesto papelero arrancado.",
+    "b/tres": "Hay bolsas en la vereda. Hay una caja de cartón descartada."})
+_d = _r.get("descripcion") or ""
+check("el objeto que nombra una sola fuente no se publica",
+      "maceta" not in _d and "cesto" not in _d and "caja" not in _d
+      and "bolsas" in _d, str(_d))
+# lo que DOS fuentes nombran sí se publica
+_r = _correr_prosa_saneo({
+    "b/uno": "Hay bolsas en la vereda. Hay una caja de cartón descartada.",
+    "b/dos": "Hay bolsas en la vereda. Se ve una caja de cartón grande.",
+    "b/tres": "Hay bolsas en la vereda."})
+_d = _r.get("descripcion") or ""
+check("  el objeto que ven dos fuentes se mantiene",
+      "caja" in _d or "carton" in _d.lower(), str(_d))
+# LÍMITE MEDIDO Y ACEPTADO: la corroboración es por FAMILIA de objeto, así que
+# "cajón" respalda "caja" y "silla" respalda "mesa". Exigir la palabra exacta
+# se probó y sale carísimo: sobre 20 fotos con las MISMAS respuestas de los
+# modelos, cambiaba el 65% de las descripciones y varias perdían la frase
+# informativa (un modelo dice "cajas" y otro "cartones" para la misma pila).
+# Los cuatro casos del dueño se siguen cazando porque ahí los objetos eran de
+# familias distintas.
+_r = _correr_prosa_saneo({
+    "b/uno": "Hay bolsas en la vereda. Hay una caja de cartón descartada.",
+    "b/dos": "Hay bolsas en la vereda. Se ve un cajón de madera.",
+    "b/tres": "Hay bolsas en la vereda."})
+_d = _r.get("descripcion") or ""
+check("  la familia corrobora aunque cambie la palabra ('cajón' y 'caja')",
+      "caja de cartón" in _d, str(_d))
+_r = _correr_prosa_saneo({
+    "b/uno": "Hay bolsas en la vereda. Se ve una mesa descartada.",
+    "b/dos": "Hay bolsas en la vereda. Se ve una silla descartada.",
+    "b/tres": "Hay bolsas en la vereda."})
+_d = _r.get("descripcion") or ""
+check("  ídem dentro de la familia mueble ('silla' y 'mesa')",
+      "mesa" in _d or "silla" in _d, str(_d))
+# y lo que un modelo NIEGA no corrobora: "no tablas largas" nombra la palabra
+# pero la está desmintiendo (caso U049/U003, hallazgo de fable)
+_r = _correr_prosa_saneo({
+    "b/uno": "Hay bolsas en la vereda. Hay tablas de madera descartadas.",
+    "b/dos": "Hay bolsas en la vereda. Se ven cartones, no tablas largas.",
+    "b/tres": "Hay bolsas en la vereda."})
+_d = _r.get("descripcion") or ""
+check("  la negación de otro modelo no corrobora el objeto",
+      "tablas de madera" not in _d, str(_d))
+# vocabulario de escena: lo que ubica la toma no puede borrar prosa correcta
+_r = _correr_prosa_saneo({
+    "b/uno": "Hay varias bolsas acumuladas frente a la puerta de un garaje.",
+    "b/dos": "Hay varias bolsas de residuos sobre el cordón.",
+    "b/tres": "Se ven bolsas de residuos en la vereda."})
+_d = _r.get("descripcion") or ""
+check("  una referencia de lugar no borra la frase corroborada",
+      "bolsas" in _d and len(_d) > 30, str(_d))
+# pero la MISMA palabra con señal de descarte sí es un objeto reclamable
+_r = _correr_prosa_saneo({
+    "b/uno": "Hay bolsas en la vereda. Hay una puerta descartada en el cordón.",
+    "b/dos": "Hay bolsas en la vereda.",
+    "b/tres": "Hay bolsas en la vereda."})
+_d = _r.get("descripcion") or ""
+check("  'puerta DESCARTADA' de una sola fuente sí se sanea",
+      "puerta" not in _d, str(_d))
+# la negación coordinada tampoco corrobora ("sin tablas y maderas largas")
+check("la negación alcanza a lo coordinado con 'y'",
+      not V._stems("sin tablas y maderas largas", sin_negados=True)
+      and "madera" in V._stems("no hay tablas pero si maderas",
+                               sin_negados=True))
+# la negación alcanza HACIA ADELANTE, no se come el sujeto afirmado
+check("  pero no se lleva puesto lo que la frase sí afirma",
+      "colchon" in V._stems("colchon sin funda tirado", sin_negados=True)
+      and "funda" not in V._stems("colchon sin funda tirado",
+                                  sin_negados=True))
+check("  'ni' también niega",
+      "tabla" not in V._stems("se ven cartones, ni rastro de tablas",
+                              sin_negados=True))
+check("  singular y plural del mismo objeto se corroboran",
+      bool(V._stems("muebles") & V._stems("mueble")))
+# el contenido atribuido a una bolsa cerrada también se sanea (caso U014)
+_r = _correr_prosa_saneo({
+    "b/uno": "Hay bolsas en la vereda. Las bolsas contienen material vegetal.",
+    "b/dos": "Hay bolsas en la vereda.",
+    "b/tres": "Hay bolsas en la vereda."})
+_d = _r.get("descripcion") or ""
+check("  el contenido vegetal que ve uno solo tampoco se afirma",
+      "vegetal" not in _d, str(_d))
+# ...y un sustantivo COMODÍN de otro modelo no lo corrobora: "material
+# disperso" no respalda "material vegetal" (regresión de U014 que introdujo el
+# fix del núcleo; hallazgo de fable)
+_r = _correr_prosa_saneo({
+    "b/uno": "Hay bolsas en la vereda. Las bolsas contienen material vegetal.",
+    "b/dos": "Hay bolsas en la vereda. Se ve material disperso alrededor.",
+    "b/tres": "Hay bolsas en la vereda. Hay material suelto en el piso."})
+_d = _r.get("descripcion") or ""
+check("  'material disperso' no corrobora 'material vegetal'",
+      "vegetal" not in _d, str(_d))
+_r = _correr_prosa_saneo({
+    "b/uno": "Hay bolsas en la vereda. Se ven restos de obra junto al cordón.",
+    "b/dos": "Hay bolsas en la vereda. Hay restos de comida dispersos.",
+    "b/tres": "Hay bolsas en la vereda."})
+_d = _r.get("descripcion") or ""
+check("  'restos de comida' no corrobora 'restos de obra'",
+      "obra" not in _d, str(_d))
+# el desmentido pospuesto tampoco corrobora: "las tablas no se distinguen"
+_r = _correr_prosa_saneo({
+    "b/uno": "Hay bolsas en la vereda. Hay tablas de pino descartadas.",
+    "b/dos": "Hay bolsas en la vereda. Las tablas no se distinguen.",
+    "b/tres": "Hay bolsas en la vereda."})
+_d = _r.get("descripcion") or ""
+check("  'las tablas no se distinguen' no corrobora las tablas",
+      "tablas de pino" not in _d, str(_d))
+# y la adyacencia: el participio que califica a las bolsas no vuelve
+# reclamable a la puerta del garaje
+check("la señal de descarte tiene que estar PEGADA al objeto",
+      not V._cerca_del_descarte(
+          "bolsas acumuladas frente a la puerta de un garaje",
+          next(V._OBJETOS_SEGUN_CONTEXTO.finditer(
+              "bolsas acumuladas frente a la puerta de un garaje")))
+      and V._cerca_del_descarte(
+          "una puerta vieja apoyada contra el arbol",
+          next(V._OBJETOS_SEGUN_CONTEXTO.finditer(
+              "una puerta vieja apoyada contra el arbol"))))
+# lo que una mirada DIRIGIDA confirmó sí se puede describir
+_repregunta_resp = {
+    "b/dos": {"veredicto": "presente", "ubicacion": "junto al cordón",
+              "estado": "descartado"},
+    "b/tres": {"veredicto": "no_se_distingue", "ubicacion": None,
+               "estado": None}}
+_r = _correr_base(
+    {"b/uno": ([{"key": "retiro_muebles", "gravedad": 2,
+                 "evidencia": "sillon descartado en la vereda"},
+                dict(_CONT)], "Hay un sillon descartado junto al cordón."),
+     "b/dos": ([dict(_CONT)], "Se ve un contenedor gris."),
+     "b/tres": ([dict(_CONT)], "Se ve un contenedor gris.")},
+    {})
+check("el objeto que la repregunta CONFIRMÓ sí se describe",
+      "retiro_muebles" in {c["key"] for c in _r["confirmadas"]}
+      and "sillon" in V._norm_texto(_r.get("descripcion") or ""),
+      str(_r.get("descripcion")))
+_repregunta_resp = {}
+
+# si la elegida se queda sin nada pero otra sobrevive, se usa esa prosa
+_r = _correr_prosa_saneo({
+    "b/uno": ("Se ve una maceta rota junto al cordón y una alfombra "
+              "enrollada apoyada contra el árbol de la vereda."),
+    "b/dos": "Hay bolsas de residuos acumuladas en la vereda.",
+    "b/tres": "Hay bolsas de residuos acumuladas en la vereda."})
+_d = _r.get("descripcion") or ""
+check("  si la elegida se cae, se usa la prosa de otro modelo",
+      "bolsas de residuos" in _d and "maceta" not in _d
+      and "En la foto se ve" not in _d, str(_d))
+# si al sanear no queda nada, se describe el veredicto, no se inventa
+_r = _correr_prosa_saneo({
+    "b/uno": "Se ve una maceta rota junto al cordón.",
+    "b/dos": "Se ve un colchón apoyado en la pared.",
+    "b/tres": "Se ve una alfombra enrollada."})
+_d = _r.get("descripcion") or ""
+check("  sin frases limpias se describe lo confirmado",
+      "maceta" not in _d and "colchón" not in _d and "alfombra" not in _d
+      and len(_d) > 10, str(_d))
 
 print("[#V] firma de identidad del voluminoso marginal")
 _LOCAL_MUEB = {"predichas": [{"key": "retiro_muebles", "nombre": "RM",
