@@ -407,6 +407,10 @@ def _cacheable(respuesta):
         # Ídem la mirada dirigida del subtipo.
         if (veri.get("segunda_mirada_subtipo") or {}).get("fallo"):
             return False
+        # Ídem el chequeo de los postes citados: si falló, el "nadie los ve"
+        # puede ser un corte de red y no un veredicto.
+        if (veri.get("segunda_mirada_postes") or {}).get("fallo"):
+            return False
         # Ídem la firma de identidad del voluminoso.
         if (veri.get("segunda_mirada_voluminoso") or {}).get("fallo"):
             return False

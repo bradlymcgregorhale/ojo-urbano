@@ -227,6 +227,10 @@ except ValueError:
 # 0.921 cuando acierta y 0.310 cuando falla. Mismo umbral que usa la fusión
 # de escombros, por la misma razón.
 SUBTIPO_LOCAL_MARGEN = float(os.environ.get("SUBTIPO_LOCAL_MARGEN", "0.95"))
+# Chequeo de los POSTES citados: levanta la guardia del subtipo cuando el
+# testigo cita postes que ningún modelo puede ver (ver el comentario del caso).
+SEGUNDA_MIRADA_POSTES = os.environ.get(
+    "SEGUNDA_MIRADA_POSTES", "1").strip().lower() not in ("0", "false", "no")
 
 ARBITRO = os.environ.get("ARBITRO", "deepseek/deepseek-v4-flash").strip()
 # Si el árbitro es un modelo con visión, conviene darle la foto: decidir sobre
@@ -673,7 +677,7 @@ Categorías y criterios (usá SOLO estas claves):
 - retiro_escombros: material INERTE Y SUELTO de obra o refacción; el cascote. EVIDENCIA DIRECTA (una sola alcanza): escombros o cascotes visibles, sueltos, sobre las bolsas o asomando por una boca o rotura (ladrillo terracota, revoque o mortero gris, baldosas/cerámicos rotos, arena de obra); una bolsa RASGADA cuyo relleno a la vista es material DENSO y opaco de obra (tierra con cascote, mezcla, revoque) sin envases ni residuos domésticos reconocibles adentro; o un saco LLENO y denso con etiqueta legible de material de construcción (cemento, cal, pegamento). SIN evidencia directa, el caso difícil son los ESCOMBROS EMBOLSADOS, que se confunden con bolsas de recoleccion: MIRÁ LAS BOLSAS UNA POR UNA antes de decidir la categoría, y reportá escombros con DOS señales INDEPENDIENTES de estas cuatro (dos aspectos de la misma cosa no se cuentan dos veces): (1) PORTE: bolsas notablemente CHICAS para ser de basura, llenadas a medias porque el cascote pesa, densas y casi sin caída, paradas SOLAS como bolsas de arena; el caso típico son varias parecidas entre sí acomodadas en hilera o pirámide (las cuadrillas apilan; la basura doméstica se tira suelta), pero UNA O DOS bolsas sueltas con ese porte también cuentan: la señal es el porte denso y medio lleno, no la cantidad ni el acomodo; (2) TEXTURA: el plástico tenso marca puntas y aristas de fragmentos angulosos repartidas por TODA la bolsa, no un bulto blando con alguna punta aislada; (3) POLVO DE OBRA: polvo blanquecino o gris de revoque/yeso/cemento SOBRE las bolsas o desparramado en el piso alrededor (barro o tierra genérica NO cuentan: eso también es jardinería); (4) SACOS REUTILIZADOS de formato chico (bolsas impresas de materiales de ~25 kg, arpillera) llenos y DENSOS; los bolsones GRANDES de rafia inflados con material liviano NO son escombros: llenos de cartón u otros reciclables estacionados en la vía pública son acopio_recuperadores; el embalaje liviano descartado suelto es recoleccion. La bolsa de basura COMÚN, en cambio: grande, liviana, brillante, redondeada, atada con orejas, bultos BLANDOS aunque asome una punta, limpia, rodeada de residuos domésticos reconocibles. REGLA POR DEFECTO: cero o una señal = recoleccion; ante la duda, recoleccion: el contenido de una bolsa opaca no se adivina. Eso vale IGUAL para los sacos: un saco CERRADO cuyo contenido no se ve NO es evidencia directa por más que "parezca" de obra (la ÚNICA excepción es la etiqueta legible de material de construcción del caso de arriba), y NUNCA escribas "con material de obra" o "de escombros" sobre un saco cuyo material no está A LA VISTA (asomando, derramado o por una rotura) ni etiquetado. Un solo saco grande y cerrado, sin etiqueta, sin aristas marcadas, sin polvo alrededor y sin contenido visible, va a recoleccion aunque sea blanco, de rafia o tejido. Una bolsa VACÍA de cemento/cal/pegamento prueba que hubo obra, no que la pila sea escombro: solo suma junto a otra señal. Tierra sola tampoco es escombro. Y las piedritas, cascotes chicos o fragmentos de baldosa o cerámica MEZCLADOS EN LA TIERRA de una cantera o cantero tampoco: la tierra de un cantero trae pedregullo y restos enterrados, es su estado normal, no material de obra para retirar. Escombros pide material de obra ACUMULADO, APILADO o EMBOLSADO para que lo retiren; unos fragmentos dispersos en la tierra no se reportan. NO cuentes material EN USO (bolsas de arena contra inundación, materiales nuevos de una obra activa): escombros es lo DESCARTADO para retirar. En una escena mixta clasificá cada componente por separado: un OBJETO ENTERO (caños, hierros, rejas, maderas/tablones, puertas, ventanas, marcos, sanitarios) es retiro_muebles aunque las bolsas de al lado sean escombros. NO lo uses por baldes genéricos, pocas bolsas de basura común, muebles, madera de mueble, cartones, basura domiciliaria variada ni vidrios rotos (el vidrio roto siempre es retiro_muebles). GRAVEDAD: 1 una bolsa de escombros aislada; 2 pocas bolsas o una pila hasta la rodilla con el paso libre; 3 pila hasta la cintura o varias bolsas, sin obstruir (caso típico); 4 pila que ocupa la mayor parte del ancho de la vereda u obliga a bajar a la calle, o cascotes sueltos en la calzada; 5 escombros invadiendo el carril de circulación, o con hierros salientes u otro riesgo físico inmediato.
 - recoleccion: basura DOMICILIARIA suelta en el piso: bolsas de residuos llenas, cajas de cartón descartadas, o basura domiciliaria reconocible aunque no esté embolsada (restos de comida, pañales, residuos húmedos, mezcla variada salida de una bolsa rota). Una bolsa llena o una caja descartada SÍ cuenta aunque esté sola (gravedad 1-2); una bolsa VACÍA no. Los papeles, envoltorios, plásticos y envases LIVIANOS dispersos cuentan como recoleccion SOLO cuando están asociados a basura domiciliaria: junto a un contenedor municipal visible y CERCANO al foco de basura, o mezclados con bolsas o cajas de residuos. PERO al lado de un contenedor la vara es MÁS ALTA, no más baja: unos pocos papeles, restos u hojas alrededor de un contenedor son el estado NORMAL de ese punto de la vereda (ahí se manipula basura todos los días) y NO se reportan; para reportar recoleccion junto a un contenedor hace falta al menos una bolsa llena, una caja descartada o una acumulación notable en el piso, y esa bolsa o caja se tiene que ver ENTERA y LLENA apoyada en el piso: "residuos sueltos", "algo de desperdicio", papeles o restos dispersos alrededor de un contenedor NUNCA alcanzan, ni siquiera como acompañante de un desborde. Y si lo único que hay alrededor son restos sueltos que se cayeron de un contenedor rebalsado, eso ya lo cubre contenedor_desbordado y no se duplica acá; las bolsas llenas o cajas descartadas AL LADO de un contenedor desbordado sí siguen siendo recoleccion además del desborde. Sin esa asociación, la basurita liviana dispersa NO es recoleccion: va a barrido si la acumulación es notable y barrible, y si son pocas unidades dispersas no se reporta (una botella o un envase suelto tampoco: es el estado normal de la calle). El cartón, la ropa, las mantas/frazadas, los retazos y otros textiles blandos sueltos son basura común; la EXCEPCIÓN son las alfombras o tapetes grandes descartados, que siempre van a retiro_muebles aunque estén enrollados o plegados. Si la basura visible es material de obra es escombros, NO recoleccion. ANTES de reportar bolsas como recoleccion, chequeá las señales de ESCOMBROS EMBOLSADOS de retiro_escombros (porte de bolsa de arena, textura de fragmentos angulosos, polvo de obra, sacos reutilizados llenos y densos, cascote asomando): si hay evidencia directa o las bolsas cumplen al menos DOS señales independientes, ESAS bolsas van a retiro_escombros y no acá, aunque haya además basura común alrededor que sí sea recoleccion. NO cuentes las MISMAS bolsas en las dos categorías: si los únicos bultos de la escena son esos sacos de obra, reportá SOLO retiro_escombros; recoleccion ADEMÁS de escombros exige otras bolsas, cajas o residuos domésticos aparte de los sacos. Muebles u objetos voluminosos SOLOS no son recoleccion: exige basura común además. Si hay basura común y voluminosos juntos, reportá recoleccion Y retiro_muebles. GRAVEDAD: 1 una bolsa o un residuo suelto aislado; 2 de dos a cinco bolsas agrupadas y la vereda transitable; 3 pila de hasta un ancho de contenedor, o desparramo en un tramo corto por el que una persona pasa caminando sin bajar a la calle (caso típico); 4 pila más ancha que un contenedor, o desparramo que obliga a bajar de la vereda, o residuos orgánicos abiertos; 5 la basura está POR TODOS LADOS: varios contenedores rodeados de basura desparramada de forma continua por el piso, o basura cubriendo vereda Y calzada, o un desparramo que pasa el frente de una propiedad. No hace falta que invada el carril: alcanza con que el piso alrededor de los contenedores esté cubierto de punta a punta. PRUEBA PRÁCTICA DEL 5: si hay DOS O MÁS contenedores y el desparramo del piso los UNE (la basura va de uno al otro sin corte limpio en el medio, o rodea a los dos), es 5 aunque quede un pasillo para pasar caminando y aunque la vereda sea ancha. Un solo contenedor con bolsas al lado NO llega a 5.
 - barrido: acumulación NOTABLE de material fino y liviano para BARRER (hojas secas, ramitas, tierra, polvo): un cordón cuneta o una cazuela LLENOS, montones juntados, o un sector de vereda tapizado. También cuenta la acumulación NOTABLE de papeles, envoltorios, plásticos y envases chicos livianos dispersos junto al cordón, la cuneta o la vereda cuando NO hay contenedor municipal visible asociado ni bolsas o cajas de residuos en la escena: eso lo levanta la cuadrilla de barrido. No lo uses por bolsas de residuos, cajas descartadas, basura orgánica o húmeda, ni vidrios rotos (el vidrio roto siempre es retiro_muebles). Unas POCAS hojas o papelitos dispersos en una vereda transitada son el estado normal de la calle: NO es barrido (si no hay otro problema, es sin_problema). Tampoco lo agregues de acompañante por las hojas de fondo cuando el problema principal es otro (una pila de poda, basura, muebles): reportalo solo si la suciedad barrible es un problema en sí misma por su cantidad. Si PREDOMINA esa acumulación, reportá barrido aunque haya basurita mezclada (y si esa basura mezclada es grande o abundante, reportá TAMBIÉN recoleccion). No lo uses cuando lo que predomina es basura suelta o bolsas, ni por vidrios rotos (el vidrio roto siempre es retiro_muebles, no barrido). GRAVEDAD: 1 suciedad mínima en el cordón; 2 acumulación en un tramo corto; 3 acumulación notoria a lo largo de la cuadra (caso típico); 4 acumulación que tapa sumideros o que cubre la calzada; 5 sumideros tapados con agua acumulada a la vista.
-- retiro_poda: ramas, troncos o restos de poda/jardinería CORTADOS y acumulados para retirar. TAMBIÉN cuenta embolsado: bolsas (verdes o negras) con restos vegetales visibles (pasto, hojas o ramitas asomando por la boca o transparentándose), y una pila de bolsas con un cartel escrito a mano tipo "RECOLECCIÓN PROGRAMADA" (es el protocolo municipal de retiro de poda: esa pila es retiro_poda aunque las bolsas sean opacas). Bolsas negras opacas SIN restos vegetales visibles ni cartel son recoleccion, no esto. Un árbol vivo cuyas ramas tapan una luminaria, un semáforo o cuelgan muy bajo es poda_arbol, NO retiro_poda.
+- retiro_poda: ramas, troncos o restos de poda/jardinería CORTADOS y acumulados para retirar. TAMBIÉN cuenta embolsado: bolsas (verdes o negras) con restos vegetales visibles (pasto, hojas o ramitas asomando por la boca o transparentándose), y una pila de bolsas con un cartel escrito a mano tipo "RECOLECCIÓN PROGRAMADA" (es el protocolo municipal de retiro de poda: esa pila es retiro_poda aunque las bolsas sean opacas). Bolsas negras opacas SIN restos vegetales visibles ni cartel son recoleccion, no esto. Y en la escena MIXTA (la pila de ramas MÁS bolsas OPACAS SIN restos vegetales visibles y SIN cartel) reportá LAS DOS COSAS: retiro_poda por las ramas y recoleccion por esas bolsas opacas. Son dos retiros distintos, con camiones distintos, y la bolsa cerrada no se convierte en poda por estar apoyada al lado de las ramas: para contarla como poda tenés que VER el material vegetal o el cartel. Si no sabés qué hay adentro y no hay cartel, es una bolsa de residuos. Un árbol vivo cuyas ramas tapan una luminaria, un semáforo o cuelgan muy bajo es poda_arbol, NO retiro_poda.
 - destape_sumidero: un sumidero o alcantarilla TAPADO, obstruido o desbordado (NO si solo se ve la rejilla sin problema). TAMBIÉN se reporta aunque el sumidero no esté en el encuadre cuando hay acumulación ANORMAL de agua junto al cordón compatible con un sumidero tapado cercano: un espejo de agua localizado que cubre una parte importante de la calzada, agua rebalsando el cordón hacia la vereda, o burbujeo/turbulencia CLARAMENTE visible y localizada contra el cordón (esa agua es el síntoma del sumidero tapado). NO lo reportes por calzada apenas mojada, charcos chicos aislados, escorrentía pareja de lluvia, o agua generalizada cuando todo el entorno está mojado (lluvia normal). Tampoco si la fuente probable del agua es visible y NO es un sumidero: manguera, baldeo, camión de limpieza, riego, caño roto o agua saliendo de una vivienda o vereda.
 - reparacion_vereda: la vereda claramente ROTA: baldosas partidas, faltantes, levantadas o hundidas, visibles con nitidez y con un hueco o desnivel franco. El desgaste menor NO cuenta: manchas, juntas gastadas, baldosas descascaradas o fisuradas sin desnivel no son reparación. Y el hueco o deterioro EN LA BASE de un poste o columna dañados es parte del problema del POSTE (columna_poste_cable), no de la vereda: no dupliques con reparacion_vereda por el zócalo de un poste corroído. Señales típicas: un sector donde la trama de baldosas se interrumpe (contrapiso o tierra a la vista, un hueco hundido donde se acumulan hojas, bordes de baldosa que sobresalen). NO si la vereda solo está sucia, mojada, cubierta de hojas o con desgaste normal. NO confundas las baldosas con RELIEVE o textura (táctiles/podotáctiles, vainilla) ni las juntas entre baldosas con una rotura: exigí roturas nítidas e inequívocas. Si el hueco es RECTANGULAR con MARCO metálico es tapa_vereda, NO reparacion_vereda.
 - tapa_vereda: una TAPA de empresa de servicio público (agua/luz/gas/teléfono) rota, hundida o FALTANTE, EN LA VEREDA: hueco RECTANGULAR con marco o borde METÁLICO prolijo. Señal típica: objetos metidos en el hueco (cajones, tablas, conos, sillas) como advertencia; esos objetos NO son voluminosos descartados, no los reportes como retiro_muebles.
@@ -1008,6 +1012,43 @@ _PROMPT_SEGUNDA_MIRADA_DANO = """Auditás UNA sola cosa en esta foto: si el cont
 - "indeterminado": el contenedor no se ve bien (oscuridad, distancia, tapado) o no llegás a decidir.
 OJO: el cuerpo y las tapas son de PLÁSTICO negro o gris; una pieza de METAL en el piso no puede ser una tapa. Un contenedor "con la tapa rota" que igual abre, cierra y recibe bolsas es USABLE. Decidí solo por lo que VES.
 Respondé SOLO con JSON válido: {"veredicto": "uso_comprometido" | "usable" | "indeterminado", "evidencia": "qué viste, máx 15 palabras"}"""
+
+
+_PROMPT_SEGUNDA_MIRADA_POSTES = """Auditás UNA sola cosa en esta foto: si el contenedor de basura tiene POSTES METÁLICOS DE IZADO. Son dos montantes o brazos VERTICALES de metal, uno a cada lado del cuerpo, que sobresalen hacia arriba y sirven para que el camión lo levante. Decidí:
+- "con_postes": VES los montantes verticales metálicos a los costados, sobresaliendo del cuerpo.
+- "sin_postes": el contenedor NO los tiene: el cuerpo termina en su tapa o cabezal y no sobresale ningún montante a los lados.
+- "no_se_ve": el ángulo, la oscuridad o algo que tapa no dejan verlo.
+IMPORTANTE: la manija, el borde de la tapa, un poste de alumbrado o un árbol DETRÁS del contenedor no son postes de izado; tienen que salir DEL CONTENEDOR, a los costados. En muchos contenedores no hay postes y "sin_postes" es una respuesta correcta y frecuente.
+Respondé SOLO con JSON válido: {"veredicto": "con_postes" | "sin_postes" | "no_se_ve", "evidencia": "qué ves, máx 15 palabras"}"""
+
+
+def _segunda_mirada_postes(img):
+    """¿Los postes que citó un testigo existen? Devuelve (con, sin, fallo)."""
+    data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+    con, sin, fallo = [], [], False
+    for modelo in VERIFICADORES:
+        try:
+            contenido = _llamar(modelo, [
+                {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_POSTES},
+                {"role": "user", "content": [
+                    {"type": "text", "text": "La foto:"},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ]},
+            ], max_tokens=400)
+            v = _extraer_json(contenido)
+            veredicto = str(v.get("veredicto", "")).strip().lower()
+            evidencia = _texto_limpio(v.get("evidencia"), EVID_MAX)
+            # sin evidencia declarada el voto no cuenta, igual que en la
+            # pasada hermana del subtipo (hallazgo de fable)
+            if not evidencia:
+                continue
+            if veredicto == "con_postes":
+                con.append((modelo, evidencia))
+            elif veredicto == "sin_postes":
+                sin.append((modelo, evidencia))
+        except Exception:
+            fallo = True
+    return con, sin, fallo
 
 
 _PROMPT_SEGUNDA_MIRADA_VOLCADO = """Auditás UNA sola cosa en esta foto: si el contenedor de basura está PARADO o VOLCADO. Decidí:
@@ -1901,6 +1942,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # lateral oliva visto de atrás votado bilateral por los tres, y el
     # bilateral ocluido votado lateral con el local en 0.000.
     segunda_mirada_subtipo = None
+    segunda_mirada_postes = None
     vistos_post = grises & set(fuentes)
     if SEGUNDA_MIRADA_SUBTIPO and len(vistos_post) == 1:
         k_sub = next(iter(vistos_post))
@@ -1913,6 +1955,39 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             re.search(r"poste|montante", _norm_texto(c.get("evidencia") or ""))
             for v in veredictos if v.get("ok")
             for c in v["categorias"] if c["key"] == k_sub))
+        # LOS POSTES CITADOS TAMBIÉN SE MIRAN. La guardia existe por un
+        # incidente real (contenedor negro con postes A LA VISTA, local
+        # confiado y equivocado), pero se estaba comiendo el caso inverso:
+        # en U022 un modelo le inventó "postes de izado" a un bilateral gris
+        # claro de noche y con eso congeló el subtipo equivocado, con el local
+        # en 1,000 hacia bilateral. Medido con la pregunta dirigida: el
+        # bilateral de U022 da 3 de 3 "sin postes", el lateral con postes
+        # visibles (T008) da 3 de 3 "con postes", y los bilaterales reales
+        # dan "sin postes". Así que cuando el local contradice con fuerza y
+        # NADIE puede ver esos postes, la guardia se levanta.
+        # Solo dentro del sobre MEDIDO del local (>= 0,95 a un subtipo y
+        # <= 0,05 al otro: 108 de 108 en la ronda 4). La "exclusión práctica"
+        # más floja no habilita levantar la guardia (hallazgo de codex).
+        _local_rotundo = (local_gris == otro_sub
+                          and margen >= SUBTIPO_LOCAL_MARGEN
+                          and pk_s <= 0.05 and po_s >= 0.95)
+        if (postes_citados and discrepa and _local_rotundo
+                and SEGUNDA_MIRADA_POSTES):
+            con_p, sin_p, fallo_p = _segunda_mirada_postes(img)
+            segunda_mirada_postes = {
+                "con_postes": [{"modelo": m, "evidencia": e}
+                               for m, e in con_p],
+                "sin_postes": [{"modelo": m, "evidencia": e}
+                               for m, e in sin_p],
+                # DOS que no los vean y NINGUNO que los vea: con un solo
+                # "sin postes" y dos abstenciones no alcanza para desmentir al
+                # testigo (hallazgo de codex; la regla tiene que ser
+                # conservadora porque el error caro es pisar un lateral real)
+                "levanta_guardia": len(sin_p) >= 2 and not con_p,
+                "fallo": fallo_p,
+            }
+            if segunda_mirada_postes["levanta_guardia"]:
+                postes_citados = False
         if discrepa and not postes_citados:
             lat_sm, bil_sm, fallo_st = _segunda_mirada_subtipo(img)
             votos_sm = {"contenedor_humedos_lateral": len(lat_sm),
@@ -3205,6 +3280,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         "repreguntas": repreguntas,
         # Mirada dirigida del subtipo (None si no corrió).
         "segunda_mirada_subtipo": segunda_mirada_subtipo,
+        # Chequeo de los postes citados (None si no corrió).
+        "segunda_mirada_postes": segunda_mirada_postes,
         # Firma de identidad del voluminoso marginal (None si no corrió).
         "segunda_mirada_voluminoso": segunda_mirada_voluminoso,
         # Mirada dirigida del desborde (None si no corrió).

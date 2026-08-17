@@ -603,6 +603,11 @@ check("sí se cachea si el veto por clave corrió entero",
               "contenedor_secos": {"fallo": False, "retiro_votos": True}}}}}))
 check("la señal de calidad nunca tumba el análisis",
       S._calidad_segura(object()) is None)
+check("no se cachea si el chequeo de los postes falló",
+      not S._cacheable({"detalle": {"verificacion": {
+          "activa": True, "verificadores": [{"ok": True}, {"ok": True}],
+          "segunda_mirada_postes": {"fallo": True,
+                                    "levanta_guardia": False}}}}))
 check("no se cachea si el árbitro falló",
       not S._cacheable({"detalle": {"verificacion": {
           "activa": True, "verificadores": [{"ok": True}, {"ok": True}],
@@ -3455,12 +3460,77 @@ _v = _correr_sub("contenedor_humedos_bilateral", 1.0, 0.007, dirigida="bilateral
 check("  si la mirada dirigida ratifica a los VLM, mandan los VLM",
       "contenedor_humedos_bilateral" in _v
       and "contenedor_humedos_lateral" not in _v, str(sorted(_v)))
-# guardia del incidente: el testigo citó los POSTES -> no se toca nada
-_v = _correr_sub("contenedor_humedos_lateral", 0.01, 0.99,
-                 evidencia="contenedor negro con postes a la vista")
-check("  el testigo que cita los postes no se pisa (incidente real)",
+# guardia del incidente: el testigo citó los POSTES y los demás los VEN
+_postes_resp = {}
+
+
+def _correr_sub_postes(postes_resp, dirigida="no_se_distingue",
+                      falla_postes=False):
+    local = {"predichas": [], "probabilidades": [
+        {"key": "contenedor_humedos_lateral", "nombre": "L", "score": 0.01},
+        {"key": "contenedor_humedos_bilateral", "nombre": "B", "score": 0.99}],
+        "gravedad": {"value": 2, "raw": 2.0}}
+
+    def _llamar_sp(modelo, mensajes, **k):
+        sis = str(mensajes[0].get("content", ""))
+        if sis == V._PROMPT_SEGUNDA_MIRADA_POSTES:
+            if falla_postes and modelo != "b/uno":
+                raise RuntimeError("corte de red")
+            return json.dumps({"veredicto": postes_resp.get(modelo, "no_se_ve"),
+                               "evidencia": "lo que vi"})
+        if sis == V._PROMPT_SEGUNDA_MIRADA_SUBTIPO:
+            return json.dumps({"veredicto": dirigida, "evidencia": "señales"})
+        return _resp_b([{"key": "contenedor_humedos_lateral", "gravedad": 1,
+                         "evidencia": "contenedor negro con postes a la vista"}],
+                       "Un contenedor.")
+    V._llamar = _llamar_sp
+    r = V.verificar(_Img(), CATS, local, "")
+    return {c["key"] for c in r["confirmadas"]} | set(r["en_duda"])
+
+
+_v = _correr_sub_postes({"b/uno": "con_postes", "b/dos": "con_postes",
+                         "b/tres": "con_postes"})
+check("  el testigo que cita los postes no se pisa si los postes SE VEN",
       "contenedor_humedos_lateral" in _v
       and "contenedor_humedos_bilateral" not in _v, str(sorted(_v)))
+# U022: los postes citados no los ve NADIE -> la guardia se levanta y decide
+# el local (que es el que acierta cuando está confiado: 108/108 medido)
+_v = _correr_sub_postes({"b/uno": "sin_postes", "b/dos": "sin_postes",
+                         "b/tres": "sin_postes"})
+check("  pero si nadie ve esos postes, la guardia se levanta",
+      "contenedor_humedos_bilateral" in _v
+      and "contenedor_humedos_lateral" not in _v, str(sorted(_v)))
+# empate: la guardia se mantiene (no alcanza para desmentir al testigo)
+_v = _correr_sub_postes({"b/uno": "sin_postes", "b/dos": "con_postes"})
+check("  con la duda repartida la guardia se mantiene",
+      "contenedor_humedos_lateral" in _v, str(sorted(_v)))
+# hace falta que DOS no los vean: uno solo con dos abstenciones no alcanza
+for _resp, _txt in [({}, "tres 'no se ve'"),
+                    ({"b/uno": "sin_postes"}, "uno solo dice que no hay")]:
+    _v = _correr_sub_postes(_resp)
+    check("  la guardia se mantiene con " + _txt,
+          "contenedor_humedos_lateral" in _v, str(sorted(_v)))
+_v = _correr_sub_postes({"b/uno": "sin_postes", "b/dos": "sin_postes"})
+check("  con dos que no los ven y ninguno que sí, se levanta",
+      "contenedor_humedos_bilateral" in _v, str(sorted(_v)))
+# un corte de red no puede hacer de "nadie los ve": un voto vivo más dos
+# fallos mantiene la guardia, y el fallo viaja para que no se cachee
+_v = _correr_sub_postes({"b/uno": "sin_postes"}, falla_postes=True)
+check("  dos fallos de red no levantan la guardia con un voto solo",
+      "contenedor_humedos_lateral" in _v, str(sorted(_v)))
+# con el chequeo apagado vuelve el comportamiento viejo: la guardia es absoluta
+V.SEGUNDA_MIRADA_POSTES = False
+_v = _correr_sub_postes({"b/uno": "sin_postes", "b/dos": "sin_postes",
+                         "b/tres": "sin_postes"})
+check("  con SEGUNDA_MIRADA_POSTES=0 la guardia no se pregunta",
+      "contenedor_humedos_lateral" in _v, str(sorted(_v)))
+V.SEGUNDA_MIRADA_POSTES = True
+# la rúbrica de poda tiene que conservar las DOS reglas: la escena mixta y la
+# excepción del cartel del protocolo municipal
+check("la rúbrica de poda conserva la escena mixta Y la excepción del cartel",
+      "reportá LAS DOS COSAS" in V._RUBRICA
+      and "aunque las bolsas sean opacas" in V._RUBRICA
+      and "y no hay cartel, es una bolsa de residuos" in V._RUBRICA)
 # control: local de acuerdo -> la pasada ni corre
 _v = _correr_sub("contenedor_humedos_lateral", 0.98, 0.01)
 check("  local de acuerdo: no toca nada",
