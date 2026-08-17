@@ -14,7 +14,7 @@ Estado: **fijado** (hay prueba), **medido** (se midió y se decidió no cambiar)
 | caso | qué reportó el dueño | estado | dónde |
 |---|---|---|---|
 | U003 | tablones que probablemente son cartón, con un solo modelo viéndolos | fijado | validación cruzada, `70df7c1`; pruebas "[#V]" |
-| U013 | contenedor roto no reportado | abierto | la pregunta por el USO y la pregunta por la POSICIÓN de la tapa dan las dos 2-de-3 "está entera"; la reformulación posicional se midió y se descartó (confirmaba el fantasma T109). Falta la señal visual concreta |
+| U013 | contenedor roto no reportado | techo | la señal es "la tapa está salida del eje del lado derecho" (la dio el dueño mirando la foto). Se midió como pregunta dirigida y NO separa: U013 da 2 de 3 "un extremo salido", pero T160 y T175 (dos fantasmas que el dueño rechazó) dan exactamente el mismo 2 de 3, y T008 (contenedor quemado, roto de verdad) da 2 de 3 "ambos en su eje". La reformulación posicional anterior también falló, confirmando el fantasma T109. Se revirtió incluso el texto de rúbrica: los modelos afirman "torcida" en contenedores sanos, así que invitarlos a buscarla suma fantasmas |
 | U014 | dos bolsas opacas sin reportar recolección | fijado | rúbrica de `retiro_poda`: en escena mixta se reportan las dos |
 | U022 | bilateral publicado como lateral | fijado | chequeo de los postes citados: mayoría "sin postes" levanta la guardia |
 | U030 | foto ilegible, no debería emitirse juicio | abierto | sus métricas caen en la mediana del corpus; suprimir ahí suprime la mitad de las fotos buenas |
@@ -93,6 +93,17 @@ es como se mide qué detalle cuesta el saneo.
   unánimes.
 - **Pregunta posicional por la tapa** (en vez de la del uso): invierte. U013
   sigue rechazado y el fantasma T109 pasaría a confirmado, 3 de 3.
+- **Pedir la firma de identidad cuando los dos modelos que votan voluminosos
+  NOMBRAN COSAS DISTINTAS** (U042: "alfombra o tapete" contra "asiento o mueble
+  tapizado"): no rinde. U042 se sigue publicando igual, porque la firma
+  identifica "mueble tapizado", y en los controles se perdió T001, que es un
+  positivo etiquetado y estable en todas las corridas anteriores. Un positivo
+  real menos y ningún falso menos: revertido.
+- **Pregunta por los DOS EXTREMOS del eje de la tapa** (la señal exacta que dio
+  el dueño para U013): tampoco separa. U013 y los fantasmas T160 y T175 dan el
+  mismo 2 de 3 "un extremo salido", y el contenedor quemado real da 2 de 3
+  "ambos en su eje". Con estos modelos, "salida del eje de un lado" no es una
+  observación confiable: la afirman igual sobre contenedores sanos.
 - **"2 de 3 alcanza aunque uno contradiga"** en la validación cruzada: se probó
   y se volvió atrás. El "sí" dirigido es sugestionable: en U003 el modelo que
   había dicho dos veces "cartón" contestó "presente" cuando la pregunta nombró
