@@ -173,6 +173,9 @@ SEGUNDA_MIRADA_SUBTIPO = os.environ.get(
     "SEGUNDA_MIRADA_SUBTIPO", "1").strip().lower() not in ("0", "false", "no")
 SEGUNDA_MIRADA_VOLUMINOSO = os.environ.get(
     "SEGUNDA_MIRADA_VOLUMINOSO", "1").strip().lower() not in ("0", "false", "no")
+# Mirada dirigida del desborde (el rebalse hay que VERLO).
+SEGUNDA_MIRADA_DESBORDE = os.environ.get(
+    "SEGUNDA_MIRADA_DESBORDE", "1").strip().lower() not in ("0", "false", "no")
 try:
     REPREGUNTA_MAX = max(0, int(os.environ.get("REPREGUNTA_MAX", "2")))
 except ValueError:
@@ -612,7 +615,7 @@ Categorías y criterios (usá SOLO estas claves):
 - volquete_mal_dispuesto: un VOLQUETE de obra (caja metálica abierta para escombros, distinta de los contenedores municipales de basura) abandonado o MAL dispuesto. OJO: que haya un volquete NO es una infracción: estar en la calzada, junto al cordón y ocupando parte del carril es su ubicación LEGAL. Reportalo SOLO si podés señalar en la evidencia la regla incumplida: DESBORDADO (los residuos llegan o superan el borde superior), ATRAVESADO (no paralelo al cordón), en una bocacalle u ochava, sobre una rampa para personas con discapacidad, una senda peatonal o un sumidero, sobre la VEREDA sin dejar ~1,5 m de paso peatonal, o visiblemente abandonado (oxidado, tapado de basura variada). Si el volquete está paralelo al cordón, sin desbordar y con el paso libre, NO lo reportes. El contenedor de obra verde NO es contenedor_secos.
 - luminaria_apagada: de NOCHE, una luminaria pública claramente APAGADA o rota: un poste de alumbrado sin luz dejando su tramo a oscuras mientras otras luminarias cercanas están encendidas, o un farol visiblemente roto o colgando. Una foto oscura por sí sola NO alcanza (puede ser la exposición de la cámara): buscá el poste apagado o el tramo notablemente más oscuro que el resto. Si el reclamo es que hace falta MÁS iluminación donde no la hay, es mayor_iluminacion, no esto.
 - desratizacion: un animal plaga o su evidencia visible en la vía pública: una rata o ratón (vivo o muerto), un panal o nido de avispas/abejas en un árbol, poste o fachada, un enjambre, o cucarachas en cantidad. Las palomas, los perros y los gatos NO son plaga. Reportá solo con evidencia clara en la foto.
-- contenedor_desbordado: SOLO con evidencia visual clara de que el contenedor está LLENO por dentro y la basura rebalsa DESDE EL INTERIOR: residuos saliendo por las bocas o tolvas de carga, contenido visible asomando desde adentro, o la tapa levantada porque el contenido interno la empuja Y ese contenido se ve. MIRÁ ADENTRO ANTES DE DECIDIR: desbordado exige ver el NIVEL de residuos al tope o rebalsando a lo ANCHO de la boca. UNA caja o UN bulto solo, calzado en la boca o trabando la tapa, con el resto del interior oscuro, vacío o a media carga, NO es desborde: los recuperadores que revuelven la basura dejan la tapa calzada así todo el tiempo, y ese es el estado normal del contenedor en media ciudad. Si lo único que "asoma" es ese bulto solitario, no reportes desbordado; reportá lo que haya en el piso si corresponde. Bolsas, cajas o bultos APOYADOS sobre el techo, la tapa o los laterales NO son desbordado (alguien los dejó ahí: eso es recoleccion), y la basura en el piso alrededor tampoco. Si el ángulo de la foto no deja ver la boca, la tapa o el interior, NO infieras que está lleno. En contenedores soterrados vale lo mismo: solo cuenta lo que sale por la boca o tolva de carga. Y en el BILATERAL el interior casi nunca se ve desde afuera: la tapa antivandálica ABIERTA con residuos apoyados o encajados en la boca NO es desborde (la gente no empuja la basura o la inclinación no la deja caer adentro); desborde en un bilateral exige residuos rebalsando POR ENCIMA del nivel de la boca de forma continua, no un bulto en la ranura. Ante la duda, no lo reportes: este reporte manda un camión a vaciar el contenedor, y si llega y el contenedor está vacío con la basura afuera, el viaje se pierde. GRAVEDAD: 1 lleno con una bolsa apoyada al lado y nada en el piso; 2 tapa abierta con basura asomando y casi nada en el piso; 3 basura desbordada en el entorno inmediato, hasta un metro alrededor (caso típico); 4 desparramo que cubre la vereda alrededor, o varios contenedores desbordados juntos; 5 varios contenedores con basura desparramada por vereda y calzada, pasando el frente de una propiedad.
+- contenedor_desbordado: SOLO con evidencia visual clara de que el contenedor está LLENO por dentro y la basura rebalsa DESDE EL INTERIOR: residuos saliendo por las bocas o tolvas de carga, contenido visible asomando desde adentro, o la tapa levantada porque el contenido interno la empuja Y ese contenido se ve. MIRÁ ADENTRO ANTES DE DECIDIR: desbordado exige ver el NIVEL de residuos al tope o rebalsando a lo ANCHO de la boca. LA CLAVE ES DE DÓNDE SALE LO QUE SE VE: si la tapa está abierta o levantada y el interior se ve LLENO, con el contenido emergiendo en masa continua por la boca (varias cajas y bolsas saliendo desde adentro), eso ES desborde, aunque parte de esa masa esté 'trabando' la tapa: lo que empuja la tapa es el propio contenido. En cambio UNA caja o UN bulto solo, calzado en la boca o trabando la tapa, con el resto del interior oscuro, vacío o a media carga, NO es desborde: los recuperadores dejan la tapa calzada así todo el tiempo. Y en el BILATERAL de cuerpo cerrado, los residuos visibles EN la ranura o tolva de carga NO son el interior: por esa ranura no se ve si está lleno; eso no es desborde. Bolsas, cajas o bultos APOYADOS sobre el techo, la tapa o los laterales NO son desbordado (alguien los dejó ahí: eso es recoleccion), y la basura en el piso alrededor tampoco. Si el ángulo de la foto no deja ver la boca, la tapa o el interior, NO infieras que está lleno. En contenedores soterrados vale lo mismo: solo cuenta lo que sale por la boca o tolva de carga. Y en el BILATERAL el interior casi nunca se ve desde afuera: la tapa antivandálica ABIERTA con residuos apoyados o encajados en la boca NO es desborde (la gente no empuja la basura o la inclinación no la deja caer adentro); desborde en un bilateral exige residuos rebalsando POR ENCIMA del nivel de la boca de forma continua, no un bulto en la ranura. Ante la duda, no lo reportes: este reporte manda un camión a vaciar el contenedor, y si llega y el contenedor está vacío con la basura afuera, el viaje se pierde. GRAVEDAD: 1 lleno con una bolsa apoyada al lado y nada en el piso; 2 tapa abierta con basura asomando y casi nada en el piso; 3 basura desbordada en el entorno inmediato, hasta un metro alrededor (caso típico); 4 desparramo que cubre la vereda alrededor, o varios contenedores desbordados juntos; 5 varios contenedores con basura desparramada por vereda y calzada, pasando el frente de una propiedad.
 - vaciado_contenedor: contenedor lleno que necesita vaciado (residuos visibles hasta la boca), sin llegar a rebalsar. MIRÁ ADENTRO: igual que el desborde, exige VER el nivel de residuos al tope por la boca o la tapa. UNA caja o bulto calzado trabando la tapa, con el interior oscuro o sin verse, NO indica que esté lleno (los recuperadores dejan las tapas calzadas así). Si el interior no se ve, no lo reportes.
 - vaciado_cesto: un cesto papelero (canasto chico sobre poste) desbordado o lleno. EXIGE VERLO: residuos rebalsando o asomando por la boca del cesto. Los cestos de cuerpo CERRADO (los metálicos tipo buzón) no dejan ver el contenido: sin residuos asomando NO se reportan llenos, no importa qué haya alrededor. Un balde, tacho o bolsa LLENOS apoyados en el piso al lado del cesto NO son el cesto: eso es recoleccion si corresponde, y no vuelve lleno al cesto de arriba. ANTES de reportarlo, chequeá la POSICIÓN del cesto: si está girado, descolgado, inclinado, con la boca hacia un costado o hacia abajo, o separado de su herraje, el problema principal es reparacion_cesto (y sumá vaciado_cesto solo si además está lleno).
 - reparacion_cesto: TODO problema físico de un cesto papelero: roto, caído, desprendido, colgando, girado fuera de su montaje, o la base/soporte sin canasto montado. El cesto papelero es un canasto chico montado en un poste; una CUNA, un corralito o cualquier mueble con barrotes apoyado en el piso junto a un contenedor NO es un cesto roto ni un contenedor chico desmontado: es un mueble descartado (retiro_muebles). La señal decisiva es la ORIENTACIÓN: un cesto sano está vertical, pegado a su poste y con la boca hacia ARRIBA; si el cuerpo cuelga inclinado o girado, la boca mira a un costado o el herraje del poste quedó a la vista sin el cesto enganchado, es reparacion_cesto aunque el canasto se vea entero y con basura adentro (esa escena se confunde fácil con un simple cesto lleno: no lo es). Un cesto sano y en su lugar NO. Si el daño se ubica con claridad, agregá "parte" adentro de la categoría: "tapa" SOLO si lo dañado es específicamente la tapa; caído, desprendido, partido, faltante o cualquier otro daño es "cuerpo". Ejemplo: {"key": "reparacion_cesto", "gravedad": 3, "evidencia": "cesto separado del poste en el piso", "parte": "cuerpo"}. Si no se distingue, no pongas el campo.
@@ -1099,6 +1102,41 @@ _PROMPT_SEGUNDA_MIRADA_VOLUMINOSO = """Auditás UNA sola cosa en esta foto: si h
 - "no_se_distingue": la foto no permite decidir (resolución, oscuridad, distancia).
 IMPORTANTE: en MUCHAS de estas fotos NO hay voluminosos; "solo_bolsas_o_textiles" y "no_se_distingue" son respuestas correctas y frecuentes. NO nombres un objeto por las dudas: si no lo podés identificar con seguridad, no está.
 Respondé SOLO con JSON válido: {"veredicto": "objeto_identificado" | "solo_bolsas_o_textiles" | "no_se_distingue", "objeto": "cuál, o null", "ubicacion": "dónde está en el encuadre, o null", "evidencia": "qué ves, máx 15 palabras"}"""
+
+
+_PROMPT_SEGUNDA_MIRADA_DESBORDE = """Auditás UNA sola cosa en esta foto: si el contenedor de basura está REBALSADO DE VERDAD, mirándolo de cerca. Decidí:
+- "rebalsa_visible": VES los residuos al tope: el interior se ve LLENO hasta arriba con el contenido emergiendo en masa continua por la boca (varias cajas y bolsas saliendo desde adentro, no una sola calzada), o la tapa no apoya porque esa masa interna visible la empuja. La pregunta que decide: ¿lo que se ve SALE DESDE ADENTRO de un interior visiblemente lleno?
+- "no_se_ve_lleno": NO hay evidencia visual de que esté lleno por dentro: el interior está oscuro, a media carga o no se ve; lo que hay es UN solo bulto o caja calzado en la boca o trabando la tapa con el interior sin verse (los recuperadores los dejan así); es un BILATERAL de cuerpo cerrado con residuos visibles EN la ranura o tolva de carga (por ahí no se ve el interior: eso nunca prueba que esté lleno); o la basura está APOYADA encima o alrededor, no saliendo desde adentro.
+- "indeterminado": el ángulo no muestra la boca ni el interior, o no llegás a decidir.
+IMPORTANTE: este reporte manda un camión a vaciar; si llega y el contenedor no estaba lleno, el viaje se pierde. "no_se_ve_lleno" es una respuesta correcta y frecuente. Decidí solo por lo que VES.
+Respondé SOLO con JSON válido: {"veredicto": "rebalsa_visible" | "no_se_ve_lleno" | "indeterminado", "evidencia": "qué viste, máx 15 palabras"}"""
+
+
+def _segunda_mirada_desborde(img):
+    """Mirada dirigida del desborde: el rebalse hay que VERLO. El umbral
+    del veto acá es por MAYORÍA (ver el comentario en la fusión), no el
+    estricto del uso del contenedor."""
+    data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+    rebalsa, no_lleno, fallo = [], [], False
+    for modelo in VERIFICADORES:
+        try:
+            contenido = _llamar(modelo, [
+                {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_DESBORDE},
+                {"role": "user", "content": [
+                    {"type": "text", "text": "La foto:"},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ]},
+            ], max_tokens=400)
+            v = _extraer_json(contenido)
+            veredicto = str(v.get("veredicto", "")).strip().lower()
+            evidencia = _texto_limpio(v.get("evidencia"), EVID_MAX)
+            if veredicto == "rebalsa_visible" and evidencia:
+                rebalsa.append((modelo, evidencia))
+            elif veredicto == "no_se_ve_lleno" and evidencia:
+                no_lleno.append((modelo, evidencia))
+        except Exception:
+            fallo = True
+    return rebalsa, no_lleno, fallo
 
 
 def _segunda_mirada_voluminoso(img):
@@ -2018,6 +2056,38 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # propia suma la segunda fuente que el consenso exige; un "ausente" o un
     # "en_uso" dirigidos bloquean (la duda queda para el árbitro, como
     # siempre). Expandir a otras categorías solo con medición propia.
+    # MIRADA DIRIGIDA DEL DESBORDE: 4 falsos positivos etiquetados en la
+    # ronda 4 (todos con la basura EN la boca o alrededor, no rebalsando
+    # desde adentro) contra 10 verdaderos. Las reglas de texto del interior
+    # no frenaron el error correlacionado; mismo remedio de siempre, con
+    # veto por MAYORÍA (abajo el porqué medido).
+    segunda_mirada_desborde = None
+    if SEGUNDA_MIRADA_DESBORDE and "contenedor_desbordado" in confirmadas:
+        reb_sm, nol_sm, fallo_de = _segunda_mirada_desborde(img)
+        # Acá el veto es por MAYORÍA, no estricto: 'no_se_ve_lleno' es una
+        # respuesta conservadora fácil de dar frente a un rebalse real
+        # (medido: el veto estricto tumbó 4 de 5 positivos verdaderos),
+        # mientras que en el uso del contenedor el 'usable' es difícil de
+        # alucinar. Empate = se mantiene lo confirmado.
+        retira_desb = len(nol_sm) > len(reb_sm)
+        segunda_mirada_desborde = {
+            "rebalsa": [{"modelo": m, "evidencia": e} for m, e in reb_sm],
+            "no_lleno": [{"modelo": m, "evidencia": e} for m, e in nol_sm],
+            "retiro_votos": retira_desb,
+            "fallo": fallo_de,
+        }
+        if retira_desb:
+            confirmadas.discard("contenedor_desbordado")
+            disputadas.add("contenedor_desbordado")
+            adjudicadas_dirigidas.add("contenedor_desbordado")
+            # vaciado_contenedor pide el MISMO predicado (interior
+            # visiblemente lleno): si la mirada dirigida acaba de negarlo,
+            # el vaciado co-confirmado cae con él (hallazgo de codex)
+            if "vaciado_contenedor" in confirmadas:
+                confirmadas.discard("vaciado_contenedor")
+                disputadas.add("vaciado_contenedor")
+                adjudicadas_dirigidas.add("vaciado_contenedor")
+
     # FIRMA DE IDENTIDAD DEL VOLUMINOSO: cuatro fantasmas en una ronda
     # (manta leída como colchón, cartón como madera, "podrían ser muebles").
     # Todos por el mismo camino: UN VLM marginal + el modelo local. La regla
@@ -2545,6 +2615,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         "segunda_mirada_subtipo": segunda_mirada_subtipo,
         # Firma de identidad del voluminoso marginal (None si no corrió).
         "segunda_mirada_voluminoso": segunda_mirada_voluminoso,
+        # Mirada dirigida del desborde (None si no corrió).
+        "segunda_mirada_desborde": segunda_mirada_desborde,
         "confirmadas": finales,
         "en_duda": en_duda,
         # Interno, para que el serializador pueda filtrar en_duda por fuente:

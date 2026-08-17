@@ -2236,6 +2236,9 @@ def _correr_base(votos, dirigidas, dano=None):
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_VOLCADO:
             return json.dumps({"veredicto": _volcado_resp[modelo],
                                "evidencia": "lo que vi"})
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_DESBORDE:
+            return json.dumps(dict(_desborde_resp.get(
+                modelo, {"veredicto": "indeterminado"}), evidencia="lo que vi"))
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_VOLUMINOSO:
             return json.dumps(dict(_voluminoso_resp.get(
                 modelo, {"veredicto": "no_se_distingue", "objeto": None}),
@@ -2251,6 +2254,7 @@ def _correr_base(votos, dirigidas, dano=None):
 
 _repregunta_resp = {}
 _voluminoso_resp = {}
+_desborde_resp = {}
 _METAL = {"key": "retiro_muebles", "gravedad": 3,
           "evidencia": "estructura metálica larga tirada sobre la vereda"}
 _CONT = {"key": "contenedor_humedos_bilateral", "gravedad": 1,
@@ -2706,6 +2710,57 @@ _r = _correr_base(
 check("presente sin ubicación no cuenta como avistaje",
       "retiro_muebles" not in {c["key"] for c in _r["confirmadas"]})
 
+print("[#D] mirada dirigida del desborde")
+_DESB = {"key": "contenedor_desbordado", "gravedad": 3,
+         "evidencia": "residuos sobresaliendo de la boca del contenedor"}
+
+def _correr_desb(desb_resp):
+    global _desborde_resp
+    _desborde_resp = desb_resp
+    def _llamar_d(modelo, mensajes, **k):
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_DESBORDE:
+            return json.dumps(dict(desb_resp.get(
+                modelo, {"veredicto": "indeterminado"}), evidencia="lo que vi"))
+        return _resp_b([dict(_DESB), dict(_CONT)], "Contenedor desbordado.")
+    V._llamar = _llamar_d
+    r = V.verificar(_Img(), CATS, _LOCAL_B, "")
+    return r
+
+_r = _correr_desb({"b/uno": {"veredicto": "no_se_ve_lleno"},
+                   "b/dos": {"veredicto": "no_se_ve_lleno"},
+                   "b/tres": {"veredicto": "rebalsa_visible"}})
+check("mayoría de 'no_se_ve_lleno' tumba el desborde",
+      "contenedor_desbordado" not in {c["key"] for c in _r["confirmadas"]},
+      str([c["key"] for c in _r["confirmadas"]]))
+
+# vaciado co-confirmado cae con el desborde vetado (misma base de evidencia)
+def _correr_desb_vac(desb_resp):
+    global _desborde_resp
+    _desborde_resp = desb_resp
+    _VAC = {"key": "vaciado_contenedor", "gravedad": 2,
+            "evidencia": "contenedor lleno hasta la boca"}
+    def _llamar_dv(modelo, mensajes, **k):
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_DESBORDE:
+            return json.dumps(dict(desb_resp.get(
+                modelo, {"veredicto": "indeterminado"}), evidencia="lo que vi"))
+        return _resp_b([dict(_DESB), dict(_VAC), dict(_CONT)], "Lleno.")
+    V._llamar = _llamar_dv
+    return V.verificar(_Img(), CATS, _LOCAL_B, "")
+_r = _correr_desb_vac({"b/uno": {"veredicto": "no_se_ve_lleno"},
+                       "b/dos": {"veredicto": "no_se_ve_lleno"}})
+check("  y el vaciado co-confirmado cae con él",
+      "vaciado_contenedor" not in {c["key"] for c in _r["confirmadas"]},
+      str([c["key"] for c in _r["confirmadas"]]))
+_r = _correr_desb({"b/uno": {"veredicto": "no_se_ve_lleno"},
+                   "b/dos": {"veredicto": "rebalsa_visible"}})
+check("  el empate mantiene lo confirmado (el conservador no gana solo)",
+      "contenedor_desbordado" in {c["key"] for c in _r["confirmadas"]})
+_r = _correr_desb({"b/uno": {"veredicto": "rebalsa_visible"},
+                   "b/dos": {"veredicto": "rebalsa_visible"}})
+check("  el rebalse ratificado se publica",
+      "contenedor_desbordado" in {c["key"] for c in _r["confirmadas"]})
+_desborde_resp = {}
+
 print("[#V] firma de identidad del voluminoso marginal")
 _LOCAL_MUEB = {"predichas": [{"key": "retiro_muebles", "nombre": "RM",
                               "score": 0.9}],
@@ -2717,6 +2772,9 @@ def _correr_vol(evidencia, vol_resp):
     global _voluminoso_resp
     _voluminoso_resp = vol_resp
     def _llamar_v(modelo, mensajes, **k):
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_DESBORDE:
+            return json.dumps(dict(_desborde_resp.get(
+                modelo, {"veredicto": "indeterminado"}), evidencia="lo que vi"))
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_VOLUMINOSO:
             return json.dumps(dict(vol_resp.get(
                 modelo, {"veredicto": "no_se_distingue", "objeto": None}),
