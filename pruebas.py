@@ -2150,6 +2150,9 @@ check("  pero el negro decide: negro es siempre lateral, nunca bilateral",
 check("  y el azul tampoco es bilateral: el único color de bilateral es gris",
       "el AZUL también" in V._RUBRICA
       and "NEGRO o AZUL es siempre lateral" in V._RUBRICA)
+check("  la proporción delata al impostor: angosto y vertical no es municipal",
+      "LA PROPORCIÓN DELATA AL IMPOSTOR" in V._RUBRICA
+      and "más alto que ancho, del ancho de una persona" in V._RUBRICA)
 check("  la forma decide sola: redondeado es lateral aunque no se vean postes",
       "LA FORMA ES LA DE LAS PAREDES, NO LA DEL TECHO" in V._RUBRICA
       and "postes queden OCULTOS detrás del cuerpo" in V._RUBRICA
@@ -2236,6 +2239,10 @@ def _correr_base(votos, dirigidas, dano=None):
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_VOLCADO:
             return json.dumps({"veredicto": _volcado_resp[modelo],
                                "evidencia": "lo que vi"})
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_PRESENCIA:
+            return json.dumps(dict(_presencia_resp.get(
+                modelo, {"veredicto": "no_se_distingue", "ubicacion": None}),
+                evidencia="lo que vi"))
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_DESBORDE:
             return json.dumps(dict(_desborde_resp.get(
                 modelo, {"veredicto": "indeterminado"}), evidencia="lo que vi"))
@@ -2255,6 +2262,7 @@ def _correr_base(votos, dirigidas, dano=None):
 _repregunta_resp = {}
 _voluminoso_resp = {}
 _desborde_resp = {}
+_presencia_resp = {}
 _METAL = {"key": "retiro_muebles", "gravedad": 3,
           "evidencia": "estructura metálica larga tirada sobre la vereda"}
 _CONT = {"key": "contenedor_humedos_bilateral", "gravedad": 1,
@@ -2710,6 +2718,89 @@ _r = _correr_base(
 check("presente sin ubicación no cuenta como avistaje",
       "retiro_muebles" not in {c["key"] for c in _r["confirmadas"]})
 
+print("[#P] veto de presencia del contenedor")
+def _correr_pres(lat_score, pres_resp):
+    global _presencia_resp
+    _presencia_resp = pres_resp
+    local = {"predichas": [], "probabilidades": [
+        {"key": "contenedor_humedos_lateral", "nombre": "L", "score": lat_score}],
+        "gravedad": {"value": 2, "raw": 2.0}}
+    def _llamar_p(modelo, mensajes, **k):
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_PRESENCIA:
+            return json.dumps(dict(pres_resp.get(
+                modelo, {"veredicto": "no_se_distingue", "ubicacion": None}),
+                evidencia="lo que vi"))
+        return _resp_b([dict(_CONT2 := {"key": "contenedor_humedos_lateral",
+                                        "gravedad": 1,
+                                        "evidencia": "contenedor visible"})],
+                       "Un contenedor.")
+    V._llamar = _llamar_p
+    r = V.verificar(_Img(), CATS, local, "")
+    return ({c["key"] for c in r["confirmadas"]}, set(r["en_duda"]))
+
+# T141: local en 0.07, mayoría dirigida 'ausente' -> baja a en_duda
+_conf, _duda = _correr_pres(0.07, {
+    "b/uno": {"veredicto": "ausente"}, "b/dos": {"veredicto": "ausente"}})
+check("contenedor fantasma con local en cero: baja a en_duda",
+      "contenedor_humedos_lateral" not in _conf
+      and "contenedor_humedos_lateral" in _duda, str(sorted(_conf)))
+# el voto vuelve anotado y la prosa no sigue afirmando el contenedor
+_presencia_resp = {"b/uno": {"veredicto": "ausente"},
+                   "b/dos": {"veredicto": "ausente"}}
+def _llamar_p2(modelo, mensajes, **k):
+    if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_PRESENCIA:
+        return json.dumps(dict(_presencia_resp.get(
+            modelo, {"veredicto": "no_se_distingue", "ubicacion": None}),
+            evidencia="lo que vi"))
+    return _resp_b([{"key": "contenedor_humedos_lateral", "gravedad": 1,
+                     "evidencia": "contenedor visible"}],
+                   "Basura junto a un contenedor negro.")
+V._llamar = _llamar_p2
+_local_p = {"predichas": [], "probabilidades": [
+    {"key": "contenedor_humedos_lateral", "nombre": "L", "score": 0.05}],
+    "gravedad": {"value": 2, "raw": 2.0}}
+_r = V.verificar(_Img(), CATS, _local_p, "")
+_anul_p = [c for v in _r["verificadores"] for c in v.get("categorias", [])
+           if c.get("anulada_por") == "segunda_mirada_presencia"]
+check("  el voto de presencia vuelve anotado al registro",
+      len(_anul_p) >= 1, str(_anul_p)[:100])
+check("  y la prosa deja de afirmar el contenedor",
+      "contenedor negro" not in (_r.get("descripcion") or "")
+      and "no es un contenedor municipal" in (_r.get("descripcion") or ""),
+      str(_r.get("descripcion")))
+# con el contenedor vetado, el pedido de lavado del contexto se remapea a
+# desinfección: el fantasma no valida sugerencias
+def _llamar_p3(modelo, mensajes, **k):
+    if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_PRESENCIA:
+        return json.dumps(dict(_presencia_resp.get(
+            modelo, {"veredicto": "no_se_distingue", "ubicacion": None}),
+            evidencia="lo que vi"))
+    return json.dumps({"categorias": [
+        {"key": "contenedor_humedos_lateral", "gravedad": 1,
+         "evidencia": "contenedor visible"}],
+        "sin_problema": False, "descripcion": "Un contenedor.",
+        "categorias_contexto": [{"key": "lavado_contenedor",
+                                 "respaldo": "neutral"}],
+        "foto_corresponde": None})
+V._llamar = _llamar_p3
+_r = V.verificar(_Img(), CATS, _local_p, "olor a podrido del contenedor")
+_ctx = [c.get("key") for c in _r.get("categorias_contexto", [])]
+check("  el fantasma vetado no valida el lavado del contexto",
+      "lavado_contenedor" not in _ctx and "desratizacion" in _ctx,
+      str(_ctx))
+# el recortado real: local 0.17 supera el piso, la pasada ni corre
+_conf, _duda = _correr_pres(0.17, {
+    "b/uno": {"veredicto": "ausente"}, "b/dos": {"veredicto": "ausente"}})
+check("  con el local sobre el piso la pasada no corre",
+      "contenedor_humedos_lateral" in _conf, str(sorted(_conf)))
+# la mirada dirigida lo encuentra -> se mantiene
+_conf, _duda = _correr_pres(0.05, {
+    "b/uno": {"veredicto": "presente", "ubicacion": "borde derecho"},
+    "b/dos": {"veredicto": "ausente"}})
+check("  empate dirigido mantiene la presencia",
+      "contenedor_humedos_lateral" in _conf, str(sorted(_conf)))
+_presencia_resp = {}
+
 print("[#D] mirada dirigida del desborde")
 _DESB = {"key": "contenedor_desbordado", "gravedad": 3,
          "evidencia": "residuos sobresaliendo de la boca del contenedor"}
@@ -2718,6 +2809,10 @@ def _correr_desb(desb_resp):
     global _desborde_resp
     _desborde_resp = desb_resp
     def _llamar_d(modelo, mensajes, **k):
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_PRESENCIA:
+            return json.dumps(dict(_presencia_resp.get(
+                modelo, {"veredicto": "no_se_distingue", "ubicacion": None}),
+                evidencia="lo que vi"))
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_DESBORDE:
             return json.dumps(dict(desb_resp.get(
                 modelo, {"veredicto": "indeterminado"}), evidencia="lo que vi"))
@@ -2740,6 +2835,10 @@ def _correr_desb_vac(desb_resp):
     _VAC = {"key": "vaciado_contenedor", "gravedad": 2,
             "evidencia": "contenedor lleno hasta la boca"}
     def _llamar_dv(modelo, mensajes, **k):
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_PRESENCIA:
+            return json.dumps(dict(_presencia_resp.get(
+                modelo, {"veredicto": "no_se_distingue", "ubicacion": None}),
+                evidencia="lo que vi"))
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_DESBORDE:
             return json.dumps(dict(desb_resp.get(
                 modelo, {"veredicto": "indeterminado"}), evidencia="lo que vi"))
@@ -2772,6 +2871,10 @@ def _correr_vol(evidencia, vol_resp):
     global _voluminoso_resp
     _voluminoso_resp = vol_resp
     def _llamar_v(modelo, mensajes, **k):
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_PRESENCIA:
+            return json.dumps(dict(_presencia_resp.get(
+                modelo, {"veredicto": "no_se_distingue", "ubicacion": None}),
+                evidencia="lo que vi"))
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_DESBORDE:
             return json.dumps(dict(_desborde_resp.get(
                 modelo, {"veredicto": "indeterminado"}), evidencia="lo que vi"))

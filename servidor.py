@@ -413,6 +413,9 @@ def _cacheable(respuesta):
         # Ídem la mirada dirigida del desborde.
         if (veri.get("segunda_mirada_desborde") or {}).get("fallo"):
             return False
+        # Ídem el veto de presencia del contenedor.
+        if (veri.get("segunda_mirada_presencia") or {}).get("fallo"):
+            return False
         # Con árbitro configurado, que queden categorías en duda significa que
         # el arbitraje falló o quedó incompleto (respondió sin decidirlas
         # todas). Cachearlo congela ese resultado a medio hacer para siempre.

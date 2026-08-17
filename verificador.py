@@ -176,6 +176,12 @@ SEGUNDA_MIRADA_VOLUMINOSO = os.environ.get(
 # Mirada dirigida del desborde (el rebalse hay que VERLO).
 SEGUNDA_MIRADA_DESBORDE = os.environ.get(
     "SEGUNDA_MIRADA_DESBORDE", "1").strip().lower() not in ("0", "false", "no")
+# Veto de presencia: contenedor confirmado por los VLM con el modelo local
+# (entrenado con estos contenedores) en practicamente cero -> chequeo
+# dirigido de existencia.
+SEGUNDA_MIRADA_PRESENCIA = os.environ.get(
+    "SEGUNDA_MIRADA_PRESENCIA", "1").strip().lower() not in ("0", "false", "no")
+PRESENCIA_LOCAL_PISO = float(os.environ.get("PRESENCIA_LOCAL_PISO", "0.10"))
 try:
     REPREGUNTA_MAX = max(0, int(os.environ.get("REPREGUNTA_MAX", "2")))
 except ValueError:
@@ -602,7 +608,7 @@ Categorías y criterios (usá SOLO estas claves):
 - manteros: un vendedor ambulante o puesto informal en la vía pública: mercadería exhibida para la venta en el piso, sobre una manta, mesa o lona, o un carrito/puesto ambulante de comida o bebida operando en la vereda. NO un local comercial establecido (eso es ocupacion_comercial) ni un kiosco de diarios.
 - ocupacion_comercial: un local comercial ESTABLECIDO que ocupa la vereda con su MERCADERÍA o mobiliario fuera de la línea del local: cajas o cajones apilados, exhibidores, percheros, ropa o frazadas colgadas, heladeras, sillas frente al local, y CUALQUIER producto puesto a la venta (bicicletas, muebles, electrodomésticos, plantas, bazar). No hace falta que la mercadería esté pegada a la fachada ni que la fachada se vea: alcanza con que la exhibición sea inequívocamente comercial (alfombra, tarima o césped sintético de exhibición, productos ALINEADOS en fila o sobre percheros y exhibidores, etiquetas de precio, toldo del local sobre la mercadería, sillas del personal junto a los productos). PERO la ocupación tiene que verse: mercadería, exhibidores o mobiliario FUERA de la línea del local, ocupando la vereda o el espacio peatonal. La mercadería colgada SOBRE la fachada o dentro de la línea del local NO es ocupación. Si el piso de la vereda no se ve (tapado por un vehículo u otra cosa), NO reportes ocupacion_comercial, por más grande que sea la exhibición: sin ver la vereda no se puede afirmar la ocupación, y un reporte sin esa evidencia se rechaza igual. Un cartel móvil, pizarra o caballete del local SOLO sobre la vereda, sin mercadería alrededor, NO es ocupacion_comercial: es obstruccion; pero si el cartel acompaña mercadería exhibida, la escena entera es ocupacion_comercial. NO un vendedor ambulante (eso es manteros) ni mesas de un local gastronómico. GRAVEDAD (medí el ancho de vereda que queda LIBRE, no cuánta mercadería hay): 1 ocupación mínima pegada a la línea del local; 2 deja un paso amplio; 3 ocupa hasta la mitad de la vereda (caso típico); 4 deja menos de un ancho de cochecito o silla de ruedas; 5 vereda bloqueada por completo y los peatones tienen que bajar a la calzada.
 - obstruccion: un ELEMENTO fijo o móvil COLOCADO por un local o un particular que obstruye el paso peatonal en la vereda o la calzada: canteros, caños o postes para impedir estacionamiento, fierros o anclajes, carteles móviles, pizarras o caballetes publicitarios de un local pero SOLOS sobre la vereda, conos o vallas particulares, cercos. Lo que define obstruccion es que el elemento sea una BARRERA que reserva o bloquea espacio; si lo que ocupa la vereda es MERCADERÍA a la venta de un comercio, eso es ocupacion_comercial, aunque también estorbe el paso (y aunque haya un cartel del local entre los productos). Los VEHÍCULOS nunca son obstruccion: un camión de basura o de reparto trabajando, el tránsito o un auto estacionado no cuentan (un vehículo en infracción es vehiculo_mal_estacionado). Tampoco cuentan los contenedores municipales, la basura (eso es recoleccion) ni los objetos puestos como advertencia sobre un hueco (ver tapa_vereda). Un objeto voluminoso DESCARTADO (mueble, marco, puerta, tablas, chatarra) tampoco es obstruccion aunque esté sobre la vereda: es retiro_muebles, y el estorbo que cause se expresa en su gravedad, no duplicando categorías. Y un elemento apoyado ADENTRO de la cantera de un árbol o contra el tronco, fuera de la senda de paso, no es una barrera: no lo reportes como obstruccion.
-- contenedor_secos [PRESENCIA]: (regla general para TODAS las claves PRESENCIA: reportá solo el contenedor que se ve de forma clara e inequívoca en primer plano o plano medio. NO reportes uno "al fondo", borroso, ni uno que estés infiriendo porque suele haber uno al lado. Un contenedor PARCIALMENTE visible en primer plano o plano medio SÍ cuenta: tapado por otro contenedor, en sombra, recortado o visto de espaldas, siempre que se reconozcan rasgos PROPIOS de contenedor (parte del cuerpo, tapa, boca de carga, postes, silueta). Los verdes de secos suelen estar en pareja con uno oscuro de húmedos: usá eso SOLO como señal para revisar los bordes y la sombra pegada al verde antes de reportar uno solo, NUNCA para inferir un segundo contenedor donde solo hay una mancha oscura u oclusión ambigua sin rasgos reconocibles. Que el encuadre lo CORTE no lo descalifica: un contenedor recortado por el borde de la foto SÍ se reporta cuando está en primer plano o plano medio, ocupa una porción sustancial del borde y se ve CUERPO de contenedor (un panel grande de plástico o chapa apoyado en la vereda o la calzada, con un canto, tapa o lateral reconocible), no solo una calcomanía. Los contenedores municipales llevan calcomanías reflectivas de chevrones ROJO Y BLANCO en diagonal: esa calcomanía sobre un cuerpo así ayuda a confirmar que es un contenedor, pero SOLA no alcanza (las columnas, los postes, las vallas de obra y las cajas técnicas también llevan chevrones) y NO dice el subtipo (los dos tipos de húmedos la llevan). En un contenedor recortado, decidí el subtipo por lo que se ve: pared PLANA vertical gris CLARO de aristas rectas sin poste a la vista -> bilateral; cuerpo REDONDEADO o panzón (de cualquier color), cuerpo negro o azul, o un poste metálico vertical a la vista -> lateral. Si no podés decir el color y la forma con seguridad, NO lo reportes.)  se ve un contenedor municipal inequívocamente VERDE BRILLANTE (reciclables): el verde del secos es un verde vivo y parejo, con calcos de reciclables. Los contenedores negros, grises o gris oscuro NO son secos, y el VERDE OSCURO, oliva o militar TAMPOCO: un contenedor verde oscuro de cuerpo redondeado es un lateral de húmedos. Un mismo contenedor se reporta con UNA sola clave: si ya lo contaste como lateral, no lo repitas como secos por el tono verdoso. Un volquete o caja abierta de obra NO es un contenedor municipal, aunque sea verde.
+- contenedor_secos [PRESENCIA]: (regla general para TODAS las claves PRESENCIA: reportá solo el contenedor que se ve de forma clara e inequívoca en primer plano o plano medio. NO reportes uno "al fondo", borroso, ni uno que estés infiriendo porque suele haber uno al lado. Un contenedor PARCIALMENTE visible en primer plano o plano medio SÍ cuenta: tapado por otro contenedor, en sombra, recortado o visto de espaldas, siempre que se reconozcan rasgos PROPIOS de contenedor (parte del cuerpo, tapa, boca de carga, postes, silueta). LA PROPORCIÓN DELATA AL IMPOSTOR: los contenedores municipales son ANCHOS, de unos dos metros, más anchos que altos. Un tacho ANGOSTO y vertical (más alto que ancho, del ancho de una persona), por más negro y grande que sea, NO es un contenedor municipal: es un tacho particular o un cesto, y no se reporta con estas claves. Los verdes de secos suelen estar en pareja con uno oscuro de húmedos: usá eso SOLO como señal para revisar los bordes y la sombra pegada al verde antes de reportar uno solo, NUNCA para inferir un segundo contenedor donde solo hay una mancha oscura u oclusión ambigua sin rasgos reconocibles. Que el encuadre lo CORTE no lo descalifica: un contenedor recortado por el borde de la foto SÍ se reporta cuando está en primer plano o plano medio, ocupa una porción sustancial del borde y se ve CUERPO de contenedor (un panel grande de plástico o chapa apoyado en la vereda o la calzada, con un canto, tapa o lateral reconocible), no solo una calcomanía. Los contenedores municipales llevan calcomanías reflectivas de chevrones ROJO Y BLANCO en diagonal: esa calcomanía sobre un cuerpo así ayuda a confirmar que es un contenedor, pero SOLA no alcanza (las columnas, los postes, las vallas de obra y las cajas técnicas también llevan chevrones) y NO dice el subtipo (los dos tipos de húmedos la llevan). En un contenedor recortado, decidí el subtipo por lo que se ve: pared PLANA vertical gris CLARO de aristas rectas sin poste a la vista -> bilateral; cuerpo REDONDEADO o panzón (de cualquier color), cuerpo negro o azul, o un poste metálico vertical a la vista -> lateral. Si no podés decir el color y la forma con seguridad, NO lo reportes.)  se ve un contenedor municipal inequívocamente VERDE BRILLANTE (reciclables): el verde del secos es un verde vivo y parejo, con calcos de reciclables. Los contenedores negros, grises o gris oscuro NO son secos, y el VERDE OSCURO, oliva o militar TAMPOCO: un contenedor verde oscuro de cuerpo redondeado es un lateral de húmedos. Un mismo contenedor se reporta con UNA sola clave: si ya lo contaste como lateral, no lo repitas como secos por el tono verdoso. Un volquete o caja abierta de obra NO es un contenedor municipal, aunque sea verde.
 - contenedor_humedos_lateral [PRESENCIA]: se ve un contenedor de húmedos con POSTES o montantes metálicos VERTICALES en los costados (el brazo del camión los toma para izarlo). Cuerpo plástico grande REDONDEADO Y PANZÓN: hombros curvos, perfil abombado, boca superior con faldón de goma; negro, azul, gris oscuro u oliva. LA FORMA DECIDE SOLA, PERO LA FORMA ES LA DE LAS PAREDES, NO LA DEL TECHO: el lateral tiene las PAREDES curvas, panzonas, que se abomban de arriba a abajo; el bilateral tiene paredes PLANAS verticales y lo único curvo es su TECHO abovedado. Un techo curvo asomando por encima de otro contenedor o de una pila NO es un 'cuerpo redondeado': si las paredes no se ven, NO decidas por forma; decidí por color (negro/azul/verde oscuro -> lateral; gris claro -> bilateral) o por los postes, y si ninguna señal se ve con seguridad, no reportes el subtipo. Con las paredes panzonas a la vista es LATERAL aunque el color sea gris u oliva y los postes queden OCULTOS detrás del cuerpo. EL COLOR DECIDE EN UN SOLO SENTIDO: un contenedor de húmedos NEGRO es SIEMPRE lateral, y el AZUL también: el ÚNICO color de bilateral es el gris claro, así que cualquier contenedor de húmedos que claramente NO es gris (negro, azul, verde oscuro) es lateral, aunque los postes queden del otro lado o fuera del encuadre; no existe un bilateral negro ni azul. Tiene que ser NEGRO DE VERDAD (el plástico se ve negro también donde le pega la luz), no un gris ensombrecido, sucio o a contraluz: si dudás entre negro y gris oscurecido por la escena, no uses el color y decidí por los postes. Vale también recortado por el borde de la foto en primer plano o plano medio: un costado o una esquina NEGROS de contenedor, o los postes/herrajes metálicos de izado a la vista sobre el borde, alcanzan para reportar lateral aunque se vea solo una franja del cuerpo. OJO: la cautela con el color vale para el GRIS, que puede ser cualquiera de los dos: si lo que se ve es gris y NO hay ningún poste vertical metálico, NO lo reportes lateral por el color: un cuerpo gris de pared plana sin poste a la vista es BILATERAL.
 - contenedor_humedos_bilateral [PRESENCIA]: se ve un contenedor de húmedos SIN postes metálicos: un CAJÓN RECTANGULAR de paredes laterales PLANAS verticales, ARISTAS RECTAS y techo abovedado, gris CLARO (o dos tonos de gris). Si las PAREDES son curvas y panzonas NO es bilateral aunque no le veas postes: es un lateral visto desde un ángulo que los tapa. El techo ABOVEDADO curvo es propio del bilateral y NO lo convierte en lateral: paredes planas + techo curvo + gris claro = bilateral. Entre los grises de CAJÓN (paredes planas, aristas rectas) el discriminador NO es el tono sino los POSTES: ese cajón gris sin postes verticales metálicos a la vista es BILATERAL, aunque el gris se vea sucio o en sombra; con postes es LATERAL. Un cuerpo gris REDONDEADO no entra en esta regla: es lateral (ver esa entrada). El NEGRO y el AZUL no entran en esa regla: un contenedor de cuerpo NEGRO o AZUL es siempre lateral, se le vean o no los postes; no lo reportes bilateral nunca (el único color de bilateral es el gris claro). Vale también recortado por el borde de la foto si está en primer plano: una pared PLANA vertical gris con calcomanía de chevrones rojo/blanco en la esquina y sin poste a la vista es un bilateral, aunque se vea solo una parte del cuerpo (los residuos suelen amontonarse justo al lado, así que el contenedor recortado al borde de la escena es lo normal, no la excepción). Reportá solo UNO de los dos tipos de húmedos.
 - reparacion_contenedor: un contenedor con DAÑO ESTRUCTURAL visible QUE COMPROMETE EL USO: la tapa desprendida o que no puede cerrar, el pedal roto, el cuerpo agrietado de lado a lado, perforado con un agujero grande, derretido o quemado; esté parado o volcado. LA VARA ES EL USO, NO LA ESTÉTICA: si un vecino puede tirar la bolsa igual (la boca funciona, la tapa abre y cierra aunque esté fea), NO se reporta reparación. Rayones, abolladuras, marcas, rajaduras chicas, bordes gastados o mugre NO son reparación por más visibles que sean; ese contenedor trabaja todos los días a la intemperie y se ve usado. Reportá solo el daño que le impediría a la cuadrilla o al vecino usarlo con normalidad. TAMBIÉN va acá cuando la pieza que falta está TIRADA EN EL PISO al lado o cerca del contenedor: cabezal, tapa, boca de carga, portón, compuerta o pieza antivandálica desprendida. El cuerpo puede verse entero y liso y aun así estar roto: mirá si le FALTA la parte de arriba, si tiene un hueco rectangular donde debería ir la boca de carga, o si hay una pieza del mismo color y material caída al lado. Ese es el caso típico y hay que reportarlo acá, no como objeto voluminoso descartado. LA BASE DEL CONTENEDOR CUENTA COMO PARTE DEL CONTENEDOR. Los contenedores municipales se apoyan sobre una BASE o plataforma metálica anclada al piso: un bastidor bajo de hierro o chapa galvanizada, del largo del contenedor (más o menos dos metros), con rieles o guías paralelas y a veces una rampita o un tope en las puntas; vista sola y vacía parece una parrilla, un bastidor o una estructura metálica larga tirada en la vereda. NO es chatarra descartada ni un objeto voluminoso ni una obstrucción: es el lugar donde va el contenedor. Reportá reparacion_contenedor cuando la base está a la vista y el contenedor NO está encima: la base vacía con el contenedor corrido al costado, en la calzada o contra el cordón, o la base arrancada, dada vuelta o suelta sobre la vereda. Y NO escribas que el contenedor está "en su lugar" si su base se ve vacía: justamente eso es lo que hay que reportar. Si el contenedor está sobre su base y sano, no hay nada que reportar por la base. Es daño en la pieza, no suciedad ni pintura: un contenedor con grafitis, pegatinas o rayado pero entero NO va acá ni en ninguna otra clave. Y una tapa o portón ABIERTO pero ENTERO y aparentemente articulado en su bisagra o eje NO es daño, aunque esté sostenido abierto con un cartón, palo, bolsa o bulto encajado: es uso (vecinos o recuperadores lo dejan así). Lo mismo las tapas DADAS VUELTA por completo hacia atrás, paradas verticales o colgando hacia la espalda del contenedor, incluso las DOS a la vez y en ángulos distintos: los recuperadores las dejan volcadas así para revolver, se ve caótico pero no hay nada roto; "tapas desprendidas" exige ver la tapa SEPARADA del cuerpo o el herraje arrancado, no tapas abiertas de par en par. Y FIJATE DE QUÉ MATERIAL es lo que atribuís al contenedor: el cuerpo y las tapas de los contenedores de húmedos son de PLÁSTICO negro o gris; un perfil, una viga, un caño o una caja de METAL (blanco, galvanizado, oxidado) tirado al lado NO puede ser una pieza del contenedor y no es evidencia de reparación: es un objeto descartado ajeno (retiro_muebles). La única parte metálica propia es la BASE anclada al piso descrita arriba, que no se parece a una viga suelta ni a una caja. El hueco oscuro o el interior visible por una tapa abierta NO cuenta como pieza faltante: reportá daño solo con evidencia de pieza rota, desprendida de su bisagra, deformada, colgando fuera de alineación, ausente, o tirada en el piso como parte separada. Las bolsas, plásticos, telas o residuos COLGANDO del borde, la boca o el costado tampoco son daño: son basura ajena apoyada o enganchada por los vecinos o los recuperadores, no "plástico del contenedor colgando" ni un cabezal roto; daño exige reconocer una PIEZA DEL CONTENEDOR (tapa, cabezal, compuerta, pedal) rota, desprendida o ausente, no material ajeno encima. Y en el contenedor VERDE de reciclables la boca de carga es una RANURA ancha en el cabezal cubierta por CERDAS o flecos NEGROS de cepillo (o una goma partida al medio): ese hueco oscuro con pelos ES EL DISEÑO de la boca, no una rotura ni una pieza faltante. Un contenedor VOLCADO pero sin daños visibles tampoco: es reposicion_contenedor. Un contenedor parado y en buen estado NO. Si el daño se ubica con claridad, agregá "parte" adentro de la categoría: "tapa" (tapa/cabezal desprendido o roto), "pedal" (pedal roto) o "cuerpo" (agrietado, perforado, quemado, derretido). Si no se distingue, no pongas el campo.
@@ -1110,6 +1116,43 @@ _PROMPT_SEGUNDA_MIRADA_DESBORDE = """Auditás UNA sola cosa en esta foto: si el 
 - "indeterminado": el ángulo no muestra la boca ni el interior, o no llegás a decidir.
 IMPORTANTE: este reporte manda un camión a vaciar; si llega y el contenedor no estaba lleno, el viaje se pierde. "no_se_ve_lleno" es una respuesta correcta y frecuente. Decidí solo por lo que VES.
 Respondé SOLO con JSON válido: {"veredicto": "rebalsa_visible" | "no_se_ve_lleno" | "indeterminado", "evidencia": "qué viste, máx 15 palabras"}"""
+
+
+_PROMPT_SEGUNDA_MIRADA_PRESENCIA = """Auditás UNA sola cosa en esta foto: si hay algún CONTENEDOR MUNICIPAL de basura o reciclables (los grandes de la Ciudad: el negro/oscuro de húmedos, el gris claro bilateral, o el verde de reciclables). Decidí:
+- "presente": SOLO si LO VES de verdad y podés decir DÓNDE está en el encuadre y de qué tipo o color es. Cuenta también recortado por el borde si se ve CUERPO de contenedor.
+- "ausente": la escena se ve bien y NO hay ningún contenedor municipal. Los tachos particulares, cestos papeleros, volquetes de obra, autos y cajas NO son contenedores municipales. LA PROPORCIÓN DECIDE: el contenedor municipal es ANCHO (unos dos metros, más ancho que alto); un tacho ANGOSTO y vertical, más alto que ancho, del ancho de una persona, NO lo es, por más negro o grande que se vea.
+- "no_se_distingue": la foto no permite decidir (oscuridad, distancia, encuadre).
+IMPORTANTE: en MUCHAS fotos de esta auditoría NO hay contenedor; "ausente" es una respuesta correcta y frecuente. NO digas "presente" por las dudas.
+Respondé SOLO con JSON válido: {"veredicto": "presente" | "ausente" | "no_se_distingue", "ubicacion": "dónde, o null", "evidencia": "qué ves, máx 15 palabras"}"""
+
+
+def _segunda_mirada_presencia(img):
+    """Chequeo dirigido de existencia del contenedor. Anti sugestión igual
+    que la repregunta: "presente" exige ubicación o se degrada."""
+    data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+    presentes, ausentes, fallo = [], [], False
+    for modelo in VERIFICADORES:
+        try:
+            contenido = _llamar(modelo, [
+                {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_PRESENCIA},
+                {"role": "user", "content": [
+                    {"type": "text", "text": "La foto:"},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ]},
+            ], max_tokens=400)
+            v = _extraer_json(contenido)
+            veredicto = str(v.get("veredicto", "")).strip().lower()
+            ubicacion = _texto_limpio(v.get("ubicacion"), EVID_MAX)
+            if veredicto == "presente" and not ubicacion:
+                veredicto = "no_se_distingue"
+            evidencia = _texto_limpio(v.get("evidencia"), EVID_MAX)
+            if veredicto == "presente":
+                presentes.append((modelo, evidencia))
+            elif veredicto == "ausente" and evidencia:
+                ausentes.append((modelo, evidencia))
+        except Exception:
+            fallo = True
+    return presentes, ausentes, fallo
 
 
 def _segunda_mirada_desborde(img):
@@ -2209,6 +2252,49 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         if not repreguntas:
             repreguntas = None
 
+    # VETO DE PRESENCIA DEL CONTENEDOR: dos VLM confirmaron un contenedor en
+    # una foto que no tiene ninguno (T141), con el modelo local (entrenado
+    # con estos contenedores) en <= 0.073 para TODAS las claves. Cuando el
+    # local dice "acá no hay contenedor" con esa contundencia y los VLM
+    # publican uno, se pregunta dirigido si existe; mayoría de "ausente"
+    # baja la presencia a en_duda (no se publica como elemento). El caso
+    # del recortado real (S003, local 0.17) queda por ENCIMA del piso y la
+    # pasada ni corre. Las presencias confirmadas por la repregunta no se
+    # re-vetan: ya traen ubicación dirigida.
+    segunda_mirada_presencia = None
+    pres_conf = (confirmadas & PRESENCIA) - repregunta_confirmadas
+    if SEGUNDA_MIRADA_PRESENCIA and pres_conf:
+        max_local = max((p.get("score", 0.0)
+                         for p in prediccion_local.get("probabilidades") or []
+                         if p.get("key") in CONTENEDOR_KEYS), default=0.0)
+        if max_local <= PRESENCIA_LOCAL_PISO:
+            pre_sm, aus_sm, fallo_pr = _segunda_mirada_presencia(img)
+            retira_pres = len(aus_sm) > len(pre_sm)
+            segunda_mirada_presencia = {
+                "presentes": [{"modelo": m, "evidencia": e} for m, e in pre_sm],
+                "ausentes": [{"modelo": m, "evidencia": e} for m, e in aus_sm],
+                "retiro_votos": retira_pres,
+                "fallo": fallo_pr,
+            }
+            if retira_pres:
+                for k in sorted(pres_conf):
+                    confirmadas.discard(k)
+                    presencia_dudosa.add(k)
+                    adjudicadas_dirigidas.add(k)
+                    # los votos vuelven ANOTADOS al registro público, como
+                    # en todas las pasadas hermanas; las descripciones de
+                    # quienes vieron el contenedor quedan desautorizadas
+                    for v in activos:
+                        c = next((c for c in v["categorias"]
+                                  if c["key"] == k), None)
+                        if c is not None:
+                            v["categorias"] = [x for x in v["categorias"]
+                                               if x is not c]
+                            votos_anulados.append(
+                                (v, c, "segunda_mirada_presencia"))
+                            desc_desautorizadas.add(v["modelo"])
+
+
     arbitro = None
     en_duda = []
     if disputadas and activos:
@@ -2425,6 +2511,20 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             descripcion = (" ".join(limpias).strip() + " " + nota).strip() \
                 if limpias else nota
 
+    # Ídem con el veto de presencia: si se adjudicó que NO hay contenedor
+    # municipal, la prosa no puede seguir afirmándolo.
+    if (segunda_mirada_presencia
+            and segunda_mirada_presencia.get("retiro_votos") and descripcion):
+        frases = re.split(r"(?<=[.!?])\s+", descripcion)
+        limpias = [f for f in frases
+                   if "contenedor" not in _norm_texto(f)]
+        if len(limpias) < len(frases):
+            nota = ("Revisado de cerca, lo que se ve no es un contenedor "
+                    "municipal (parece un tacho o cesto particular); no se "
+                    "registra un contenedor en esta foto.")
+            descripcion = (" ".join(limpias).strip() + " " + nota).strip() \
+                if limpias else nota
+
     # Ídem con el veto del volcado: la prosa heredada no puede seguir
     # afirmando el contenedor tumbado.
     if (segunda_mirada_volcado and segunda_mirada_volcado.get("retiro_votos")
@@ -2451,7 +2551,14 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # (desinfección de la vía pública) en vez de descartarse.
     contenedor_keys = CONTENEDOR_KEYS
     cesto_keys = {"vaciado_cesto", "reparacion_cesto", "lavado_cesto"}
+    # Las claves de contenedor vetadas por la pasada de presencia no cuentan
+    # como "objeto visible" para validar sugerencias del contexto: sin
+    # contenedor adjudicado, el pedido de lavado se remapea a desinfección
+    # como corresponde (hallazgo de codex, reproducido).
     vistos_todos = set(fuentes)
+    if (segunda_mirada_presencia
+            and segunda_mirada_presencia.get("retiro_votos")):
+        vistos_todos -= CONTENEDOR_KEYS
     remap = {}
     if not (vistos_todos & contenedor_keys):
         remap["lavado_contenedor"] = "desratizacion"
@@ -2617,6 +2724,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         "segunda_mirada_voluminoso": segunda_mirada_voluminoso,
         # Mirada dirigida del desborde (None si no corrió).
         "segunda_mirada_desborde": segunda_mirada_desborde,
+        # Veto de presencia del contenedor (None si no corrió).
+        "segunda_mirada_presencia": segunda_mirada_presencia,
         "confirmadas": finales,
         "en_duda": en_duda,
         # Interno, para que el serializador pueda filtrar en_duda por fuente:
