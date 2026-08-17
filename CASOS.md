@@ -59,7 +59,36 @@ nada.)
   siempre frases de AUSENCIA ("no se identifican restos de escombros"), que
   tampoco debería afirmar una sola fuente.
 
-## Lo próximo, ya especificado: la pregunta abierta para el voluminoso
+## La pregunta abierta para el voluminoso: probada, medida y NO shippeada
+
+Se implementó completa (pregunta abierta con estado descartado/en uso, matriz
+de familias compatibles, disparador por desacuerdo entre votantes, 448 pruebas
+en verde, dos vueltas de codex y dos de fable con todos sus bloqueantes
+arreglados) y AUN ASÍ no se shippeó, porque la medición no da un neto claro:
+
+- Sobre 18 de los 74 positivos etiquetados de retiro_muebles, 16 conservan su
+  voluminoso y 2 lo pierden (T017 y T152).
+- La causa de T017 quedó identificada: la pregunta abierta tiene un sesgo de
+  SALIENCIA. El único votante había visto "un caño metálico largo" entre cajas
+  de cartón; los otros dos, preguntados sin sugerencia, describieron lo
+  DOMINANTE del piso ("cajas de cartón y papeles") y el caño quedó negado. En
+  escena mixta, el objeto secundario se pierde.
+- Restringir la abierta al caso de DESACUERDO entre votantes recupera T152,
+  pero entonces U042 vuelve a publicarse en algunas corridas: si los dos
+  votantes nombran por casualidad la misma familia, no hay desacuerdo que
+  disparar. O sea que el efecto depende de la corrida.
+
+No se shippea algo cuyo resultado cambia entre corridas sobre una clave con 74
+positivos. Lo que haría falta para decidirlo con datos: correr los mismos casos
+N veces (5 o más) y comparar promedios, en vez de una corrida por
+configuración, porque la varianza de los modelos a temperatura 0 (6-12% documentado
+en el repo) domina las diferencias que se están midiendo.
+
+Lo que SÍ quedó del intento, ya en producción: el cartón dejó de afirmarse en
+la PROSA (saneo, commit a548b86) y U003 dejó de publicar el voluminoso por la
+regla estricta de la validación cruzada (commit 70df7c1).
+
+## Apunte viejo: la pregunta abierta para el voluminoso
 
 El cartón leído como voluminoso (U003, U042, U049) es lo que más repitió el
 dueño: "es extremadamente importante no marcar como voluminoso algo que es
