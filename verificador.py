@@ -182,6 +182,38 @@ SEGUNDA_MIRADA_DESBORDE = os.environ.get(
 SEGUNDA_MIRADA_PRESENCIA = os.environ.get(
     "SEGUNDA_MIRADA_PRESENCIA", "1").strip().lower() not in ("0", "false", "no")
 PRESENCIA_LOCAL_PISO = float(os.environ.get("PRESENCIA_LOCAL_PISO", "0.10"))
+# Veto de presencia POR CLAVE: el de arriba mira el máximo de TODAS las claves
+# de contenedor y solo salta en la foto sin ningún contenedor. No cubre el
+# contenedor FANTASMA que se publica al lado de uno real (una bolsa verde leída
+# como contenedor de reciclables). Para eso hace falta el puntaje local de ESA
+# clave, y solo sirve donde el modelo local es un detector confiable. Medido
+# sobre las 200 fotos etiquetadas de la ronda 4:
+#   contenedor_secos      30 positivos reales, el más bajo 0,427 (p10 0,931)
+#                          contra 3 falsos, todos por debajo de 0,005
+#   ..._humedos_bilateral 39 positivos reales, el más bajo 0,290
+#                          contra 2 falsos, ambos por debajo de 0,007
+#   ..._humedos_lateral   NO SEPARA: 10 de sus 110 positivos reales quedan bajo
+#                          0,10 (es el tipo más común y el que el local más se
+#                          pierde), así que esta puerta no se le aplica.
+PRESENCIA_POR_CLAVE = ("contenedor_secos", "contenedor_humedos_bilateral")
+SEGUNDA_MIRADA_PRESENCIA_CLAVE = os.environ.get(
+    "SEGUNDA_MIRADA_PRESENCIA_CLAVE", "1").strip().lower() not in (
+        "0", "false", "no")
+# Descriptor canónico de cada contenedor. Lo escribimos NOSOTROS (nunca sale de
+# un modelo), así que puede viajar en el prompt de sistema: una pregunta de
+# presencia sin el descriptor lava el subtipo del único votante.
+# Umbrales de la señal de calidad (ver calidad_foto): son de INFORME, no de
+# veto. Los percentiles del corpus etiquetado: nitidez p10 0,21 / mediana 0,58;
+# lado menor mediana 360 px.
+CALIDAD_NITIDEZ_PISO = float(os.environ.get("CALIDAD_NITIDEZ_PISO", "0.30"))
+CALIDAD_LADO_PISO = int(os.environ.get("CALIDAD_LADO_PISO", "400"))
+DESCRIPTOR_CONTENEDOR = {
+    "contenedor_secos": "VERDE de reciclables",
+    "contenedor_humedos_lateral":
+        "de cuerpo REDONDEADO o panzón (negro, azul, gris oscuro u oliva), del "
+        "tipo con postes metálicos de izado aunque los postes no se vean",
+    "contenedor_humedos_bilateral": "GRIS CLARO de paredes planas, sin postes",
+}
 try:
     REPREGUNTA_MAX = max(0, int(os.environ.get("REPREGUNTA_MAX", "2")))
 except ValueError:
@@ -304,6 +336,48 @@ def _imagen_data_url(img, lado=None):
     buf = io.BytesIO()
     img.convert("RGB").save(buf, format="JPEG", quality=85)
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def calidad_foto(img):
+    """Señales de legibilidad de la foto. NO decide nada: informa.
+
+    Medido sobre las 200 fotos etiquetadas de la ronda 4 (la mitad son
+    miniaturas de 360x480 del sistema de origen): la calidad global NO predice
+    los errores. Los falsos positivos por predicción salen 5,6% en las fotos
+    de hasta 480 px y 9,2% en las de más de 900; y una compuerta por nitidez
+    en 0,30 tocaba 82 aciertos para evitar 6 errores. Por eso acá no hay veto:
+    lo que falla en una foto ilegible falla con los modelos convencidos y
+    UNÁNIMES, y eso solo lo baja una mirada dirigida, no un umbral.
+    Sirve para triaje del lote y para revisar el criterio con etiquetas nuevas.
+
+    - nitidez: varianza del laplaciano normalizada por el contraste, medida
+      SIEMPRE a lado menor 480, para poder comparar fotos de distinto tamaño.
+    - definicion: "limitada" si la nitidez cae bajo el piso o la foto es más
+      chica que 400 px de lado menor (mediana del corpus: 0,58 y 360 px).
+    """
+    import numpy as np
+    g = img.convert("L")
+    w, h = g.size
+    lado = min(w, h)
+    if lado > 480:
+        esc = 480.0 / lado
+        g = g.resize((max(1, int(w * esc)), max(1, int(h * esc))))
+    a = np.asarray(g, dtype=np.float32)
+    if a.shape[0] < 3 or a.shape[1] < 3:
+        return {"lado_menor": lado, "nitidez": None, "luminancia": None,
+                "definicion": "limitada"}
+    lap = (-4 * a[1:-1, 1:-1] + a[:-2, 1:-1] + a[2:, 1:-1]
+           + a[1:-1, :-2] + a[1:-1, 2:])
+    var = float(a.std()) ** 2
+    nitidez = float(lap.var()) / var if var > 1e-6 else 0.0
+    return {
+        "lado_menor": lado,
+        "nitidez": round(nitidez, 3),
+        "luminancia": round(float(a.mean()), 1),
+        "definicion": ("limitada"
+                       if nitidez < CALIDAD_NITIDEZ_PISO or lado < CALIDAD_LADO_PISO
+                       else "buena"),
+    }
 
 
 def _llamar(modelo, mensajes, max_tokens=6000, intentos=3):
@@ -597,7 +671,7 @@ Categorías y criterios (usá SOLO estas claves):
 
 - retiro_muebles: ANTES DE NADA hacé este descarte. Si en la escena hay un contenedor o un cesto papelero, mirá si lo que está tirado en el piso es una PIEZA SUYA. La prueba decisiva NO es el color: es si al mueble de al lado le FALTA ESA PARTE. Si el contenedor muestra arriba un hueco abierto, una cavidad oscura o un borde arrancado donde debería ir su tapa o su cabezal, entonces la pieza del piso es suya, y va a reparacion_contenedor (o reparacion_cesto), NUNCA acá. Segunda pista: la FORMA. El cabezal de un contenedor es una pieza CURVA y moldeada, con el mismo perfil redondeado del techo del contenedor sano que puede verse al lado, a veces con la boca de carga recortada; no es un panel plano ni una tabla. OJO con el color: la pieza suele verse MÁS CLARA o MÁS SUCIA que el contenedor (es la cara interna del moldeado, gastada y a la intemperie), así que un color distinto NO la descarta y NO es motivo para llamarla voluminoso. Ante la duda, si hay un contenedor al lado al que le falta la parte de arriba, es su pieza: reportá reparacion_contenedor y NO retiro_muebles. El MISMO descarte vale para la BASE del contenedor: un bastidor metálico BAJO, alargado y a ras del piso (hierro o chapa galvanizada, del largo de un contenedor, más o menos dos metros), con rieles o guías paralelas, en la vereda o contra el cordón, NO es chatarra ni una "estructura metálica voluminosa" descartada: es la plataforma donde se apoya el contenedor, que quedó a la vista porque el contenedor está corrido. Vista sola parece una parrilla o una reja larga tirada, y de noche o en un primer plano oscuro engaña más todavía; que sea larga, que cruce la vereda o que "obstruya el paso" NO la convierte en voluminoso, porque está anclada en su lugar. Si en la escena hay un contenedor cerca (al costado, en la calzada o contra el cordón), esa estructura es su base vacía: reportá reparacion_contenedor y NUNCA retiro_muebles. Los caños, hierros y rejas de la lista de abajo son piezas SUELTAS de descarte, no un bastidor armado de rieles a ras del piso junto a un contenedor. Hecho ese descarte: CUALQUIER objeto voluminoso descartado: muebles y partes de muebles, CUNAS, corralitos y muebles infantiles (una cuna con barrotes junto a un contenedor es un mueble descartado, NO un cesto roto ni un "contenedor chico desmontado"), electrodomésticos y aparatos electrónicos descartados (TORRES o GABINETES de PC, monitores, impresoras, televisores; una torre de PC parada junto al cordón de noche parece un cajón o una cajita negra: miralo dos veces), colchones, ALFOMBRAS O TAPETES GRANDES descartados (enrollados, plegados o extendidos), puertas, ventanas, estanterías, tablas/tablones/placas de madera o melamina, cajones/canastos/huacales de madera, caños/tubos/hierros/rejas/chatarra (aunque salgan de una refacción), sanitarios, valijas descartadas, bidones/garrafones de agua y tachos o baldes plásticos GRANDES descartados, y VIDRIOS O CRISTALES ROTOS. Una alfombra o tapete grande sigue siendo voluminoso aunque sea flexible o textil: no lo mandes a recoleccion por ese material. Pero tiene que RECONOCERSE como alfombra o tapete por rasgos visibles (trama o pelo de alfombra, reverso grueso, flecos o bordes terminados); un bulto de tela, lona, manta/frazada o "textil grande" genérico NO alcanza. LA MISMA EXIGENCIA vale para el COLCHÓN: un colchón es una PLANCHA RÍGIDA de bordes rectos y espesor parejo (20-30 cm) que mantiene su forma rectangular, muchas veces con la superficie acolchada en rombos. Un acolchado, edredón, frazada o manta mullida NO es un colchón: CAE EN PLIEGUES, se arruga y se amolda a lo que tiene abajo, sin espesor propio. Si el objeto cae en pliegues o se amolda, es un textil y va a recoleccion; no lo votes colchón por el tamaño o el estampado. Si no podés distinguir una alfombra de una manta, no apliques esta excepción. Una acumulación de vidrio roto (vidrios de ventana, mamparas, espejos, vidriera) SIEMPRE es retiro_muebles aunque esté hecha pedazos; nunca la reportes como barrido, recoleccion ni escombros. Si ves con claridad un objeto voluminoso descartado, reportalo. PERO tiene que ser VOLUMINOSO de verdad: la vara es que NO entraría en una bolsa de residuos común. Una tabla o listón chico suelto, un pedazo de madera aislado, una cajita, un cajoncito o un balde común junto a la basura NO alcanzan: eso acompaña a recoleccion si hay basura, y solo no se reporta. Varios tablones o maderas largas, una puerta, una ventana, un mueble entero o una pila de maderas SÍ son voluminosos. EXCEPCIÓN: los electrodomésticos y aparatos electrónicos descartados cuentan aunque sean chicos (una torre de PC, un microondas, una impresora), igual que los vidrios rotos, que siempre van acá. También cuentan aunque sean chicos las LATAS Y BALDES DE PINTURA y los envases de productos químicos o solventes descartados: no son basura de bolsa, llevan retiro aparte. Nombralos en la evidencia cuando los veas. Para objetos ambiguos exige un objeto identificable; NO extiendas la excepción de las alfombras a ropa, mantas/frazadas, retazos o textiles blandos sueltos, ni a bolsas de basura (llenas o vacías, sueltas o apiladas): esos van a recoleccion (o a retiro_escombros si tienen las señales de escombros embolsados descritas abajo). DISTINGUÍ el cajón de MADERA de la caja de CARTÓN: listones, tablas, uniones, clavos o tornillos visibles indican madera y por lo tanto retiro_muebles; cartón corrugado, plegado o rasgado va a recoleccion. En una escena mixta con basura común Y alfombras, madera, muebles u otros voluminosos, reportá AMBAS categorías; no dejes retiro_muebles afuera porque las bolsas o cajas sean más numerosas. NO cuentan la mercadería ni el mobiliario EN USO de un vendedor, ni objetos en uso. Tampoco cuenta el CERCO DE MADERA de un cantero: la guarda baja de listones o enrejado que rodea la cantera de un árbol o un cantero (parada, prolija, siguiendo el borde de la tierra) es parte del cantero, NO un palet ni una madera descartada; un palet descartado de verdad está SUELTO, apoyado contra algo o tirado plano, no plantado alrededor de la tierra. Tampoco cuentan las pertenencias asociadas a una persona instalada en la escena o a un refugio o cama armada (situacion_calle): el colchón donde duerme, mantas, valijas, carros, bolsas o bultos JUNTO a la persona o integrados a su espacio habitado son pertenencias, no descarte; ahí reportá solo situacion_calle. Un colchón, valija o mueble claramente descartado SIN persona instalada ni refugio armado al lado sí sigue siendo retiro_muebles (una persona caminando o pasando cerca no lo convierte en pertenencia). GRAVEDAD: 1 un objeto chico o único (una silla, un cajón); 2 dos o tres objetos, o un solo mueble grande (colchón, sillón); 3 varios muebles, lo que carga una camioneta, sin obstruir el paso (caso típico); 4 pila del volumen de un contenedor o más, o muebles que angostan el paso peatonal; 5 pila que supera un contenedor de volumen e invade la calzada, o voluminosos mezclados con basura o escombros bloqueando el paso.
 - retiro_escombros: material INERTE Y SUELTO de obra o refacción; el cascote. EVIDENCIA DIRECTA (una sola alcanza): escombros o cascotes visibles, sueltos, sobre las bolsas o asomando por una boca o rotura (ladrillo terracota, revoque o mortero gris, baldosas/cerámicos rotos, arena de obra); una bolsa RASGADA cuyo relleno a la vista es material DENSO y opaco de obra (tierra con cascote, mezcla, revoque) sin envases ni residuos domésticos reconocibles adentro; o un saco LLENO y denso con etiqueta legible de material de construcción (cemento, cal, pegamento). SIN evidencia directa, el caso difícil son los ESCOMBROS EMBOLSADOS, que se confunden con bolsas de recoleccion: MIRÁ LAS BOLSAS UNA POR UNA antes de decidir la categoría, y reportá escombros con DOS señales INDEPENDIENTES de estas cuatro (dos aspectos de la misma cosa no se cuentan dos veces): (1) PORTE: bolsas notablemente CHICAS para ser de basura, llenadas a medias porque el cascote pesa, densas y casi sin caída, paradas SOLAS como bolsas de arena; el caso típico son varias parecidas entre sí acomodadas en hilera o pirámide (las cuadrillas apilan; la basura doméstica se tira suelta), pero UNA O DOS bolsas sueltas con ese porte también cuentan: la señal es el porte denso y medio lleno, no la cantidad ni el acomodo; (2) TEXTURA: el plástico tenso marca puntas y aristas de fragmentos angulosos repartidas por TODA la bolsa, no un bulto blando con alguna punta aislada; (3) POLVO DE OBRA: polvo blanquecino o gris de revoque/yeso/cemento SOBRE las bolsas o desparramado en el piso alrededor (barro o tierra genérica NO cuentan: eso también es jardinería); (4) SACOS REUTILIZADOS de formato chico (bolsas impresas de materiales de ~25 kg, arpillera) llenos y DENSOS; los bolsones GRANDES de rafia inflados con material liviano NO son escombros: llenos de cartón u otros reciclables estacionados en la vía pública son acopio_recuperadores; el embalaje liviano descartado suelto es recoleccion. La bolsa de basura COMÚN, en cambio: grande, liviana, brillante, redondeada, atada con orejas, bultos BLANDOS aunque asome una punta, limpia, rodeada de residuos domésticos reconocibles. REGLA POR DEFECTO: cero o una señal = recoleccion; ante la duda, recoleccion: el contenido de una bolsa opaca no se adivina. Eso vale IGUAL para los sacos: un saco CERRADO cuyo contenido no se ve NO es evidencia directa por más que "parezca" de obra (la ÚNICA excepción es la etiqueta legible de material de construcción del caso de arriba), y NUNCA escribas "con material de obra" o "de escombros" sobre un saco cuyo material no está A LA VISTA (asomando, derramado o por una rotura) ni etiquetado. Un solo saco grande y cerrado, sin etiqueta, sin aristas marcadas, sin polvo alrededor y sin contenido visible, va a recoleccion aunque sea blanco, de rafia o tejido. Una bolsa VACÍA de cemento/cal/pegamento prueba que hubo obra, no que la pila sea escombro: solo suma junto a otra señal. Tierra sola tampoco es escombro. Y las piedritas, cascotes chicos o fragmentos de baldosa o cerámica MEZCLADOS EN LA TIERRA de una cantera o cantero tampoco: la tierra de un cantero trae pedregullo y restos enterrados, es su estado normal, no material de obra para retirar. Escombros pide material de obra ACUMULADO, APILADO o EMBOLSADO para que lo retiren; unos fragmentos dispersos en la tierra no se reportan. NO cuentes material EN USO (bolsas de arena contra inundación, materiales nuevos de una obra activa): escombros es lo DESCARTADO para retirar. En una escena mixta clasificá cada componente por separado: un OBJETO ENTERO (caños, hierros, rejas, maderas/tablones, puertas, ventanas, marcos, sanitarios) es retiro_muebles aunque las bolsas de al lado sean escombros. NO lo uses por baldes genéricos, pocas bolsas de basura común, muebles, madera de mueble, cartones, basura domiciliaria variada ni vidrios rotos (el vidrio roto siempre es retiro_muebles). GRAVEDAD: 1 una bolsa de escombros aislada; 2 pocas bolsas o una pila hasta la rodilla con el paso libre; 3 pila hasta la cintura o varias bolsas, sin obstruir (caso típico); 4 pila que ocupa la mayor parte del ancho de la vereda u obliga a bajar a la calle, o cascotes sueltos en la calzada; 5 escombros invadiendo el carril de circulación, o con hierros salientes u otro riesgo físico inmediato.
-- recoleccion: basura DOMICILIARIA suelta en el piso: bolsas de residuos llenas, cajas de cartón descartadas, o basura domiciliaria reconocible aunque no esté embolsada (restos de comida, pañales, residuos húmedos, mezcla variada salida de una bolsa rota). Una bolsa llena o una caja descartada SÍ cuenta aunque esté sola (gravedad 1-2); una bolsa VACÍA no. Los papeles, envoltorios, plásticos y envases LIVIANOS dispersos cuentan como recoleccion SOLO cuando están asociados a basura domiciliaria: junto a un contenedor municipal visible y CERCANO al foco de basura, o mezclados con bolsas o cajas de residuos. PERO al lado de un contenedor la vara es MÁS ALTA, no más baja: unos pocos papeles, restos u hojas alrededor de un contenedor son el estado NORMAL de ese punto de la vereda (ahí se manipula basura todos los días) y NO se reportan; para reportar recoleccion junto a un contenedor hace falta al menos una bolsa llena, una caja descartada o una acumulación notable en el piso, y esa bolsa o caja se tiene que ver ENTERA y LLENA apoyada en el piso: "residuos sueltos", "algo de desperdicio", papeles o restos dispersos alrededor de un contenedor NUNCA alcanzan, ni siquiera como acompañante de un desborde. Y si lo único que hay alrededor son restos sueltos que se cayeron de un contenedor rebalsado, eso ya lo cubre contenedor_desbordado y no se duplica acá; las bolsas llenas o cajas descartadas AL LADO de un contenedor desbordado sí siguen siendo recoleccion además del desborde. Sin esa asociación, la basurita liviana dispersa NO es recoleccion: va a barrido si la acumulación es notable y barrible, y si son pocas unidades dispersas no se reporta (una botella o un envase suelto tampoco: es el estado normal de la calle). El cartón, la ropa, las mantas/frazadas, los retazos y otros textiles blandos sueltos son basura común; la EXCEPCIÓN son las alfombras o tapetes grandes descartados, que siempre van a retiro_muebles aunque estén enrollados o plegados. Si la basura visible es material de obra es escombros, NO recoleccion. ANTES de reportar bolsas como recoleccion, chequeá las señales de ESCOMBROS EMBOLSADOS de retiro_escombros (porte de bolsa de arena, textura de fragmentos angulosos, polvo de obra, sacos reutilizados llenos y densos, cascote asomando): si hay evidencia directa o las bolsas cumplen al menos DOS señales independientes, ESAS bolsas van a retiro_escombros y no acá, aunque haya además basura común alrededor que sí sea recoleccion. NO cuentes las MISMAS bolsas en las dos categorías: si los únicos bultos de la escena son esos sacos de obra, reportá SOLO retiro_escombros; recoleccion ADEMÁS de escombros exige otras bolsas, cajas o residuos domésticos aparte de los sacos. Muebles u objetos voluminosos SOLOS no son recoleccion: exige basura común además. Si hay basura común y voluminosos juntos, reportá recoleccion Y retiro_muebles. GRAVEDAD: 1 una bolsa o un residuo suelto aislado; 2 de dos a cinco bolsas agrupadas y la vereda transitable; 3 pila de hasta un ancho de contenedor, o desparramo en un tramo corto por el que una persona pasa caminando sin bajar a la calle (caso típico); 4 pila más ancha que un contenedor, o desparramo que obliga a bajar de la vereda, o residuos orgánicos abiertos; 5 la basura está POR TODOS LADOS: varios contenedores rodeados de basura desparramada de forma continua por el piso, o basura cubriendo vereda Y calzada, o un desparramo que pasa el frente de una propiedad. No hace falta que invada el carril: alcanza con que el piso alrededor de los contenedores esté cubierto de punta a punta.
+- recoleccion: basura DOMICILIARIA suelta en el piso: bolsas de residuos llenas, cajas de cartón descartadas, o basura domiciliaria reconocible aunque no esté embolsada (restos de comida, pañales, residuos húmedos, mezcla variada salida de una bolsa rota). Una bolsa llena o una caja descartada SÍ cuenta aunque esté sola (gravedad 1-2); una bolsa VACÍA no. Los papeles, envoltorios, plásticos y envases LIVIANOS dispersos cuentan como recoleccion SOLO cuando están asociados a basura domiciliaria: junto a un contenedor municipal visible y CERCANO al foco de basura, o mezclados con bolsas o cajas de residuos. PERO al lado de un contenedor la vara es MÁS ALTA, no más baja: unos pocos papeles, restos u hojas alrededor de un contenedor son el estado NORMAL de ese punto de la vereda (ahí se manipula basura todos los días) y NO se reportan; para reportar recoleccion junto a un contenedor hace falta al menos una bolsa llena, una caja descartada o una acumulación notable en el piso, y esa bolsa o caja se tiene que ver ENTERA y LLENA apoyada en el piso: "residuos sueltos", "algo de desperdicio", papeles o restos dispersos alrededor de un contenedor NUNCA alcanzan, ni siquiera como acompañante de un desborde. Y si lo único que hay alrededor son restos sueltos que se cayeron de un contenedor rebalsado, eso ya lo cubre contenedor_desbordado y no se duplica acá; las bolsas llenas o cajas descartadas AL LADO de un contenedor desbordado sí siguen siendo recoleccion además del desborde. Sin esa asociación, la basurita liviana dispersa NO es recoleccion: va a barrido si la acumulación es notable y barrible, y si son pocas unidades dispersas no se reporta (una botella o un envase suelto tampoco: es el estado normal de la calle). El cartón, la ropa, las mantas/frazadas, los retazos y otros textiles blandos sueltos son basura común; la EXCEPCIÓN son las alfombras o tapetes grandes descartados, que siempre van a retiro_muebles aunque estén enrollados o plegados. Si la basura visible es material de obra es escombros, NO recoleccion. ANTES de reportar bolsas como recoleccion, chequeá las señales de ESCOMBROS EMBOLSADOS de retiro_escombros (porte de bolsa de arena, textura de fragmentos angulosos, polvo de obra, sacos reutilizados llenos y densos, cascote asomando): si hay evidencia directa o las bolsas cumplen al menos DOS señales independientes, ESAS bolsas van a retiro_escombros y no acá, aunque haya además basura común alrededor que sí sea recoleccion. NO cuentes las MISMAS bolsas en las dos categorías: si los únicos bultos de la escena son esos sacos de obra, reportá SOLO retiro_escombros; recoleccion ADEMÁS de escombros exige otras bolsas, cajas o residuos domésticos aparte de los sacos. Muebles u objetos voluminosos SOLOS no son recoleccion: exige basura común además. Si hay basura común y voluminosos juntos, reportá recoleccion Y retiro_muebles. GRAVEDAD: 1 una bolsa o un residuo suelto aislado; 2 de dos a cinco bolsas agrupadas y la vereda transitable; 3 pila de hasta un ancho de contenedor, o desparramo en un tramo corto por el que una persona pasa caminando sin bajar a la calle (caso típico); 4 pila más ancha que un contenedor, o desparramo que obliga a bajar de la vereda, o residuos orgánicos abiertos; 5 la basura está POR TODOS LADOS: varios contenedores rodeados de basura desparramada de forma continua por el piso, o basura cubriendo vereda Y calzada, o un desparramo que pasa el frente de una propiedad. No hace falta que invada el carril: alcanza con que el piso alrededor de los contenedores esté cubierto de punta a punta. PRUEBA PRÁCTICA DEL 5: si hay DOS O MÁS contenedores y el desparramo del piso los UNE (la basura va de uno al otro sin corte limpio en el medio, o rodea a los dos), es 5 aunque quede un pasillo para pasar caminando y aunque la vereda sea ancha. Un solo contenedor con bolsas al lado NO llega a 5.
 - barrido: acumulación NOTABLE de material fino y liviano para BARRER (hojas secas, ramitas, tierra, polvo): un cordón cuneta o una cazuela LLENOS, montones juntados, o un sector de vereda tapizado. También cuenta la acumulación NOTABLE de papeles, envoltorios, plásticos y envases chicos livianos dispersos junto al cordón, la cuneta o la vereda cuando NO hay contenedor municipal visible asociado ni bolsas o cajas de residuos en la escena: eso lo levanta la cuadrilla de barrido. No lo uses por bolsas de residuos, cajas descartadas, basura orgánica o húmeda, ni vidrios rotos (el vidrio roto siempre es retiro_muebles). Unas POCAS hojas o papelitos dispersos en una vereda transitada son el estado normal de la calle: NO es barrido (si no hay otro problema, es sin_problema). Tampoco lo agregues de acompañante por las hojas de fondo cuando el problema principal es otro (una pila de poda, basura, muebles): reportalo solo si la suciedad barrible es un problema en sí misma por su cantidad. Si PREDOMINA esa acumulación, reportá barrido aunque haya basurita mezclada (y si esa basura mezclada es grande o abundante, reportá TAMBIÉN recoleccion). No lo uses cuando lo que predomina es basura suelta o bolsas, ni por vidrios rotos (el vidrio roto siempre es retiro_muebles, no barrido). GRAVEDAD: 1 suciedad mínima en el cordón; 2 acumulación en un tramo corto; 3 acumulación notoria a lo largo de la cuadra (caso típico); 4 acumulación que tapa sumideros o que cubre la calzada; 5 sumideros tapados con agua acumulada a la vista.
 - retiro_poda: ramas, troncos o restos de poda/jardinería CORTADOS y acumulados para retirar. TAMBIÉN cuenta embolsado: bolsas (verdes o negras) con restos vegetales visibles (pasto, hojas o ramitas asomando por la boca o transparentándose), y una pila de bolsas con un cartel escrito a mano tipo "RECOLECCIÓN PROGRAMADA" (es el protocolo municipal de retiro de poda: esa pila es retiro_poda aunque las bolsas sean opacas). Bolsas negras opacas SIN restos vegetales visibles ni cartel son recoleccion, no esto. Un árbol vivo cuyas ramas tapan una luminaria, un semáforo o cuelgan muy bajo es poda_arbol, NO retiro_poda.
 - destape_sumidero: un sumidero o alcantarilla TAPADO, obstruido o desbordado (NO si solo se ve la rejilla sin problema). TAMBIÉN se reporta aunque el sumidero no esté en el encuadre cuando hay acumulación ANORMAL de agua junto al cordón compatible con un sumidero tapado cercano: un espejo de agua localizado que cubre una parte importante de la calzada, agua rebalsando el cordón hacia la vereda, o burbujeo/turbulencia CLARAMENTE visible y localizada contra el cordón (esa agua es el síntoma del sumidero tapado). NO lo reportes por calzada apenas mojada, charcos chicos aislados, escorrentía pareja de lluvia, o agua generalizada cuando todo el entorno está mojado (lluvia normal). Tampoco si la fuente probable del agua es visible y NO es un sumidero: manguera, baldeo, camión de limpieza, riego, caño roto o agua saliendo de una vivienda o vereda.
@@ -1106,6 +1180,7 @@ _PROMPT_SEGUNDA_MIRADA_VOLUMINOSO = """Auditás UNA sola cosa en esta foto: si h
 - "objeto_identificado": SOLO si podés NOMBRAR el objeto concreto y decir DÓNDE está en el encuadre. La vara: no entraría en una bolsa de residuos común (con la excepción de electrodomésticos chicos y latas de pintura, que sí cuentan).
 - "solo_bolsas_o_textiles": lo que se ve son bolsas, cajas de cartón, mantas, frazadas, acolchados u otros textiles blandos; nada voluminoso identificable. Un textil que cae en pliegues NO es un colchón; el cartón NO es madera.
 - "no_se_distingue": la foto no permite decidir (resolución, oscuridad, distancia).
+EL MOBILIARIO DE LA CALLE NO ES EL OBJETO: el contenedor municipal, el cesto papelero, el tacho, el volquete de obra y los postes o carteles instalados son parte de la escena, no residuos voluminosos descartados. Si lo más grande que ves es el contenedor, NO lo nombres: la respuesta es "solo_bolsas_o_textiles" o "no_se_distingue".
 IMPORTANTE: en MUCHAS de estas fotos NO hay voluminosos; "solo_bolsas_o_textiles" y "no_se_distingue" son respuestas correctas y frecuentes. NO nombres un objeto por las dudas: si no lo podés identificar con seguridad, no está.
 Respondé SOLO con JSON válido: {"veredicto": "objeto_identificado" | "solo_bolsas_o_textiles" | "no_se_distingue", "objeto": "cuál, o null", "ubicacion": "dónde está en el encuadre, o null", "evidencia": "qué ves, máx 15 palabras"}"""
 
@@ -1126,15 +1201,32 @@ IMPORTANTE: en MUCHAS fotos de esta auditoría NO hay contenedor; "ausente" es u
 Respondé SOLO con JSON válido: {"veredicto": "presente" | "ausente" | "no_se_distingue", "ubicacion": "dónde, o null", "evidencia": "qué ves, máx 15 palabras"}"""
 
 
-def _segunda_mirada_presencia(img):
+_PROMPT_SEGUNDA_MIRADA_PRESENCIA_CLAVE = """Auditás UNA sola cosa en esta foto: si hay un CONTENEDOR MUNICIPAL {tipo}. Decidí:
+- "presente": SOLO si VES ESE contenedor y podés decir DÓNDE está en el encuadre. Cuenta también recortado por el borde si se ve CUERPO de contenedor.
+- "ausente": no hay ninguno de ESE tipo en la escena. Puede haber contenedores de OTRO tipo o color, y eso NO cambia la respuesta: la pregunta es por el que se describe arriba. Una BOLSA, un tacho particular, un cesto papelero, un volquete de obra, un auto o una caja NO son contenedores municipales, por más que compartan el color. LA PROPORCIÓN DECIDE: el contenedor municipal es ANCHO (unos dos metros, más ancho que alto); un tacho ANGOSTO y vertical, más alto que ancho, del ancho de una persona, NO lo es.
+- "no_se_distingue": la foto no permite decidir (oscuridad, distancia, encuadre).
+IMPORTANTE: en MUCHAS fotos de esta auditoría NO está ese contenedor; "ausente" es una respuesta correcta y frecuente. NO digas "presente" por las dudas ni porque haya OTRO contenedor cerca.
+Respondé SOLO con JSON válido: {{"veredicto": "presente" | "ausente" | "no_se_distingue", "ubicacion": "dónde, o null", "evidencia": "qué ves, máx 15 palabras"}}"""
+
+
+def _segunda_mirada_presencia(img, descripcion=None):
     """Chequeo dirigido de existencia del contenedor. Anti sugestión igual
-    que la repregunta: "presente" exige ubicación o se degrada."""
+    que la repregunta: "presente" exige ubicación o se degrada.
+
+    Con `descripcion` (un descriptor canónico nuestro, ver
+    DESCRIPTOR_CONTENEDOR) la pregunta es por ESE tipo de contenedor y no por
+    "alguno": es la versión que caza el contenedor fantasma publicado al lado
+    de uno real.
+    """
+    prompt = (_PROMPT_SEGUNDA_MIRADA_PRESENCIA if not descripcion
+              else _PROMPT_SEGUNDA_MIRADA_PRESENCIA_CLAVE.format(
+                  tipo=descripcion))
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
     presentes, ausentes, fallo = [], [], False
     for modelo in VERIFICADORES:
         try:
             contenido = _llamar(modelo, [
-                {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_PRESENCIA},
+                {"role": "system", "content": prompt},
                 {"role": "user", "content": [
                     {"type": "text", "text": "La foto:"},
                     {"type": "image_url", "image_url": {"url": data_url}},
@@ -1182,13 +1274,69 @@ def _segunda_mirada_desborde(img):
     return rebalsa, no_lleno, fallo
 
 
+# Mobiliario de la calle: nombrarlo NO identifica un voluminoso descartado.
+# Medido en 15 fotos con la firma de identidad: en 3 de ellas (T055, T068,
+# T175) algún modelo contestó "objeto_identificado: contenedor de basura", y
+# como la firma solo pedía nombre + ubicación, ese contenedor le sostenía el
+# reclamo de retiro_muebles a la foto entera.
+# Una palabra sola alcanza para saber que es mobiliario: se evalúa sobre el
+# NÚCLEO del nombre. Con borde de palabra, para que "caja contenedora" no
+# cuente como contenedor (hallazgo de codex).
+_PATRON_MOBILIARIO_URBANO = re.compile(
+    r"\b(?:contenedor(?:es|cito)?|conteiner|container|dumpster|volquete|"
+    r"papelero)s?\b")
+# Estos SOLO se reconocen con su complemento: "tacho" o "cesto" a secas puede
+# ser un balde o un canasto grande descartado, que la rúbrica cuenta como
+# voluminoso; "tacho de basura" es el mobiliario. Se evalúan sobre el nombre
+# recortado en la primera referencia de LUGAR, que conserva el "de basura".
+_PATRON_MOBILIARIO_COMPUESTO = re.compile(
+    r"\b(?:tacho|cesto|canasto|bin)s?\s+(?:de\s+|para\s+)?(?:basura|residuos|"
+    r"papel|papelero)s?\b")
+# El objeto suele venir con la ubicación pegada ("sillón de dos cuerpos junto
+# al contenedor", "silla bajo el contenedor"): ahí el contenedor es la
+# REFERENCIA, no el objeto, y descartarlo bajaría un voluminoso real a posibles
+# (hallazgo de codex). Solo cuenta el NÚCLEO: el sustantivo con el que arranca
+# el nombre, o sea todo lo que hay antes de la primera preposición. Enumerar
+# "las de lugar" se demostró leaky (faltaban "al costado", "bajo", "debajo"),
+# así que se corta en CUALQUIER preposición, "de" incluida: "contenedor de
+# basura" sigue siendo contenedor y "sillón de dos cuerpos" sigue siendo sillón.
+_PATRON_PREPOSICION = re.compile(
+    r"\s+(?:de|del|a|al|ante|bajo|con|contra|desde|detras|en|entre|hacia|"
+    r"hasta|junto|para|por|segun|sin|sobre|tras|arriba|abajo|encima|debajo|"
+    r"delante|cerca|dentro|adentro|fuera|afuera|frente|apoyad[oa]s?|"
+    r"pegad[oa]s?|tirad[oa]s?|ubicad[oa]s?|que)\b")
+# El corte LARGO conserva el complemento del nombre ("tacho de basura") y saca
+# solo la referencia de lugar.
+_PATRON_LUGAR = re.compile(
+    r"\s+(?:junto|al lado|a un lado|al costado|a un costado|cerca|sobre|"
+    r"encima|arriba|bajo|debajo|abajo|delante|adelante|detras|atras|frente|"
+    r"enfrente|contra|dentro|adentro|fuera|afuera|apoyad[oa]s?|pegad[oa]s?|"
+    r"tirad[oa]s?|ubicad[oa]s?|en la|en el|a la|al)\b")
+
+
+def _objeto_nucleo(texto):
+    """Núcleo del nombre: el sustantivo con el que arranca."""
+    return _PATRON_PREPOSICION.split(_norm_texto(texto), 1)[0]
+
+
+def _objeto_sin_lugar(texto):
+    """El nombre sin la referencia de lugar, con su complemento intacto."""
+    return _PATRON_LUGAR.split(_norm_texto(texto), 1)[0]
+
+
+def _es_mobiliario_urbano(objeto):
+    return bool(_PATRON_MOBILIARIO_URBANO.search(_objeto_nucleo(objeto))
+                or _PATRON_MOBILIARIO_COMPUESTO.search(
+                    _objeto_sin_lugar(objeto)))
+
+
 def _segunda_mirada_voluminoso(img):
     """Firma de identidad para el voluminoso marginal (1 VLM + modelo
     local): nadie flaquea un reporte de voluminosos sin que algún modelo
     pueda NOMBRAR el objeto y ubicarlo. Devuelve (identificados, negativos,
-    fallo)."""
+    descartados, fallo)."""
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
-    identificados, negativos, fallo = [], [], False
+    identificados, negativos, descartados, fallo = [], [], [], False
     for modelo in VERIFICADORES:
         try:
             contenido = _llamar(modelo, [
@@ -1205,13 +1353,21 @@ def _segunda_mirada_voluminoso(img):
             # sin objeto Y ubicación no hay identificación: "sillón" a secas
             # es justo el sí de compromiso que esta firma existe para frenar
             if veredicto == "objeto_identificado" and objeto and ubicacion:
-                identificados.append((modelo, objeto + " (" + ubicacion + ")"))
+                # Señalar el contenedor (o el cesto, o el volquete) no es
+                # identificar un descarte: es no haber encontrado ninguno.
+                # Cuenta como abstención, no como negativo: el modelo no
+                # respondió que no hay, respondió otra cosa.
+                if _es_mobiliario_urbano(objeto):
+                    descartados.append((modelo, objeto))
+                else:
+                    identificados.append(
+                        (modelo, objeto + " (" + ubicacion + ")"))
             elif veredicto == "solo_bolsas_o_textiles":
                 negativos.append((modelo,
                                   _texto_limpio(v.get("evidencia"), EVID_MAX)))
         except Exception:
             fallo = True
-    return identificados, negativos, fallo
+    return identificados, negativos, descartados, fallo
 
 
 def _verificar_uno(modelo, data_url, categorias, contexto=""):
@@ -2143,11 +2299,13 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             and sum(1 for f in fuentes.get("retiro_muebles", [])
                     if f != "modelo_local") <= 1
             and not (segunda_mirada_base or {}).get("retiro_votos")):
-        ident_sm, neg_sm, fallo_vol = _segunda_mirada_voluminoso(img)
+        ident_sm, neg_sm, desc_sm, fallo_vol = _segunda_mirada_voluminoso(img)
         mantiene = bool(ident_sm)
         segunda_mirada_voluminoso = {
             "identificados": [{"modelo": m, "objeto": o} for m, o in ident_sm],
             "negativos": [{"modelo": m, "evidencia": e} for m, e in neg_sm],
+            # nombraron mobiliario de la calle en vez de un descarte
+            "descartados": [{"modelo": m, "objeto": o} for m, o in desc_sm],
             "mantiene": mantiene,
             "fallo": fallo_vol,
         }
@@ -2294,6 +2452,56 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                                 (v, c, "segunda_mirada_presencia"))
                             desc_desautorizadas.add(v["modelo"])
 
+    # VETO DE PRESENCIA POR CLAVE: el fantasma que se publica AL LADO de un
+    # contenedor real (la bolsa verde leída como contenedor de reciclables en
+    # T035/T109/T130). Ahí el veto de arriba no salta nunca, porque el máximo
+    # local está altísimo por el contenedor que SÍ está. Solo corre para las
+    # claves donde el local demostró ser detector confiable (ver el comentario
+    # de PRESENCIA_POR_CLAVE) y, como todas las pasadas hermanas, no decide
+    # sola: pregunta dirigido por ESE contenedor y necesita mayoría de
+    # "ausente" para bajarlo a en_duda.
+    segunda_mirada_presencia_clave = {}
+    if SEGUNDA_MIRADA_PRESENCIA_CLAVE:
+        _locales = {p.get("key"): p.get("score", 0.0)
+                    for p in prediccion_local.get("probabilidades") or []}
+        # Un subtipo que GANÓ una resolución de subtipo no entra acá. El caso
+        # es T044: el local da lateral 0,000 y bilateral 0,070, la mirada del
+        # subtipo corrige a bilateral (que es lo correcto según la etiqueta
+        # humana) y ese mismo 0,070 haría saltar este veto contra el resultado
+        # de la pasada anterior. La separación medida del piso vale para lo que
+        # los VLM publicaron directo, no para lo que otra pasada adjudicó
+        # (hallazgo de codex, reproducido). Regla de la casa: una pasada
+        # dirigida no pisa la adjudicación de otra.
+        candidatas = ((confirmadas & set(PRESENCIA_POR_CLAVE))
+                      - repregunta_confirmadas - adjudicadas_dirigidas
+                      - set(subtipos_firmes))
+        for k in sorted(candidatas):
+            # Sin puntaje del local para ESA clave no hay señal que contradiga
+            # a los VLM: la puerta no abre (si el modelo local no corrió, su
+            # silencio no es un "no hay").
+            if not (0.0 <= _locales.get(k, 1.0) <= PRESENCIA_LOCAL_PISO):
+                continue
+            pre_k, aus_k, fallo_k = _segunda_mirada_presencia(
+                img, DESCRIPTOR_CONTENEDOR[k])
+            retira_k = len(aus_k) > len(pre_k)
+            segunda_mirada_presencia_clave[k] = {
+                "presentes": [{"modelo": m, "evidencia": e} for m, e in pre_k],
+                "ausentes": [{"modelo": m, "evidencia": e} for m, e in aus_k],
+                "retiro_votos": retira_k,
+                "fallo": fallo_k,
+            }
+            if not retira_k:
+                continue
+            confirmadas.discard(k)
+            presencia_dudosa.add(k)
+            adjudicadas_dirigidas.add(k)
+            for v in activos:
+                c = next((c for c in v["categorias"] if c["key"] == k), None)
+                if c is not None:
+                    v["categorias"] = [x for x in v["categorias"] if x is not c]
+                    votos_anulados.append(
+                        (v, c, "segunda_mirada_presencia_clave"))
+                    desc_desautorizadas.add(v["modelo"])
 
     arbitro = None
     en_duda = []
@@ -2525,6 +2733,69 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             descripcion = (" ".join(limpias).strip() + " " + nota).strip() \
                 if limpias else nota
 
+    # Ídem con el veto por clave, pero quirúrgico: acá hay un contenedor real
+    # en la escena, así que se borran solo las frases que hablan del tipo
+    # vetado (el "verde de reciclables" que era una bolsa), no toda mención a
+    # un contenedor.
+    # El rasgo tiene que MODIFICAR al contenedor, no aparecer suelto en la
+    # frase: "bolsas verdes junto a un contenedor gris claro" no habla del
+    # contenedor verde y no se toca (hallazgo de codex). De ahí la adyacencia.
+    def _rasgo_de_contenedor(rasgo):
+        # Hasta tres palabras de relleno entre "contenedor" y el rasgo
+        # ("contenedor municipal de color gris claro"), pero ninguna puede ser
+        # de UBICACIÓN: ahí el rasgo ya pasó a describir otra cosa
+        # ("contenedor gris junto a bolsas verdes").
+        relleno = (r"(?:\s+(?!junto|cerca|sobre|encima|detras|delante|frente|"
+                   r"lado|arriba|abajo|bajo|contra|y|con|mas)\w+){0,3}")
+        return re.compile(
+            r"contenedor(?:es)?" + relleno + r"\s+(?:" + rasgo + r")"
+            r"|(?:" + rasgo + r")\s+(?:de\s+\w+\s+)?contenedor(?:es)?")
+
+    _RASGOS_VETADOS = {
+        "contenedor_secos": _rasgo_de_contenedor(r"verde\w*|de reciclabl\w*"),
+        "contenedor_humedos_bilateral": _rasgo_de_contenedor(
+            r"bilateral\w*|gris claro"),
+        "contenedor_humedos_lateral": _rasgo_de_contenedor(
+            r"lateral\w*|panzon\w*|redondead\w*"),
+    }
+    for k, d in sorted(segunda_mirada_presencia_clave.items()):
+        if not (d.get("retiro_votos") and descripcion):
+            continue
+        patron = _RASGOS_VETADOS.get(k)
+        if patron is None:
+            continue
+        frases = re.split(r"(?<=[.!?])\s+", descripcion)
+        limpias, toco = [], False
+        for f in frases:
+            if not (patron.search(_norm_texto(f))
+                    and "contenedor" in _norm_texto(f)):
+                limpias.append(f)
+                continue
+            toco = True
+            # Primero se intenta cirugía fina: en la foto suele haber un
+            # contenedor REAL nombrado en la MISMA frase que el fantasma
+            # ("un contenedor gris ... y un contenedor verde al lado"), y
+            # borrar la frase entera se lleva puesto al real (hallazgo de
+            # codex). Se corta la parte que habla del vetado y se conserva
+            # el resto si queda una frase con cuerpo.
+            partes = re.split(r"\s+y,?\s+", f)
+            # Solo sobrevive lo que viene ANTES del fantasma: cortar del medio
+            # deja colgado el sujeto ("... y está al lado de un contenedor
+            # gris" queda sin quién; hallazgo de codex).
+            resto = []
+            for p in partes:
+                if patron.search(_norm_texto(p)):
+                    break
+                resto.append(p)
+            if resto and len(resto) < len(partes) \
+                    and len(" ".join(resto).split()) >= 4:
+                arreglada = " y ".join(resto).strip(" ,;")
+                limpias.append(arreglada.rstrip(".") + ".")
+        if toco:
+            nota = "Revisado de cerca, ese contenedor no está en la foto."
+            descripcion = (" ".join(limpias).strip() + " " + nota).strip() \
+                if limpias else nota
+
     # Ídem con el veto del volcado: la prosa heredada no puede seguir
     # afirmando el contenedor tumbado.
     if (segunda_mirada_volcado and segunda_mirada_volcado.get("retiro_votos")
@@ -2559,6 +2830,10 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     if (segunda_mirada_presencia
             and segunda_mirada_presencia.get("retiro_votos")):
         vistos_todos -= CONTENEDOR_KEYS
+    # Ídem por clave: el contenedor fantasma vetado tampoco valida un pedido
+    # de lavado. Los que quedaron (el contenedor real de al lado) sí.
+    vistos_todos -= {k for k, d in segunda_mirada_presencia_clave.items()
+                     if d.get("retiro_votos")}
     remap = {}
     if not (vistos_todos & contenedor_keys):
         remap["lavado_contenedor"] = "desratizacion"
@@ -2726,6 +3001,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         "segunda_mirada_desborde": segunda_mirada_desborde,
         # Veto de presencia del contenedor (None si no corrió).
         "segunda_mirada_presencia": segunda_mirada_presencia,
+        # Veto de presencia POR CLAVE: {clave: {...}}, vacío si no corrió.
+        "segunda_mirada_presencia_clave": segunda_mirada_presencia_clave,
         "confirmadas": finales,
         "en_duda": en_duda,
         # Interno, para que el serializador pueda filtrar en_duda por fuente:

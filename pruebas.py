@@ -591,6 +591,18 @@ check("no se cachea si un verificador falló",
 check("sí se cachea una verificación completa",
       S._cacheable({"detalle": {"verificacion": {
           "activa": True, "verificadores": [{"ok": True}, {"ok": True}]}}}))
+check("no se cachea si el veto de presencia por clave falló",
+      not S._cacheable({"detalle": {"verificacion": {
+          "activa": True, "verificadores": [{"ok": True}, {"ok": True}],
+          "segunda_mirada_presencia_clave": {
+              "contenedor_secos": {"fallo": True, "retiro_votos": False}}}}}))
+check("sí se cachea si el veto por clave corrió entero",
+      S._cacheable({"detalle": {"verificacion": {
+          "activa": True, "verificadores": [{"ok": True}, {"ok": True}],
+          "segunda_mirada_presencia_clave": {
+              "contenedor_secos": {"fallo": False, "retiro_votos": True}}}}}))
+check("la señal de calidad nunca tumba el análisis",
+      S._calidad_segura(object()) is None)
 check("no se cachea si el árbitro falló",
       not S._cacheable({"detalle": {"verificacion": {
           "activa": True, "verificadores": [{"ok": True}, {"ok": True}],
@@ -2801,6 +2813,161 @@ check("  empate dirigido mantiene la presencia",
       "contenedor_humedos_lateral" in _conf, str(sorted(_conf)))
 _presencia_resp = {}
 
+print("[#PK] veto de presencia por clave: el contenedor fantasma de al lado")
+_PROMPT_PK = V._PROMPT_SEGUNDA_MIRADA_PRESENCIA_CLAVE.format(
+    tipo=V.DESCRIPTOR_CONTENEDOR["contenedor_secos"])
+
+
+def _correr_pk(secos_score, resp, key_extra="contenedor_humedos_bilateral",
+               extra_score=1.0, contexto="",
+               descripcion=("Hay un contenedor gris en la vereda y un "
+                            "contenedor verde de reciclables al lado.")):
+    """Los VLM ven un verde de reciclables al lado de un contenedor real."""
+    local = {"predichas": [], "probabilidades": [
+        {"key": "contenedor_secos", "nombre": "S", "score": secos_score},
+        {"key": key_extra, "nombre": "X", "score": extra_score}],
+        "gravedad": {"value": 2, "raw": 2.0}}
+
+    def _llamar_pk(modelo, mensajes, **k):
+        sis = str(mensajes[0].get("content", ""))
+        if sis == V._PROMPT_SEGUNDA_MIRADA_PRESENCIA:
+            return json.dumps({"veredicto": "no_se_distingue",
+                               "ubicacion": None, "evidencia": "lo que vi"})
+        if sis.startswith("Auditás UNA sola cosa en esta foto: si hay un "
+                          "CONTENEDOR MUNICIPAL"):
+            return json.dumps(dict(resp.get(
+                modelo, {"veredicto": "no_se_distingue", "ubicacion": None}),
+                evidencia="lo que vi"))
+        return json.dumps({"categorias": [
+            {"key": "contenedor_secos", "gravedad": 1,
+             "evidencia": "contenedor verde de reciclables a la derecha"},
+            {"key": key_extra, "gravedad": 1,
+             "evidencia": "contenedor gris junto al cordón"}],
+            "sin_problema": False,
+            "descripcion": descripcion,
+            "categorias_contexto": ([{"key": "lavado_contenedor",
+                                      "respaldo": "neutral"}]
+                                    if contexto else []),
+            "foto_corresponde": None})
+    V._llamar = _llamar_pk
+    r = V.verificar(_Img(), CATS, local, contexto)
+    return r
+
+
+# T035/T109/T130: el verde no existe (local en 0.002) y la pregunta dirigida
+# por ESE contenedor lo tumba; el contenedor real de al lado no se toca
+_r = _correr_pk(0.002, {"b/uno": {"veredicto": "ausente"},
+                        "b/dos": {"veredicto": "ausente"}})
+_conf = {c["key"] for c in _r["confirmadas"]}
+check("contenedor verde fantasma al lado de uno real: baja a en_duda",
+      "contenedor_secos" not in _conf and "contenedor_secos" in set(_r["en_duda"])
+      and "contenedor_humedos_bilateral" in _conf, str(sorted(_conf)))
+_anul_pk = [c for v in _r["verificadores"] for c in v.get("categorias", [])
+            if c.get("anulada_por") == "segunda_mirada_presencia_clave"]
+check("  el voto del fantasma vuelve anotado", len(_anul_pk) >= 1,
+      str(_anul_pk)[:120])
+check("  la prosa deja de afirmar el verde y conserva el contenedor real",
+      "verde" not in (_r.get("descripcion") or "")
+      and "gris" in (_r.get("descripcion") or "")
+      and "no está en la foto" in (_r.get("descripcion") or ""),
+      str(_r.get("descripcion")))
+# las variantes de redacción del fantasma también se podan (relleno de hasta
+# tres palabras), pero el rasgo lejano NO (contraejemplos de codex)
+for _desc, _cae in [
+        ("Hay un contenedor para reciclables verde al lado. Fin.", True),
+        ("Hay un contenedor destinado a reciclables verde al lado. Fin.", True),
+        ("Hay un contenedor gris junto a bolsas verdes en el piso. Fin.", False)]:
+    _rv = _correr_pk(0.002, {"b/uno": {"veredicto": "ausente"},
+                             "b/dos": {"veredicto": "ausente"}},
+                     descripcion=_desc)
+    check("  poda del fantasma " + ("sí" if _cae else "no") + ": " + _desc[:44],
+          ("verde" not in (_rv.get("descripcion") or "")) == _cae,
+          str(_rv.get("descripcion")))
+# el rasgo tiene que modificar al contenedor: las bolsas verdes no lo hacen
+_r4 = _correr_pk(0.002, {"b/uno": {"veredicto": "ausente"},
+                         "b/dos": {"veredicto": "ausente"}},
+                 descripcion=("Hay bolsas verdes junto a un contenedor gris "
+                              "claro."))
+check("  una frase con 'verde' que no habla del contenedor no se poda",
+      "bolsas verdes" in (_r4.get("descripcion") or ""),
+      str(_r4.get("descripcion")))
+# la cláusula colgada no se publica: si el fantasma va PRIMERO, cae la frase
+_r3 = _correr_pk(0.002, {"b/uno": {"veredicto": "ausente"},
+                         "b/dos": {"veredicto": "ausente"}},
+                 descripcion=("Hay un contenedor verde de reciclables y está "
+                              "al lado de un contenedor gris claro."))
+check("  con el fantasma en la primera cláusula no deja prosa colgada",
+      "verde" not in (_r3.get("descripcion") or "")
+      and not (_r3.get("descripcion") or "").startswith("está"),
+      str(_r3.get("descripcion")))
+# el borrado es por frase: la que habla del contenedor real se queda entera
+_r2 = _correr_pk(0.002, {"b/uno": {"veredicto": "ausente"},
+                         "b/dos": {"veredicto": "ausente"}},
+                 descripcion=("Hay un contenedor gris en la vereda. "
+                              "Al lado hay un contenedor verde de reciclables."))
+check("  y conserva la frase del contenedor real",
+      "gris" in (_r2.get("descripcion") or "")
+      and "verde" not in (_r2.get("descripcion") or ""),
+      str(_r2.get("descripcion")))
+# el local NO es detector confiable del lateral: ahí la puerta no abre
+_r = _correr_pk(1.0, {"b/uno": {"veredicto": "ausente"},
+                      "b/dos": {"veredicto": "ausente"}},
+                key_extra="contenedor_humedos_lateral", extra_score=0.001)
+_conf = {c["key"] for c in _r["confirmadas"]}
+check("  el lateral con local en cero NO se veta (10 de 110 reales van bajo el piso)",
+      "contenedor_humedos_lateral" in _conf, str(sorted(_conf)))
+# positivo real: local alto -> la pasada ni corre
+_r = _correr_pk(0.93, {"b/uno": {"veredicto": "ausente"},
+                       "b/dos": {"veredicto": "ausente"}})
+check("  con el local sobre el piso la pasada no corre",
+      "contenedor_secos" in {c["key"] for c in _r["confirmadas"]},
+      str(sorted(c["key"] for c in _r["confirmadas"])))
+# empate dirigido: se mantiene (mismo criterio que el veto general)
+_r = _correr_pk(0.002, {"b/uno": {"veredicto": "presente",
+                                  "ubicacion": "a la derecha"},
+                        "b/dos": {"veredicto": "ausente"}})
+check("  empate dirigido mantiene el contenedor",
+      "contenedor_secos" in {c["key"] for c in _r["confirmadas"]},
+      str(sorted(c["key"] for c in _r["confirmadas"])))
+# T044: el subtipo lo corrigió otra pasada (local bilateral 0.07 < piso). Ese
+# bilateral NO se veta: una pasada dirigida no pisa la adjudicación de otra.
+_local_t044 = {"predichas": [], "probabilidades": [
+    {"key": "contenedor_humedos_lateral", "nombre": "L", "score": 0.0},
+    {"key": "contenedor_humedos_bilateral", "nombre": "B", "score": 0.07},
+    # como en la foto real: hay un verde de reciclables que el local ve
+    # clarísimo, así que el veto GENERAL de presencia no corre
+    {"key": "contenedor_secos", "nombre": "S", "score": 0.999}],
+    "gravedad": {"value": 2, "raw": 2.0}}
+
+
+def _llamar_t044(modelo, mensajes, **k):
+    sis = str(mensajes[0].get("content", ""))
+    if sis == V._PROMPT_SEGUNDA_MIRADA_SUBTIPO:
+        return json.dumps({"veredicto": "no_se_distingue",
+                           "evidencia": "no llego a ver"})
+    if sis == V._PROMPT_SEGUNDA_MIRADA_PRESENCIA or sis.startswith(
+            "Auditás UNA sola cosa en esta foto: si hay un CONTENEDOR MUNICIPAL"):
+        return json.dumps({"veredicto": "ausente", "ubicacion": None,
+                           "evidencia": "no veo ese contenedor"})
+    return _resp_b([{"key": "contenedor_humedos_lateral", "gravedad": 1,
+                     "evidencia": "contenedor en la vereda"}], "Un contenedor.")
+
+
+V._llamar = _llamar_t044
+_r = V.verificar(_Img(), CATS, _local_t044, "")
+check("  el subtipo corregido por otra pasada no lo veta esta",
+      "contenedor_humedos_bilateral" in {c["key"] for c in _r["confirmadas"]}
+      and not _r.get("segunda_mirada_presencia_clave"),
+      str(sorted(c["key"] for c in _r["confirmadas"]))
+      + " " + str(_r.get("segunda_mirada_presencia_clave")))
+# el fantasma vetado no valida el lavado del contexto, pero el REAL sí
+_r = _correr_pk(0.002, {"b/uno": {"veredicto": "ausente"},
+                        "b/dos": {"veredicto": "ausente"}},
+                contexto="olor a podrido del contenedor")
+_ctx = [c.get("key") for c in _r.get("categorias_contexto", [])]
+check("  con otro contenedor real en pie, el lavado del contexto sigue en pie",
+      "lavado_contenedor" in _ctx and "desratizacion" not in _ctx, str(_ctx))
+
 print("[#D] mirada dirigida del desborde")
 _DESB = {"key": "contenedor_desbordado", "gravedad": 3,
          "evidencia": "residuos sobresaliendo de la boca del contenedor"}
@@ -2912,7 +3079,80 @@ _r = _correr_vol("sillón grande descartado en la vereda",
 check("con el objeto nombrado y ubicado se mantiene confirmado",
       "retiro_muebles" in {c["key"] for c in _r["confirmadas"]},
       str([c["key"] for c in _r["confirmadas"]]))
+# medido en 15 fotos: el objeto "identificado" era EL CONTENEDOR (T055, T068,
+# T175). Señalar mobiliario de la calle no sostiene un voluminoso.
+for _obj in ("contenedor de basura (dumpster) grande",
+             "volquete de obra", "cesto papelero de la esquina"):
+    _r = _correr_vol("posibles muebles junto al cordón",
+                     {"b/dos": {"veredicto": "objeto_identificado",
+                                "objeto": _obj,
+                                "ubicacion": "a la derecha"}})
+    check("  el mobiliario de la calle no identifica un voluminoso: " + _obj,
+          "retiro_muebles" not in {c["key"] for c in _r["confirmadas"]},
+          str([c["key"] for c in _r["confirmadas"]]))
+# pero el contenedor como REFERENCIA de ubicación no descarta nada: el objeto
+# real es el sillón (hallazgo de codex, reproducido)
+_MOB = [("contenedor de basura (dumpster) grande", True),
+        ("volquete de obra", True), ("cesto papelero de la esquina", True),
+        ("tacho de basura tirado", True), ("canasto papelero descartado", True),
+        ("contenedor plástico grande descartado", True),
+        ("sillón de dos cuerpos junto al contenedor", False),
+        ("sillón al costado del contenedor", False),
+        ("silla bajo el contenedor", False),
+        ("tacho de pintura grande descartado", False),
+        ("cesto plástico grande descartado", False),
+        ("caja contenedora plástica grande", False)]
+check("el mobiliario urbano se reconoce por el núcleo del nombre",
+      all(V._es_mobiliario_urbano(o) == esp for o, esp in _MOB),
+      str([o for o, esp in _MOB if V._es_mobiliario_urbano(o) != esp]))
+for _obj in ("sillón de dos cuerpos junto al contenedor",
+             "colchón apoyado contra el contenedor verde",
+             "puerta de madera al lado del volquete",
+             "sillón al costado del contenedor",
+             "silla bajo el contenedor",
+             "mesa debajo del contenedor gris",
+             "tacho plástico grande descartado"):
+    _r = _correr_vol("posibles muebles junto al cordón",
+                     {"b/dos": {"veredicto": "objeto_identificado",
+                                "objeto": _obj, "ubicacion": "a la derecha"}})
+    check("  el contenedor como referencia de ubicación no descarta: " + _obj,
+          "retiro_muebles" in {c["key"] for c in _r["confirmadas"]},
+          str([c["key"] for c in _r["confirmadas"]]))
+for _obj in ("cesto papelero de la esquina", "tacho de basura tirado"):
+    _r = _correr_vol("posibles muebles junto al cordón",
+                     {"b/dos": {"veredicto": "objeto_identificado",
+                                "objeto": _obj, "ubicacion": "a la derecha"}})
+    check("  el mobiliario con complemento tampoco identifica: " + _obj,
+          "retiro_muebles" not in {c["key"] for c in _r["confirmadas"]},
+          str([c["key"] for c in _r["confirmadas"]]))
+check("  y queda registrado como descartado, no como negativo",
+      [d["objeto"] for d in
+       (_r.get("segunda_mirada_voluminoso") or {}).get("descartados") or []],
+      str(_r.get("segunda_mirada_voluminoso")))
 _voluminoso_resp = {}
+
+print("[#C] señal de calidad de la foto (informativa, no veta)")
+from PIL import Image as _PILImage
+import random as _random
+_random.seed(7)
+_ruido = _PILImage.new("RGB", (800, 600))
+_ruido.putdata([(_random.randrange(256),) * 3 for _ in range(800 * 600)])
+_liso = _PILImage.new("RGB", (800, 600), (128, 128, 128))
+_chica = _ruido.resize((360, 270))
+_cal_ruido = V.calidad_foto(_ruido)
+_cal_liso = V.calidad_foto(_liso)
+_cal_chica = V.calidad_foto(_chica)
+check("la foto con detalle da nitidez alta y definición buena",
+      _cal_ruido["definicion"] == "buena" and _cal_ruido["nitidez"] > 1.0,
+      str(_cal_ruido))
+check("  la foto sin detalle cae a definición limitada",
+      _cal_liso["definicion"] == "limitada", str(_cal_liso))
+check("  la miniatura queda marcada por su lado menor",
+      _cal_chica["lado_menor"] == 270
+      and _cal_chica["definicion"] == "limitada", str(_cal_chica))
+check("  la nitidez se mide a escala fija: la misma foto reducida no cambia de clase",
+      V.calidad_foto(_ruido.resize((1600, 1200)))["definicion"] == "buena",
+      str(V.calidad_foto(_ruido.resize((1600, 1200)))))
 
 print("[#S] el local corrige el subtipo unánimemente equivocado")
 def _correr_sub(key_vlm, lat, bil, dirigida="no_se_distingue",

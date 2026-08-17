@@ -416,6 +416,10 @@ def _cacheable(respuesta):
         # Ídem el veto de presencia del contenedor.
         if (veri.get("segunda_mirada_presencia") or {}).get("fallo"):
             return False
+        # Ídem el veto de presencia por clave (el contenedor fantasma).
+        if any(d.get("fallo") for d in
+               (veri.get("segunda_mirada_presencia_clave") or {}).values()):
+            return False
         # Con árbitro configurado, que queden categorías en duda significa que
         # el arbitraje falló o quedó incompleto (respondió sin decidirlas
         # todas). Cachearlo congela ese resultado a medio hacer para siempre.
@@ -452,6 +456,13 @@ def _cache_guardar(huella, respuesta):
         _cache.move_to_end(huella)
         while len(_cache) > CACHE_MAX:
             _cache.popitem(last=False)
+
+
+def _calidad_segura(img):
+    try:
+        return verificador.calidad_foto(img)
+    except Exception:
+        return None
 
 
 def procesar(datos, contexto, verificar):
@@ -693,6 +704,12 @@ def procesar(datos, contexto, verificar):
         "posibles": posibles,
         "elementos_detectados": elementos,
         "en_duda": en_duda,
+        # Legibilidad de la foto. Es informativa: no filtra ni degrada nada
+        # (ver verificador.calidad_foto, donde está la medición que descarta
+        # usarla como compuerta). Sirve para triar un lote y para revisar el
+        # criterio cuando haya etiquetas nuevas. Va envuelta porque una foto
+        # rara no puede tumbar el análisis entero (hallazgo de codex).
+        "calidad_foto": _calidad_segura(img),
         "detalle": {"modelo_local": local, "verificacion": veri},
     }
     # Patente leída de la chapa del vehículo reportado (dos lectores
