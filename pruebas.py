@@ -2395,7 +2395,7 @@ check("'base' con contenedores apoyados normales no promueve ni retira",
 
 # 2e) Tapas dadas vuelta para el cirujeo + fierros ajenos: dos modelos
 # confirman "tapas rotas y desprendidas" (caso real: 3 de 6 corridas). La
-# pasada dirigida del daño dice "sin_dano_visible" -> reparacion se retira
+# pasada dirigida del daño dice "usable" -> reparacion se retira
 # entera y los votos vuelven anotados.
 _r = _correr_base(
     {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3,
@@ -2406,8 +2406,8 @@ _r = _correr_base(
                "Tapas caídas."),
      "b/tres": ([dict(_CONT)], "Contenedor entero, tapas abiertas.")},
     {},  # la pasada de la base no corre: no hay votos metálicos de muebles
-    {"b/uno": "sin_dano_visible", "b/dos": "indeterminado",
-     "b/tres": "sin_dano_visible"})
+    {"b/uno": "usable", "b/dos": "indeterminado",
+     "b/tres": "usable"})
 _claves = {c["key"] for c in _r["confirmadas"]}
 check("tapas volcadas leídas como rotas: la pasada del daño las retira",
       "reparacion_contenedor" not in _claves
@@ -2444,7 +2444,7 @@ _r = _correr_rep(
                  "parte": "tapa"}, dict(_CONT)], "Tapas rotas."),
      "b/dos": ([dict(_CONT)], "Contenedor entero."),
      "b/tres": ([dict(_CONT)], "Contenedor entero.")},
-    {"b/uno": "sin_dano_visible", "b/dos": "sin_dano_visible",
+    {"b/uno": "usable", "b/dos": "usable",
      "b/tres": "indeterminado"})
 _rep_e = next((c for c in _r["confirmadas"]
                if c["key"] == "reparacion_contenedor"), None)
@@ -2462,12 +2462,30 @@ _r = _correr_base(
                ""),
      "b/tres": ([dict(_CONT)], "")},
     {},
-    {"b/uno": "sin_dano_visible", "b/dos": "indeterminado",
-     "b/tres": "sin_dano_visible"})
+    {"b/uno": "usable", "b/dos": "indeterminado",
+     "b/tres": "usable"})
 _desc = _r.get("descripcion") or ""
 check("la descripción heredada no sigue vendiendo las tapas rotas",
       "rotas" not in _desc and "el contenedor está entero" in _desc,
       str(_desc))
+
+# 2f-bis) VETO ESTRICTO: un solo 'usable' enfocado tumba el reclamo aunque
+# DOS modelos insistan con el daño (la asimetría es adrede: la pregunta del
+# uso es más difícil de alucinar, y los 4 fantasmas de la ronda 4
+# sobrevivían justo con dos 'tapa rota' en contra).
+_r = _correr_base(
+    {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "tapas rotas y desprendidas del contenedor"},
+                dict(_CONT)], "Tapas rotas."),
+     "b/dos": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "cabezal partido a la vista"}], "Partido."),
+     "b/tres": ([dict(_CONT)], "Contenedor entero.")},
+    {},
+    {"b/uno": "uso_comprometido", "b/dos": "uso_comprometido",
+     "b/tres": "usable"})
+check("un 'usable' enfocado gana aunque dos insistan con el daño",
+      "reparacion_contenedor" not in {c["key"] for c in _r["confirmadas"]},
+      str([c["key"] for c in _r["confirmadas"]]))
 
 # 2f) Daño REAL: la pasada dirigida lo confirma dos veces -> no se toca.
 _r = _correr_base(
@@ -2478,7 +2496,7 @@ _r = _correr_base(
                  "evidencia": "cuerpo agrietado y tapa rota"}], "Roto."),
      "b/tres": ([dict(_CONT)], "Contenedor dañado.")},
     {},
-    {"b/uno": "dano_estructural", "b/dos": "dano_estructural",
+    {"b/uno": "uso_comprometido", "b/dos": "uso_comprometido",
      "b/tres": "indeterminado"})
 _claves = {c["key"] for c in _r["confirmadas"]}
 check("daño real confirmado por la pasada dirigida: se publica",
@@ -2849,6 +2867,9 @@ check("una caja trabando la tapa no es desbordado",
       "MIRÁ ADENTRO ANTES DE DECIDIR" in _rub_b
       and "UNA caja o UN bulto solo" in _rub_b
       and "dejan la tapa calzada así todo el tiempo" in _rub_b)
+check("la vara de la reparación es el uso, no la estética",
+      "LA VARA ES EL USO, NO LA ESTÉTICA" in _rub_b
+      and "si un vecino puede tirar la bolsa igual" in _rub_b)
 check("las tapas dadas vuelta para el cirujeo no son daño",
       "tapas DADAS VUELTA por completo hacia atrás" in _rub_b
       and "no tapas abiertas de par en par" in _rub_b)
