@@ -32,7 +32,8 @@ CATS = [{"key": k, "nombre": cats_info.get(k, {}).get("nombre", k),
 
 PHOTOS = [{"id": p["id"], "archivo": p["archivo"], "pred": p["pred"],
            "grav": p["gravedad"], "en_cache": p["en_cache"],
-           "desc": p.get("descripcion", ""), "posibles": p.get("posibles", [])}
+           "desc": p.get("descripcion", ""), "posibles": p.get("posibles", []),
+           "duda": p.get("en_duda", []), "calidad": p.get("calidad", {})}
           for p in preds]
 
 html = """<!doctype html><html lang="es"><head><meta charset="utf-8">
@@ -182,8 +183,12 @@ function card(p,i){
   const gv=[1,2,3,4,5].map(v=>`<option value="${v}" ${String(d.grav)===String(v)?'selected':''}>${v}</option>`).join('');
   const pos = (p.posibles&&p.posibles.length)?`<div style="font-size:12px;color:#c58a1a;margin-top:4px">Posibles (no confirmados): ${p.posibles.map(k=>NAME[k]||k).join(', ')}</div>`:'';
   const desc = p.desc?`<div style="font-size:12px;color:#aaa;margin-top:4px;font-style:italic">${p.desc}</div>`:'';
+  // en_duda: lo que una mirada dirigida bajó o vio una sola fuente. No viene
+  // pre-marcado a propósito; se muestra para poder confirmarlo a mano.
+  const duda = (p.duda&&p.duda.length)?`<div style="font-size:12px;color:#7aa7d9;margin-top:4px">En duda (retirado o de una sola fuente): ${p.duda.map(k=>NAME[k]||k).join(', ')}</div>`:'';
+  const cal = (p.calidad&&p.calidad.definicion==='limitada')?`<div style="font-size:12px;color:#888;margin-top:4px">Foto de definición limitada (${p.calidad.lado_menor}px, nitidez ${p.calidad.nitidez})</div>`:'';
   const modelo = p.en_cache
-    ? `<div class="modelo">La API confirma: <b>${p.pred.map(k=>NAME[k]||k).join(', ')||'(nada)'}</b> · gravedad <b>${p.grav||'-'}</b>${desc}${pos}</div>`
+    ? `<div class="modelo">La API confirma: <b>${p.pred.map(k=>NAME[k]||k).join(', ')||'(nada)'}</b> · gravedad <b>${p.grav||'-'}</b>${desc}${pos}${duda}${cal}</div>`
     : `<div class="nocache">La API no clasificó esta foto. Etiquetala igual.</div>`;
   return `<div class="card" id="c_${p.id}">
     <img loading="lazy" src="fotos/${p.archivo}">
