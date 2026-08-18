@@ -1782,6 +1782,46 @@ else:
               and "análisis del material indica" not in (_r.get("descripcion") or ""),
               str(_r.get("descripcion"))[:160])
 
+        # GUARDA PODA (M020): el local puntúa escombros 1.000/recoleccion 0.000
+        # sobre una pila de PODA con bolsas negras, y los VLM confirmaron
+        # retiro_poda -> la pila es materia vegetal, la fusión NO debe inyectar
+        # escombros. Poda y escombros son flujos distintos.
+        servidor.clasificar_local = lambda img: _local_con(0.99, 0.0)
+        V._verificar_uno = _mock(["recoleccion", "retiro_poda"], [], None)
+        _r = _pedir(_bytes, "", "1")
+        _keys = {p["key"] for p in _r["problemas"]}
+        check("poda confirmada: la fusión NO inyecta escombros sobre la poda",
+              "retiro_escombros" not in _keys and "retiro_poda" in _keys,
+              str(_keys))
+
+        # NIVEL DE RESCATE (2026-08-22): con el cabezal de escombros reentrenado
+        # (1000 fotos nuevas, R011 subió 0.197->0.742), un escombros local en
+        # [0.70,0.95) con reco MUY baja (<=0.1) y pila confirmada por los VLM se
+        # rescata. El nivel confiado (>=0.95, reco<=0.2) queda intacto.
+        servidor.clasificar_local = lambda img: _local_con(0.75, 0.05)
+        V._verificar_uno = _mock(["recoleccion"], [], None)
+        _r = _pedir(_bytes, "", "1")
+        check("rescate: escombros 0.75 + reco 0.05 + pila confirmada -> se inyecta",
+              "retiro_escombros" in {p["key"] for p in _r["problemas"]},
+              str(_r["problemas"])[:140])
+
+        # el rescate exige reco MÁS estricta: reco 0.15 (>0.1) y esc 0.75 (<0.95)
+        # no alcanza a NINGÚN nivel -> NO se inyecta.
+        servidor.clasificar_local = lambda img: _local_con(0.75, 0.15)
+        V._verificar_uno = _mock(["recoleccion"], [], None)
+        _r = _pedir(_bytes, "", "1")
+        check("rescate: escombros 0.75 + reco 0.15 (>0.1) NO se inyecta",
+              "retiro_escombros" not in {p["key"] for p in _r["problemas"]},
+              str(_r["problemas"])[:140])
+
+        # el nivel confiado sigue con reco<=0.2: esc 0.97 + reco 0.15 inyecta.
+        servidor.clasificar_local = lambda img: _local_con(0.97, 0.15)
+        V._verificar_uno = _mock(["recoleccion"], [], None)
+        _r = _pedir(_bytes, "", "1")
+        check("confiado: escombros 0.97 + reco 0.15 (<=0.2) se inyecta",
+              "retiro_escombros" in {p["key"] for p in _r["problemas"]},
+              str(_r["problemas"])[:140])
+
         # ...pero si una pasada dirigida YA adjudicó los escombros, la fusión
         # no los vuelve a inyectar por la ventana (hallazgo de codex): un
         # reclamo que la validación cruzada bajó no puede reaparecer como
@@ -2176,8 +2216,35 @@ check("  pero mezclada con una disputa real sigue sin cachearse",
 V.ARBITRO = _arb_cache_prev
 
 # La rúbrica: cada frase nueva, atada al mecanismo que la motivó.
+# El límite del espacio público: nada detrás de la línea de edificación (R005:
+# corralón con pallets y tablas EN SU PREDIO, no en la vereda).
+check("la rúbrica fija el límite de la vía pública en la línea de edificación",
+      "REGLA GENERAL DEL ESPACIO PÚBLICO" in V._RUBRICA
+      and "LÍNEA DE EDIFICACIÓN" in V._RUBRICA)
+check("  el material adentro de un predio/corralón es stock privado, no descarte",
+      "son STOCK en uso, no voluminosos descartados" in V._RUBRICA
+      and "detrás de la reja o el portón" in V._RUBRICA)
+check("  pero el descarte SOBRE la vereda se sigue reportando",
+      "del lado de AFUERA de la línea de edificación, se reportan normalmente" in V._RUBRICA)
 check("la rúbrica permite el contenedor recortado por el borde en primer plano",
       "recortado por el borde de la foto SÍ se reporta" in V._RUBRICA)
+# R009: la boca de carga (ranura rectangular) del contenedor de reciclables no
+# es un daño, y un cabezal abollado pero usable tampoco.
+check("la ranura de carga del reciclables es diseño, no rotura (por forma/posición)",
+      "ranura ABIERTA y oscura SIN cepillo a la vista" in V._RUBRICA
+      and "se reconoce por la FORMA (un rectángulo ancho y bajo) y la POSICIÓN" in V._RUBRICA)
+check("  y un cabezal metálico abollado pero usable no es reparación",
+      "sigue recibiendo material NO se reporta" in V._RUBRICA
+      and "la BOCA DE CARGA (su diseño), NO un daño, aunque no se vean cerdas ni cepillo"
+      in V._PROMPT_SEGUNDA_MIRADA_DANO)
+# R011: un descarte metálico grande cruzando la vereda es retiro_muebles, no obstruccion.
+check("una estructura metálica descartada que cruza la vereda no es obstruccion",
+      "una ESTRUCTURA o BASTIDOR METÁLICO, una reja, un armazón" in V._RUBRICA
+      and "NO la convierte en obstruccion: obstruccion es una BARRERA PUESTA A PROPÓSITO"
+      in V._RUBRICA)
+# M009: aviso de foto rotada para juzgar formas/subtipo con la escena bien orientada.
+check("la rúbrica avisa que la foto puede estar rotada de costado",
+      "puede estar ROTADA o de costado" in V._RUBRICA)
 check("  exigiendo CUERPO de contenedor, no solo una calcomanía",
       "no solo una calcomanía" in V._RUBRICA)
 check("  el chevrón identifica pero SOLO no alcanza",
@@ -2212,6 +2279,15 @@ check("  el verde oscuro no es un secos ni se duplica",
 check("  con el chequeo forzado del contenedor antes de votar subtipo",
       '"revision_contenedor"' in V._RUBRICA
       and "EL DE ESTE CHEQUEO" in V._RUBRICA)
+# La barra/riel de izado del costado, fuera de vertical, es daño estructural
+# (caso M006: barra galvanizada colgando en diagonal sobre un cuerpo parado).
+check("  la barra de izado del costado fuera de vertical es reparacion_contenedor",
+      "LAS BARRAS O RIELES DE IZADO DEL COSTADO TAMBIÉN SON PARTE DEL CONTENEDOR" in V._RUBRICA
+      and "CRUZADA EN DIAGONAL" in V._RUBRICA)
+check("  y NO se confunde con un contenedor volcado (el cuerpo está parado)",
+      "es reparacion, no reposicion" in V._RUBRICA)
+check("  la segunda mirada de daño también toma la barra de izado en diagonal",
+      "BARRA o RIEL de izado del costado quedó SALIDA" in V._PROMPT_SEGUNDA_MIRADA_DANO)
 check("  con la salvaguarda del negro de verdad vs gris ensombrecido",
       "NEGRO DE VERDAD" in V._RUBRICA
       and "no uses el color y decidí por los postes" in V._RUBRICA)
@@ -2281,8 +2357,9 @@ def _correr_base(votos, dirigidas, dano=None):
                                "contenedor_corrido": _v == "base_de_contenedor",
                                "evidencia": "lo que vi"})
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_DANO:
-            return json.dumps({"veredicto": (dano or {})[modelo],
-                               "evidencia": "lo que vi"})
+            _dv = (dano or {})[modelo]
+            _ver, _ev = _dv if isinstance(_dv, tuple) else (_dv, "lo que vi")
+            return json.dumps({"veredicto": _ver, "evidencia": _ev})
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_VOLCADO:
             return json.dumps({"veredicto": _volcado_resp[modelo],
                                "evidencia": "lo que vi"})
@@ -2561,6 +2638,122 @@ _r = _correr_base(
 check("un 'usable' enfocado gana aunque dos insistan con el daño",
       "reparacion_contenedor" not in {c["key"] for c in _r["confirmadas"]},
       str([c["key"] for c in _r["confirmadas"]]))
+
+# 2f-ter) EXCEPCIÓN DIRIGIDA: si las DOS lecturas del daño citan la barra o
+# riel de izado en diagonal (firma concreta, no la "tapa rota" genérica), la
+# mayoría de daño le gana al 'usable' aislado y la reparación SOBREVIVE
+# (caso real M006). El fantasma genérico 2 a 1 de 2f-bis se sigue cayendo.
+_r = _correr_base(
+    {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "barra de izado lateral desprendida y cruzada"},
+                dict(_CONT)], "Barra de izado fuera de lugar."),
+     "b/dos": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "barra lateral colgando en diagonal"}],
+               "Barra en diagonal."),
+     "b/tres": ([dict(_CONT)], "Contenedor a la vista.")},
+    {},
+    {"b/uno": ("uso_comprometido", "barra de izado lateral salida y colgando en diagonal"),
+     "b/dos": ("uso_comprometido", "la barra metalica lateral esta doblada en diagonal"),
+     "b/tres": "usable"})
+check("la barra de izado en diagonal (2 a 1) sobrevive al 'usable' aislado",
+      "reparacion_contenedor" in {c["key"] for c in _r["confirmadas"]},
+      str([c["key"] for c in _r["confirmadas"]]))
+
+# 2f-quater) pero la excepción exige DOS citas de la barra: si solo UNA la
+# cita y la otra es daño genérico, el 'usable' aislado veta como siempre.
+_r = _correr_base(
+    {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "barra de izado lateral en diagonal"},
+                dict(_CONT)], "Barra en diagonal."),
+     "b/dos": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "cabezal partido a la vista"}], "Partido."),
+     "b/tres": ([dict(_CONT)], "Contenedor entero.")},
+    {},
+    {"b/uno": ("uso_comprometido", "barra lateral colgando en diagonal"),
+     "b/dos": ("uso_comprometido", "cabezal roto a la vista"),
+     "b/tres": "usable"})
+check("una sola cita de la barra no alcanza: el 'usable' aislado sigue vetando",
+      "reparacion_contenedor" not in {c["key"] for c in _r["confirmadas"]},
+      str([c["key"] for c in _r["confirmadas"]]))
+
+# 2f-quinquies) PROMOCIÓN de la barra disputada: un solo voto principal ve la
+# barra de izado en diagonal (queda en disputa por la varianza del voto) y la
+# pasada dirigida del daño la confirma con DOS lecturas de la barra -> se
+# promueve a confirmada, como la base disputada. Caso real M006.
+_r = _correr_base(
+    {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "barra de izado lateral colgando en diagonal"},
+                dict(_CONT)], "Barra en diagonal."),
+     "b/dos": ([dict(_CONT)], "Contenedor a la vista."),
+     "b/tres": ([dict(_CONT)], "Contenedor a la vista.")},
+    {},
+    {"b/uno": ("uso_comprometido", "barra de izado lateral salida en diagonal"),
+     "b/dos": ("uso_comprometido", "la barra metalica lateral doblada en diagonal"),
+     "b/tres": "usable"})
+check("la barra disputada se promueve con dos lecturas dirigidas de la barra",
+      "reparacion_contenedor" in {c["key"] for c in _r["confirmadas"]},
+      str([c["key"] for c in _r["confirmadas"]]))
+
+# 2f-sexies) una reparacion disputada GENÉRICA (sin barra en la evidencia) NO
+# se promueve: la pasada dirigida ni siquiera corre para el voto suelto.
+_r = _correr_base(
+    {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "tapa rota del contenedor"},
+                dict(_CONT)], "Tapa rota."),
+     "b/dos": ([dict(_CONT)], "Contenedor a la vista."),
+     "b/tres": ([dict(_CONT)], "Contenedor a la vista.")},
+    {},
+    {"b/uno": ("uso_comprometido", "tapa rota"),
+     "b/dos": ("uso_comprometido", "tapa rota"),
+     "b/tres": "usable"})
+check("una reparacion disputada genérica no se promueve por la pasada del daño",
+      "reparacion_contenedor" not in {c["key"] for c in _r["confirmadas"]},
+      str([c["key"] for c in _r["confirmadas"]]))
+
+# 2f-septies) GATILLO POR PISTA: sin voto de reparación en el pase principal,
+# pero un verificador NOMBRA la barra en su descripción y hay contenedor -> la
+# pasada dirigida corre igual y, con dos lecturas de la barra, confirma. Es el
+# caso real M006: el pase principal casi nunca surface la barra, la dirigida sí.
+_r = _correr_base(
+    {"b/uno": ([dict(_CONT)], "Contenedor con la barra de izado lateral colgando en diagonal."),
+     "b/dos": ([dict(_CONT)], "Contenedor a la vista."),
+     "b/tres": ([dict(_CONT)], "Contenedor a la vista.")},
+    {},
+    {"b/uno": ("uso_comprometido", "barra de izado lateral salida en diagonal"),
+     "b/dos": ("uso_comprometido", "la barra metalica lateral doblada en diagonal"),
+     "b/tres": "usable"})
+check("la pista de barra sin voto principal dispara la dirigida y confirma",
+      "reparacion_contenedor" in {c["key"] for c in _r["confirmadas"]},
+      str([c["key"] for c in _r["confirmadas"]]))
+
+# 2f-octies) pero si la dirigida NO confirma la barra (contenedor sano), la
+# pista suelta no crea reparación: solo agrega la pasada, sin falso positivo.
+_r = _correr_base(
+    {"b/uno": ([dict(_CONT)], "Se ven las barras de izado del contenedor."),
+     "b/dos": ([dict(_CONT)], "Contenedor a la vista."),
+     "b/tres": ([dict(_CONT)], "Contenedor a la vista.")},
+    {},
+    {"b/uno": "usable", "b/dos": "usable", "b/tres": "usable"})
+check("la pista de barra en un contenedor sano no crea reparación",
+      "reparacion_contenedor" not in {c["key"] for c in _r["confirmadas"]},
+      str([c["key"] for c in _r["confirmadas"]]))
+
+# 2f-nonies) VETO NO-OP (hallado por codex): si la pasada corre por barra_hint
+# pero el único voto de reparación quedó clasificado como BASE (evidencia con
+# "riel", fuera de `tapas`) y el audit dice 'usable', el veto no tiene nada que
+# retirar; NO debe marcar reparacion_contenedor como adjudicada por un retiro
+# que no ocurrió. El guard `bool(tapas)` en retira_dano lo evita.
+_r = _correr_base(
+    {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "riel del contenedor a la vista"},
+                dict(_CONT)], "Contenedor con un riel a la vista."),
+     "b/dos": ([dict(_CONT)], "Contenedor a la vista."),
+     "b/tres": ([dict(_CONT)], "Contenedor a la vista.")},
+    {"b/uno": "indeterminado", "b/dos": "indeterminado", "b/tres": "indeterminado"},
+    {"b/uno": "usable", "b/dos": "usable", "b/tres": "usable"})
+check("el veto no-op no marca la reparación como adjudicada por un retiro que no pasó",
+      "reparacion_contenedor" not in (_r.get("adjudicadas_dirigidas") or []),
+      str(_r.get("adjudicadas_dirigidas")))
 
 # 2f) Daño REAL: la pasada dirigida lo confirma dos veces -> no se toca.
 _r = _correr_base(

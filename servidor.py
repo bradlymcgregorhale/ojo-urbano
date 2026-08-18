@@ -95,10 +95,23 @@ RATE_VENTANA = int(os.environ.get("RATE_VENTANA", "3600"))
 # resoluciones = 0 detecciones en fotos nocturnas donde el local da >=0.95;
 # y el local a ese umbral acertó 43/43 contra la etiqueta humana). Regla
 # acotada a ESA única categoría; ver procesar().
+# DOS NIVELES (2026-08-22): el cabezal de escombros se reentrenó con 1000 fotos
+# nuevas etiquetadas a mano (bolsa-negra: positivos + negativos duros), subiendo
+# el AUC plegado 0.945->0.959 y sacando R011 de 0.197 a 0.742. En vez de bajar
+# el umbral confiado (que aflojaba el FP: 0.09->0.14 medido), se mantiene el
+# nivel CONFIADO (>=0.95 con reco<=0.2) y se agrega un nivel de RESCATE
+# (>=0.70 con reco<=0.1, ambivalencia MÁS estricta) para el borderline que
+# pidió el dueño — rescata R011 (esc 0.742, reco 0.021) sin el FP del gate
+# plano (recomendación de codex). Ambos niveles conservan los guardias: los VLM
+# confirman la PILA (rec is not None) y la poda confirmada bloquea. R015
+# (reco 1.000) queda afuera, correcto. La verificación por VLM del ESCOMBROS
+# no se usa: techo probado (contestan basura_comun aun en los TP).
 FUSION_ESCOMBROS = os.environ.get(
     "FUSION_ESCOMBROS", "1").strip().lower() not in ("0", "false", "no")
 FUSION_ESCOMBROS_UMBRAL = float(os.environ.get("FUSION_ESCOMBROS_UMBRAL", "0.95"))
 FUSION_ESCOMBROS_RECO_BAJA = float(os.environ.get("FUSION_ESCOMBROS_RECO_BAJA", "0.2"))
+FUSION_ESCOMBROS_UMBRAL_RESCATE = float(os.environ.get("FUSION_ESCOMBROS_UMBRAL_RESCATE", "0.70"))
+FUSION_ESCOMBROS_RECO_RESCATE = float(os.environ.get("FUSION_ESCOMBROS_RECO_RESCATE", "0.1"))
 API_TOKEN = os.environ.get("API_TOKEN", "").strip()
 CACHE_MAX = int(os.environ.get("CACHE_MAX", "128"))
 # Cola de espera por el cupo: en vez de rebotar con 503 apenas hay otra foto
@@ -144,6 +157,13 @@ Image.MAX_IMAGE_PIXELS = MAX_PIXELES
 if not MODELO.exists():
     raise SystemExit("Falta model.joblib junto a servidor.py")
 
+# Un solo proceso puede tener el modelo de visión (~4-5 GB) cargado a la vez.
+# Si otro proceso ya lo tiene (un servidor viejo, un script de embedding), lo
+# terminamos y tomamos su lugar: dos copias a la vez hacían swapear la Mac
+# hasta colgarla. Ver guard_modelo.py.
+import guard_modelo
+guard_modelo.adquirir_singleton()
+
 bundle = joblib.load(MODELO)
 clf = bundle["clf"]
 clases = list(bundle.get("classes") or clf.classes_)
@@ -175,20 +195,41 @@ def siglip_vec(img):
         import torch
         from transformers import AutoModel, AutoProcessor
         nombre = "google/siglip2-so400m-patch14-384"
-        print(f"Cargando {nombre}...")
         dev = "mps" if torch.backends.mps.is_available() else "cpu"
+        # SigLIP2-so400m en fp16 sobre MPS: ~2 GB MENOS de memoria (es el modelo
+        # más pesado del stack) sin mover las features que el cabezal fp32
+        # espera — parity medida en 4 fotos: coseno 0.99998+, escombros y
+        # reparacion idénticos a 3 decimales. En CPU se queda en fp32 (fp16 en
+        # CPU es lento y poco soportado).
+        dt = torch.float16 if dev == "mps" else torch.float32
+        print(f"Cargando {nombre} ({dt})...")
         _siglip["torch"] = torch
         _siglip["dev"] = dev
+        _siglip["dtype"] = dt
         _siglip["proc"] = AutoProcessor.from_pretrained(nombre)
-        _siglip["model"] = AutoModel.from_pretrained(nombre).to(dev).eval()
+        _siglip["model"] = AutoModel.from_pretrained(nombre, torch_dtype=dt).to(dev).eval()
     with _siglip["torch"].no_grad():
         inp = _siglip["proc"](images=img, return_tensors="pt").to(_siglip["dev"])
+        if _siglip["dtype"] == _siglip["torch"].float16:
+            inp = {k: (v.half() if v.is_floating_point() else v)
+                   for k, v in inp.items()}
         v = _siglip["model"].get_image_features(**inp)
         # transformers >= 5 devuelve un ModelOutput; antes, el tensor directo
         if not _siglip["torch"].is_tensor(v):
             v = v.pooler_output
-        v = v[0].cpu().numpy().astype(np.float32)
+        v = v[0].float().cpu().numpy().astype(np.float32)
     return v / (np.linalg.norm(v) + 1e-8)
+
+
+def _liberar_transitorio():
+    """Libera los tensores intermedios de MPS y fuerza gc tras cada foto. No
+    descarga el modelo (eso lo cuida guard_modelo); baja el PICO de memoria por
+    request, que es lo que apretaba la Mac en corridas batch."""
+    import gc
+    gc.collect()
+    t = _siglip.get("torch") or _dino.get("torch")
+    if t is not None and t.backends.mps.is_available():
+        t.mps.empty_cache()
 
 
 def caracteristicas(img):
@@ -197,7 +238,9 @@ def caracteristicas(img):
         partes.append(dino_vec(img))
     if "siglip" in combo:
         partes.append(siglip_vec(img))
-    return np.concatenate(partes).reshape(1, -1)
+    v = np.concatenate(partes).reshape(1, -1)
+    _liberar_transitorio()
+    return v
 
 
 def nombre_de(k):
@@ -580,10 +623,22 @@ def procesar(datos, contexto, verificar):
         # marcados como "reclasificado_por: modelo_local" (hallazgo de codex).
         _esc_adjudicado = "retiro_escombros" in set(
             veri.get("adjudicadas_dirigidas") or [])
-        if (esc_local >= FUSION_ESCOMBROS_UMBRAL and rec is not None
-                and not _esc_adjudicado
-                and prob_local.get("recoleccion", 1.0)
-                <= FUSION_ESCOMBROS_RECO_BAJA):
+        # GUARDA PODA: si los verificadores confirmaron retiro_poda, la pila es
+        # materia vegetal (ramas, fardos, bolsas de poda), no escombros. El
+        # modelo local a veces puntúa escombros 1.000 sobre una pila de poda con
+        # bolsas negras (M020: poda confirmada por los 3 VLM, local escombros
+        # 1.000/recoleccion 0.000 -> la fusión inyectaba escombros). La poda y
+        # los escombros son flujos distintos: con poda confirmada no se inyecta.
+        _poda_confirmada = any(c["key"] == "retiro_poda" for c in problemas)
+        _reco_local = prob_local.get("recoleccion", 1.0)
+        # nivel confiado (>=0.95, reco<=0.2) O nivel de rescate (>=0.70,
+        # reco<=0.1, más estricto): ver la nota de los umbrales arriba.
+        _esc_confiado = (esc_local >= FUSION_ESCOMBROS_UMBRAL
+                         and _reco_local <= FUSION_ESCOMBROS_RECO_BAJA)
+        _esc_rescate = (esc_local >= FUSION_ESCOMBROS_UMBRAL_RESCATE
+                        and _reco_local <= FUSION_ESCOMBROS_RECO_RESCATE)
+        if ((_esc_confiado or _esc_rescate) and rec is not None
+                and not _esc_adjudicado and not _poda_confirmada):
             agrego_escombros = False
             if not ya_esta:
                 fuentes_esc = ["modelo_local"] + [
