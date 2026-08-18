@@ -160,9 +160,14 @@ if not MODELO.exists():
 # Un solo proceso puede tener el modelo de visión (~4-5 GB) cargado a la vez.
 # Si otro proceso ya lo tiene (un servidor viejo, un script de embedding), lo
 # terminamos y tomamos su lugar: dos copias a la vez hacían swapear la Mac
-# hasta colgarla. Ver guard_modelo.py.
-import guard_modelo
-guard_modelo.adquirir_singleton()
+# hasta colgarla. Ver guard_modelo.py. Es una OPTIMIZACIÓN, no un requisito:
+# best-effort, nunca debe impedir que arranque el server (p.ej. en el box de
+# producción, donde hay un solo proceso y el candado no hace falta).
+try:
+    import guard_modelo
+    guard_modelo.adquirir_singleton()
+except Exception as _e:
+    print(f"guard_modelo no aplicado, sigo sin candado: {_e}")
 
 bundle = joblib.load(MODELO)
 clf = bundle["clf"]
