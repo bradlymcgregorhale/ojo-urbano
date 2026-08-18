@@ -1857,11 +1857,30 @@ else:
                 | {"retiro_escombros"})
             return r
         V.verificar = _verificar_adjudicado
+        # (a) RESCATE con pila de recoleccion + rechazo dirigido -> vetado.
+        servidor.clasificar_local = lambda img: _local_con(0.80, 0.05)
+        V._verificar_uno = _mock(["recoleccion"], [], None)
         _r = _pedir(_bytes, "", "1")
-        V.verificar = _verificar_orig
-        check("  y lo que una pasada dirigida bajó no vuelve por la fusión",
+        check("  rescate + pila + adjudicado: la fusión NO reinyecta",
               "retiro_escombros" not in {p["key"] for p in _r["problemas"]},
               str([p["key"] for p in _r["problemas"]]))
+        # (b) CONFIADO con pila de RECOLECCION + rechazo dirigido -> vetado
+        # (protege el FP tipo bolsas-blandas/comida: ahí el "no" dirigido vale).
+        servidor.clasificar_local = lambda img: _local_con(0.99, 0.05)
+        V._verificar_uno = _mock(["recoleccion"], [], None)
+        _r = _pedir(_bytes, "", "1")
+        check("  confiado + recoleccion + adjudicado: NO reinyecta (protección FP)",
+              "retiro_escombros" not in {p["key"] for p in _r["problemas"]},
+              str([p["key"] for p in _r["problemas"]]))
+        # (c) EXCEPCIÓN ACOTADA V154: CONFIADO + pila SOLO de muebles (rec None)
+        # + rechazo dirigido -> SÍ inyecta (el "no" dirigido no es informativo).
+        servidor.clasificar_local = lambda img: _local_con(0.99, 0.02)
+        V._verificar_uno = _mock(["retiro_muebles"], [], None)
+        _r = _pedir(_bytes, "", "1")
+        check("  excepción V154: confiado + muebles-only + adjudicado -> inyecta",
+              "retiro_escombros" in {p["key"] for p in _r["problemas"]},
+              str([p["key"] for p in _r["problemas"]]))
+        V.verificar = _verificar_orig
 
         # MISMAS BOLSAS EN DOS CATEGORÍAS: escombros confirmado por dos
         # verificadores y recoleccion sostenida por UNO solo cuya evidencia

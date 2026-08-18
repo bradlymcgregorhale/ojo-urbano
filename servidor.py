@@ -652,15 +652,18 @@ def procesar(datos, contexto, verificar):
                          and _reco_local <= FUSION_ESCOMBROS_RECO_BAJA)
         _esc_rescate = (esc_local >= FUSION_ESCOMBROS_UMBRAL_RESCATE
                         and _reco_local <= FUSION_ESCOMBROS_RECO_RESCATE)
-        # El rechazo dirigido de los VLM (_esc_adjudicado) veta el nivel de
-        # RESCATE pero NO el CONFIADO: los VLM NO ven escombros embolsados (techo
-        # probado), así que su "no" dirigido sobre una categoría que no saben
-        # juzgar no debe tumbar un local 0.95+ (V154: local 1.000 sobre una pila
-        # que los VLM leyeron como muebles y cuyo escombros posible rechazaron en
-        # la pasada dirigida). La poda, en cambio, veta AMBOS niveles (M020).
-        _dispara_fusion = (
-            (_esc_confiado or (_esc_rescate and not _esc_adjudicado))
-            and pila is not None and not _poda_confirmada)
+        # El rechazo dirigido de los VLM (_esc_adjudicado) veta la inyección,
+        # SALVO el caso ACOTADO de V154: nivel CONFIADO (>=0.95) con una pila que
+        # los VLM sólo vieron como MUEBLES (rec is None, ni siquiera la llamaron
+        # recoleccion). Ahí su "no" dirigido no es informativo: no ven escombros
+        # embolsados (techo probado) y ni reconocieron una pila de bolsas. Con
+        # recoleccion CONFIRMADA el rechazo dirigido SÍ se respeta (protege el FP
+        # tipo bolsas-blandas/comida donde el "no" dirigido sí vale). La poda
+        # veta AMBOS niveles siempre (M020).
+        _veto_dirigido = _esc_adjudicado and not (_esc_confiado and rec is None)
+        _dispara_fusion = ((_esc_confiado or _esc_rescate)
+                           and pila is not None and not _poda_confirmada
+                           and not _veto_dirigido)
         if _dispara_fusion:
             agrego_escombros = False
             if not ya_esta:
@@ -694,7 +697,11 @@ def procesar(datos, contexto, verificar):
             # descripción cuando la fusión cambió el veredicto (agregó
             # escombros o bajó recoleccion): con escombros ya confirmado y
             # pila mixta, la descripción vigente ya cuenta las dos cosas.
-            if agrego_escombros or solo_escombros:
+            # solo se reescribe la descripción cuando la fusión CAMBIÓ algo:
+            # agregó escombros, o demotó recoleccion de verdad (rec presente).
+            # Con muebles-only y escombros ya confirmado no cambia nada y la
+            # nota "las bolsas" sería falsa (hallazgo de codex).
+            if agrego_escombros or (solo_escombros and rec is not None):
                 if descripcion:
                     # También "cascote" y "material de obra": el árbitro niega
                     # escombros con esas palabras ("no hay evidencia clara de
