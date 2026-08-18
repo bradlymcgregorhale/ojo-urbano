@@ -2226,6 +2226,13 @@ check("  el material adentro de un predio/corralón es stock privado, no descart
       and "detrás de la reja o el portón" in V._RUBRICA)
 check("  pero el descarte SOBRE la vereda se sigue reportando",
       "del lado de AFUERA de la línea de edificación, se reportan normalmente" in V._RUBRICA)
+# reposicion_contenedor: contenedor CORRIDO de su dársena / fuera de sus topes,
+# colgando del borde de la vereda hacia la calzada (V054), no solo volcado.
+check("la rúbrica captura el contenedor corrido de su lugar, no solo el volcado",
+      "CORRIDO DE SU LUGAR" in V._RUBRICA
+      and "los topes de contención quedan VACÍOS" in V._RUBRICA)
+check("  y el contenedor bien puesto sobre sus topes no se reporta",
+      "Un contenedor BIEN PUESTO" in V._RUBRICA)
 check("la rúbrica permite el contenedor recortado por el borde en primer plano",
       "recortado por el borde de la foto SÍ se reporta" in V._RUBRICA)
 # R009: la boca de carga (ranura rectangular) del contenedor de reciclables no
