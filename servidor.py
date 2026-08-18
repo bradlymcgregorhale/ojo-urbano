@@ -612,6 +612,16 @@ def procesar(datos, contexto, verificar):
                       for p in local.get("probabilidades") or []}
         esc_local = prob_local.get("retiro_escombros", 0.0)
         rec = next((c for c in problemas if c["key"] == "recoleccion"), None)
+        # CORROBORACIÓN DE PILA: la fusión exige que los VLM confirmen que hay
+        # una PILA real en la escena (no una foto cualquiera). Antes solo valía
+        # recoleccion, pero una pila que los VLM leen como VOLUMINOSOS
+        # (retiro_muebles) también es una pila real: V154 daba escombros_local
+        # 1.000 / reco 0.001, pero los VLM la clasificaron como muebles, así que
+        # la fusión NO inyectaba escombros por una tecnicalidad. La confianza del
+        # modelo local (+ el guardia de ambivalencia reco<=0.1/0.2) sigue siendo
+        # el filtro; la pila (recoleccion O muebles) es solo la corroboración.
+        pila = rec or next(
+            (c for c in problemas if c["key"] == "retiro_muebles"), None)
         ya_esta = any(c["key"] == "retiro_escombros" for c in problemas)
         # LA FIRMA DEL RESCATE NOCTURNO ES "escombros Y NO recoleccion". El
         # score de escombros solo NO alcanza para inyectar: medido sobre la
@@ -642,24 +652,32 @@ def procesar(datos, contexto, verificar):
                          and _reco_local <= FUSION_ESCOMBROS_RECO_BAJA)
         _esc_rescate = (esc_local >= FUSION_ESCOMBROS_UMBRAL_RESCATE
                         and _reco_local <= FUSION_ESCOMBROS_RECO_RESCATE)
-        if ((_esc_confiado or _esc_rescate) and rec is not None
-                and not _esc_adjudicado and not _poda_confirmada):
+        # El rechazo dirigido de los VLM (_esc_adjudicado) veta el nivel de
+        # RESCATE pero NO el CONFIADO: los VLM NO ven escombros embolsados (techo
+        # probado), así que su "no" dirigido sobre una categoría que no saben
+        # juzgar no debe tumbar un local 0.95+ (V154: local 1.000 sobre una pila
+        # que los VLM leyeron como muebles y cuyo escombros posible rechazaron en
+        # la pasada dirigida). La poda, en cambio, veta AMBOS niveles (M020).
+        _dispara_fusion = (
+            (_esc_confiado or (_esc_rescate and not _esc_adjudicado))
+            and pila is not None and not _poda_confirmada)
+        if _dispara_fusion:
             agrego_escombros = False
             if not ya_esta:
                 fuentes_esc = ["modelo_local"] + [
-                    f for f in (rec.get("fuentes") or []) if f != "modelo_local"]
+                    f for f in (pila.get("fuentes") or []) if f != "modelo_local"]
                 problemas.append({
                     "key": "retiro_escombros",
                     "nombre": CATEGORIAS.get("retiro_escombros", {}).get(
                         "nombre", "retiro_escombros"),
-                    "gravedad": rec.get("gravedad"),
+                    "gravedad": pila.get("gravedad"),
                     "fuentes": fuentes_esc,
                     "reclasificado_por": "modelo_local",
                 })
                 agrego_escombros = True
             solo_escombros = (prob_local.get("recoleccion", 1.0)
                               <= FUSION_ESCOMBROS_RECO_BAJA)
-            if solo_escombros:
+            if solo_escombros and rec is not None:
                 problemas = [c for c in problemas if c["key"] != "recoleccion"]
                 if "recoleccion" not in vistos_pos:
                     vistos_pos.add("recoleccion")

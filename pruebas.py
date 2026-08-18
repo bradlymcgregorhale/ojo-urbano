@@ -1822,6 +1822,24 @@ else:
               "retiro_escombros" in {p["key"] for p in _r["problemas"]},
               str(_r["problemas"])[:140])
 
+        # PILA VOLUMINOSA (V154): una pila que los VLM leen como retiro_muebles
+        # (no recoleccion) también corrobora la fusión; con el local confiado en
+        # escombros (1.000/reco 0.001 en V154), se inyecta escombros junto a los
+        # muebles. Antes se perdía por exigir recoleccion específicamente.
+        servidor.clasificar_local = lambda img: _local_con(0.99, 0.02)
+        V._verificar_uno = _mock(["retiro_muebles"], [], None)
+        _r = _pedir(_bytes, "", "1")
+        _keys = {p["key"] for p in _r["problemas"]}
+        check("pila de muebles + escombros local confiado -> inyecta escombros (V154)",
+              "retiro_escombros" in _keys and "retiro_muebles" in _keys, str(_keys))
+        # pero SIN pila (ni recoleccion ni muebles) el local solo NO inyecta
+        servidor.clasificar_local = lambda img: _local_con(0.99, 0.02)
+        V._verificar_uno = _mock(["barrido"], [], None)
+        _r = _pedir(_bytes, "", "1")
+        check("sin pila confirmada (solo barrido) el escombros local no se inyecta",
+              "retiro_escombros" not in {p["key"] for p in _r["problemas"]},
+              str([p["key"] for p in _r["problemas"]]))
+
         # ...pero si una pasada dirigida YA adjudicó los escombros, la fusión
         # no los vuelve a inyectar por la ventana (hallazgo de codex): un
         # reclamo que la validación cruzada bajó no puede reaparecer como
