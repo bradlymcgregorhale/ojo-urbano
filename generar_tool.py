@@ -8,7 +8,9 @@ from pathlib import Path
 
 import sys
 OJO = Path(__file__).resolve().parent
-REV = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("/Users/bradlyhale/Documents/GitHub/bacollab-vision/revision_humana_200")
+if len(sys.argv) < 2:
+    raise SystemExit("uso: generar_tool.py <carpeta_revision> [sufijo]")
+REV = Path(sys.argv[1])
 
 cats_info = json.load(open(OJO / "categorias.json"))
 canon = json.load(open(REV / "categorias_modelo.json"))
