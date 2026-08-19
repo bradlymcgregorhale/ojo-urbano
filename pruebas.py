@@ -2297,10 +2297,23 @@ check("  el chevrón identifica pero SOLO no alcanza",
 check("  y no discrimina subtipo",
       "NO dice el subtipo" in V._RUBRICA)
 check("  subtipo del recortado: pared plana gris sin poste -> bilateral",
-      "pared PLANA vertical gris CLARO de aristas rectas sin poste a la vista -> bilateral" in V._RUBRICA
-      and "cuerpo REDONDEADO o panzón (de cualquier color)" in V._RUBRICA)
+      "pared PLANA vertical GRIS (cualquier tono) de aristas rectas sin poste a la vista -> bilateral" in V._RUBRICA
+      and "cuerpo REDONDEADO o panzón negro, azul u oliva" in V._RUBRICA)
 check("  la entrada lateral advierte contra votar lateral por el color",
-      "NO lo reportes lateral por el color" in V._RUBRICA)
+      "TODO contenedor de húmedos GRIS (cualquier tono, claro u oscuro) es BILATERAL" in V._RUBRICA
+      and '"Oscuro" por sí solo NO es señal de lateral' in V._RUBRICA)
+# Ronda 6 #14: gris es regla DOMINANTE — ni forma ni postes/barras lo hacen lateral (V055, V092)
+check("  gris de cualquier tono es bilateral, sin excepción (r6 #14)",
+      "el GRIS de cualquier tono NO es lateral: es bilateral" in V._RUBRICA
+      and "tampoco existe un lateral gris" in V._RUBRICA
+      and "en el gris el subtipo NO depende de los postes" in V._RUBRICA)
+# Ronda 6 #16: barrido no se dispara con un contenedor CERCANO al foco (V047, V093)
+check("  barrido no se reporta con un contenedor cercano al foco (r6 #16)",
+      "NUNCA reportes barrido por residuos domiciliarios junto a un contenedor municipal visible y CERCANO al foco" in V._RUBRICA)
+# Ronda 6 #17: losa/baldosón removido y vallas descartadas son voluminosos; de pie = obstruccion (V062, V085)
+check("  losa/baldosón removido y vallas descartadas son voluminosos (r6 #17)",
+      "LOSA/LOSETA o BALDOSÓN grande de hormigón o cerámica claramente REMOVIDO" in V._RUBRICA
+      and "VALLAS o CABALLETES de obra de madera DESCARTADOS" in V._RUBRICA)
 check("  pero el negro decide: negro es siempre lateral, nunca bilateral",
       "NEGRO es SIEMPRE lateral" in V._RUBRICA
       and "no existe un bilateral negro ni azul" in V._RUBRICA
@@ -2314,7 +2327,7 @@ check("  la proporción delata al impostor: angosto y vertical no es municipal",
 check("  la forma decide sola: redondeado es lateral aunque no se vean postes",
       "LA FORMA ES LA DE LAS PAREDES, NO LA DEL TECHO" in V._RUBRICA
       and "postes queden OCULTOS detrás del cuerpo" in V._RUBRICA
-      and "paredes planas + techo curvo + gris claro = bilateral" in V._RUBRICA
+      and "paredes planas + techo curvo + gris = bilateral" in V._RUBRICA
       and "si las paredes no se ven, NO decidas por forma" in V._RUBRICA)
 check("  el verde oscuro no es un secos ni se duplica",
       "VERDE BRILLANTE" in V._RUBRICA
