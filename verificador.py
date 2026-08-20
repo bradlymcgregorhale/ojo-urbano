@@ -389,10 +389,45 @@ def calidad_foto(img):
     }
 
 
+# --- Costo de las llamadas a OpenRouter, por foto -------------------------
+# _llamar es el ÚNICO punto por donde salen los pedidos a OpenRouter, así que
+# sumamos acá el costo que devuelve (usage.cost, en USD) cuando pedimos
+# usage.include. El acumulador es global y asume UNA foto a la vez
+# (CONCURRENCIA=1, el default de prod): reset al empezar la foto, total al
+# cerrarla. Con más concurrencia se mezclarían los costos de fotos distintas.
+_costo_lock = threading.Lock()
+_costo = {"usd": 0.0, "llamadas": 0, "activo": False}
+
+
+def costo_reset():
+    """Arranca el acumulador de costo de OpenRouter para una foto."""
+    with _costo_lock:
+        _costo.update(usd=0.0, llamadas=0, activo=True)
+
+
+def costo_total():
+    """Cierra el acumulador y devuelve el costo en USD de la foto."""
+    with _costo_lock:
+        _costo["activo"] = False
+        return round(_costo["usd"], 6)
+
+
+def _costo_sumar(usage):
+    if not isinstance(usage, dict):
+        return
+    c = usage.get("cost")
+    with _costo_lock:
+        if _costo["activo"] and isinstance(c, (int, float)):
+            _costo["usd"] += float(c)
+            _costo["llamadas"] += 1
+
+
 def _llamar(modelo, mensajes, max_tokens=6000, intentos=3):
     # reasoning effort bajo: los modelos razonadores (Kimi) pueden gastar todo
     # el presupuesto pensando y devolver el JSON vacío (finish_reason=length)
     cuerpo = {"model": modelo, "max_tokens": max_tokens,
+              # Pide a OpenRouter el costo real de la llamada (usage.cost, USD).
+              "usage": {"include": True},
               "reasoning": {"effort": "low"},
               # Sin esto se sampleaba a la temperatura default del proveedor
               # (típicamente 1). Fijarlo en 0 ayuda pero no alcanza: ver #7.
@@ -420,6 +455,7 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3):
             break
         try:
             data = _pedir_http(req, min(TIMEOUT, resto), vence)
+            _costo_sumar(data.get("usage"))
             msg = data["choices"][0]["message"]
             # algunos modelos razonadores dejan el JSON en "reasoning"
             contenido = msg.get("content") or msg.get("reasoning") or ""

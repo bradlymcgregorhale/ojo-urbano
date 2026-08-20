@@ -519,6 +519,7 @@ def _calidad_segura(img):
 
 def procesar(datos, contexto, verificar):
     """Pipeline completo y sincrónico. Corre fuera del event loop."""
+    verificador.costo_reset()
     img = _abrir_imagen(datos)
     local = clasificar_local(img)
     activar = (verificador.disponible() if verificar == "auto"
@@ -788,6 +789,9 @@ def procesar(datos, contexto, verificar):
     gravedades = [c["gravedad"] for c in problemas if c.get("gravedad")]
     salida = {
         "version": VERSION_API,
+        # Costo real en USD de las llamadas a OpenRouter de esta foto (0 si no
+        # hubo verificación). _publica() lo deja pasar como campo aditivo.
+        "costo_api": verificador.costo_total(),
         # Sobre el objeto INTERNO. _publica() recalcula los dos sobre lo que
         # queda visible después de filtrar lo solo-local, y ahí valen las
         # invariantes del contrato: hay_problema == bool(problemas) y
@@ -1517,6 +1521,7 @@ PAGINA = r"""<!DOCTYPE html>
   .ctxeco b{color:var(--ink)}
   .tarres{display:flex;flex-direction:column;gap:8px}
   .tarconcl{font-size:13.5px;font-weight:600}
+  .tarcosto{font-size:11.5px;color:var(--muted);margin-top:2px}
   .minicats{display:flex;flex-wrap:wrap;gap:6px}
   .minicat{border:1px solid var(--line2);border-radius:6px;background:var(--soft);padding:4px 9px;font-size:12px}
   .minicat b{display:block;font-size:12.5px}
@@ -2055,6 +2060,8 @@ function renderResultado(d){
     :d.hay_reclamo?'Reclamo por texto, sin confirmación en la foto'
     :'Sin problemas confirmados';
   let h=`<div class="tarconcl">${esc(concl+aviso)}</div>`;
+  if(typeof d.costo_api==='number'&&d.costo_api>0)
+    h+=`<div class="tarcosto">Costo de procesamiento (API): US$${d.costo_api.toFixed(4)}</div>`;
   if(probs.length)h+='<div class="minicats">'+probs.map(c=>
     `<div class="minicat"><b>${esc(c.nombre)}</b><span>${c.gravedad?c.gravedad+'/5':''}`+
     `${c.fuentes?' · '+c.fuentes+(c.fuentes===1?' fuente':' fuentes'):''}${c.patente?' · patente '+esc(c.patente):''}</span></div>`).join('')+'</div>';
