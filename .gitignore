@@ -7,9 +7,11 @@ __pycache__/
 
 fotos_cache/
 
-# Historia y notas del proyecto: LOCAL, nunca se commitea (contiene análisis,
-# operaciones y contexto interno). Ver CLAUDE.md / AGENTS.md.
+# Instrucciones y memoria de trabajo del proyecto: LOCAL, nunca se commitea.
+# Los agentes (Claude, codex) los leen del disco igual, tracked o no.
 HISTORY.md
+CLAUDE.md
+AGENTS.md
 
 # Shards intermedios de los harness; lo consolidado vive en eval/datos/
 eval/harness/estabilidad-*.jsonl
