@@ -11,6 +11,7 @@ el código real.
 Necesita fastapi, uvicorn, pillow y numpy; no necesita torch ni scikit-learn
 ni clave de OpenRouter.
 """
+import inspect
 import io
 import json
 import os
@@ -2307,6 +2308,56 @@ check("  gris de cualquier tono es bilateral, sin excepción (r6 #14)",
       "el GRIS de cualquier tono NO es lateral: es bilateral" in V._RUBRICA
       and "tampoco existe un lateral gris" in V._RUBRICA
       and "en el gris el subtipo NO depende de los postes" in V._RUBRICA)
+# #24: #14 actualizó la rúbrica y DESCRIPTOR_CONTENEDOR, pero no los satélites
+# que los VLM llenan ANTES de votar. Un bilateral gris de noche se publicó
+# como lateral (luna: "negro de paredes redondeadas"). Una sola constante
+# tiene que aparecer en el chequeo forzado y en la segunda mirada; los
+# fragmentos viejos no pueden volver a ninguna superficie VLM.
+check("  la regla de subtipo es una sola constante (#24)",
+      V.REGLA_SUBTIPO_HUMEDOS in V._RUBRICA
+      and V.REGLA_SUBTIPO_HUMEDOS in V._PROMPT_SEGUNDA_MIRADA_SUBTIPO
+      and "Gris de noche sigue siendo gris" in V.REGLA_SUBTIPO_HUMEDOS)
+_VIEJOS_LATERAL = (
+    "negro, azul, gris oscuro",
+    "gris CLARO parejo",
+    "gris claro bilateral",
+    "GRIS CLARO de paredes planas, sin postes",
+    "color oscuro (incluido el verde oscuro) -> lateral",
+    "cajón gris CLARO",
+    "el gris oscuro o en sombra no decide",
+    "(oscuro, con postes",
+    "(gris claro, sin postes)",
+)
+_superficies = "\n".join([
+    V._RUBRICA,
+    V._PROMPT_SEGUNDA_MIRADA_SUBTIPO,
+    V._PROMPT_SEGUNDA_MIRADA_PRESENCIA,
+    V.DESCRIPTOR_CONTENEDOR["contenedor_humedos_lateral"],
+    V.DESCRIPTOR_CONTENEDOR["contenedor_humedos_bilateral"],
+    inspect.getsource(V.verificar),
+    CATS["contenedor_humedos_lateral"]["nombre"],
+    CATS["contenedor_humedos_bilateral"]["nombre"],
+])
+_fugas = [s for s in _VIEJOS_LATERAL if s in _superficies]
+check("  ninguna superficie VLM reintroduce el gris oscuro como lateral (#24)",
+      not _fugas, str(_fugas))
+check("  el descriptor canónico no exige paredes planas ni 'sin postes' (#24)",
+      "sin postes" not in V.DESCRIPTOR_CONTENEDOR["contenedor_humedos_bilateral"]
+      and "paredes planas" not in V.DESCRIPTOR_CONTENEDOR["contenedor_humedos_bilateral"]
+      and "nunca gris" in V.DESCRIPTOR_CONTENEDOR["contenedor_humedos_lateral"]
+      and "cualquier tono" in V.DESCRIPTOR_CONTENEDOR["contenedor_humedos_bilateral"])
+_src_ver = inspect.getsource(V.verificar)
+check("  verificar usa DESCRIPTOR_CONTENEDOR, no un dict duplicado (#24)",
+      "_desc_cont =" not in _src_ver
+      and "DESCRIPTOR_CONTENEDOR" in _src_ver)
+check("  los nombres públicos no sesgan el color (#24)",
+      CATS["contenedor_humedos_lateral"]["nombre"]
+      == "Contenedor de húmedos, carga lateral"
+      and CATS["contenedor_humedos_bilateral"]["nombre"]
+      == "Contenedor de húmedos, carga bilateral")
+check("  la presencia genérica enumera gris de cualquier tono, no gris claro",
+      "gris de cualquier tono de húmedos bilaterales" in V._PROMPT_SEGUNDA_MIRADA_PRESENCIA
+      and "gris claro bilateral" not in V._PROMPT_SEGUNDA_MIRADA_PRESENCIA)
 # Ronda 6 #16: barrido no se dispara con un contenedor CERCANO al foco (V047, V093)
 check("  barrido no se reporta con un contenedor cercano al foco (r6 #16)",
       "NUNCA reportes barrido por residuos domiciliarios junto a un contenedor municipal visible y CERCANO al foco" in V._RUBRICA)
@@ -4185,6 +4236,36 @@ _v = _correr_sub("contenedor_humedos_bilateral", 0.4, 0.3)
 check("  local ambivalente: manda el voto de los VLM",
       "contenedor_humedos_bilateral" in _v
       and "contenedor_humedos_lateral" not in _v, str(sorted(_v)))
+# #24: una sentinela en DESCRIPTOR_CONTENEDOR tiene que llegar al prompt
+# (el dict duplicado _desc_cont era el que no se actualizaba en #14).
+_orig_bil = V.DESCRIPTOR_CONTENEDOR["contenedor_humedos_bilateral"]
+V.DESCRIPTOR_CONTENEDOR["contenedor_humedos_bilateral"] = "SENTINELA_BILATERAL_XYZ"
+_seen_txt = []
+
+
+def _llamar_sent(modelo, mensajes, **k):
+    blob = json.dumps(mensajes, ensure_ascii=False)
+    _seen_txt.append(blob)
+    if "SENTINELA_BILATERAL_XYZ" in blob:
+        return json.dumps({"veredicto": "no_se_distingue",
+                           "ubicacion": None, "evidencia": "no se ve"})
+    if modelo == "b/uno":
+        return _resp_b([{"key": "contenedor_humedos_bilateral", "gravedad": 1,
+                         "evidencia": "contenedor gris"}], "Un contenedor.")
+    return _resp_b([], "Nada.")
+
+
+V._llamar = _llamar_sent
+try:
+    V.verificar(_Img(), CATS, {"predichas": [], "probabilidades": [
+        {"key": "contenedor_humedos_bilateral", "nombre": "B", "score": 0.01},
+        {"key": "contenedor_humedos_lateral", "nombre": "L", "score": 0.01}],
+        "gravedad": {"value": 2, "raw": 2.0}}, "")
+    check("  una sentinela en DESCRIPTOR_CONTENEDOR viaja al prompt (#24)",
+          any("SENTINELA_BILATERAL_XYZ" in t for t in _seen_txt),
+          str(len(_seen_txt)))
+finally:
+    V.DESCRIPTOR_CONTENEDOR["contenedor_humedos_bilateral"] = _orig_bil
 
 (V.VERIFICADORES, V.ARBITRO, V.CONSENSO_VLM_SOLO, V._llamar,
  V.SEGUNDA_MIRADA_BASE, V.SEGUNDA_MIRADA_ESCOMBROS) = _prev_b

@@ -48,11 +48,11 @@
     "grupo": "Contenedores"
   },
   "contenedor_humedos_lateral": {
-    "nombre": "Contenedor de húmedos, carga lateral (oscuro, con postes de izado)",
+    "nombre": "Contenedor de húmedos, carga lateral",
     "grupo": "Contenedores"
   },
   "contenedor_humedos_bilateral": {
-    "nombre": "Contenedor de húmedos, carga bilateral (gris claro, sin postes)",
+    "nombre": "Contenedor de húmedos, carga bilateral",
     "grupo": "Contenedores"
   },
   "contenedor_secos": {

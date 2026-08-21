@@ -210,10 +210,21 @@ CALIDAD_LADO_PISO = int(os.environ.get("CALIDAD_LADO_PISO", "400"))
 DESCRIPTOR_CONTENEDOR = {
     "contenedor_secos": "VERDE de reciclables",
     "contenedor_humedos_lateral":
-        "de cuerpo REDONDEADO o panzón (negro, azul u oliva; el gris NO), del "
-        "tipo con postes metálicos de izado aunque los postes no se vean",
-    "contenedor_humedos_bilateral": "GRIS de cualquier tono, de paredes planas, sin postes",
+        "de húmedos NEGRO, AZUL o VERDE OSCURO/OLIVA (nunca gris)",
+    "contenedor_humedos_bilateral":
+        "de húmedos GRIS de cualquier tono (siempre bilateral, aunque tenga "
+        "barras o parezca panzón)",
 }
+# Una sola copia de la regla de subtipo. Va literal en la rúbrica (chequeo
+# forzado) y en la segunda mirada: si se edita acá y no allá, el test de
+# inclusión falla. Noche/sombra solo acá, que es donde se decide el subtipo.
+REGLA_SUBTIPO_HUMEDOS = (
+    "REGLA DOMINANTE: todo contenedor de húmedos con cuerpo GRIS es BILATERAL, "
+    "cualquiera sea el tono, incluido gris oscuro, sucio o en sombra. Ni postes "
+    "o barras ni paredes panzonas lo convierten en lateral. Gris de noche sigue "
+    "siendo gris; un NEGRO DE VERDAD se ve negro también donde le pega la luz. "
+    "Un cuerpo NEGRO, AZUL o VERDE OSCURO/OLIVA es LATERAL."
+)
 try:
     REPREGUNTA_MAX = max(0, int(os.environ.get("REPREGUNTA_MAX", "2")))
 except ValueError:
@@ -710,7 +721,7 @@ _RUBRICA_KEYS = {
     "acopio_recuperadores", "mayor_iluminacion",
 }
 
-_RUBRICA = """Sos un verificador experto de reportes de incidencias en la vía pública: higiene urbana, contenedores y cestos, infraestructura, vehículos en infracción y ocupación del espacio público. Mirá TODA la foto de borde a borde, incluido el primer plano y los laterales. Antes de responder, separá mentalmente la basura común de cada objeto grande o rígido: encontrar bolsas y cartones NO termina el análisis ni convierte en basura común los voluminosos que haya mezclados. Prestá especial atención a alfombras o tapetes grandes descartados, muebles o partes de muebles, cajones de madera y otros objetos voluminosos delante, al lado o APOYADOS ARRIBA de un contenedor: mirá también la parte SUPERIOR de los contenedores y lo que asoma por sus bocas, que es una zona que suele quedar sin revisar. Y el mismo cuidado con los ESCOMBROS: en cuanto haya bolsas o sacos en la escena, recorrelos UNO POR UNO buscando las señales de escombros embolsados que se detallan abajo ANTES de cerrar la categoría; encontrar la categoría dominante (por ejemplo recoleccion por las bolsas de basura) nunca termina el análisis, porque en las escenas mixtas lo minoritario (tres sacos de cascote entre veinte bolsas comunes, una tabla de madera, un bidón) es exactamente lo que más se pierde. La foto puede ser de noche u oscura; prestá también atención a vehículos detenidos sobre ciclovías, veredas o rampas. La foto también puede estar ROTADA o de costado (el celular la guardó girada 90°): un contenedor u objeto puede verse "acostado" en el encuadre estando vertical en la realidad, así que juzgá las FORMAS (paredes planas vs panzonas, montantes verticales, boca de carga) imaginando la escena bien orientada, no por cómo cae en el marco. Recorré además el PLANO DEL PISO: las baldosas faltantes, hundidas o levantadas tienen poco contraste y se esconden entre hojas y sombras; buscá interrupciones en la trama de las baldosas (contrapiso o tierra a la vista, juntas que desaparecen, un sector hundido donde se juntan las hojas).
+_RUBRICA = ("""Sos un verificador experto de reportes de incidencias en la vía pública: higiene urbana, contenedores y cestos, infraestructura, vehículos en infracción y ocupación del espacio público. Mirá TODA la foto de borde a borde, incluido el primer plano y los laterales. Antes de responder, separá mentalmente la basura común de cada objeto grande o rígido: encontrar bolsas y cartones NO termina el análisis ni convierte en basura común los voluminosos que haya mezclados. Prestá especial atención a alfombras o tapetes grandes descartados, muebles o partes de muebles, cajones de madera y otros objetos voluminosos delante, al lado o APOYADOS ARRIBA de un contenedor: mirá también la parte SUPERIOR de los contenedores y lo que asoma por sus bocas, que es una zona que suele quedar sin revisar. Y el mismo cuidado con los ESCOMBROS: en cuanto haya bolsas o sacos en la escena, recorrelos UNO POR UNO buscando las señales de escombros embolsados que se detallan abajo ANTES de cerrar la categoría; encontrar la categoría dominante (por ejemplo recoleccion por las bolsas de basura) nunca termina el análisis, porque en las escenas mixtas lo minoritario (tres sacos de cascote entre veinte bolsas comunes, una tabla de madera, un bidón) es exactamente lo que más se pierde. La foto puede ser de noche u oscura; prestá también atención a vehículos detenidos sobre ciclovías, veredas o rampas. La foto también puede estar ROTADA o de costado (el celular la guardó girada 90°): un contenedor u objeto puede verse "acostado" en el encuadre estando vertical en la realidad, así que juzgá las FORMAS (paredes planas vs panzonas, montantes verticales, boca de carga) imaginando la escena bien orientada, no por cómo cae en el marco. Recorré además el PLANO DEL PISO: las baldosas faltantes, hundidas o levantadas tienen poco contraste y se esconden entre hojas y sombras; buscá interrupciones en la trama de las baldosas (contrapiso o tierra a la vista, juntas que desaparecen, un sector hundido donde se juntan las hojas).
 
 REGLA GENERAL DEL ESPACIO PÚBLICO: solo se reporta lo que está en la VÍA PÚBLICA — la vereda (la franja entre la LÍNEA DE EDIFICACIÓN y el cordón), el cordón y la calzada. Todo lo que está DETRÁS de la línea de edificación es propiedad privada y NO se reporta, por más material que haya y por más que parezca descarte: cosas adentro de un LOTE, predio, patio, jardín, garage o retiro delantero; en el playón o el depósito de un comercio; en un CORRALÓN o depósito de materiales (los pallets, tablas, hierros y mercadería apilados EN SU PROPIO PREDIO, junto a los camiones y el movimiento del negocio, son STOCK en uso, no voluminosos descartados); o detrás de una REJA, un cerco, un portón, un muro o una baranda que separa la propiedad de la vereda. ANTES de reportar una pila o un objeto, ubicá el cordón y la línea de edificación y confirmá que está del lado de la vereda: si está del OTRO lado de la línea (en el predio, en el playón, detrás de la reja o el portón), es privado y la escena va a sin_problema. Ante la duda entre "sobre la vereda" y "adentro del predio" — sobre todo con pallets, tablas o mercadería apilada de forma ordenada junto a un local, depósito o corralón — NO lo reportes: exigimos ver el material CLARAMENTE sobre la vía pública. Esto NO recorta los reportes legítimos: la basura, los muebles o los escombros dejados SOBRE la vereda o el cordón, del lado de AFUERA de la línea de edificación, se reportan normalmente.
 
@@ -790,11 +801,13 @@ GRAVEDAD (1 a 5): mide la URGENCIA OPERATIVA, o sea qué respuesta necesita lo q
 - CONTEXTO VECINAL Y GRAVEDAD: la foto fija la gravedad. El texto del vecino la puede mover un solo nivel (+1 o -1) y NUNCA la puede llevar a 5. Sube +1 solo si aporta un dato concreto y verosímil que la foto no puede mostrar: hace cuánto que está, que se repite todas las noches, olor, ratas o plagas, personas vulnerables. Los adjetivos e intensificadores ("enorme", "un desastre", "urgentísimo", "peligrosísimo") NO mueven nada: son esperables y no son evidencia. Baja -1 si el texto aclara algo compatible con la foto que baja la prioridad ("ya lo están retirando"). Si el texto contradice la foto, ignoralo.
 - Si no hay ningún problema, devolvé sin_problema en true, aunque reportes claves [PRESENCIA] por contenedores visibles sanos: una calle limpia con un contenedor parado y en buen estado sigue siendo sin_problema true. Un contenedor volcado, roto o desbordado sí ES un problema.
 
-- El campo "revision_contenedor" es tu chequeo obligado del contenedor de húmedos, ANTES de votar el subtipo. Si hay un contenedor de húmedos en la escena, anotá en una frase: postes de izado (sí / no / ocultos por el ángulo), forma de las PAREDES, no del techo (paredes panzonas / paredes planas / paredes no visibles), color (negro / azul / gris oscuro / verde oscuro u oliva / gris claro), y el subtipo que se deduce: postes a la vista, o paredes panzonas, o color oscuro (incluido el verde oscuro) -> lateral; cajón gris CLARO de paredes planas y aristas rectas sin postes -> bilateral. Si no hay contenedor de húmedos, escribí "sin contenedor de húmedos". Sé coherente: el subtipo que votes en "categorias" tiene que ser EL DE ESTE CHEQUEO, no una impresión suelta.
+- El campo "revision_contenedor" es tu chequeo obligado del contenedor de húmedos, ANTES de votar el subtipo. Si hay uno, anotá el color del CUERPO (gris de cualquier tono / negro / azul / verde oscuro u oliva / no distinguible), la forma de las PAREDES, no del techo (panzonas / planas / no visibles), y los postes de izado (sí / no / ocultos). """
+    + REGLA_SUBTIPO_HUMEDOS
+    + """ Solo si no podés distinguir negro de gris por la noche o la sombra, usá paredes y postes para desempatar: postes verticales o paredes panzonas indican lateral; paredes planas con aristas rectas indican bilateral. El techo abovedado no decide. Si sigue ambiguo, no votes subtipo. Si no hay contenedor de húmedos, escribí "sin contenedor de húmedos". Sé coherente: el subtipo que votes en "categorias" tiene que ser EL DE ESTE CHEQUEO, no una impresión suelta.
 - El campo "revision_bolsas" va PRIMERO y es tu pasada obligada bolsa por bolsa, ANTES de decidir las categorías. Si hay bolsas o sacos en la escena, anotá en una frase corta cuántos grupos hay y su porte, y si alguno muestra señales de escombros (porte denso y medio lleno, sacos de rafia/arpillera, aristas marcadas en el plástico, polvo de obra alrededor, material de obra a la vista por bocas o roturas). Si ninguno las muestra, escribí "bolsas comunes, sin señales de escombros". Si no hay bolsas, "sin bolsas". Sé coherente: si acá anotás evidencia directa o DOS señales independientes en algún grupo, retiro_escombros tiene que aparecer en "categorias"; si anotás una sola señal o ninguna, no.
 
 Respondé SOLO con JSON válido, sin texto adicional ni markdown:
-{"revision_bolsas": "pasada bolsa por bolsa: qué grupos hay y qué señales tienen", "revision_contenedor": "postes/forma/color -> subtipo, o sin contenedor de húmedos", "categorias": [{"key": "...", "gravedad": 1-5, "evidencia": "qué se ve, máx 10 palabras"}], "sin_problema": true|false, "descripcion": "1-2 frases sobre qué se ve en la foto"}"""
+{"revision_bolsas": "pasada bolsa por bolsa: qué grupos hay y qué señales tienen", "revision_contenedor": "color/forma/postes: subtipo, o sin contenedor de húmedos", "categorias": [{"key": "...", "gravedad": 1-5, "evidencia": "qué se ve, máx 10 palabras"}], "sin_problema": true|false, "descripcion": "1-2 frases sobre qué se ve en la foto"}""")
 
 
 def _si_o_no(v):
@@ -1146,12 +1159,22 @@ def _segunda_mirada_volcado(img):
     return volcado, parado, fallo
 
 
-_PROMPT_SEGUNDA_MIRADA_SUBTIPO = """Auditás UNA sola cosa en esta foto: de qué TIPO es el contenedor de húmedos (el de basura común, no el verde de reciclables). Usá esta lista de señales, en orden:
-1. POSTES o montantes metálicos VERTICALES en los costados: si se ven, es "lateral". Es la señal más fuerte.
-2. PAREDES del cuerpo: curvas y panzonas (se abomban) -> "lateral"; PLANAS verticales con aristas rectas -> "bilateral". OJO: el techo curvo abovedado NO cuenta, es propio del bilateral; mirá las paredes, no el techo.
-3. COLOR del cuerpo: negro, azul o verde oscuro -> "lateral"; gris CLARO parejo -> "bilateral". El gris oscuro o en sombra no decide.
-Si el contenedor está tapado, recortado o las señales se contradicen y no llegás a decidir: "no_se_distingue" (respuesta correcta y frecuente).
-Respondé SOLO con JSON válido: {"veredicto": "lateral" | "bilateral" | "no_se_distingue", "evidencia": "qué señales viste, máx 15 palabras"}"""
+_PROMPT_SEGUNDA_MIRADA_SUBTIPO = (
+    "Auditás UNA sola cosa en esta foto: de qué TIPO es el contenedor de "
+    "húmedos (el de basura común, no el verde de reciclables).\n"
+    + REGLA_SUBTIPO_HUMEDOS
+    + "\nSolo si no podés distinguir negro de gris por la noche, la sombra o "
+    "una oclusión, usá estas señales para desempatar: postes o montantes "
+    "metálicos verticales, o paredes curvas y panzonas, indican \"lateral\"; "
+    "paredes planas verticales con aristas rectas indican \"bilateral\". "
+    "Estas señales nunca anulan un cuerpo que sí se ve gris. Mirá las "
+    "PAREDES, no el techo: el techo curvo o abovedado no decide.\n"
+    "Si el cuerpo no se distingue o las señales siguen siendo ambiguas, "
+    "respondé \"no_se_distingue\".\n"
+    "Respondé SOLO con JSON válido: {\"veredicto\": \"lateral\" | "
+    "\"bilateral\" | \"no_se_distingue\", \"evidencia\": \"qué señales "
+    "viste, máx 15 palabras\"}"
+)
 
 
 def _segunda_mirada_subtipo(img):
@@ -1502,7 +1525,7 @@ IMPORTANTE: este reporte manda un camión a vaciar; si llega y el contenedor no 
 Respondé SOLO con JSON válido: {"veredicto": "rebalsa_visible" | "no_se_ve_lleno" | "indeterminado", "evidencia": "qué viste, máx 15 palabras"}"""
 
 
-_PROMPT_SEGUNDA_MIRADA_PRESENCIA = """Auditás UNA sola cosa en esta foto: si hay algún CONTENEDOR MUNICIPAL de basura o reciclables (los grandes de la Ciudad: el negro/oscuro de húmedos, el gris claro bilateral, o el verde de reciclables). Decidí:
+_PROMPT_SEGUNDA_MIRADA_PRESENCIA = """Auditás UNA sola cosa en esta foto: si hay algún CONTENEDOR MUNICIPAL de basura o reciclables (los grandes de la Ciudad: negro, azul o verde oscuro/oliva de húmedos laterales; gris de cualquier tono de húmedos bilaterales; o verde brillante de reciclables). Decidí:
 - "presente": SOLO si LO VES de verdad y podés decir DÓNDE está en el encuadre y de qué tipo o color es. Cuenta también recortado por el borde si se ve CUERPO de contenedor.
 - "ausente": la escena se ve bien y NO hay ningún contenedor municipal. Los tachos particulares, cestos papeleros, volquetes de obra, autos y cajas NO son contenedores municipales. LA PROPORCIÓN DECIDE: el contenedor municipal es ANCHO (unos dos metros, más ancho que alto); un tacho ANGOSTO y vertical, más alto que ancho, del ancho de una persona, NO lo es, por más negro o grande que se vea.
 - "no_se_distingue": la foto no permite decidir (oscuridad, distancia, encuadre).
@@ -2857,23 +2880,17 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                 if len(_vlm) == 1:
                     pendientes.append((_k, "", _vlm[0], False))
         # La pregunta de presencia lleva SIEMPRE el descriptor canónico del
-        # subtipo: un "presente" tiene que atestiguar ESE contenedor (negro
-        # con postes / gris claro sin postes / verde), no "un contenedor"
+        # subtipo: un "presente" tiene que atestiguar ESE contenedor (negro/
+        # azul/oliva vs gris de cualquier tono vs verde), no "un contenedor"
         # genérico que lavaría el subtipo del único votante (hallazgo de
-        # codex).
-        _desc_cont = {
-            "contenedor_secos": "VERDE de reciclables",
-            "contenedor_humedos_lateral":
-                "de cuerpo REDONDEADO o panzón (negro, azul, gris oscuro u "
-                "oliva), del tipo con postes metálicos de izado aunque los "
-                "postes no se vean",
-            "contenedor_humedos_bilateral":
-                "GRIS CLARO de paredes planas, sin postes",
-        }
+        # codex). Una sola copia: DESCRIPTOR_CONTENEDOR. El dict duplicado
+        # `_desc_cont` quedó con el texto pre-#14 (gris oscuro = lateral) y
+        # volvió a publicar un bilateral nocturno como lateral.
         for k in sorted(presencia_dudosa & CONTENEDOR_KEYS):
             vlm_p = [f for f in fuentes.get(k, []) if f != "modelo_local"]
-            if len(vlm_p) == 1 and k in _desc_cont:
-                objeto = ("un contenedor municipal de basura " + _desc_cont[k]
+            if len(vlm_p) == 1 and k in DESCRIPTOR_CONTENEDOR:
+                objeto = ("un contenedor municipal de basura "
+                          + DESCRIPTOR_CONTENEDOR[k]
                           + " (aunque sea recortado por el borde del encuadre)")
                 pendientes.append((k, objeto, vlm_p[0], False))
         # Una pendiente SIN jurado disponible no puede consumir uno de los dos
@@ -3517,7 +3534,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     _RASGOS_VETADOS = {
         "contenedor_secos": _rasgo_de_contenedor(r"verde\w*|de reciclabl\w*"),
         "contenedor_humedos_bilateral": _rasgo_de_contenedor(
-            r"bilateral\w*|gris claro"),
+            r"bilateral\w*|gris(?:\s+(?:claro|oscuro))?"),
         "contenedor_humedos_lateral": _rasgo_de_contenedor(
             r"lateral\w*|panzon\w*|redondead\w*"),
     }
