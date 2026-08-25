@@ -4287,6 +4287,69 @@ check("el pedregullo mezclado en la tierra del cantero no es escombros",
       "MEZCLADOS EN LA TIERRA de una cantera o cantero" in _rub_b
       and "unos fragmentos dispersos en la tierra no se reportan" in _rub_b)
 
+print("[paralelo] las pasadas dirigidas no esperan a cada modelo")
+_prev_par = (V.VERIFICADORES, V._llamar)
+V.VERIFICADORES = ["p/a", "p/b", "p/c"]
+
+
+def _slow_desborde(modelo, mensajes, **k):
+    time.sleep(0.30)
+    return json.dumps({"veredicto": "rebalsa_visible",
+                       "evidencia": "boca llena " + modelo})
+
+
+V._llamar = _slow_desborde
+_t0 = time.monotonic()
+_reb, _nol, _fallo = V._segunda_mirada_desborde(_Img())
+_tardo_par = time.monotonic() - _t0
+check("tres modelos en una pasada dirigida no suman sus tiempos",
+      _tardo_par < 0.70, f"{_tardo_par:.2f}s")
+check("  y juntan los tres votos en el orden de VERIFICADORES",
+      [m for m, _ in _reb] == ["p/a", "p/b", "p/c"] and not _fallo,
+      str([m for m, _ in _reb]))
+
+
+def _mixto(modelo, mensajes, **k):
+    if modelo == "p/b":
+        raise RuntimeError("boom")
+    return json.dumps({"veredicto": "rebalsa_visible",
+                       "evidencia": "boca llena " + modelo})
+
+
+V._llamar = _mixto
+_reb, _nol, _fallo = V._segunda_mirada_desborde(_Img())
+check("un modelo que explota no cancela a los otros",
+      [m for m, _ in _reb] == ["p/a", "p/c"] and _fallo is True,
+      str([m for m, _ in _reb]))
+
+check("_map_modelos de lista vacía no abre pool",
+      V._map_modelos([], lambda m: m) == [])
+
+V.VERIFICADORES = ["p/solo"]
+V._llamar = lambda modelo, mensajes, **k: json.dumps(
+    {"veredicto": "no_se_ve_lleno", "evidencia": "interior oscuro"})
+_reb, _nol, _fallo = V._segunda_mirada_desborde(_Img())
+check("un solo modelo sigue contestando sin pool",
+      not _reb and [m for m, _ in _nol] == ["p/solo"] and not _fallo)
+
+V.VERIFICADORES = ["p/a", "p/b", "p/c"]
+_llamados_esc = []
+
+
+def _track_esc(modelo, mensajes, **k):
+    _llamados_esc.append(modelo)
+    return json.dumps({"veredicto": "escombros",
+                       "evidencia": "cascote visible " + modelo})
+
+
+V._llamar = _track_esc
+_conf, _neg, _fe = V._segunda_mirada_escombros(_Img(), {"p/b"})
+check("escombros no re-pregunta a quien ya votó",
+      set(_llamados_esc) == {"p/a", "p/c"}
+      and [m for m, _ in _conf] == ["p/a", "p/c"] and not _fe,
+      str(_llamados_esc))
+V.VERIFICADORES, V._llamar = _prev_par
+
 print("[#R] rubrica: falsos positivos reportados en la revision de agosto")
 check("el saco cerrado sin contenido a la vista no es escombros",
       "un saco CERRADO cuyo contenido no se ve NO es evidencia directa" in _rub_b

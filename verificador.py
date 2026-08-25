@@ -479,6 +479,36 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3):
     raise ultimo
 
 
+# Marcador de un modelo que falló adentro de una pasada dirigida. Distinto de
+# None: varias pasadas usan None como "no contestó" y hay que poder
+# distinguirlo de "tiró una excepción".
+_FALLO_MODELO = object()
+
+
+def _map_modelos(modelos, fn):
+    """Aplica fn(modelo) en paralelo y conserva el orden de `modelos`.
+
+    Una excepción en un modelo no cancela a los demás: esa posición queda
+    _FALLO_MODELO, el mismo contrato que el `except Exception: fallo = True`
+    de las pasadas dirigidas cuando eran secuenciales. Un solo modelo no
+    abre un pool.
+    """
+    modelos = list(modelos)
+    if not modelos:
+        return []
+
+    def _uno(modelo):
+        try:
+            return fn(modelo)
+        except Exception:
+            return _FALLO_MODELO
+
+    if len(modelos) == 1:
+        return [_uno(modelos[0])]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(modelos)) as pool:
+        return list(pool.map(_uno, modelos))
+
+
 def _cortar_conexion(resp):
     """Desatasca una lectura bloqueada.
 
@@ -950,27 +980,30 @@ def _segunda_mirada_escombros(img, ya_reportaron):
     "indeterminado"; el listón para confirmar no se movió (sigue haciendo
     falta que alguien diga "escombros")."""
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+    pendientes = [m for m in VERIFICADORES if m not in ya_reportaron]
+
+    def _uno(modelo):
+        contenido = _llamar(modelo, [
+            {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA},
+            {"role": "user", "content": [
+                {"type": "text", "text": "La foto:"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]},
+        ], max_tokens=400)
+        v = _extraer_json(contenido)
+        return (str(v.get("veredicto", "")).strip().lower(),
+                _texto_limpio(v.get("evidencia"), EVID_MAX))
+
     confirmantes, negativas, fallo = [], [], False
-    for modelo in VERIFICADORES:
-        if modelo in ya_reportaron:
-            continue
-        try:
-            contenido = _llamar(modelo, [
-                {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "La foto:"},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ]},
-            ], max_tokens=400)
-            v = _extraer_json(contenido)
-            veredicto = str(v.get("veredicto", "")).strip().lower()
-            evidencia = _texto_limpio(v.get("evidencia"), EVID_MAX)
-            if veredicto == "escombros" and evidencia:
-                confirmantes.append((modelo, evidencia))
-            elif veredicto == "basura_comun" and evidencia:
-                negativas.append((modelo, evidencia))
-        except Exception:
+    for modelo, r in zip(pendientes, _map_modelos(pendientes, _uno)):
+        if r is _FALLO_MODELO:
             fallo = True
+            continue
+        veredicto, evidencia = r
+        if veredicto == "escombros" and evidencia:
+            confirmantes.append((modelo, evidencia))
+        elif veredicto == "basura_comun" and evidencia:
+            negativas.append((modelo, evidencia))
     return confirmantes, negativas, fallo
 
 
@@ -1043,41 +1076,44 @@ def _segunda_mirada_base(img):
     desautorizar al que votó, no solo sumar al que calló) y es anti sugestión:
     no se menciona qué votó nadie. Devuelve (base, descartado, fallo)."""
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+
+    def _uno(modelo):
+        contenido = _llamar(modelo, [
+            {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_BASE},
+            {"role": "user", "content": [
+                {"type": "text", "text": "La foto:"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]},
+        ], max_tokens=400)
+        return _extraer_json(contenido)
+
     base, descartado, fallo = [], [], False
-    for modelo in VERIFICADORES:
-        try:
-            contenido = _llamar(modelo, [
-                {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_BASE},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "La foto:"},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ]},
-            ], max_tokens=400)
-            v = _extraer_json(contenido)
-            veredicto = str(v.get("veredicto", "")).strip().lower()
-            evidencia = _texto_limpio(v.get("evidencia"), EVID_MAX)
-            # La compuerta de existencia es EXPLÍCITA: sin hay_estructura
-            # true el veredicto no cuenta. Medido: la pregunta original
-            # presuponía la estructura ("la que se ve en el piso") y dos
-            # modelos "encontraron" una base en una foto donde no había
-            # ninguna, promoviendo una reparación fantasma.
-            if v.get("hay_estructura") is not True:
-                continue
-            # La base de verdad viene con su escena: plataforma vacía Y
-            # contenedor corrido al lado. Un "base" sin esa firma no cuenta
-            # (tercer falso positivo de la promoción: restos oscuros de
-            # noche + contenedores apoyados normales = "base" sugerida, que
-            # además se llevaba puestos los voluminosos reales al retirar
-            # sus votos).
-            if (veredicto == "base_de_contenedor"
-                    and _si_o_no(v.get("contenedor_corrido")) is not True):
-                continue
-            if veredicto == "base_de_contenedor" and evidencia:
-                base.append((modelo, evidencia))
-            elif veredicto == "objeto_descartado" and evidencia:
-                descartado.append((modelo, evidencia))
-        except Exception:
+    for modelo, v in zip(VERIFICADORES, _map_modelos(VERIFICADORES, _uno)):
+        if v is _FALLO_MODELO:
             fallo = True
+            continue
+        veredicto = str(v.get("veredicto", "")).strip().lower()
+        evidencia = _texto_limpio(v.get("evidencia"), EVID_MAX)
+        # La compuerta de existencia es EXPLÍCITA: sin hay_estructura
+        # true el veredicto no cuenta. Medido: la pregunta original
+        # presuponía la estructura ("la que se ve en el piso") y dos
+        # modelos "encontraron" una base en una foto donde no había
+        # ninguna, promoviendo una reparación fantasma.
+        if v.get("hay_estructura") is not True:
+            continue
+        # La base de verdad viene con su escena: plataforma vacía Y
+        # contenedor corrido al lado. Un "base" sin esa firma no cuenta
+        # (tercer falso positivo de la promoción: restos oscuros de
+        # noche + contenedores apoyados normales = "base" sugerida, que
+        # además se llevaba puestos los voluminosos reales al retirar
+        # sus votos).
+        if (veredicto == "base_de_contenedor"
+                and _si_o_no(v.get("contenedor_corrido")) is not True):
+            continue
+        if veredicto == "base_de_contenedor" and evidencia:
+            base.append((modelo, evidencia))
+        elif veredicto == "objeto_descartado" and evidencia:
+            descartado.append((modelo, evidencia))
     return base, descartado, fallo
 
 
@@ -1100,29 +1136,33 @@ Respondé SOLO con JSON válido: {"veredicto": "con_postes" | "sin_postes" | "no
 def _segunda_mirada_postes(img):
     """¿Los postes que citó un testigo existen? Devuelve (con, sin, fallo)."""
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+
+    def _uno(modelo):
+        contenido = _llamar(modelo, [
+            {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_POSTES},
+            {"role": "user", "content": [
+                {"type": "text", "text": "La foto:"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]},
+        ], max_tokens=400)
+        v = _extraer_json(contenido)
+        return (str(v.get("veredicto", "")).strip().lower(),
+                _texto_limpio(v.get("evidencia"), EVID_MAX))
+
     con, sin, fallo = [], [], False
-    for modelo in VERIFICADORES:
-        try:
-            contenido = _llamar(modelo, [
-                {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_POSTES},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "La foto:"},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ]},
-            ], max_tokens=400)
-            v = _extraer_json(contenido)
-            veredicto = str(v.get("veredicto", "")).strip().lower()
-            evidencia = _texto_limpio(v.get("evidencia"), EVID_MAX)
-            # sin evidencia declarada el voto no cuenta, igual que en la
-            # pasada hermana del subtipo (hallazgo de fable)
-            if not evidencia:
-                continue
-            if veredicto == "con_postes":
-                con.append((modelo, evidencia))
-            elif veredicto == "sin_postes":
-                sin.append((modelo, evidencia))
-        except Exception:
+    for modelo, r in zip(VERIFICADORES, _map_modelos(VERIFICADORES, _uno)):
+        if r is _FALLO_MODELO:
             fallo = True
+            continue
+        veredicto, evidencia = r
+        # sin evidencia declarada el voto no cuenta, igual que en la
+        # pasada hermana del subtipo (hallazgo de fable)
+        if not evidencia:
+            continue
+        if veredicto == "con_postes":
+            con.append((modelo, evidencia))
+        elif veredicto == "sin_postes":
+            sin.append((modelo, evidencia))
     return con, sin, fallo
 
 
@@ -1137,25 +1177,29 @@ def _segunda_mirada_volcado(img):
     """Re-consulta dirigida por el volcado. Mismo esquema que la del daño:
     pregunta a TODOS los verificadores y puede desautorizar votos."""
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+
+    def _uno(modelo):
+        contenido = _llamar(modelo, [
+            {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_VOLCADO},
+            {"role": "user", "content": [
+                {"type": "text", "text": "La foto:"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]},
+        ], max_tokens=400)
+        v = _extraer_json(contenido)
+        return (str(v.get("veredicto", "")).strip().lower(),
+                _texto_limpio(v.get("evidencia"), EVID_MAX))
+
     volcado, parado, fallo = [], [], False
-    for modelo in VERIFICADORES:
-        try:
-            contenido = _llamar(modelo, [
-                {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_VOLCADO},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "La foto:"},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ]},
-            ], max_tokens=400)
-            v = _extraer_json(contenido)
-            veredicto = str(v.get("veredicto", "")).strip().lower()
-            evidencia = _texto_limpio(v.get("evidencia"), EVID_MAX)
-            if veredicto == "volcado" and evidencia:
-                volcado.append((modelo, evidencia))
-            elif veredicto == "parado" and evidencia:
-                parado.append((modelo, evidencia))
-        except Exception:
+    for modelo, r in zip(VERIFICADORES, _map_modelos(VERIFICADORES, _uno)):
+        if r is _FALLO_MODELO:
             fallo = True
+            continue
+        veredicto, evidencia = r
+        if veredicto == "volcado" and evidencia:
+            volcado.append((modelo, evidencia))
+        elif veredicto == "parado" and evidencia:
+            parado.append((modelo, evidencia))
     return volcado, parado, fallo
 
 
@@ -1184,25 +1228,29 @@ def _segunda_mirada_subtipo(img):
     pasada general decide el subtipo de pasada, entre 45 categorías; esta
     pregunta enfocada mira los postes y las paredes de verdad."""
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+
+    def _uno(modelo):
+        contenido = _llamar(modelo, [
+            {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_SUBTIPO},
+            {"role": "user", "content": [
+                {"type": "text", "text": "La foto:"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]},
+        ], max_tokens=400)
+        v = _extraer_json(contenido)
+        return (str(v.get("veredicto", "")).strip().lower(),
+                _texto_limpio(v.get("evidencia"), EVID_MAX))
+
     lateral, bilateral, fallo = [], [], False
-    for modelo in VERIFICADORES:
-        try:
-            contenido = _llamar(modelo, [
-                {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_SUBTIPO},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "La foto:"},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ]},
-            ], max_tokens=400)
-            v = _extraer_json(contenido)
-            veredicto = str(v.get("veredicto", "")).strip().lower()
-            evidencia = _texto_limpio(v.get("evidencia"), EVID_MAX)
-            if veredicto == "lateral" and evidencia:
-                lateral.append((modelo, evidencia))
-            elif veredicto == "bilateral" and evidencia:
-                bilateral.append((modelo, evidencia))
-        except Exception:
+    for modelo, r in zip(VERIFICADORES, _map_modelos(VERIFICADORES, _uno)):
+        if r is _FALLO_MODELO:
             fallo = True
+            continue
+        veredicto, evidencia = r
+        if veredicto == "lateral" and evidencia:
+            lateral.append((modelo, evidencia))
+        elif veredicto == "bilateral" and evidencia:
+            bilateral.append((modelo, evidencia))
     return lateral, bilateral, fallo
 
 
@@ -1211,25 +1259,29 @@ def _segunda_mirada_dano(img):
     base: pregunta a TODOS los verificadores y puede desautorizar votos.
     Devuelve (dano, sin_dano, fallo)."""
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+
+    def _uno(modelo):
+        contenido = _llamar(modelo, [
+            {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_DANO},
+            {"role": "user", "content": [
+                {"type": "text", "text": "La foto:"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]},
+        ], max_tokens=400)
+        v = _extraer_json(contenido)
+        return (str(v.get("veredicto", "")).strip().lower(),
+                _texto_limpio(v.get("evidencia"), EVID_MAX))
+
     dano, sin_dano, fallo = [], [], False
-    for modelo in VERIFICADORES:
-        try:
-            contenido = _llamar(modelo, [
-                {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_DANO},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "La foto:"},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ]},
-            ], max_tokens=400)
-            v = _extraer_json(contenido)
-            veredicto = str(v.get("veredicto", "")).strip().lower()
-            evidencia = _texto_limpio(v.get("evidencia"), EVID_MAX)
-            if veredicto == "uso_comprometido" and evidencia:
-                dano.append((modelo, evidencia))
-            elif veredicto == "usable" and evidencia:
-                sin_dano.append((modelo, evidencia))
-        except Exception:
+    for modelo, r in zip(VERIFICADORES, _map_modelos(VERIFICADORES, _uno)):
+        if r is _FALLO_MODELO:
             fallo = True
+            continue
+        veredicto, evidencia = r
+        if veredicto == "uso_comprometido" and evidencia:
+            dano.append((modelo, evidencia))
+        elif veredicto == "usable" and evidencia:
+            sin_dano.append((modelo, evidencia))
     return dano, sin_dano, fallo
 
 
@@ -1422,28 +1474,31 @@ def _pregunta_abierta(img, modelos):
     se parten.
     """
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+
+    def _uno(modelo):
+        contenido = _llamar(modelo, [
+            {"role": "system", "content": _PROMPT_PREGUNTA_ABIERTA},
+            {"role": "user", "content": [
+                {"type": "text", "text": "La foto:"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]},
+        ], max_tokens=400)
+        v = _extraer_json(contenido)
+        veredicto = str(v.get("veredicto", "")).strip().lower()
+        que_es = _texto_limpio(v.get("que_es"), EVID_MAX)
+        ubicacion = _texto_limpio(v.get("ubicacion"), EVID_MAX)
+        if veredicto == "identificado" and not (que_es and ubicacion):
+            veredicto = "no_identificable"
+        return {"modelo": modelo, "veredicto": veredicto,
+                "que_es": que_es, "ubicacion": ubicacion,
+                "evidencia": _texto_limpio(v.get("evidencia"), EVID_MAX)}
+
     resultados, fallo = [], False
-    for modelo in modelos:
-        try:
-            contenido = _llamar(modelo, [
-                {"role": "system", "content": _PROMPT_PREGUNTA_ABIERTA},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "La foto:"},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ]},
-            ], max_tokens=400)
-            v = _extraer_json(contenido)
-            veredicto = str(v.get("veredicto", "")).strip().lower()
-            que_es = _texto_limpio(v.get("que_es"), EVID_MAX)
-            ubicacion = _texto_limpio(v.get("ubicacion"), EVID_MAX)
-            if veredicto == "identificado" and not (que_es and ubicacion):
-                veredicto = "no_identificable"
-            resultados.append({"modelo": modelo, "veredicto": veredicto,
-                               "que_es": que_es, "ubicacion": ubicacion,
-                               "evidencia": _texto_limpio(v.get("evidencia"),
-                                                          EVID_MAX)})
-        except Exception:
+    for r in _map_modelos(modelos, _uno):
+        if r is _FALLO_MODELO:
             fallo = True
+            continue
+        resultados.append(r)
     return resultados, fallo
 
 
@@ -1479,32 +1534,36 @@ def _repregunta_objeto(img, objeto, modelos, con_estado):
         estado=_PROMPT_REPREGUNTA_ESTADO if con_estado else "",
         campo_estado=(', "estado": "descartado" | "en_uso" | "no_claro"'
                       if con_estado else ""))
+
+    def _uno(modelo):
+        contenido = _llamar(modelo, [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": [
+                {"type": "text",
+                 "text": "Objeto a buscar: «" + objeto + "»\nLa foto:"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]},
+        ], max_tokens=400)
+        v = _extraer_json(contenido)
+        veredicto = str(v.get("veredicto", "")).strip().lower()
+        ubicacion = _texto_limpio(v.get("ubicacion"), EVID_MAX)
+        if veredicto == "presente" and not ubicacion:
+            # sin ubicación no hay avistaje: se degrada a no-sé
+            veredicto = "no_se_distingue"
+        return {
+            "modelo": modelo, "veredicto": veredicto,
+            "ubicacion": ubicacion,
+            "estado": (str(v.get("estado") or "").strip().lower() or None)
+            if con_estado else None,
+            "evidencia": _texto_limpio(v.get("evidencia"), EVID_MAX),
+        }
+
     resultados, fallo = [], False
-    for modelo in modelos:
-        try:
-            contenido = _llamar(modelo, [
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": [
-                    {"type": "text",
-                     "text": "Objeto a buscar: «" + objeto + "»\nLa foto:"},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ]},
-            ], max_tokens=400)
-            v = _extraer_json(contenido)
-            veredicto = str(v.get("veredicto", "")).strip().lower()
-            ubicacion = _texto_limpio(v.get("ubicacion"), EVID_MAX)
-            if veredicto == "presente" and not ubicacion:
-                # sin ubicación no hay avistaje: se degrada a no-sé
-                veredicto = "no_se_distingue"
-            resultados.append({
-                "modelo": modelo, "veredicto": veredicto,
-                "ubicacion": ubicacion,
-                "estado": (str(v.get("estado") or "").strip().lower() or None)
-                if con_estado else None,
-                "evidencia": _texto_limpio(v.get("evidencia"), EVID_MAX),
-            })
-        except Exception:
+    for r in _map_modelos(modelos, _uno):
+        if r is _FALLO_MODELO:
             fallo = True
+            continue
+        resultados.append(r)
     return resultados, fallo
 
 
@@ -1554,28 +1613,32 @@ def _segunda_mirada_presencia(img, descripcion=None):
               else _PROMPT_SEGUNDA_MIRADA_PRESENCIA_CLAVE.format(
                   tipo=descripcion))
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+
+    def _uno(modelo):
+        contenido = _llamar(modelo, [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": [
+                {"type": "text", "text": "La foto:"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]},
+        ], max_tokens=400)
+        v = _extraer_json(contenido)
+        veredicto = str(v.get("veredicto", "")).strip().lower()
+        ubicacion = _texto_limpio(v.get("ubicacion"), EVID_MAX)
+        if veredicto == "presente" and not ubicacion:
+            veredicto = "no_se_distingue"
+        return (veredicto, _texto_limpio(v.get("evidencia"), EVID_MAX))
+
     presentes, ausentes, fallo = [], [], False
-    for modelo in VERIFICADORES:
-        try:
-            contenido = _llamar(modelo, [
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "La foto:"},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ]},
-            ], max_tokens=400)
-            v = _extraer_json(contenido)
-            veredicto = str(v.get("veredicto", "")).strip().lower()
-            ubicacion = _texto_limpio(v.get("ubicacion"), EVID_MAX)
-            if veredicto == "presente" and not ubicacion:
-                veredicto = "no_se_distingue"
-            evidencia = _texto_limpio(v.get("evidencia"), EVID_MAX)
-            if veredicto == "presente":
-                presentes.append((modelo, evidencia))
-            elif veredicto == "ausente" and evidencia:
-                ausentes.append((modelo, evidencia))
-        except Exception:
+    for modelo, r in zip(VERIFICADORES, _map_modelos(VERIFICADORES, _uno)):
+        if r is _FALLO_MODELO:
             fallo = True
+            continue
+        veredicto, evidencia = r
+        if veredicto == "presente":
+            presentes.append((modelo, evidencia))
+        elif veredicto == "ausente" and evidencia:
+            ausentes.append((modelo, evidencia))
     return presentes, ausentes, fallo
 
 
@@ -1584,25 +1647,29 @@ def _segunda_mirada_desborde(img):
     del veto acá es por MAYORÍA (ver el comentario en la fusión), no el
     estricto del uso del contenedor."""
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+
+    def _uno(modelo):
+        contenido = _llamar(modelo, [
+            {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_DESBORDE},
+            {"role": "user", "content": [
+                {"type": "text", "text": "La foto:"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]},
+        ], max_tokens=400)
+        v = _extraer_json(contenido)
+        return (str(v.get("veredicto", "")).strip().lower(),
+                _texto_limpio(v.get("evidencia"), EVID_MAX))
+
     rebalsa, no_lleno, fallo = [], [], False
-    for modelo in VERIFICADORES:
-        try:
-            contenido = _llamar(modelo, [
-                {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_DESBORDE},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "La foto:"},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ]},
-            ], max_tokens=400)
-            v = _extraer_json(contenido)
-            veredicto = str(v.get("veredicto", "")).strip().lower()
-            evidencia = _texto_limpio(v.get("evidencia"), EVID_MAX)
-            if veredicto == "rebalsa_visible" and evidencia:
-                rebalsa.append((modelo, evidencia))
-            elif veredicto == "no_se_ve_lleno" and evidencia:
-                no_lleno.append((modelo, evidencia))
-        except Exception:
+    for modelo, r in zip(VERIFICADORES, _map_modelos(VERIFICADORES, _uno)):
+        if r is _FALLO_MODELO:
             fallo = True
+            continue
+        veredicto, evidencia = r
+        if veredicto == "rebalsa_visible" and evidencia:
+            rebalsa.append((modelo, evidencia))
+        elif veredicto == "no_se_ve_lleno" and evidencia:
+            no_lleno.append((modelo, evidencia))
     return rebalsa, no_lleno, fallo
 
 
@@ -1668,37 +1735,41 @@ def _segunda_mirada_voluminoso(img):
     pueda NOMBRAR el objeto y ubicarlo. Devuelve (identificados, negativos,
     descartados, fallo)."""
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+
+    def _uno(modelo):
+        contenido = _llamar(modelo, [
+            {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_VOLUMINOSO},
+            {"role": "user", "content": [
+                {"type": "text", "text": "La foto:"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]},
+        ], max_tokens=400)
+        v = _extraer_json(contenido)
+        return (str(v.get("veredicto", "")).strip().lower(),
+                _texto_limpio(v.get("objeto"), EVID_MAX),
+                _texto_limpio(v.get("ubicacion"), EVID_MAX),
+                _texto_limpio(v.get("evidencia"), EVID_MAX))
+
     identificados, negativos, descartados, fallo = [], [], [], False
-    for modelo in VERIFICADORES:
-        try:
-            contenido = _llamar(modelo, [
-                {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_VOLUMINOSO},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "La foto:"},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ]},
-            ], max_tokens=400)
-            v = _extraer_json(contenido)
-            veredicto = str(v.get("veredicto", "")).strip().lower()
-            objeto = _texto_limpio(v.get("objeto"), EVID_MAX)
-            ubicacion = _texto_limpio(v.get("ubicacion"), EVID_MAX)
-            # sin objeto Y ubicación no hay identificación: "sillón" a secas
-            # es justo el sí de compromiso que esta firma existe para frenar
-            if veredicto == "objeto_identificado" and objeto and ubicacion:
-                # Señalar el contenedor (o el cesto, o el volquete) no es
-                # identificar un descarte: es no haber encontrado ninguno.
-                # Cuenta como abstención, no como negativo: el modelo no
-                # respondió que no hay, respondió otra cosa.
-                if _es_mobiliario_urbano(objeto):
-                    descartados.append((modelo, objeto))
-                else:
-                    identificados.append(
-                        (modelo, objeto + " (" + ubicacion + ")"))
-            elif veredicto == "solo_bolsas_o_textiles":
-                negativos.append((modelo,
-                                  _texto_limpio(v.get("evidencia"), EVID_MAX)))
-        except Exception:
+    for modelo, r in zip(VERIFICADORES, _map_modelos(VERIFICADORES, _uno)):
+        if r is _FALLO_MODELO:
             fallo = True
+            continue
+        veredicto, objeto, ubicacion, evidencia = r
+        # sin objeto Y ubicación no hay identificación: "sillón" a secas
+        # es justo el sí de compromiso que esta firma existe para frenar
+        if veredicto == "objeto_identificado" and objeto and ubicacion:
+            # Señalar el contenedor (o el cesto, o el volquete) no es
+            # identificar un descarte: es no haber encontrado ninguno.
+            # Cuenta como abstención, no como negativo: el modelo no
+            # respondió que no hay, respondió otra cosa.
+            if _es_mobiliario_urbano(objeto):
+                descartados.append((modelo, objeto))
+            else:
+                identificados.append(
+                    (modelo, objeto + " (" + ubicacion + ")"))
+        elif veredicto == "solo_bolsas_o_textiles":
+            negativos.append((modelo, evidencia))
     return identificados, negativos, descartados, fallo
 
 
