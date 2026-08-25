@@ -2299,7 +2299,7 @@ check("  y no discrimina subtipo",
       "NO dice el subtipo" in V._RUBRICA)
 check("  subtipo del recortado: pared plana gris sin poste -> bilateral",
       "pared PLANA vertical GRIS (cualquier tono) de aristas rectas sin poste a la vista -> bilateral" in V._RUBRICA
-      and "cuerpo REDONDEADO o panzón negro, azul u oliva" in V._RUBRICA)
+      and "cuerpo REDONDEADO o panzón negro u oliva" in V._RUBRICA)
 check("  la entrada lateral advierte contra votar lateral por el color",
       "TODO contenedor de húmedos GRIS (cualquier tono, claro u oscuro) es BILATERAL" in V._RUBRICA
       and '"Oscuro" por sí solo NO es señal de lateral' in V._RUBRICA)
@@ -2319,6 +2319,10 @@ check("  la regla de subtipo es una sola constante (#24)",
       and "Gris de noche sigue siendo gris" in V.REGLA_SUBTIPO_HUMEDOS)
 _VIEJOS_LATERAL = (
     "negro, azul, gris oscuro",
+    "negro, azul u oliva",
+    "el AZUL también",
+    "NEGRO o AZUL",
+    "NEGRO, AZUL o VERDE",
     "gris CLARO parejo",
     "gris claro bilateral",
     "GRIS CLARO de paredes planas, sin postes",
@@ -2367,11 +2371,14 @@ check("  losa/baldosón removido y vallas descartadas son voluminosos (r6 #17)",
       and "VALLAS o CABALLETES de obra de madera DESCARTADOS" in V._RUBRICA)
 check("  pero el negro decide: negro es siempre lateral, nunca bilateral",
       "NEGRO es SIEMPRE lateral" in V._RUBRICA
-      and "no existe un bilateral negro ni azul" in V._RUBRICA
+      and "no existe un bilateral negro" in V._RUBRICA
       and "no lo reportes bilateral nunca" in V._RUBRICA)
-check("  y el azul tampoco es bilateral: el único color de bilateral es gris",
-      "el AZUL también" in V._RUBRICA
-      and "NEGRO o AZUL es siempre lateral" in V._RUBRICA)
+check("  no se afirma que existan laterales azules",
+      "negro, azul u oliva" not in V._RUBRICA
+      and "el AZUL también" not in V._RUBRICA
+      and "NEGRO o AZUL" not in V._RUBRICA
+      and "AZUL" not in V.DESCRIPTOR_CONTENEDOR["contenedor_humedos_lateral"]
+      and "AZUL" not in V.REGLA_SUBTIPO_HUMEDOS)
 check("  la proporción delata al impostor: angosto y vertical no es municipal",
       "LA PROPORCIÓN DELATA AL IMPOSTOR" in V._RUBRICA
       and "más alto que ancho, del ancho de una persona" in V._RUBRICA)
