@@ -12,6 +12,7 @@ fotos_cache/
 HISTORY.md
 CLAUDE.md
 AGENTS.md
+CASOS.md
 
 # Shards intermedios de los harness; lo consolidado vive en eval/datos/
 eval/harness/estabilidad-*.jsonl
