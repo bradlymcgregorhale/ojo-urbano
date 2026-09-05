@@ -34,12 +34,14 @@ Config por variables de entorno (ver .env.example):
 """
 import base64
 import concurrent.futures
+import hashlib
 import io
 import json
 import os
 import re
 import http.client
 import socket
+import sys
 import threading
 import time
 import urllib.error
@@ -326,6 +328,12 @@ SEMILLA = (int(os.environ["SEMILLA"]) if os.environ.get("SEMILLA", "").strip()
 # significativa (12,6% -> 9,1%, p=0,147).
 PROVEEDOR_FIJO = os.environ.get("PROVEEDOR_FIJO", "").strip().lower() not in (
     "", "0", "false", "no")
+# Afinidad por prefijo, sin recortar mensajes ni contratar caché explícita.
+# Opt-in: la medición pareada no demostró un ahorro consistente.
+OPENROUTER_CACHE_PROMPTS = os.environ.get("OPENROUTER_CACHE_PROMPTS", "0").strip().lower() not in (
+    "", "0", "false", "no")
+OPENROUTER_LOG_USO = os.environ.get("OPENROUTER_LOG_USO", "1").strip().lower() not in (
+    "", "0", "false", "no")
 # Con "arbitro", una categoría que solo vieron los modelos de visión, sin
 # respaldo del modelo local, la decide el árbitro en vez de confirmarse por
 # consenso entre dos fuentes que comparten la misma entrada manipulable.
@@ -460,7 +468,68 @@ def _costo_sumar(usage):
             _costo["llamadas"] += 1
 
 
-def _llamar(modelo, mensajes, max_tokens=6000, intentos=3):
+def _clave_cache_prompt(modelo, mensajes):
+    """Identifica el prefijo de sistema, nunca la foto ni el texto del vecino.
+
+    Es afinidad de proveedor, NO caché de respuestas: cada foto se analiza.
+    OpenRouter/proveedor comprueban el prefijo real antes de reutilizar tokens.
+    Sin un prefijo de sistema dejamos el ruteo automático existente.
+    """
+    prefijo = []
+    for mensaje in mensajes:
+        if mensaje.get("role") not in ("system", "developer"):
+            break
+        prefijo.append(mensaje)
+    if not prefijo:
+        return None
+    contenido = json.dumps([modelo, prefijo], ensure_ascii=False,
+                           sort_keys=True, separators=(",", ":"))
+    return "ojo-v1-" + hashlib.sha256(contenido.encode()).hexdigest()[:48]
+
+
+_uso_lock = threading.Lock()
+
+
+def _registrar_uso(modelo, etapa, clave, intento, inicio, data=None, error=None):
+    """Una línea JSON por intento, sin prompts, imágenes ni respuestas."""
+    if not OPENROUTER_LOG_USO:
+        return
+    try:
+        data = data if isinstance(data, dict) else {}
+        usage = data.get("usage")
+        usage = usage if isinstance(usage, dict) else {}
+        registro = {"evento": "openrouter_uso", "modelo": modelo,
+                    "etapa": etapa, "cache_key": clave, "intento": intento,
+                    "segundos": round(time.monotonic() - inicio, 3),
+                    "error": type(error).__name__ if error else None}
+        for campo in ("prompt_tokens", "completion_tokens", "total_tokens", "cost"):
+            valor = usage.get(campo)
+            registro[campo] = valor if type(valor) in (int, float) else None
+        for grupo, campos in (
+                ("prompt_tokens_details", ("cached_tokens", "cache_write_tokens")),
+                ("completion_tokens_details", ("reasoning_tokens",))):
+            detalle = usage.get(grupo)
+            for campo in campos:
+                valor = detalle.get(campo) if isinstance(detalle, dict) else None
+                registro[campo] = valor if type(valor) in (int, float) else None
+        # Solo metadatos de la API. No volcar data, usage ni el mensaje de error.
+        for campo in ("id", "provider"):
+            valor = data.get(campo)
+            registro[campo] = valor[:160] if isinstance(valor, str) else None
+        choices = data.get("choices")
+        choice = choices[0] if isinstance(choices, list) and choices else {}
+        razon = choice.get("finish_reason") if isinstance(choice, dict) else None
+        registro["finish_reason"] = razon if razon in (
+            "stop", "length", "content_filter", "tool_calls", "error") else None
+        with _uso_lock:
+            print(json.dumps(registro, ensure_ascii=True, allow_nan=False),
+                  file=sys.stderr, flush=True)
+    except Exception:
+        # Un disco lleno o metadatos incompletos no deben repetir una llamada paga.
+        pass
+
+
+def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa"):
     # reasoning effort bajo: los modelos razonadores (Kimi) pueden gastar todo
     # el presupuesto pensando y devolver el JSON vacío (finish_reason=length)
     cuerpo = {"model": modelo, "max_tokens": max_tokens,
@@ -472,6 +541,9 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3):
               "temperature": TEMPERATURA,
               "top_p": 1,
               "messages": mensajes}
+    clave = _clave_cache_prompt(modelo, mensajes) if OPENROUTER_CACHE_PROMPTS else None
+    if clave:
+        cuerpo["prompt_cache_key"] = clave
     if SEMILLA is not None:
         cuerpo["seed"] = SEMILLA
     if PROVEEDOR_FIJO:
@@ -486,11 +558,13 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3):
     })
     ultimo = None
     vence = time.monotonic() + DEADLINE
-    for _ in range(intentos):
+    for intento in range(1, intentos + 1):
         resto = vence - time.monotonic()
         if resto <= 0:
             ultimo = ultimo or TimeoutError(f"sin tiempo para {modelo}")
             break
+        inicio = time.monotonic()
+        data, error = None, None
         try:
             data = _pedir_http(req, min(TIMEOUT, resto), vence)
             _costo_sumar(data.get("usage"))
@@ -500,9 +574,13 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3):
             if "{" in contenido:
                 return contenido
             ultimo = ValueError("respuesta sin JSON")
+            error = ultimo
         except (urllib.error.URLError, KeyError, json.JSONDecodeError,
                 OSError, ValueError) as e:
             ultimo = e
+            error = e
+        finally:
+            _registrar_uso(modelo, etapa, clave, intento, inicio, data, error)
     raise ultimo
 
 
@@ -794,7 +872,7 @@ def _leer_patente(img):
                     {"type": "text", "text": _PROMPT_PATENTE},
                     {"type": "image_url", "image_url": {"url": data_url}},
                 ]},
-            ], max_tokens=2000)
+            ], max_tokens=2000, etapa="leer_patente")
             return _patente_normalizada(_extraer_json(contenido).get("patente"))
         except (urllib.error.URLError, ValueError, KeyError,
                 json.JSONDecodeError, OSError):
@@ -839,7 +917,7 @@ def _segunda_mirada_escombros(img, ya_reportaron):
                 {"type": "text", "text": "La foto:"},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ]},
-        ], max_tokens=400)
+        ], max_tokens=400, etapa="segunda_mirada_escombros")
         v = _extraer_json(contenido)
         return (str(v.get("veredicto", "")).strip().lower(),
                 _texto_limpio(v.get("evidencia"), EVID_MAX))
@@ -925,7 +1003,7 @@ def _segunda_mirada_base(img):
                 {"type": "text", "text": "La foto:"},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ]},
-        ], max_tokens=400)
+        ], max_tokens=400, etapa="segunda_mirada_base")
         return _extraer_json(contenido)
 
     base, descartado, fallo = [], [], False
@@ -969,7 +1047,7 @@ def _segunda_mirada_postes(img):
                 {"type": "text", "text": "La foto:"},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ]},
-        ], max_tokens=400)
+        ], max_tokens=400, etapa="segunda_mirada_postes")
         v = _extraer_json(contenido)
         return (str(v.get("veredicto", "")).strip().lower(),
                 _texto_limpio(v.get("evidencia"), EVID_MAX))
@@ -1003,7 +1081,7 @@ def _segunda_mirada_volcado(img):
                 {"type": "text", "text": "La foto:"},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ]},
-        ], max_tokens=400)
+        ], max_tokens=400, etapa="segunda_mirada_volcado")
         v = _extraer_json(contenido)
         return (str(v.get("veredicto", "")).strip().lower(),
                 _texto_limpio(v.get("evidencia"), EVID_MAX))
@@ -1036,7 +1114,7 @@ def _segunda_mirada_subtipo(img):
                 {"type": "text", "text": "La foto:"},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ]},
-        ], max_tokens=400)
+        ], max_tokens=400, etapa="segunda_mirada_subtipo")
         v = _extraer_json(contenido)
         return (str(v.get("veredicto", "")).strip().lower(),
                 _texto_limpio(v.get("evidencia"), EVID_MAX))
@@ -1067,7 +1145,7 @@ def _segunda_mirada_dano(img):
                 {"type": "text", "text": "La foto:"},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ]},
-        ], max_tokens=400)
+        ], max_tokens=400, etapa="segunda_mirada_dano")
         v = _extraer_json(contenido)
         return (str(v.get("veredicto", "")).strip().lower(),
                 _texto_limpio(v.get("evidencia"), EVID_MAX))
@@ -1262,7 +1340,7 @@ def _pregunta_abierta(img, modelos):
                 {"type": "text", "text": "La foto:"},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ]},
-        ], max_tokens=400)
+        ], max_tokens=400, etapa="pregunta_abierta")
         v = _extraer_json(contenido)
         veredicto = str(v.get("veredicto", "")).strip().lower()
         que_es = _texto_limpio(v.get("que_es"), EVID_MAX)
@@ -1323,7 +1401,7 @@ def _repregunta_objeto(img, objeto, modelos, con_estado):
                  "text": "Objeto a buscar: «" + objeto + "»\nLa foto:"},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ]},
-        ], max_tokens=400)
+        ], max_tokens=400, etapa="repregunta_objeto")
         v = _extraer_json(contenido)
         veredicto = str(v.get("veredicto", "")).strip().lower()
         ubicacion = _texto_limpio(v.get("ubicacion"), EVID_MAX)
@@ -1368,7 +1446,7 @@ def _segunda_mirada_presencia(img, descripcion=None):
                 {"type": "text", "text": "La foto:"},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ]},
-        ], max_tokens=400)
+        ], max_tokens=400, etapa="segunda_mirada_presencia")
         v = _extraer_json(contenido)
         veredicto = str(v.get("veredicto", "")).strip().lower()
         ubicacion = _texto_limpio(v.get("ubicacion"), EVID_MAX)
@@ -1402,7 +1480,7 @@ def _segunda_mirada_desborde(img):
                 {"type": "text", "text": "La foto:"},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ]},
-        ], max_tokens=400)
+        ], max_tokens=400, etapa="segunda_mirada_desborde")
         v = _extraer_json(contenido)
         return (str(v.get("veredicto", "")).strip().lower(),
                 _texto_limpio(v.get("evidencia"), EVID_MAX))
@@ -1490,7 +1568,7 @@ def _segunda_mirada_voluminoso(img):
                 {"type": "text", "text": "La foto:"},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ]},
-        ], max_tokens=400)
+        ], max_tokens=400, etapa="segunda_mirada_voluminoso")
         v = _extraer_json(contenido)
         return (str(v.get("veredicto", "")).strip().lower(),
                 _texto_limpio(v.get("objeto"), EVID_MAX),
@@ -1528,7 +1606,7 @@ def _verificar_uno(modelo, data_url, categorias, contexto=""):
                 {"type": "text", "text": _prompt_usuario(contexto)},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ]},
-        ])
+        ], etapa="verificar_uno")
         veredicto = _extraer_json(contenido)
         vistas = []
         for c in veredicto.get("categorias", []):
@@ -1668,7 +1746,7 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
                     {"role": "user", "content": contenido}]
 
         def _una_vuelta(_):
-            return _extraer_json(_llamar(ARBITRO, mensajes))
+            return _extraer_json(_llamar(ARBITRO, mensajes, etapa="arbitrar"))
 
         if ARBITRO_VOTOS == 1:
             datos = [_una_vuelta(0)]
@@ -1776,7 +1854,7 @@ def _clasificar_contexto(contexto, categorias):
     try:
         data = _extraer_json(_llamar(ARBITRO, [
             {"role": "system", "content": _CONTEXTO_SISTEMA},
-            {"role": "user", "content": prompt}]))
+            {"role": "user", "content": prompt}], etapa="clasificar_contexto"))
     except (urllib.error.URLError, ValueError, KeyError,
             json.JSONDecodeError, OSError):
         # None = no se pudo encaminar (falla transitoria). Distinto de [], que

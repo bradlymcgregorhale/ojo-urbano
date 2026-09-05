@@ -244,8 +244,38 @@ La configuración se lee desde variables de entorno o `.env`. La lista completa 
 | `HOST` / `PORT` | `127.0.0.1` / `8080` | Dirección y puerto de la API. |
 | `VERIFICADOR_TIMEOUT` | `120` | Segundos por llamada a OpenRouter. |
 | `VERIFICADOR_DEADLINE` | `180` | Tiempo máximo total de reintentos por modelo. |
+| `OPENROUTER_CACHE_PROMPTS` | `0` | Prueba opt-in de afinidad por modelo y prefijo de sistema. Apagada hasta demostrar ahorro consistente. |
+| `OPENROUTER_LOG_USO` | `1` | Registra tokens, caché y costo por intento en stderr. `0` lo apaga. |
 
 Los modelos de DeepSeek disponibles en OpenRouter no aceptan imágenes. Por eso el valor configurado por default interviene como árbitro de texto.
+
+Si se activa, la afinidad usa `prompt_cache_key`, calculada con el modelo y los mensajes
+iniciales de sistema. La foto y el contexto del vecino no forman parte de esa
+clave. Cada pedido conserva todos sus mensajes: no se reutilizan respuestas de
+otras fotos ni se recortan reglas, modelos o pasadas dirigidas. Los pedidos sin
+prefijo de sistema, como la lectura de patente, mantienen el ruteo automático.
+El failover conserva su configuración anterior.
+
+En la prueba del 2026-09-05 comparé nueve fotos, tres modelos y ambos modos
+(54 llamadas de primera pasada). El ruteo habitual costó USD 0,06716852 y la
+clave estable, USD 0,06657341: 0,9% menos, con resultados inconsistentes entre
+la muestra inicial y la segunda tanda. Ambos reutilizaron cerca del 75% de
+los tokens de entrada. La muestra es chica, comparte cachés del proveedor y
+las respuestas varían entre corridas; no demuestra ahorro atribuible al cambio
+ni equivalencia estadística de calidad. Por eso la afinidad sigue apagada.
+
+El ahorro depende de los hits reales del proveedor, la frecuencia de pedidos y
+la vigencia de su caché. No se activan breakpoints ni almacenamiento explícito
+pago. Los registros `openrouter_uso` permiten medirlo sin llamadas extra:
+incluyen etapa, modelo, tokens de entrada/salida/razonamiento, `cached_tokens`,
+`cache_write_tokens`, costo, duración, proveedor e identificador de generación.
+Un campo ausente queda en `null`, no en cero. Los intentos fallidos o truncados
+también quedan registrados; un fallo de red puede tener un costo que la API no
+alcanzó a informar. No se registran fotos, contexto, prompts ni respuestas.
+En producción van al log privado `arranque.log`; su retención y rotación quedan
+a cargo del despliegue, igual que el resto del log del servicio.
+Ver [caché de prompts](https://openrouter.ai/docs/guides/best-practices/prompt-caching)
+y [contabilidad de uso](https://openrouter.ai/docs/cookbook/administration/usage-accounting).
 
 ## Si publicás la API
 

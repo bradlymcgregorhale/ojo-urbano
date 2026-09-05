@@ -699,6 +699,114 @@ check("consume el techo", [S._hay_cuota() for _ in range(3)] == [True, True, Fal
 S.CUOTA_DIARIA = 0
 
 print("[#2] deadline total por modelo")
+print("[OpenRouter] afinidad de prefijo y uso por intento")
+from contextlib import redirect_stderr
+from unittest.mock import patch
+
+_cache_ms = [
+    {"role": "system", "content": "Política completa, sin recortes."},
+    {"role": "user", "content": [
+        {"type": "text", "text": "CONTEXTO_PRIVADO"},
+        {"type": "image_url", "image_url": {"url": "FOTO_PRIVADA"}},
+    ]},
+]
+_cache_otro = [_cache_ms[0], {"role": "user", "content": "otra foto y contexto"}]
+_clave = V._clave_cache_prompt("modelo/x", _cache_ms)
+check("fotos y contextos distintos comparten afinidad, no respuestas",
+      _clave == V._clave_cache_prompt("modelo/x", _cache_otro))
+check("otro modelo tiene otra afinidad",
+      _clave != V._clave_cache_prompt("modelo/y", _cache_ms))
+check("un cambio de política cambia la afinidad",
+      _clave != V._clave_cache_prompt("modelo/x", [
+          {"role": "system", "content": "otra política"}, _cache_ms[1]]))
+check("la clave no contiene datos y cabe en el límite del proveedor",
+      len(_clave) <= 64 and _clave.startswith("ojo-v1-")
+      and "PRIVAD" not in _clave)
+check("sin sistema no inventa un prefijo con datos del vecino",
+      V._clave_cache_prompt("modelo/x", _cache_ms[1:]) is None)
+check("un sistema posterior al usuario no forma parte del prefijo",
+      _clave == V._clave_cache_prompt("modelo/x", _cache_ms + [
+          {"role": "system", "content": "otro texto privado"}]))
+check("incluye todos los mensajes iniciales de política",
+      _clave != V._clave_cache_prompt("modelo/x", [
+          _cache_ms[0], {"role": "developer", "content": "reglas extra"},
+          _cache_ms[1]]))
+
+_cache_respuesta = {
+    "id": "gen-prueba", "provider": "proveedor-prueba",
+    "usage": {"cost": 0.002, "prompt_tokens": 20000,
+              "completion_tokens": 100, "total_tokens": 20100,
+              "prompt_tokens_details": {"cached_tokens": 19000, "cache_write_tokens": 0},
+              "completion_tokens_details": {"reasoning_tokens": 40},
+              "extra_privado": "USO_PRIVADO"},
+    "choices": [{"finish_reason": "stop", "message": {"content": '{"ok":true}'}}],
+}
+_cache_payloads = []
+
+
+def _cache_http(req, *args):
+    _cache_payloads.append(json.loads(req.data))
+    return _cache_respuesta
+
+
+_cache_log = io.StringIO()
+with patch.object(V, "_pedir_http", _cache_http), \
+        patch.object(V, "api_key", lambda: "CLAVE_PRIVADA"), \
+        patch.object(V, "OPENROUTER_LOG_USO", True), redirect_stderr(_cache_log):
+    with patch.object(V, "OPENROUTER_CACHE_PROMPTS", False):
+        _sin_cache = V._llamar("modelo/x", _cache_ms, etapa="prueba")
+    with patch.object(V, "OPENROUTER_CACHE_PROMPTS", True):
+        _con_cache = V._llamar("modelo/x", _cache_ms, etapa="prueba")
+check("solo agrega prompt_cache_key: todos los mensajes y parámetros son idénticos",
+      _cache_payloads[1] == dict(_cache_payloads[0], prompt_cache_key=_clave))
+check("no cambia la respuesta del modelo", _sin_cache == _con_cache == '{"ok":true}')
+_cache_registros = [json.loads(linea) for linea in _cache_log.getvalue().splitlines()]
+check("registra tokens, caché, razonamiento y costo reales por llamada",
+      len(_cache_registros) == 2 and all(
+          r["cached_tokens"] == 19000 and r["cache_write_tokens"] == 0
+          and r["reasoning_tokens"] == 40 and r["cost"] == 0.002
+          and r["etapa"] == "prueba" and r["finish_reason"] == "stop"
+          for r in _cache_registros))
+check("no registra foto, contexto, clave de API ni campos extra de usage",
+      "PRIVAD" not in _cache_log.getvalue() and '{"ok":true}' not in _cache_log.getvalue())
+
+_sin_json_cache = dict(_cache_respuesta, choices=[
+    {"finish_reason": "length", "message": {"content": "sin JSON"}}])
+_cache_log = io.StringIO()
+with patch.object(V, "_pedir_http", side_effect=[
+        urllib.error.URLError("ERROR_PRIVADO"), _sin_json_cache, _cache_respuesta]), \
+        patch.object(V, "OPENROUTER_LOG_USO", True), redirect_stderr(_cache_log):
+    V.costo_reset()
+    _r_cache = V._llamar("modelo/x", _cache_ms, etapa="prueba_reintento")
+    _total_cache = V.costo_total()
+_cache_registros = [json.loads(linea) for linea in _cache_log.getvalue().splitlines()]
+check("registra cada intento, incluso fallos y respuestas truncadas pagas",
+      [r["intento"] for r in _cache_registros] == [1, 2, 3]
+      and [r["error"] for r in _cache_registros] == ["URLError", "ValueError", None]
+      and _cache_registros[1]["finish_reason"] == "length")
+check("el costo incluye las dos respuestas pagas sin duplicarlas",
+      _total_cache == 0.004 and V._costo["llamadas"] == 2)
+check("un fallo sin usage es desconocido, no costo ni tokens cero",
+      _cache_registros[0]["cost"] is None and _cache_registros[0]["cached_tokens"] is None
+      and "ERROR_PRIVADO" not in _cache_log.getvalue())
+
+_cache_log = io.StringIO()
+with patch.object(V, "OPENROUTER_LOG_USO", True), redirect_stderr(_cache_log):
+    V._registrar_uso("modelo/x", "prueba", None, 1, time.monotonic(),
+                     {"usage": {"prompt_tokens_details": None}, "choices": [None]})
+check("usage incompleto no rompe el registro ni inventa un hit",
+      json.loads(_cache_log.getvalue())["cached_tokens"] is None)
+with patch.object(V, "_pedir_http", _cache_http), \
+        patch.object(V, "OPENROUTER_LOG_USO", True), \
+        patch("builtins.print", side_effect=OSError("disco lleno")):
+    _cache_error_log = V._llamar("modelo/x", _cache_ms, intentos=1)
+check("un fallo del log no pierde la respuesta ni dispara otro pedido pago",
+      _cache_error_log == '{"ok":true}')
+_cache_log = io.StringIO()
+with patch.object(V, "OPENROUTER_LOG_USO", False), redirect_stderr(_cache_log):
+    V._registrar_uso("modelo/x", "prueba", None, 1, time.monotonic(), _cache_respuesta)
+check("el registro se puede apagar", _cache_log.getvalue() == "")
+
 intentos = []
 
 
