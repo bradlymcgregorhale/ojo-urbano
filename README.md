@@ -1,12 +1,12 @@
 # Ojo Urbano
 
-API en Python para clasificar fotos de incidencias urbanas: residuos en la vía pública, escombros, voluminosos, contenedores y cestos, baches, veredas, vehículos, plagas, poda, volquetes y el resto de las 44 categorías de [`categorias.json`](categorias.json).
+Ojo Urbano es una API en Python que clasifica fotos de incidencias urbanas. Reconoce residuos en la vía pública, escombros, objetos voluminosos, contenedores y cestos, baches, veredas, vehículos, plagas, poda, volquetes y las demás categorías definidas en [`categorias.json`](categorias.json), 44 en total.
 
-Corre en tu máquina. El modelo local no cobra nada ni manda la foto a ningún lado. Si le das una clave de [OpenRouter](https://openrouter.ai), tres modelos de visión revisan la misma foto y el veredicto público sale de ese cruce.
+El clasificador local es un modelo open source que entrenamos: embeddings de CLIP, DINOv2 y SigLIP2 con un cabezal de regresión logística multi-etiqueta, sobre miles de fotos callejeras etiquetadas a mano. Corre en tu máquina y no manda la foto a ningún lado. Con una clave de [OpenRouter](https://openrouter.ai), tres modelos de visión revisan la misma imagen y la API cruza esos resultados con el modelo local antes de publicar una categoría.
 
 ## Arranque rápido
 
-Hace falta Python 3 y un entorno virtual. Los embeddings ocupan varios GB de disco y se bajan una sola vez. Para una clasificación completa también una clave de OpenRouter.
+Necesitás Python 3, un entorno virtual y varios GB libres para los embeddings. Los modelos se descargan una sola vez.
 
 ```bash
 git clone https://github.com/bradlymcgregorhale/ojo-urbano.git
@@ -16,70 +16,84 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Editá `.env` y poné `OPENROUTER_API_KEY`. Sin esa clave el servidor arranca igual, pero no publica categorías: `problemas` sale vacío. El modelo local sigue corriendo; lo que falta es la verificación, y sin verificación no hay veredicto público.
+Para obtener una clasificación completa, editá `.env` y cargá `OPENROUTER_API_KEY`. Sin esa clave el servidor arranca y ejecuta el modelo local, pero no publica categorías: `problemas` queda vacío porque falta la verificación.
 
 ```bash
 python servidor.py
 ```
 
-La primera corrida baja CLIP, DINOv2 y SigLIP2. Tarda y pesa: varios GB en disco y varios GB de RAM. En una Mac justa puede ponerse pesada. Cuando terminó de cargar, abrí http://127.0.0.1:8080 y arrastrá una foto.
+La primera ejecución descarga CLIP, DINOv2 y SigLIP2. Puede tardar y necesita varios GB de disco y de RAM. En una Mac con poca memoria se va a sentir.
 
-También por curl:
+Cuando termine de cargar, abrí http://127.0.0.1:8080 y arrastrá una foto. La portada permite subir varias y descargar un CSV al finalizar.
+
+También podés llamar a la API con curl:
 
 ```bash
 curl -s -F "file=@foto.jpg" -F "contexto=vidrios rotos en la vereda" http://127.0.0.1:8080/clasificar
 ```
 
-O con el cliente de ejemplo:
+O usar el cliente de ejemplo:
 
 ```bash
 python ejemplo.py foto.jpg
 ```
 
-Con verificación, una foto tarda 25-60 s. La portada acepta varias y al final deja bajar un CSV.
+Una clasificación con verificación tarda entre 25 y 60 segundos.
 
-## Cómo se clasifica una foto
+## Qué pasa con una foto
 
-Entra la foto. Si quien reporta escribió algo, también ese texto (`contexto`).
+La API recibe la imagen y, si existe, el texto escrito por quien reporta en el campo `contexto`.
 
-Primero corre el modelo local, en tu máquina: tres extractores de embeddings (CLIP, DINOv2, SigLIP2) y un cabezal de regresión logística multi-etiqueta, entrenado con miles de fotos callejeras etiquetadas a mano. También estima gravedad de 1 a 5.
+El modelo local procesa la foto en tu máquina. Combina embeddings de CLIP, DINOv2 y SigLIP2 con un clasificador multi-etiqueta de regresión logística, entrenado con miles de fotos callejeras etiquetadas a mano. También estima una gravedad de 1 a 5.
 
-Si hay clave de OpenRouter, tres modelos de visión (GPT-5 mini, Gemini Flash Lite y GPT-5.6 luna) miran la misma foto con una rúbrica por categoría. Una categoría se confirma cuando la reportan al menos dos fuentes. El modelo local cuenta como una, pero su voto no se publica. Lo que vio una sola fuente vuelve en `posibles`, para que el consumidor repregunte.
+Si configuraste OpenRouter, GPT-5 mini, Gemini Flash Lite y GPT-5.6 luna evalúan la misma imagen con una rúbrica por categoría. Una categoría necesita al menos dos fuentes para quedar confirmada. El modelo local participa como una fuente, aunque su voto no aparece en la respuesta pública.
 
-Un árbitro de texto (DeepSeek) resuelve desacuerdos y deja el motivo en la respuesta. Por default no promueve lo de una sola fuente; se midió y no mejoraba.
+Una detección sostenida por una sola fuente vuelve en `posibles`. DeepSeek actúa como árbitro de texto cuando hay desacuerdos y deja el motivo en la respuesta. Por default no convierte una detección aislada en problema confirmado, porque las mediciones no mostraron una mejora.
 
-El texto del vecino pesa. Si la foto no muestra lo que reclama, el reclamo se arma con el texto y lo visual pasa a `descartados_por_foto`. Si no escribió nada, se reporta lo de la foto.
+El contexto también participa en la decisión. Si la foto no muestra lo que la persona describió, el reclamo se arma a partir del texto y los hallazgos visuales pasan a `descartados_por_foto`. Sin contexto, se informa lo que aparece en la imagen.
 
-Algunas categorías no existen en el modelo local (`vehiculo_mal_estacionado`, `columna_poste_cable` y otras). Las detectan solo los de visión, y se confirman cuando coinciden dos.
+Hay categorías que el modelo local no conoce, entre ellas `vehiculo_mal_estacionado` y `columna_poste_cable`. En esos casos la detección depende de los modelos de visión y necesita coincidencia entre dos fuentes.
 
-## Dónde rinde el modelo local
+## Dónde ayuda el modelo local
 
-Identificar contenedores (si hay uno y de qué tipo: húmedos lateral, húmedos bilateral o secos) es donde más se nota. Sobre fotos etiquetadas, presencia y tipo dan F1 0,97. Los de visión confunden lateral con bilateral seguido; el local desempata, y si el desacuerdo es fuerte puede corregir un voto unánime equivocado. También corta contenedores fantasmas, por ejemplo una bolsa verde leída como contenedor de secos al lado de uno real. El estado del contenedor (lleno, tapa trabada, roto) lo miran los de visión, y "lleno/desbordado" es el punto más flojo de precisión.
+Su aporte más claro está en la identificación de contenedores. Detecta si hay uno y distingue entre húmedos de carga lateral, húmedos de carga bilateral y secos. En las fotos etiquetadas, la presencia y el tipo alcanzan F1 0,97.
 
-Escombros embolsados es el otro caso. Bolsas de cascote, sobre todo de noche, sin material a la vista. Se midió con 7 modelos de visión: cero detecciones. El local sí las distingue de bolsas de basura. Si está seguro y los verificadores ya confirmaron una pila (`recoleccion` o `retiro_muebles`), la API puede promover `retiro_escombros` marcada `reclasificado_por: "modelo_local"`. Si el local puntúa cerca de cero, es dato para reentrenar, no para el prompt. Se apaga con `FUSION_ESCOMBROS=0`.
+Los modelos de visión confunden seguido los contenedores laterales con los bilaterales. El modelo local ayuda a desempatar y, ante un desacuerdo fuerte, puede corregir incluso un voto unánime equivocado. También reduce falsos contenedores, como una bolsa verde interpretada como uno de secos junto a un contenedor real.
 
-El resto (veredas, vehículos, ocupación, plagas, luminaria) lo cubren sobre todo los de visión.
+El estado del contenedor, por ejemplo si está lleno, roto o tiene la tapa trabada, queda principalmente a cargo de los modelos de visión. "Lleno/desbordado" es el punto con menor precisión.
+
+El otro caso importante son los escombros embolsados, en especial bolsas de cascote fotografiadas de noche y sin material visible. En una prueba con 7 modelos de visión no hubo detecciones. El modelo local sí pudo separarlas de las bolsas de basura.
+
+Cuando el modelo local tiene suficiente confianza y los verificadores ya confirmaron una pila como `recoleccion` o `retiro_muebles`, la API puede promover `retiro_escombros` con `reclasificado_por: "modelo_local"`. Un puntaje local cercano a cero se toma como señal para reentrenar, no para cambiar el prompt. Esta fusión se desactiva con `FUSION_ESCOMBROS=0`.
+
+Las veredas, los vehículos, la ocupación, las plagas y la luminaria dependen principalmente de los modelos de visión.
 
 ## Tecnología
 
 El servicio está escrito en Python.
 
-- API: FastAPI y uvicorn, en `servidor.py`. La página de demo va embebida en ese archivo, no hay frontend suelto.
-- Modelo local: `model.joblib`. Embeddings CLIP + DINOv2 + SigLIP2, un scaler y un OneVsRest de regresión logística, más un regresor de gravedad. Corre en CPU. Dependencias: PyTorch, transformers, sentence-transformers, scikit-learn, joblib, Pillow.
-- Verificación: `verificador.py` llama a OpenRouter. Los de visión van en paralelo. El árbitro es de texto porque DeepSeek no acepta imágenes en OpenRouter.
-- Catálogos: `categorias.json` (las 44 propias) y `prestaciones.json` (el catálogo completo de la Ciudad, para mapear el texto del vecino).
+- FastAPI y uvicorn exponen la API desde `servidor.py`. La página de demostración está embebida en ese archivo, sin un frontend separado.
+- `model.joblib` contiene el modelo local: embeddings de CLIP, DINOv2 y SigLIP2, un scaler, un OneVsRest de regresión logística y un regresor de gravedad. Corre en CPU con PyTorch, transformers, sentence-transformers, scikit-learn, joblib y Pillow.
+- `verificador.py` hace las llamadas a OpenRouter. Los modelos de visión trabajan en paralelo. DeepSeek interviene como árbitro de texto porque sus modelos en OpenRouter no aceptan imágenes.
+- [`categorias.json`](categorias.json) contiene las 44 categorías propias. [`prestaciones.json`](prestaciones.json) contiene el catálogo completo de la Ciudad usado para interpretar el texto del vecino.
 
 ## API
 
 ### `POST /clasificar`
 
-`multipart/form-data` con el campo `file`. Campo opcional `contexto` (máx. 500 caracteres): lo que escribe quien reporta. Tiene peso propio. Los modelos lo usan para interpretar la foto, y dicen si la foto se corresponde con lo que el vecino contó. Si no se corresponde, lo visual se descarta y el reclamo se arma con el texto. El texto que enviás no se devuelve nunca (puede traer nombres o patentes). Parámetro opcional `verificar`: `auto` (default: verifica si hay clave), `1` (forzar), `0` (respuesta degradada, sin clasificación).
+Recibe `multipart/form-data` con estos campos:
+
+- `file`: la foto.
+- `contexto`: texto opcional de hasta 500 caracteres.
+- `verificar`: `auto`, `1` o `0`. El valor por default es `auto`, que verifica cuando hay una clave configurada. `1` fuerza la verificación y `0` devuelve una respuesta degradada, sin clasificación.
+
+Los modelos usan `contexto` para interpretar la imagen y decidir si respalda lo que se describió. La API nunca devuelve ese texto porque puede contener nombres o patentes.
 
 ```bash
 curl -s -F "file=@foto.jpg" -F "contexto=vidrios rotos en la vereda" http://127.0.0.1:8080/clasificar
 ```
 
-Respuesta, veredicto primero:
+Ejemplo de respuesta:
 
 ```json
 {
@@ -117,92 +131,28 @@ Respuesta, veredicto primero:
 }
 ```
 
-- `hay_problema`: hay al menos un problema confirmado. Siempre `hay_problema == bool(problemas)`. `gravedad_maxima` resume solo `problemas`.
-- `hay_reclamo`: hay algo que el vecino quiere tramitar, esté confirmado o no: `hay_reclamo == bool(problemas or categorias_contexto)`. El caso `hay_reclamo: true, hay_problema: false` es "el texto pide algo pero la foto no lo confirma".
-- `problemas`: lo que se reporta, gravedad 1-5, y `fuentes` (cuántas fuentes del consenso lo sostienen; hacen falta al menos 2). El clasificador interno participa del consenso pero su voto no se publica. Si la foto no corresponde al reclamo, acá va lo que pidió el vecino. La entrada puede traer `codigo` (una prestación del catálogo de la Ciudad) en lugar de `key`: leé `p.get("key") or p.get("codigo")`. Cada entrada trae `confianza` (`alta` = 3 o más fuentes, `media` = 2). Arriba va `predominante`: la clave del problema que domina la escena (mayor gravedad; a igual gravedad, más fuentes), o `null`.
-- `patente`: en escenas de `vehiculo_mal_estacionado` o `vehiculo_abandonado` puede aparecer la chapa (formatos argentinos, p. ej. `AB123CD` o `ABC123`), arriba y copiada en el problema si quedó confirmado. Sale solo cuando dos lectores independientes leyeron la misma cadena en el vehículo protagonista. Cualquier lectura válida discrepante la suprime. Si hace falta, se relee la foto a mayor resolución solo para la chapa. Si no está a la vista o hay duda, el campo no viene.
-- `foto_valida`: si la foto respalda lo que el vecino escribió. `true` = sirve como prueba; `false` = no muestra lo que reclama; `null` = no se pudo juzgar. `null` no quiere decir que la foto esté bien.
-- `foto_valida_estado`: por qué `foto_valida` vale lo que vale. `corresponde` / `no_corresponde` van con `true` / `false`. Con `null` puede ser `sin_contexto`, `empate`, `sin_opinion` o `no_evaluado`. Solo `no_corresponde` descarta los hallazgos visuales.
-- `posibles`: lo que podría ser un reporte y no está confirmado. Se devuelve siempre. Cada uno trae `origen`: `foto` (lo vio un solo modelo), `foto_no_relacionada` (se ve, pero no era el reclamo) o `contexto_vecinal` (lo sugiere el texto).
-- `descartados_por_foto`: lo que la foto mostraba cuando `foto_valida` es `false`. No se reporta, pero vuelve con `motivo_descarte`.
-- `descripcion`: la escena consolidada. La redacta el árbitro cuando interviene; si no, el verificador que mejor coincide con el resultado. Es `null` sin verificación.
-- `categorias_contexto`: lo que el texto describe y la foto no confirma. No suman a `gravedad_maxima` ni a `hay_problema`; sí hacen `hay_reclamo: true`. Cada una trae `respaldo_visual`: `compatible`, `neutral` o `contradice`. Fuera de las 44 categorías propias, el reclamo puede mapear a cualquier prestación de [`prestaciones.json`](prestaciones.json): esas vienen con `codigo` en lugar de `key`.
-- `elementos_detectados`: contenedores visibles, tengan o no problemas.
-- `en_duda`: categorías con una sola fuente que el árbitro no decidió. Por default el árbitro no confirma lo de una sola fuente, así que eso vive en `posibles`. La excepción son los contenedores (`contenedor_*` de presencia): no pasan por el árbitro ni van a `posibles`, así que un contenedor que vio una sola fuente queda acá a propósito. Con dos fuentes pasa a `elementos_detectados`.
-- `calidad_foto`: `lado_menor`, `nitidez`, `luminancia` y `definicion` (`buena` / `limitada`). Es informativo: no filtra y no cambia ninguna decisión. Sobre 200 fotos con etiqueta humana, la calidad global no predice los errores.
-- `modelos`: lo que devolvió cada modelo de visión. El clasificador interno no aparece acá.
+### Campos de la respuesta
 
-La fusión de escombros embolsados (arriba) corre solo con la verificación activa. Tiene dos niveles, uno confiado (interno ≥0.95 y recolección local ≤0.2) y uno de rescate (interno ≥0.70 y recolección local ≤0.1). En ambos hace falta una pila confirmada aparte. La poda confirmada veta los dos; el rechazo dirigido de un verificador ("no son escombros") también, salvo en el nivel confiado cuando la corroboración viene solo de `retiro_muebles`. Si se dispara y `recoleccion` estaba confirmada con score local bajo, esa entrada baja a `posibles`. Variables: `FUSION_ESCOMBROS`, `FUSION_ESCOMBROS_UMBRAL`, `FUSION_ESCOMBROS_RECO_BAJA`, `FUSION_ESCOMBROS_UMBRAL_RESCATE`, `FUSION_ESCOMBROS_RECO_RESCATE`.
+- `hay_problema` indica que hay por lo menos un problema confirmado. Siempre cumple `hay_problema == bool(problemas)`. `gravedad_maxima` resume solamente esas entradas.
+- `hay_reclamo` indica que hay algo para tramitar, esté confirmado por la foto o no. Siempre cumple `hay_reclamo == bool(problemas or categorias_contexto)`. Puede ser `true` mientras `hay_problema` es `false` si el texto pide algo que la foto no confirma.
+- `problemas` contiene lo que se reporta, con gravedad de 1 a 5 y la cantidad de `fuentes`. Hacen falta al menos 2 fuentes. El clasificador local cuenta para el consenso, pero su voto no se publica.
+- Una entrada de `problemas` puede traer `codigo`, correspondiente a una prestación del catálogo de la Ciudad, en lugar de `key`. Para aceptar ambos formatos usá `p.get("key") or p.get("codigo")`.
+- Cada problema incluye `confianza`: `alta` con 3 o más fuentes y `media` con 2. El campo superior `predominante` contiene la clave del problema de mayor gravedad. Si hay empate, elige el que tenga más fuentes. Vale `null` cuando no hay uno.
+- `patente` puede aparecer en escenas de `vehiculo_mal_estacionado` o `vehiculo_abandonado`. Acepta formatos argentinos como `AB123CD` y `ABC123`. Solo se devuelve cuando dos lectores independientes obtienen la misma cadena del vehículo protagonista. Cualquier lectura válida que discrepe la suprime. Si hace falta, la API vuelve a leer la foto a mayor resolución solo para la chapa. El valor aparece arriba y dentro del problema confirmado.
+- `foto_valida` dice si la imagen respalda el contexto. `true` significa que sirve como prueba, `false` que no muestra lo reclamado y `null` que no pudo evaluarse. Un valor `null` no significa que la foto sea correcta.
+- `foto_valida_estado` explica ese resultado. `corresponde` y `no_corresponde` acompañan a `true` y `false`. Con `null` puede valer `sin_contexto`, `empate`, `sin_opinion` o `no_evaluado`. Solo `no_corresponde` descarta los hallazgos visuales.
+- `posibles` reúne detecciones no confirmadas y siempre está presente. `origen` puede ser `foto`, `foto_no_relacionada` o `contexto_vecinal`.
+- `descartados_por_foto` contiene lo que mostraba una imagen marcada con `foto_valida: false`. Esas entradas no se reportan y traen `motivo_descarte`.
+- `descripcion` resume la escena. La escribe el árbitro cuando interviene; de lo contrario se usa la descripción del verificador que más coincide con el resultado. Sin verificación vale `null`.
+- `categorias_contexto` contiene lo que describe el texto y la foto no confirma. No modifica `gravedad_maxima` ni `hay_problema`, pero sí puede hacer que `hay_reclamo` sea `true`. Cada entrada trae `respaldo_visual`, con valor `compatible`, `neutral` o `contradice`. Un reclamo ajeno a las 44 categorías puede mapear a una prestación de [`prestaciones.json`](prestaciones.json), que usa `codigo` en lugar de `key`.
+- `elementos_detectados` enumera los contenedores visibles aunque no tengan problemas.
+- `en_duda` contiene categorías con una fuente que el árbitro no resolvió. Las detecciones aisladas normalmente aparecen en `posibles`. La excepción son las claves de presencia `contenedor_*`: no pasan por el árbitro ni por `posibles`. Con una fuente quedan en `en_duda`; con dos pasan a `elementos_detectados`.
+- `calidad_foto` informa `lado_menor`, `nitidez`, `luminancia` y `definicion`, que puede ser `buena` o `limitada`. No filtra resultados ni cambia decisiones. Sobre 200 fotos etiquetadas por personas, la calidad global no predijo los errores.
+- `modelos` contiene la salida de cada modelo de visión. El clasificador local no aparece ahí.
 
-### `POST /trabajos` y `GET /trabajos/{id}` (asíncrono, para lotes)
+## Reglas de clasificación
 
-La vía sincrónica obliga a sostener la conexión los 25-60 s del análisis. Detrás de un proxy con techo de conexión (Cloudflare corta a los ~100 s) eso limita la cola. Para lotes, `POST /trabajos` recibe el mismo `multipart/form-data` que `/clasificar` y responde al instante:
-
-```json
-{ "trabajo": "kJ9vX2...", "estado": "en_cola", "posicion": 1 }
-```
-
-Después se consulta `GET /trabajos/{id}` (o `GET /trabajos?id=...`) hasta que el estado sea `listo` (trae `resultado`) o `error` (trae `detail`). Estados: `en_cola` (con `posicion`; 1 = el próximo), `procesando`, `listo`, `error`.
-
-Un trabajo en cola se cancela con `DELETE /trabajos/{id}` (o `DELETE /trabajos?id=...`, o `POST /trabajos/cancelar?id=...`): devuelve `{"estado": "cancelado"}`. Uno que ya está `procesando` no se frena: responde `409`. Sobre un trabajo terminado, `DELETE` borra el registro.
-
-Reglas:
-
-- Si la foto ya está en caché, el `POST` devuelve `{"estado": "listo", "resultado": ...}` directo.
-- Los pedidos sincrónicos tienen prioridad sobre los encolados.
-- Techos: `TRABAJOS_MAX` pendientes (default 10, por encima `503`) y `TRABAJOS_POR_IP` (default 4, por encima `429`). El resultado se retiene `TRABAJO_TTL` segundos (default 1800). Un trabajo puede esperar su turno hasta `TRABAJO_ESPERA` segundos (default 900).
-- Los trabajos viven en memoria del proceso: un reinicio los pierde. Un `404` al consultar significa desconocido o vencido: el cliente reenvía la foto.
-- El `POST` pasa por las mismas guardas que `/clasificar`. Consultar el estado no consume cuota.
-
-La portada (`GET /`) usa esta vía.
-
-### `GET /salud`
-
-Estado del servicio: clases del modelo, si la verificación está activa y con qué modelos.
-
-## Configuración
-
-Todo por variables de entorno o `.env` (ver [`.env.example`](.env.example)):
-
-| Variable | Default | Qué hace |
-|---|---|---|
-| `OPENROUTER_API_KEY` | vacía | Habilita la verificación cruzada. Nunca la commitees. |
-| `VERIFICADORES` | tres modelos (ver `.env.example`) | Modelos de visión, separados por coma. Podés poner uno, dos, tres o los que quieras: se confirma con ≥2 fuentes y el local cuenta como una. Las pasadas dirigidas agregan llamadas extra solo cuando se disparan. La repregunta entre modelos corre con 3 o más verificadores. |
-| `ARBITRO` | `deepseek/deepseek-v4-flash` | Modelo que resuelve desacuerdos. Vacío = sin árbitro. Puede ser de texto o con visión. |
-| `ARBITRO_VE_FOTO` | apagado | Si el árbitro tiene visión, le pasa también la foto. |
-| `ARBITRO_CONFIRMA` | apagado | Si el árbitro puede promover a confirmado lo de una sola fuente. Apagado por medición. |
-| `UMBRAL` | `0.5` | Probabilidad mínima del modelo local para proponer una categoría. |
-| `HOST` / `PORT` | `127.0.0.1` / `8080` | Dónde escucha la API. |
-| `VERIFICADOR_TIMEOUT` | `120` | Segundos por llamada a OpenRouter. |
-| `VERIFICADOR_DEADLINE` | `180` | Techo total de reintentos por modelo. |
-
-Los modelos de DeepSeek en OpenRouter no aceptan imágenes, por eso participa como árbitro de texto.
-
-### Límites si publicás la API
-
-Clasificar una foto cuesta 25-60 s de CPU y una llamada paga a OpenRouter por verificador (tres por defecto), más el árbitro si hay disputa. `/clasificar` viene con techos de fábrica:
-
-| Variable | Default | Qué hace |
-|---|---|---|
-| `MAX_BYTES` | `10485760` (10 MB) | Tamaño máximo del upload; más grande devuelve `413`. |
-| `MAX_PIXELES` | `25000000` | Megapíxeles máximos; frena bombas de descompresión con `400`. |
-| `CONCURRENCIA` | `1` | Clasificaciones en paralelo; por encima devuelve `503`. |
-| `RATE_LIMITE` / `RATE_VENTANA` | `60` / `3600` | Pedidos por IP y ventana en segundos; por encima `429` con `Retry-After`. `0` desactiva. |
-| `CUOTA_DIARIA` | `500` | Techo global de fotos verificadas por día. Pasado el techo responde degradada. `0` desactiva. |
-| `API_TOKEN` | vacío | Si lo ponés, `POST /clasificar` exige el header `X-Api-Token`. |
-| `CACHE_MAX` | `128` | Respuestas cacheadas por hash de foto. |
-| `CONFIAR_PROXY` | apagado | Hace que el límite por IP use `X-Forwarded-For`. |
-
-Si la publicás en internet:
-
-- Detrás de un proxy, activá `CONFIAR_PROXY` y hacé que el proxy pise el `X-Forwarded-For` que manda el cliente. Sin `CONFIAR_PROXY`, todos llegan como `127.0.0.1` y comparten una sola cuota. Con `CONFIAR_PROXY` pero sin pisar el header, cualquiera rota el header y se saltea el límite. Sin proxy, dejalo apagado.
-- Poné un límite de tamaño de cuerpo en el proxy (`client_max_body_size` en nginx).
-- Poné un tope de gasto mensual en la clave de OpenRouter, con una clave dedicada a este servicio. `CUOTA_DIARIA` es por proceso y se reinicia con el servicio.
-- `multipart/form-data` no dispara preflight de CORS: cualquier página puede pegar contra tu endpoint. El límite por IP y el token son lo que lo frena.
-
-El límite por IP y el de concurrencia viven en memoria del proceso. Para varias instancias hay que llevarlos al proxy o a un store compartido.
-
-### El texto del vecino manda sobre la foto
+### Contexto y foto
 
 | Situación | Resultado |
 |---|---|
@@ -211,44 +161,147 @@ El límite por IP y el de concurrencia viven en memoria del proceso. Para varias
 | Hay contexto y no mapea a nada del catálogo | `hay_problema: false`. No se inventa un reporte |
 | No hay contexto | Se reporta lo de la foto. `foto_valida: null` |
 
-Cuando el reclamo se encamina desde el texto y es ambiguo, va la categoría genérica: "mi cuadra está llena de basura" es `recoleccion`, no `retiro_muebles` ni `retiro_escombros`.
+Cuando el texto es ambiguo, la API elige la categoría genérica. Por ejemplo, "mi cuadra está llena de basura" corresponde a `recoleccion`, no a `retiro_muebles` ni a `retiro_escombros`.
 
-### Lo que vio una sola fuente no se afirma
+### Detecciones de una sola fuente
 
-Por default el árbitro no promueve a confirmado lo que reportó una sola fuente: sale en `posibles`. Se probaron cuatro modelos de árbitro y dieron 2 rescates correctos sobre 21 confirmaciones. Se puede volver al comportamiento anterior con `ARBITRO_CONFIRMA=1`.
+Por default, el árbitro no confirma lo que vio una sola fuente. Esas detecciones aparecen en `posibles`. En una prueba con cuatro modelos de árbitro, solo 2 de 21 confirmaciones fueron rescates correctos. `ARBITRO_CONFIRMA=1` recupera el comportamiento anterior.
 
-### El contenedor que no está
+### Presencia de contenedores
 
-Un contenedor publicado es un dato duro, así que inventarlo es caro. Hay dos vetos de presencia, los dos por mirada dirigida y los dos con mayoría:
+Publicar un contenedor que no existe es un error costoso, por lo que la API aplica dos vetos de presencia mediante revisiones dirigidas y decisión por mayoría.
 
-- Ninguno: los verificadores confirman un contenedor y el clasificador interno está en el piso para todas las claves de contenedor. Se pregunta si hay alguno; mayoría de "ausente" y la presencia baja a `en_duda`. El contenedor municipal es ancho (unos dos metros); un tacho angosto y vertical no lo es.
-- Ese: el contenedor fantasma que se publica al lado de uno real (la bolsa verde leída como contenedor de reciclables). Corre por clave, y solo donde el interno es detector confiable: `contenedor_secos` y el bilateral. Para el lateral no se aplica: es el tipo más común y el que el interno más se pierde. Cuando se veta, la prosa pierde solo las frases de ese contenedor.
+El veto general corre cuando los verificadores confirman un contenedor pero el clasificador local da valores mínimos para todas las claves de contenedor. Si la revisión dirigida concluye que no hay ninguno, la presencia baja a `en_duda`. Para esta decisión, un contenedor municipal es ancho, de unos dos metros. Un tacho angosto y vertical no cuenta como tal.
 
-### Sobre el contexto y la inyección de prompt
+El segundo veto revisa una clave concreta cuando un objeto junto a un contenedor real fue interpretado como otro contenedor. Se aplica a `contenedor_secos` y al bilateral, donde el clasificador local es un detector confiable. No se aplica al lateral porque es el tipo más común y el que el modelo local más omite. Cuando este veto se activa, la descripción pierde solamente las frases referidas al contenedor descartado.
 
-El `contexto` que escribe quien sube la foto, y cualquier texto que aparezca dentro de la foto, llegan a los modelos. Se tratan como datos no confiables:
+### Fusión de escombros embolsados
 
-- La rúbrica viaja en un mensaje `system`; los datos del usuario van en el `user`. Lo mismo para el árbitro.
-- Una categoría se reporta por los objetos que se ven. Un texto dirigido a quien analiza no es evidencia.
-- Las descripciones vuelven acotadas y sin caracteres de control.
+Esta fusión solo corre con la verificación activa. Tiene un nivel confiado, con puntaje interno mayor o igual a `0.95` y puntaje local de recolección menor o igual a `0.2`, y uno de rescate, con valores de `0.70` y `0.1`.
 
-Los verificadores miran la misma foto con el mismo prompt, así que no son fuentes independientes: una inyección que funcione en dos de ellos alcanza para el consenso. Existe `CONSENSO_VLM_SOLO=arbitro`, que manda esas categorías al árbitro, pero no es el default: un eval no pudo demostrar que sirviera. Ver [`verificador.py`](verificador.py) y [`eval/`](eval/).
+En ambos niveles debe existir otra pila confirmada. Una poda confirmada bloquea la fusión. También la bloquea el rechazo dirigido de un verificador que indique que no son escombros, salvo en el nivel confiado cuando la corroboración viene solamente de `retiro_muebles`.
 
-`descripcion` es texto generado por un modelo e influido por quien sube la foto: escapalo antes de renderizarlo como HTML y no abras reportes automáticos sin revisión humana.
+Si la fusión se activa y `recoleccion` estaba confirmada con un puntaje local bajo, esa entrada pasa a `posibles`.
 
-## Si el proveedor se cuelga
+Las variables relacionadas son `FUSION_ESCOMBROS`, `FUSION_ESCOMBROS_UMBRAL`, `FUSION_ESCOMBROS_RECO_BAJA`, `FUSION_ESCOMBROS_UMBRAL_RESCATE` y `FUSION_ESCOMBROS_RECO_RESCATE`.
 
-Las llamadas a OpenRouter tienen un tope de reloj absoluto, no por operación de socket. `urllib` reinicia su timeout con cada byte, así que un proveedor que manda keepalives mientras el modelo genera puede dejar un hilo esperando para siempre. Cuando vence el tope se hace `shutdown()` del socket.
+## Trabajos asíncronos
 
-Esto ya pasó: un hilo quedó tomado y, con `CONCURRENCIA=1`, todo `/clasificar` devolvió 503 hasta reiniciar, mientras `/salud` seguía en 200.
+### `POST /trabajos` y `GET /trabajos/{id}`
 
-Como red de seguridad hay un `TECHO_TRABAJO` (default 600 s): pasado ese tiempo el trabajo se da por perdido y se devuelve su cupo. El hilo sigue vivo (a un hilo de Python no se lo puede matar) pero el servicio se recupera solo.
+Una llamada sincrónica mantiene la conexión abierta durante los 25 a 60 segundos del análisis. Eso complica los lotes y los despliegues detrás de un proxy con tiempo máximo de conexión. Cloudflare corta alrededor de los 100 segundos.
+
+`POST /trabajos` recibe el mismo `multipart/form-data` que `/clasificar` y responde de inmediato:
+
+```json
+{ "trabajo": "kJ9vX2...", "estado": "en_cola", "posicion": 1 }
+```
+
+Consultá `GET /trabajos/{id}` o `GET /trabajos?id=...` hasta recibir `listo`, que incluye `resultado`, o `error`, que incluye `detail`.
+
+Los estados posibles son:
+
+- `en_cola`, con `posicion`. El valor `1` corresponde al próximo trabajo.
+- `procesando`.
+- `listo`.
+- `error`.
+
+Para cancelar un trabajo en cola, usá `DELETE /trabajos/{id}`, `DELETE /trabajos?id=...` o `POST /trabajos/cancelar?id=...`. La respuesta es `{"estado": "cancelado"}`.
+
+Un trabajo que ya está `procesando` no puede detenerse y responde `409`. Si el trabajo terminó, `DELETE` borra su registro.
+
+Otras reglas:
+
+- Si la foto está en caché, el `POST` responde directamente con `{"estado": "listo", "resultado": ...}`.
+- Los pedidos sincrónicos tienen prioridad sobre los trabajos en cola.
+- `TRABAJOS_MAX` limita los pendientes. Su default es `10`; por encima devuelve `503`.
+- `TRABAJOS_POR_IP` limita los pendientes por IP. Su default es `4`; por encima devuelve `429`.
+- `TRABAJO_TTL` conserva el resultado durante `1800` segundos por default.
+- `TRABAJO_ESPERA` permite esperar el turno durante `900` segundos por default.
+- Los trabajos viven en la memoria del proceso y se pierden al reiniciar.
+- Un `404` al consultar significa que el trabajo es desconocido o venció. El cliente debe volver a enviar la foto.
+- El `POST` usa las mismas protecciones que `/clasificar`. Consultar el estado no consume cuota.
+
+La portada disponible en `GET /` usa esta vía.
+
+### `GET /salud`
+
+Devuelve el estado del servicio: las clases del modelo, si la verificación está activa y qué modelos usa.
+
+## Configuración
+
+La configuración se lee desde variables de entorno o `.env`. La lista completa está en [`.env.example`](.env.example).
+
+| Variable | Default | Qué hace |
+|---|---|---|
+| `OPENROUTER_API_KEY` | vacía | Habilita la verificación cruzada. Nunca la commitees. |
+| `VERIFICADORES` | tres modelos (ver `.env.example`) | Modelos de visión separados por coma. Podés configurar uno, dos, tres o más. Una categoría necesita al menos 2 fuentes y el modelo local cuenta como una. Las pasadas dirigidas agregan llamadas solo cuando se activan. La repregunta entre modelos corre con 3 o más verificadores. |
+| `ARBITRO` | `deepseek/deepseek-v4-flash` | Modelo que resuelve desacuerdos. Vacío desactiva el árbitro. Puede ser de texto o tener visión. |
+| `ARBITRO_VE_FOTO` | apagado | Envía la foto al árbitro si este tiene visión. |
+| `ARBITRO_CONFIRMA` | apagado | Permite que el árbitro confirme una categoría informada por una sola fuente. Está apagado por los resultados de la medición. |
+| `UMBRAL` | `0.5` | Probabilidad mínima para que el modelo local proponga una categoría. |
+| `HOST` / `PORT` | `127.0.0.1` / `8080` | Dirección y puerto de la API. |
+| `VERIFICADOR_TIMEOUT` | `120` | Segundos por llamada a OpenRouter. |
+| `VERIFICADOR_DEADLINE` | `180` | Tiempo máximo total de reintentos por modelo. |
+
+Los modelos de DeepSeek disponibles en OpenRouter no aceptan imágenes. Por eso el valor configurado por default interviene como árbitro de texto.
+
+## Si publicás la API
+
+Cada foto usa entre 25 y 60 segundos de CPU y una llamada paga a OpenRouter por verificador, tres por default. Si hay una disputa, puede sumarse la llamada al árbitro.
+
+`/clasificar` incluye estos límites:
+
+| Variable | Default | Qué hace |
+|---|---|---|
+| `MAX_BYTES` | `10485760` (10 MB) | Tamaño máximo del archivo. Si lo supera, responde `413`. |
+| `MAX_PIXELES` | `25000000` | Cantidad máxima de píxeles. Frena bombas de descompresión y responde `400`. |
+| `CONCURRENCIA` | `1` | Clasificaciones simultáneas. Si se supera, responde `503`. |
+| `RATE_LIMITE` / `RATE_VENTANA` | `60` / `3600` | Solicitudes permitidas por IP dentro de la ventana en segundos. Si se supera, responde `429` con `Retry-After`. `0` desactiva el límite. |
+| `CUOTA_DIARIA` | `500` | Máximo global de fotos verificadas por día. Al superarlo, la API responde en modo degradado. `0` desactiva la cuota. |
+| `API_TOKEN` | vacío | Si tiene un valor, `POST /clasificar` exige el encabezado `X-Api-Token`. |
+| `CACHE_MAX` | `128` | Cantidad de respuestas guardadas por hash de foto. |
+| `CONFIAR_PROXY` | apagado | Usa `X-Forwarded-For` para calcular el límite por IP. |
+
+Si hay un proxy, activá `CONFIAR_PROXY` y configurá el proxy para reemplazar el `X-Forwarded-For` enviado por el cliente. Sin `CONFIAR_PROXY`, todas las conexiones pueden aparecer como `127.0.0.1` y compartir una sola cuota. Si lo activás sin reemplazar el encabezado, un cliente puede rotarlo para evitar el límite. Sin proxy, dejalo apagado.
+
+También conviene configurar un límite de tamaño de cuerpo en el proxy, como `client_max_body_size` en nginx, y un tope mensual de gasto para una clave de OpenRouter dedicada al servicio. `CUOTA_DIARIA` pertenece al proceso y se reinicia junto con él.
+
+Una solicitud `multipart/form-data` no dispara el preflight de CORS. Cualquier página puede llamar al endpoint, por lo que el límite por IP y el token son las barreras disponibles.
+
+El límite por IP y el de concurrencia viven en la memoria del proceso. Si ejecutás varias instancias, tenés que moverlos al proxy o a un almacenamiento compartido.
+
+## Contexto e inyección de prompt
+
+El contenido de `contexto` y cualquier texto visible dentro de la foto llegan a los modelos. Ambos se tratan como datos no confiables.
+
+- La rúbrica se envía en un mensaje `system`. El texto del usuario va en `user`. El árbitro usa la misma separación.
+- Las categorías se deciden por los objetos visibles. Un texto dirigido a quien analiza la imagen no cuenta como evidencia.
+- Las descripciones tienen longitud limitada y no incluyen caracteres de control.
+
+Los verificadores usan la misma foto y el mismo prompt, así que no son fuentes independientes. Una inyección que funcione en dos modelos alcanza para formar consenso.
+
+`CONSENSO_VLM_SOLO=arbitro` envía esas categorías al árbitro, pero no es el valor por default porque una evaluación no pudo demostrar que ayudara. El comportamiento está implementado en [`verificador.py`](verificador.py) y evaluado en [`eval/`](eval/).
+
+`descripcion` es texto generado por un modelo y puede estar influido por quien subió la foto. Escapalo antes de insertarlo en HTML y no abras reportes automáticos sin revisión humana.
+
+## Si un proveedor se cuelga
+
+Las llamadas a OpenRouter tienen un límite absoluto de tiempo, no solamente un timeout por operación de socket. `urllib` reinicia su timeout con cada byte, por lo que los keepalives enviados mientras un modelo genera podrían dejar un hilo esperando sin límite. Cuando se cumple el plazo, el servicio ejecuta `shutdown()` sobre el socket.
+
+Esto ya pasó: un hilo quedó ocupado y, con `CONCURRENCIA=1`, todas las llamadas a `/clasificar` devolvieron `503` hasta reiniciar. Mientras tanto, `/salud` siguió respondiendo `200`.
+
+`TECHO_TRABAJO` funciona como última protección y tiene un default de `600` segundos. Al superar ese tiempo, el trabajo se considera perdido y libera su cupo. El hilo continúa vivo porque Python no permite matarlo, pero el servicio vuelve a aceptar trabajo.
 
 ## Privacidad
 
-El modelo local no envía nada a ningún lado. Con la verificación activa, la foto (reducida a 1024px) se envía a los modelos configurados a través de OpenRouter; revisá sus políticas de datos antes de usarla con fotos sensibles.
+Sin verificación, el modelo local procesa la foto en la máquina y no la envía.
 
-El `contexto` del vecino entra a los modelos pero no vuelve en la respuesta. Excepción: en reportes de vehículos la respuesta puede incluir la `patente` leída de la foto, que es el dato que pide el trámite. Sale de la chapa visible, nunca del texto del vecino. Las descripciones de los modelos de visión son parte de la respuesta y pueden transcribir texto visible en la foto. Si eso importa, no persistas las respuestas.
+Con la verificación activa, la imagen se reduce a 1024 px y se envía a los modelos configurados mediante OpenRouter. Revisá las políticas de datos de esos proveedores antes de procesar fotos sensibles.
+
+El texto de `contexto` también llega a los modelos, pero no vuelve en la respuesta. En reportes de vehículos puede aparecer la `patente` leída de la chapa visible, que es el dato requerido por el trámite. Nunca se toma del texto escrito por el vecino.
+
+Las descripciones de los modelos forman parte de la respuesta y pueden transcribir texto visible en la imagen. Si eso representa un problema, no guardes las respuestas.
 
 ## Licencia
 
