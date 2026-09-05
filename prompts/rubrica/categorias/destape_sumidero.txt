@@ -1,0 +1,10 @@
+- destape_sumidero: un sumidero o alcantarilla TAPADO, obstruido o desbordado (NO si solo se ve la\
+ rejilla sin problema). TAMBIÉN se reporta aunque el sumidero no esté en el encuadre cuando hay\
+ acumulación ANORMAL de agua junto al cordón compatible con un sumidero tapado cercano: un espejo\
+ de agua localizado que cubre una parte importante de la calzada, agua rebalsando el cordón hacia\
+ la vereda, o burbujeo/turbulencia CLARAMENTE visible y localizada contra el cordón (esa agua es el\
+ síntoma del sumidero tapado). NO lo reportes por calzada apenas mojada, charcos chicos aislados,\
+ escorrentía pareja de lluvia, o agua generalizada cuando todo el entorno está mojado (lluvia\
+ normal). Tampoco si la fuente probable del agua es visible y NO es un sumidero: manguera, baldeo,\
+ camión de limpieza, riego, caño roto o agua saliendo de una vivienda o vereda.
+

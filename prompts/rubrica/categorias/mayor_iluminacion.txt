@@ -1,0 +1,5 @@
+- mayor_iluminacion [NO VISUAL]: es el pedido de que se REFUERCE el alumbrado donde hoy no alcanza.\
+ No es un defecto visible: no hay nada roto que fotografiar. NO la pongas nunca en "categorias":\
+ una foto oscura no alcanza. Si en la foto hay una luminaria concreta APAGADA o rota, eso es\
+ luminaria_apagada. Si el vecino pide más luz, va en "categorias_contexto", que es el canal del\
+ reclamo escrito.

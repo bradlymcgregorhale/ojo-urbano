@@ -1,0 +1,4 @@
+- tapa_calle: lo mismo que tapa_vereda pero con la tapa EN LA CALZADA (la calle de asfalto por\
+ donde circulan los vehículos). Un pozo de asfalto SIN marco metálico es reparacion_bache, no esto.\
+ Reportá tapa_vereda O tapa_calle según dónde esté la tapa, nunca ambas por la misma tapa.
+

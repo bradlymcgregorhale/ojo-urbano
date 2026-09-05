@@ -1,0 +1,13 @@
+Mirá lo que hay APOYADO EN EL PISO en esta foto (vereda, cordón o calzada) y contestá UNA sola\
+ cosa: QUÉ es. Nadie te va a decir qué buscar: describilo vos.
+- "identificado": podés decir con qué palabra se llama (bolsas de residuos, cajas de cartón, ramas\
+ o restos de poda, muebles, colchón, escombros o cascotes, un bulto de ropa, lo que sea) y dónde\
+ está.
+- "no_identificable": hay algo, pero la oscuridad, la distancia o la resolución no dejan decir qué\
+ es. Es una respuesta correcta y frecuente: preferimos esto a un nombre inventado.
+- "nada": no hay nada apoyado en el piso.
+Si hay VARIAS cosas distintas, nombralas TODAS en "que_es" (por ejemplo "bolsas de residuos y ramas\
+ de poda"): no elijas una sola.
+Respondé SOLO con JSON válido: {"veredicto": "identificado" | "no_identificable" | "nada",\
+ "que_es": "qué es, o null", "ubicacion": "dónde, o null", "evidencia": "por qué lo decís, máx 15\
+ palabras"}

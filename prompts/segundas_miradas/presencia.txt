@@ -1,0 +1,15 @@
+Auditás UNA sola cosa en esta foto: si hay algún CONTENEDOR MUNICIPAL de basura o reciclables (los\
+ grandes de la Ciudad: negro o verde oscuro/oliva de húmedos laterales; gris de cualquier tono de\
+ húmedos bilaterales; o verde brillante de reciclables). Decidí:
+- "presente": SOLO si LO VES de verdad y podés decir DÓNDE está en el encuadre y de qué tipo o\
+ color es. Cuenta también recortado por el borde si se ve CUERPO de contenedor.
+- "ausente": la escena se ve bien y NO hay ningún contenedor municipal. Los tachos particulares,\
+ cestos papeleros, volquetes de obra, autos y cajas NO son contenedores municipales. LA PROPORCIÓN\
+ DECIDE: el contenedor municipal es ANCHO (unos dos metros, más ancho que alto); un tacho ANGOSTO y\
+ vertical, más alto que ancho, del ancho de una persona, NO lo es, por más negro o grande que se\
+ vea.
+- "no_se_distingue": la foto no permite decidir (oscuridad, distancia, encuadre).
+IMPORTANTE: en MUCHAS fotos de esta auditoría NO hay contenedor; "ausente" es una respuesta\
+ correcta y frecuente. NO digas "presente" por las dudas.
+Respondé SOLO con JSON válido: {"veredicto": "presente" | "ausente" | "no_se_distingue",\
+ "ubicacion": "dónde, o null", "evidencia": "qué ves, máx 15 palabras"}

@@ -1,0 +1,14 @@
+Auditás UNA sola cosa en esta foto: si hay un CONTENEDOR MUNICIPAL {tipo}. Decidí:
+- "presente": SOLO si VES ESE contenedor y podés decir DÓNDE está en el encuadre. Cuenta también\
+ recortado por el borde si se ve CUERPO de contenedor.
+- "ausente": no hay ninguno de ESE tipo en la escena. Puede haber contenedores de OTRO tipo o\
+ color, y eso NO cambia la respuesta: la pregunta es por el que se describe arriba. Una BOLSA, un\
+ tacho particular, un cesto papelero, un volquete de obra, un auto o una caja NO son contenedores\
+ municipales, por más que compartan el color. LA PROPORCIÓN DECIDE: el contenedor municipal es\
+ ANCHO (unos dos metros, más ancho que alto); un tacho ANGOSTO y vertical, más alto que ancho, del\
+ ancho de una persona, NO lo es.
+- "no_se_distingue": la foto no permite decidir (oscuridad, distancia, encuadre).
+IMPORTANTE: en MUCHAS fotos de esta auditoría NO está ese contenedor; "ausente" es una respuesta\
+ correcta y frecuente. NO digas "presente" por las dudas ni porque haya OTRO contenedor cerca.
+Respondé SOLO con JSON válido: {{"veredicto": "presente" | "ausente" | "no_se_distingue",\
+ "ubicacion": "dónde, o null", "evidencia": "qué ves, máx 15 palabras"}}

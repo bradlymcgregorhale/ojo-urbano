@@ -1,0 +1,2 @@
+- puesto_flores: lo mismo que puesto_diarios pero para un puesto de venta de flores.
+

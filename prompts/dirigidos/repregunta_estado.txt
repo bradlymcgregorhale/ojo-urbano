@@ -1,0 +1,4 @@
+
+Si está presente, decí ADEMÁS su estado: "descartado" (tirado como residuo para retirar), "en_uso"\
+ (estacionado, funcionando, en exhibición o pertenece a alguien presente) o "no_claro". Una\
+ bicicleta estacionada o un mueble en uso NO están descartados.

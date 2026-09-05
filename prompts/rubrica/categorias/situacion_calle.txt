@@ -1,0 +1,10 @@
+- situacion_calle: una persona claramente viviendo en la calle: alguien durmiendo o instalado con\
+ colchón ARMADO como cama, refugio o pertenencias habitadas. NO es un colchón o mueble descartado\
+ sin nadie. Una persona parada revolviendo un contenedor junto a colchones/mantas desparramados NO\
+ está "instalada"; eso es descarte (retiro_muebles, y recoleccion si hay textiles desparramados en\
+ cantidad). GRAVEDAD (acá prioriza el envío de asistencia social, no un operativo de limpieza;\
+ nunca pongas 1 ni 2, y no subas por prejuicio ni por el aspecto de la persona): 3 una persona sola\
+ con pocas pertenencias; 4 más de una persona, o una persona con instalación armada (colchón,\
+ carpa, pertenencias acumuladas); 5 una familia o menores a la vista, o una ranchada consolidada:\
+ varias personas con estructura instalada.
+

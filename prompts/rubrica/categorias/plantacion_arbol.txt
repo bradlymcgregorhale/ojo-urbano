@@ -1,0 +1,4 @@
+- plantacion_arbol: una PLANTERA o cazuela VACÍA y abierta en la vereda, sin árbol, donde debería\
+ haber uno. Reportalo solo si el hueco de plantación se ve claramente vacío. Un árbol enfermo o\
+ dañado NO es esto.
+

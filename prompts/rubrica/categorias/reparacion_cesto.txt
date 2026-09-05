@@ -1,0 +1,14 @@
+- reparacion_cesto: TODO problema físico de un cesto papelero: roto, caído, desprendido, colgando,\
+ girado fuera de su montaje, o la base/soporte sin canasto montado. El cesto papelero es un canasto\
+ chico montado en un poste; una CUNA, un corralito o cualquier mueble con barrotes apoyado en el\
+ piso junto a un contenedor NO es un cesto roto ni un contenedor chico desmontado: es un mueble\
+ descartado (retiro_muebles). La señal decisiva es la ORIENTACIÓN: un cesto sano está vertical,\
+ pegado a su poste y con la boca hacia ARRIBA; si el cuerpo cuelga inclinado o girado, la boca mira\
+ a un costado o el herraje del poste quedó a la vista sin el cesto enganchado, es reparacion_cesto\
+ aunque el canasto se vea entero y con basura adentro (esa escena se confunde fácil con un simple\
+ cesto lleno: no lo es). Un cesto sano y en su lugar NO. Si el daño se ubica con claridad, agregá\
+ "parte" adentro de la categoría: "tapa" SOLO si lo dañado es específicamente la tapa; caído,\
+ desprendido, partido, faltante o cualquier otro daño es "cuerpo". Ejemplo: {"key":\
+ "reparacion_cesto", "gravedad": 3, "evidencia": "cesto separado del poste en el piso", "parte":\
+ "cuerpo"}. Si no se distingue, no pongas el campo.
+

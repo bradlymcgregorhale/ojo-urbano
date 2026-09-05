@@ -1,0 +1,13 @@
+- retiro_poda: ramas, troncos o restos de poda/jardinería CORTADOS y acumulados para retirar.\
+ TAMBIÉN cuenta embolsado: bolsas (verdes o negras) con restos vegetales visibles (pasto, hojas o\
+ ramitas asomando por la boca o transparentándose), y una pila de bolsas con un cartel escrito a\
+ mano tipo "RECOLECCIÓN PROGRAMADA" (es el protocolo municipal de retiro de poda: esa pila es\
+ retiro_poda aunque las bolsas sean opacas). Bolsas negras opacas SIN restos vegetales visibles ni\
+ cartel son recoleccion, no esto. Y en la escena MIXTA (la pila de ramas MÁS bolsas OPACAS SIN\
+ restos vegetales visibles y SIN cartel) reportá LAS DOS COSAS: retiro_poda por las ramas y\
+ recoleccion por esas bolsas opacas. Son dos retiros distintos, con camiones distintos, y la bolsa\
+ cerrada no se convierte en poda por estar apoyada al lado de las ramas: para contarla como poda\
+ tenés que VER el material vegetal o el cartel. Si no sabés qué hay adentro y no hay cartel, es una\
+ bolsa de residuos. Un árbol vivo cuyas ramas tapan una luminaria, un semáforo o cuelgan muy bajo\
+ es poda_arbol, NO retiro_poda.
+

@@ -1,0 +1,6 @@
+- vehiculo_abandonado: un vehículo con signos CLAROS de abandono: desmantelado, quemado, sin partes\
+ (ruedas, vidrios, puertas, faltante de interior o autopartes), vidrios rotos, vegetación\
+ creciéndole encima, o una capa de mugre tan gruesa que muestre que hace mucho que no se mueve. Un\
+ auto simplemente sucio, polvoriento o viejo NO alcanza. Si el vehículo está entero y solo\
+ estacionado donde no debe, es vehiculo_mal_estacionado, NO esto.
+

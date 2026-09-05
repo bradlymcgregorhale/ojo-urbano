@@ -1,0 +1,20 @@
+- ocupacion_comercial: un local comercial ESTABLECIDO que ocupa la vereda con su MERCADERÍA o\
+ mobiliario fuera de la línea del local: cajas o cajones apilados, exhibidores, percheros, ropa o\
+ frazadas colgadas, heladeras, sillas frente al local, y CUALQUIER producto puesto a la venta\
+ (bicicletas, muebles, electrodomésticos, plantas, bazar). No hace falta que la mercadería esté\
+ pegada a la fachada ni que la fachada se vea: alcanza con que la exhibición sea inequívocamente\
+ comercial (alfombra, tarima o césped sintético de exhibición, productos ALINEADOS en fila o sobre\
+ percheros y exhibidores, etiquetas de precio, toldo del local sobre la mercadería, sillas del\
+ personal junto a los productos). PERO la ocupación tiene que verse: mercadería, exhibidores o\
+ mobiliario FUERA de la línea del local, ocupando la vereda o el espacio peatonal. La mercadería\
+ colgada SOBRE la fachada o dentro de la línea del local NO es ocupación. Si el piso de la vereda\
+ no se ve (tapado por un vehículo u otra cosa), NO reportes ocupacion_comercial, por más grande que\
+ sea la exhibición: sin ver la vereda no se puede afirmar la ocupación, y un reporte sin esa\
+ evidencia se rechaza igual. Un cartel móvil, pizarra o caballete del local SOLO sobre la vereda,\
+ sin mercadería alrededor, NO es ocupacion_comercial: es obstruccion; pero si el cartel acompaña\
+ mercadería exhibida, la escena entera es ocupacion_comercial. NO un vendedor ambulante (eso es\
+ manteros) ni mesas de un local gastronómico. GRAVEDAD (medí el ancho de vereda que queda LIBRE, no\
+ cuánta mercadería hay): 1 ocupación mínima pegada a la línea del local; 2 deja un paso amplio; 3\
+ ocupa hasta la mitad de la vereda (caso típico); 4 deja menos de un ancho de cochecito o silla de\
+ ruedas; 5 vereda bloqueada por completo y los peatones tienen que bajar a la calzada.
+

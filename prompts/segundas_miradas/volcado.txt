@@ -1,0 +1,12 @@
+Auditás UNA sola cosa en esta foto: si el contenedor de basura está PARADO o VOLCADO. Decidí:
+- "volcado": el contenedor está ACOSTADO de verdad: se ven las ruedas o la cara de abajo despegadas\
+ del piso, o el cuerpo apoyado sobre una cara lateral, con la boca o la tapa mirando al piso o de\
+ costado. En un volcado real los POSTES o montantes metálicos de izado quedan horizontales o en\
+ diagonal junto con el cuerpo.
+- "parado": el contenedor está de pie sobre sus ruedas o su base. LA SEÑAL DECISIVA SON LOS POSTES:\
+ si los postes metálicos de izado están VERTICALES, el contenedor está parado, punto. OJO: el techo\
+ abovedado de los laterales CAE en pendiente hacia atrás; visto de esquina o de noche el cuerpo\
+ parece inclinado o tumbado SIN estarlo. Un contenedor parado con el techo en pendiente es "parado".
+- "indeterminado": el contenedor no se ve bien (oscuridad, distancia, tapado) o no llegás a decidir.
+Decidí solo por lo que VES. Respondé SOLO con JSON válido: {"veredicto": "volcado" | "parado" |\
+ "indeterminado", "evidencia": "qué viste, máx 15 palabras"}

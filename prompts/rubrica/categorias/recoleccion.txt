@@ -1,0 +1,47 @@
+- recoleccion: basura DOMICILIARIA suelta en el piso: bolsas de residuos llenas, cajas de cartón\
+ descartadas, o basura domiciliaria reconocible aunque no esté embolsada (restos de comida,\
+ pañales, residuos húmedos, mezcla variada salida de una bolsa rota). Una bolsa llena o una caja\
+ descartada SÍ cuenta aunque esté sola (gravedad 1-2); una bolsa VACÍA no. Los papeles,\
+ envoltorios, plásticos y envases LIVIANOS dispersos cuentan como recoleccion SOLO cuando están\
+ asociados a basura domiciliaria: junto a un contenedor municipal visible y CERCANO al foco de\
+ basura, o mezclados con bolsas o cajas de residuos. PERO al lado de un contenedor la vara es MÁS\
+ ALTA, no más baja: unos pocos papeles, restos u hojas alrededor de un contenedor son el estado\
+ NORMAL de ese punto de la vereda (ahí se manipula basura todos los días) y NO se reportan; para\
+ reportar recoleccion junto a un contenedor hace falta al menos una bolsa llena, una caja\
+ descartada o una acumulación notable en el piso, y esa bolsa o caja se tiene que ver ENTERA y\
+ LLENA apoyada en el piso: "residuos sueltos", "algo de desperdicio", papeles o restos dispersos\
+ alrededor de un contenedor NUNCA alcanzan, ni siquiera como acompañante de un desborde. Y si lo\
+ único que hay alrededor son restos sueltos que se cayeron de un contenedor rebalsado, eso ya lo\
+ cubre contenedor_desbordado y no se duplica acá; las bolsas llenas o cajas descartadas AL LADO de\
+ un contenedor desbordado sí siguen siendo recoleccion además del desborde. Sin esa asociación, la\
+ basurita liviana dispersa NO es recoleccion: va a barrido si la acumulación es notable y barrible,\
+ y si son pocas unidades dispersas no se reporta (una botella o un envase suelto tampoco: es el\
+ estado normal de la calle). El cartón, la ropa, las mantas/frazadas, los retazos y otros textiles\
+ blandos sueltos son basura común; la EXCEPCIÓN son las alfombras o tapetes grandes descartados,\
+ que siempre van a retiro_muebles aunque estén enrollados o plegados. Si la basura visible es\
+ material de obra es escombros, NO recoleccion, salvo el material contenido en un bolsón grande de\
+ obra, que queda fuera de todas las categorías de higiene. ANTES de reportar bolsas como\
+ recoleccion, chequeá las señales de ESCOMBROS EMBOLSADOS de retiro_escombros (porte de bolsa de\
+ arena, textura de fragmentos angulosos, polvo de obra, sacos reutilizados llenos y densos, cascote\
+ asomando): fuera de la exclusión de los bolsones grandes de obra, si hay evidencia directa o las\
+ bolsas cumplen al menos DOS señales independientes, ESAS bolsas van a retiro_escombros y no acá,\
+ aunque haya además basura común alrededor que sí sea recoleccion. NO cuentes las MISMAS bolsas en\
+ las dos categorías: si los únicos bultos de la escena son esos sacos de obra, reportá SOLO\
+ retiro_escombros; recoleccion ADEMÁS de escombros exige otras bolsas, cajas o residuos domésticos\
+ aparte de los sacos. Muebles u objetos voluminosos SOLOS no son recoleccion: exige basura común\
+ además. Si hay basura común y voluminosos juntos, reportá recoleccion Y retiro_muebles. GRAVEDAD:\
+ 1 una bolsa o un residuo suelto aislado; 2 de dos a cinco bolsas agrupadas y la vereda\
+ transitable; 3 pila de hasta un ancho de contenedor, o desparramo en un tramo corto por el que una\
+ persona pasa caminando sin bajar a la calle (caso típico); 4 pila más ancha que un contenedor, o\
+ desparramo que obliga a bajar de la vereda, o residuos orgánicos abiertos; 5 la basura está POR\
+ TODOS LADOS: varios contenedores rodeados de basura desparramada de forma continua por el piso, o\
+ basura cubriendo vereda Y calzada, o un desparramo que pasa el frente de una propiedad. No hace\
+ falta que invada el carril: alcanza con que el piso alrededor de los contenedores esté cubierto de\
+ punta a punta. PRUEBA PRÁCTICA DEL 5: si hay DOS O MÁS contenedores y el desparramo del piso los\
+ UNE (la basura va de uno al otro sin corte limpio en el medio, o rodea a los dos), es 5 aunque\
+ quede un pasillo para pasar caminando y aunque la vereda sea ancha. Un solo contenedor con bolsas\
+ al lado NO llega a 5. Y CHEQUEÁ TU PROPIA DESCRIPCIÓN antes de cerrar la gravedad: si vos mismo\
+ escribís que los contenedores están RODEADOS de basura, o que el desparramo es GRANDE, ABUNDANTE o\
+ va de un contenedor al otro, entonces estás describiendo un 5 y no podés puntuarlo 3. La gravedad\
+ tiene que decir lo mismo que tus palabras.
+

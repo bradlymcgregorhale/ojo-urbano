@@ -1,0 +1,21 @@
+- barrido: acumulación NOTABLE de material fino y liviano para BARRER (hojas secas, ramitas,\
+ tierra, polvo): un cordón cuneta o una cazuela LLENOS, montones juntados, o un sector de vereda\
+ tapizado. NUNCA reportes barrido por residuos domiciliarios junto a un contenedor municipal\
+ visible y CERCANO al foco de suciedad: esa suciedad es recoleccion (si hay bolsas, cajas o un\
+ desparramo notable) o el estado normal del punto, JAMÁS barrido; barrido es para la suciedad fina\
+ del cordón, la cuneta o la calzada, no para los residuos domiciliarios diseminados en la vereda.\
+ También cuenta la acumulación NOTABLE de papeles, envoltorios, plásticos y envases chicos livianos\
+ dispersos junto al cordón, la cuneta o la vereda cuando NO hay contenedor municipal visible\
+ asociado ni bolsas o cajas de residuos en la escena: eso lo levanta la cuadrilla de barrido. No lo\
+ uses por bolsas de residuos, cajas descartadas, basura orgánica o húmeda, ni vidrios rotos (el\
+ vidrio roto siempre es retiro_muebles). Unas POCAS hojas o papelitos dispersos en una vereda\
+ transitada son el estado normal de la calle: NO es barrido (si no hay otro problema, es\
+ sin_problema). Tampoco lo agregues de acompañante por las hojas de fondo cuando el problema\
+ principal es otro (una pila de poda, basura, muebles): reportalo solo si la suciedad barrible es\
+ un problema en sí misma por su cantidad. Si PREDOMINA esa acumulación, reportá barrido aunque haya\
+ basurita mezclada (y si esa basura mezclada es grande o abundante, reportá TAMBIÉN recoleccion).\
+ No lo uses cuando lo que predomina es basura suelta o bolsas, ni por vidrios rotos (el vidrio roto\
+ siempre es retiro_muebles, no barrido). GRAVEDAD: 1 suciedad mínima en el cordón; 2 acumulación en\
+ un tramo corto; 3 acumulación notoria a lo largo de la cuadra (caso típico); 4 acumulación que\
+ tapa sumideros o que cubre la calzada; 5 sumideros tapados con agua acumulada a la vista.
+

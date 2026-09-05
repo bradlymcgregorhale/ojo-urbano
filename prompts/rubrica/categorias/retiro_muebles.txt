@@ -1,0 +1,81 @@
+- retiro_muebles: ANTES DE NADA hacé este descarte. Si en la escena hay un contenedor o un cesto\
+ papelero, mirá si lo que está tirado en el piso es una PIEZA SUYA. La prueba decisiva NO es el\
+ color: es si al mueble de al lado le FALTA ESA PARTE. Si el contenedor muestra arriba un hueco\
+ abierto, una cavidad oscura o un borde arrancado donde debería ir su tapa o su cabezal, entonces\
+ la pieza del piso es suya, y va a reparacion_contenedor (o reparacion_cesto), NUNCA acá. Segunda\
+ pista: la FORMA. El cabezal de un contenedor es una pieza CURVA y moldeada, con el mismo perfil\
+ redondeado del techo del contenedor sano que puede verse al lado, a veces con la boca de carga\
+ recortada; no es un panel plano ni una tabla. OJO con el color: la pieza suele verse MÁS CLARA o\
+ MÁS SUCIA que el contenedor (es la cara interna del moldeado, gastada y a la intemperie), así que\
+ un color distinto NO la descarta y NO es motivo para llamarla voluminoso. Ante la duda, si hay un\
+ contenedor al lado al que le falta la parte de arriba, es su pieza: reportá reparacion_contenedor\
+ y NO retiro_muebles. El MISMO descarte vale para la BASE del contenedor: un bastidor metálico\
+ BAJO, alargado y a ras del piso (hierro o chapa galvanizada, del largo de un contenedor, más o\
+ menos dos metros), con rieles o guías paralelas, en la vereda o contra el cordón, NO es chatarra\
+ ni una "estructura metálica voluminosa" descartada: es la plataforma donde se apoya el contenedor,\
+ que quedó a la vista porque el contenedor está corrido. Vista sola parece una parrilla o una reja\
+ larga tirada, y de noche o en un primer plano oscuro engaña más todavía; que sea larga, que cruce\
+ la vereda o que "obstruya el paso" NO la convierte en voluminoso, porque está anclada en su lugar.\
+ Si en la escena hay un contenedor cerca (al costado, en la calzada o contra el cordón), esa\
+ estructura es su base vacía: reportá reparacion_contenedor y NUNCA retiro_muebles. Los caños,\
+ hierros y rejas de la lista de abajo son piezas SUELTAS de descarte, no un bastidor armado de\
+ rieles a ras del piso junto a un contenedor. Hecho ese descarte: CUALQUIER objeto voluminoso\
+ descartado: muebles y partes de muebles, CUNAS, corralitos y muebles infantiles (una cuna con\
+ barrotes junto a un contenedor es un mueble descartado, NO un cesto roto ni un "contenedor chico\
+ desmontado"), electrodomésticos y aparatos electrónicos descartados (TORRES o GABINETES de PC,\
+ monitores, impresoras, televisores; una torre de PC parada junto al cordón de noche parece un\
+ cajón o una cajita negra: miralo dos veces), colchones, ALFOMBRAS O TAPETES GRANDES descartados\
+ (enrollados, plegados o extendidos), puertas, ventanas, estanterías, tablas/tablones/placas de\
+ madera o melamina, cajones/canastos/huacales de madera, caños/tubos/hierros/rejas/chatarra (aunque\
+ salgan de una refacción), sanitarios, una LOSA/LOSETA o BALDOSÓN grande de hormigón o cerámica\
+ claramente REMOVIDO y dejado para retirar (placa completa o mayormente entera y pesada que no\
+ entra en una bolsa; NO una losa todavía colocada ni parte de una obra activa, y si está en\
+ fragmentos o cascote es escombros), VALLAS o CABALLETES de obra de madera DESCARTADOS: caídos,\
+ rotos, apilados o tirados sin función visible (aunque crucen el paso: es descarte, no obstruccion;\
+ pero si están DE PIE delimitando o cercando a propósito una obra activa, eso es obstruccion, no\
+ acá), valijas descartadas, bidones/garrafones de agua y tachos o baldes plásticos GRANDES\
+ descartados, y VIDRIOS O CRISTALES ROTOS. Una alfombra o tapete grande sigue siendo voluminoso\
+ aunque sea flexible o textil: no lo mandes a recoleccion por ese material. Pero tiene que\
+ RECONOCERSE como alfombra o tapete por rasgos visibles (trama o pelo de alfombra, reverso grueso,\
+ flecos o bordes terminados); un bulto de tela, lona, manta/frazada o "textil grande" genérico NO\
+ alcanza. LA MISMA EXIGENCIA vale para el COLCHÓN: un colchón es una PLANCHA RÍGIDA de bordes\
+ rectos y espesor parejo (20-30 cm) que mantiene su forma rectangular, muchas veces con la\
+ superficie acolchada en rombos. Un acolchado, edredón, frazada o manta mullida NO es un colchón:\
+ CAE EN PLIEGUES, se arruga y se amolda a lo que tiene abajo, sin espesor propio. Si el objeto cae\
+ en pliegues o se amolda, es un textil y va a recoleccion; no lo votes colchón por el tamaño o el\
+ estampado. Si no podés distinguir una alfombra de una manta, no apliques esta excepción. Una\
+ acumulación de vidrio roto (vidrios de ventana, mamparas, espejos, vidriera) SIEMPRE es\
+ retiro_muebles aunque esté hecha pedazos; nunca la reportes como barrido, recoleccion ni\
+ escombros. Si ves con claridad un objeto voluminoso descartado, reportalo. PERO tiene que ser\
+ VOLUMINOSO de verdad: la vara es que NO entraría en una bolsa de residuos común. Una tabla o\
+ listón chico suelto, un pedazo de madera aislado, una cajita, un cajoncito o un balde común junto\
+ a la basura NO alcanzan: eso acompaña a recoleccion si hay basura, y solo no se reporta. Varios\
+ tablones o maderas largas, una puerta, una ventana, un mueble entero o una pila de maderas SÍ son\
+ voluminosos. EXCEPCIÓN: los electrodomésticos y aparatos electrónicos descartados cuentan aunque\
+ sean chicos (una torre de PC, un microondas, una impresora), igual que los vidrios rotos, que\
+ siempre van acá. También cuentan aunque sean chicos las LATAS Y BALDES DE PINTURA y los envases de\
+ productos químicos o solventes descartados: no son basura de bolsa, llevan retiro aparte.\
+ Nombralos en la evidencia cuando los veas. Para objetos ambiguos exige un objeto identificable; NO\
+ extiendas la excepción de las alfombras a ropa, mantas/frazadas, retazos o textiles blandos\
+ sueltos, ni a bolsas de basura (llenas o vacías, sueltas o apiladas): esos van a recoleccion (o a\
+ retiro_escombros si tienen las señales de escombros embolsados descritas abajo). DISTINGUÍ el\
+ cajón de MADERA de la caja de CARTÓN: listones, tablas, uniones, clavos o tornillos visibles\
+ indican madera y por lo tanto retiro_muebles; cartón corrugado, plegado o rasgado va a\
+ recoleccion. En una escena mixta con basura común Y alfombras, madera, muebles u otros\
+ voluminosos, reportá AMBAS categorías; no dejes retiro_muebles afuera porque las bolsas o cajas\
+ sean más numerosas. NO cuentan la mercadería ni el mobiliario EN USO de un vendedor, ni objetos en\
+ uso. Tampoco cuenta el CERCO DE MADERA de un cantero: la guarda baja de listones o enrejado que\
+ rodea la cantera de un árbol o un cantero (parada, prolija, siguiendo el borde de la tierra) es\
+ parte del cantero, NO un palet ni una madera descartada; un palet descartado de verdad está\
+ SUELTO, apoyado contra algo o tirado plano, no plantado alrededor de la tierra. Tampoco cuentan\
+ las pertenencias asociadas a una persona instalada en la escena o a un refugio o cama armada\
+ (situacion_calle): el colchón donde duerme, mantas, valijas, carros, bolsas o bultos JUNTO a la\
+ persona o integrados a su espacio habitado son pertenencias, no descarte; ahí reportá solo\
+ situacion_calle. Un colchón, valija o mueble claramente descartado SIN persona instalada ni\
+ refugio armado al lado sí sigue siendo retiro_muebles (una persona caminando o pasando cerca no lo\
+ convierte en pertenencia). GRAVEDAD: 1 un objeto chico o único (una silla, un cajón); 2 dos o tres\
+ objetos, o un solo mueble grande (colchón, sillón); 3 varios muebles, lo que carga una camioneta,\
+ sin obstruir el paso (caso típico); 4 pila del volumen de un contenedor o más, o muebles que\
+ angostan el paso peatonal; 5 pila que supera un contenedor de volumen e invade la calzada, o\
+ voluminosos mezclados con basura o escombros bloqueando el paso.
+

@@ -1,0 +1,12 @@
+Auditás UNA sola cosa en esta foto: si el contenedor de basura tiene POSTES METÁLICOS DE IZADO. Son\
+ dos montantes o brazos VERTICALES de metal, uno a cada lado del cuerpo, que sobresalen hacia\
+ arriba y sirven para que el camión lo levante. Decidí:
+- "con_postes": VES los montantes verticales metálicos a los costados, sobresaliendo del cuerpo.
+- "sin_postes": el contenedor NO los tiene: el cuerpo termina en su tapa o cabezal y no sobresale\
+ ningún montante a los lados.
+- "no_se_ve": el ángulo, la oscuridad o algo que tapa no dejan verlo.
+IMPORTANTE: la manija, el borde de la tapa, un poste de alumbrado o un árbol DETRÁS del contenedor\
+ no son postes de izado; tienen que salir DEL CONTENEDOR, a los costados. En muchos contenedores no\
+ hay postes y "sin_postes" es una respuesta correcta y frecuente.
+Respondé SOLO con JSON válido: {"veredicto": "con_postes" | "sin_postes" | "no_se_ve", "evidencia":\
+ "qué ves, máx 15 palabras"}

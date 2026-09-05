@@ -1,0 +1,49 @@
+- vehiculo_mal_estacionado: un vehículo estacionado o detenido donde está PROHIBIDO: sobre una\
+ ciclovía/bicisenda (carril demarcado, típicamente entre franjas amarillas), sobre la vereda o\
+ senda peatonal, bloqueando una rampa de accesibilidad o una esquina/ochava, o junto a cartelería\
+ de "No estacionar", o contra un CORDÓN PINTADO DE AMARILLO (el cordón amarillo es la marca de\
+ prohibido estacionar: un auto detenido contra él está en infracción aunque esté prolijamente\
+ alineado con el tránsito y aunque no obstruya nada). Señal fuerte: las ruedas pisan la demarcación\
+ de la ciclovía, el vehículo está arriba de la vereda, o el cordón que tiene al lado está pintado\
+ de amarillo. Cuenta aunque el vehículo esté operando, cargando o con el motor en marcha, PERO solo\
+ si NO hay ocupantes visibles: si se ve con claridad una persona ADENTRO del habitáculo o la\
+ cabina, o MONTADA o sentada sobre la moto o bici, NO lo reportes: el reporte exige el vehículo sin\
+ ocupantes a la vista y sería rechazado. Personas caminando, paradas al lado, tocando el vehículo,\
+ empujándolo o cargando y descargando DESDE AFUERA no invalidan nada. Ante duda por reflejos,\
+ sombras o visibilidad parcial, no asumas ocupante: omití el reporte solo cuando la persona adentro\
+ o arriba sea inequívoca. Un vehículo estacionado normal junto al cordón NO se reporta (salvo que\
+ ese cordón sea amarillo). Y ANTES DE DECIR "sobre la vereda", buscá el CORDÓN y mirá de qué lado\
+ están las RUEDAS: si las ruedas apoyan en el asfalto, el auto está en la calzada por más que se lo\
+ vea pegado a la vereda, ocupando el encuadre o con baldosas al fondo. Un auto en la banda de\
+ estacionamiento, en una dársena o en un ensanche de la calzada NO está sobre la vereda. "Sobre la\
+ vereda" exige VER la rueda apoyada del lado de adentro del cordón, sobre el solado por donde\
+ camina la gente; si no se ve el cordón, no lo afirmes. CUIDADO CON LAS FOTOS DESDE ARRIBA (balcón,\
+ ventana, dron): mirando en picada, un auto estacionado bien contra el cordón PARECE estar sobre la\
+ vereda, porque la perspectiva aplasta la altura del cordón y superpone el auto con la baldosa. Esa\
+ advertencia vale SOLO para decidir si está sobre la vereda: en una foto cenital no uses esa\
+ superposición como prueba, exigí ver las RUEDAS apoyadas del lado de adentro del cordón. Un auto\
+ paralelo al cordón y alineado con los demás autos estacionados de la cuadra es un estacionamiento\
+ normal: NO lo reportes. Las otras infracciones de esta clave SÍ se ven bien desde arriba y se\
+ reportan normalmente: auto sobre la ciclovía, sobre la senda peatonal, tapando una rampa o la\
+ ochava, o junto a cartelería de "No estacionar". Tampoco confundas las marcas del pavimento: una\
+ línea discontinua BLANCA Y AZUL sobre la calzada es demarcación de estacionamiento medido, no una\
+ ciclovía; la ciclovía es un carril propio, continuo y ancho, normalmente pintado y separado del\
+ tránsito. Si el vehículo se ve abandonado (muy deteriorado, sucio, ruedas desinfladas) es\
+ vehiculo_abandonado. EXCEPCIÓN DE LAS DOS FOTOS: en este sistema los reportes vehiculares llegan\
+ en dos fotos: primero un PRIMER PLANO de la patente y después la foto de contexto que muestra la\
+ infracción. Si la foto es un primer plano deliberado de un solo vehículo estacionado con su\
+ patente legible como protagonista del encuadre (la chapa al centro, sin otra incidencia visible en\
+ escena), NO la despaches como sin_problema: reportá vehiculo_mal_estacionado con gravedad 1 y\
+ evidencia "primer plano de patente; falta la foto de contexto". Y si ese primer plano además\
+ muestra señales de ABANDONO (vehículo tapado con lona o funda, muy deteriorado, cubierto de\
+ tierra, gomas desinfladas), reportá TAMBIÉN vehiculo_abandonado con gravedad 1: son las dos\
+ hipótesis del reporte en curso y la foto de contexto decide cuál queda. Es la mitad de un reporte\
+ vehicular, no una calle sin problemas. Esto vale SOLO para primeros planos deliberados de la\
+ chapa: un auto estacionado normal dentro de una escena de calle sigue sin reportarse. GRAVEDAD (es\
+ el grado de OBSTRUCCIÓN, no la infracción en sí): 1 infracción menor sin obstrucción, o el primer\
+ plano de patente sin escena; 2 lugar prohibido pero sin bloquear paso ni accesos; 3 sobre la\
+ vereda o la senda obligando a esquivar, o tapando una entrada de vehículos (caso típico); 4\
+ bloquea una rampa de accesibilidad, una parada de colectivo o la ciclovía, u obliga a los peatones\
+ a bajar a la calzada; 5 bloquea una bocacalle, un hidrante, una salida de emergencia o un carril\
+ de circulación.
+

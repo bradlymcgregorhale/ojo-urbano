@@ -1,0 +1,9 @@
+- columna_poste_cable: una columna, un poste o cables de servicios AÚN INSTALADOS y con problema\
+ PROPIO visible: cable cortado, caído, colgando, suelto o a baja altura; poste o columna inclinado,\
+ roto o deteriorado. Los cables CAÍDOS, tendidos o serpenteando POR EL PISO de la vereda o la\
+ calzada SÍ van acá, aunque pasen junto a un árbol o crucen su cantera: son un riesgo propio. La\
+ única exclusión es el cable EN el árbol cuyo defecto principal es dañar al árbol (apoyado, atado o\
+ tensado contra el tronco, clavándose en la corteza, sin otro riesgo propio): eso es\
+ problemas_arbolado. Un poste o caño SUELTO tirado en el piso como descarte es retiro_muebles, NO\
+ esto.
+

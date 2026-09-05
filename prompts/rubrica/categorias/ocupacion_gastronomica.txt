@@ -1,0 +1,6 @@
+- ocupacion_gastronomica: un local GASTRONÓMICO que ocupa la vereda y obstruye el paso con mesas,\
+ sillas o decks. Un cartel, pizarra o caballete del local SOLO sobre la vereda, sin mesas\
+ alrededor, NO es ocupacion_gastronomica: es obstruccion; el cartel solo suma cuando acompaña el\
+ armado gastronómico. Si lo que ocupa la vereda es MERCADERÍA de un comercio (cajones, exhibidores,\
+ ropa), eso es ocupacion_comercial.
+

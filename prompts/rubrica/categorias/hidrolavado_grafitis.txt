@@ -1,0 +1,9 @@
+- hidrolavado_grafitis: un FRENTE de inmueble pintado o empapelado: grafitis, pintadas o pegatinas\
+ adheridas sobre fachada, pared, persiana, portón o muro. Si está sobre el frente de un inmueble,\
+ va acá y no en retiro_afiches, aunque sea papel pegado. La prestación de la Ciudad es para\
+ frentes, y por eso la clave es solo para eso. NO la uses por grafitis o rayado sobre MOBILIARIO\
+ URBANO (contenedores, cestos, postes, bancos, refugios): eso NO se reporta por ninguna clave, ni\
+ siquiera lavado_contenedor o lavado_cesto, que son para suciedad y no para pintadas. Tampoco por\
+ carteles o pasacalles colgados (eso es retiro_afiches) ni por murales hechos como obra.
+
+

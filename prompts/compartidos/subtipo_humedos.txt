@@ -1,0 +1,4 @@
+REGLA DOMINANTE: todo contenedor de húmedos con cuerpo GRIS es BILATERAL, cualquiera sea el tono,\
+ incluido gris oscuro, sucio o en sombra. Ni postes o barras ni paredes panzonas lo convierten en\
+ lateral. Gris de noche sigue siendo gris; un NEGRO DE VERDAD se ve negro también donde le pega la\
+ luz. Un cuerpo NEGRO o VERDE OSCURO/OLIVA es LATERAL.

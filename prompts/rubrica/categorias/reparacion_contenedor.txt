@@ -1,0 +1,70 @@
+- reparacion_contenedor: un contenedor con DAÑO ESTRUCTURAL visible QUE COMPROMETE EL USO: la tapa\
+ desprendida o que no puede cerrar, el pedal roto, el cuerpo agrietado de lado a lado, perforado\
+ con un agujero grande, derretido o quemado; esté parado o volcado. LA VARA ES EL USO, NO LA\
+ ESTÉTICA: si un vecino puede tirar la bolsa igual (la boca funciona, la tapa abre y cierra aunque\
+ esté fea), NO se reporta reparación. Rayones, abolladuras, marcas, rajaduras chicas, bordes\
+ gastados o mugre NO son reparación por más visibles que sean; ese contenedor trabaja todos los\
+ días a la intemperie y se ve usado. Reportá solo el daño que le impediría a la cuadrilla o al\
+ vecino usarlo con normalidad. TAMBIÉN va acá cuando la pieza que falta está TIRADA EN EL PISO al\
+ lado o cerca del contenedor: cabezal, tapa, boca de carga, portón, compuerta o pieza antivandálica\
+ desprendida. El cuerpo puede verse entero y liso y aun así estar roto: mirá si le FALTA la parte\
+ de arriba, si tiene un hueco rectangular donde debería ir la boca de carga, o si hay una pieza del\
+ mismo color y material caída al lado. Ese es el caso típico y hay que reportarlo acá, no como\
+ objeto voluminoso descartado. LA BASE DEL CONTENEDOR CUENTA COMO PARTE DEL CONTENEDOR. Los\
+ contenedores municipales se apoyan sobre una BASE o plataforma metálica anclada al piso: un\
+ bastidor bajo de hierro o chapa galvanizada, del largo del contenedor (más o menos dos metros),\
+ con rieles o guías paralelas y a veces una rampita o un tope en las puntas; vista sola y vacía\
+ parece una parrilla, un bastidor o una estructura metálica larga tirada en la vereda. NO es\
+ chatarra descartada ni un objeto voluminoso ni una obstrucción: es el lugar donde va el\
+ contenedor. Reportá reparacion_contenedor cuando la base está a la vista y el contenedor NO está\
+ encima: la base vacía con el contenedor corrido al costado, en la calzada o contra el cordón, o la\
+ base arrancada, dada vuelta o suelta sobre la vereda. Y NO escribas que el contenedor está "en su\
+ lugar" si su base se ve vacía: justamente eso es lo que hay que reportar. Si el contenedor está\
+ sobre su base y sano, no hay nada que reportar por la base. LAS BARRAS O RIELES DE IZADO DEL\
+ COSTADO TAMBIÉN SON PARTE DEL CONTENEDOR. Los contenedores bilaterales llevan a cada lado una\
+ BARRA o RIEL de izado metálico (galvanizado, muchas veces con números pintados) que en un\
+ contenedor SANO va PARADO, VERTICAL y pegado al costado del cuerpo, siguiendo la arista vertical.\
+ Si esa barra está SALIDA de su montaje de arriba y quedó CRUZADA EN DIAGONAL sobre el frente o el\
+ lateral, colgando desde su perno de abajo, o doblada, arrancada o suelta de su guía, ES DAÑO\
+ ESTRUCTURAL: reportá reparacion_contenedor (parte "cuerpo"). La prueba es la VERTICAL: la barra\
+ sana va derecha y pegada al costado (mirá un contenedor sano al lado para comparar); una barra\
+ inclinada en diagonal, atravesada o colgando está fuera de lugar. NO la confundas con un\
+ contenedor VOLCADO: acá el CUERPO está parado, derecho y apoyado en el piso, y lo único fuera de\
+ lugar es la barra, así que es reparacion, no reposicion. Y NO es un fierro ajeno tirado en el\
+ piso: esta barra SALE del contenedor y sigue enganchada a él por su perno. Una barra vertical y\
+ pegada al costado es lo normal y no se reporta. Es daño en la pieza, no suciedad ni pintura: un\
+ contenedor con grafitis, pegatinas o rayado pero entero NO va acá ni en ninguna otra clave. Y una\
+ tapa o portón ABIERTO pero ENTERO y aparentemente articulado en su bisagra o eje NO es daño,\
+ aunque esté sostenido abierto con un cartón, palo, bolsa o bulto encajado: es uso (vecinos o\
+ recuperadores lo dejan así). Lo mismo las tapas DADAS VUELTA por completo hacia atrás, paradas\
+ verticales o colgando hacia la espalda del contenedor, incluso las DOS a la vez y en ángulos\
+ distintos: los recuperadores las dejan volcadas así para revolver, se ve caótico pero no hay nada\
+ roto; "tapas desprendidas" exige ver la tapa SEPARADA del cuerpo o el herraje arrancado, no tapas\
+ abiertas de par en par. Y FIJATE DE QUÉ MATERIAL es lo que atribuís al contenedor: el cuerpo y las\
+ tapas de los contenedores de húmedos son de PLÁSTICO negro o gris; un perfil, una viga, un caño o\
+ una caja de METAL (blanco, galvanizado, oxidado) tirado al lado NO puede ser una pieza del\
+ contenedor y no es evidencia de reparación: es un objeto descartado ajeno (retiro_muebles). La\
+ única parte metálica propia es la BASE anclada al piso descrita arriba, que no se parece a una\
+ viga suelta ni a una caja. El hueco oscuro o el interior visible por una tapa abierta NO cuenta\
+ como pieza faltante: reportá daño solo con evidencia de pieza rota, desprendida de su bisagra,\
+ deformada, colgando fuera de alineación, ausente, o tirada en el piso como parte separada. Las\
+ bolsas, plásticos, telas o residuos COLGANDO del borde, la boca o el costado tampoco son daño: son\
+ basura ajena apoyada o enganchada por los vecinos o los recuperadores, no "plástico del contenedor\
+ colgando" ni un cabezal roto; daño exige reconocer una PIEZA DEL CONTENEDOR (tapa, cabezal,\
+ compuerta, pedal) rota, desprendida o ausente, no material ajeno encima. Y en el contenedor VERDE\
+ de reciclables (y en cualquier contenedor de secos) la boca de carga es una RANURA o ABERTURA\
+ RECTANGULAR ANCHA Y HORIZONTAL centrada en el cabezal: A VECES está cubierta por CERDAS o flecos\
+ NEGROS de cepillo o una goma partida al medio, pero MUCHAS VECES es una ranura ABIERTA y oscura\
+ SIN cepillo a la vista. ESA ABERTURA ES EL DISEÑO de la boca —se reconoce por la FORMA (un\
+ rectángulo ancho y bajo) y la POSICIÓN (en el medio del cabezal)—, NO una rotura: no la reportes\
+ como "abertura rota", "apertura rectangular", "agujero en el frente", "borde arrancado" ni "hueco\
+ donde iba una pieza". Solo es daño si la CHAPA del cabezal alrededor de la ranura está SEPARADA,\
+ arrancada o falta, no la ranura en sí. Y OJO con el cabezal METÁLICO abollado: una chapa superior\
+ ABOLLADA, arrugada, hundida, doblada o rayada pero ENTERA, con la boca todavía usable, es USO y\
+ ESTÉTICA, no reparación: "tapa rota y agrietada", "estructura deformada" o "abollada" sobre un\
+ cabezal que sigue recibiendo material NO se reporta. Un contenedor VOLCADO pero sin daños visibles\
+ tampoco: es reposicion_contenedor. Un contenedor parado y en buen estado NO. Si el daño se ubica\
+ con claridad, agregá "parte" adentro de la categoría: "tapa" (tapa/cabezal desprendido o roto),\
+ "pedal" (pedal roto) o "cuerpo" (agrietado, perforado, quemado, derretido). Si no se distingue, no\
+ pongas el campo.
+

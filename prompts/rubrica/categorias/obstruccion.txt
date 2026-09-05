@@ -1,0 +1,22 @@
+- obstruccion: un ELEMENTO fijo o móvil COLOCADO por un local o un particular que obstruye el paso\
+ peatonal en la vereda o la calzada: canteros, caños o postes para impedir estacionamiento, fierros\
+ o anclajes, carteles móviles, pizarras o caballetes publicitarios de un local pero SOLOS sobre la\
+ vereda, conos o vallas particulares, cercos. Lo que define obstruccion es que el elemento sea una\
+ BARRERA que reserva o bloquea espacio; si lo que ocupa la vereda es MERCADERÍA a la venta de un\
+ comercio, eso es ocupacion_comercial, aunque también estorbe el paso (y aunque haya un cartel del\
+ local entre los productos). Los VEHÍCULOS nunca son obstruccion: un camión de basura o de reparto\
+ trabajando, el tránsito o un auto estacionado no cuentan (un vehículo en infracción es\
+ vehiculo_mal_estacionado). Tampoco cuentan los contenedores municipales, la basura (eso es\
+ recoleccion) ni los objetos puestos como advertencia sobre un hueco (ver tapa_vereda). Un objeto\
+ voluminoso DESCARTADO (mueble, marco, puerta, tablas, chatarra, una ESTRUCTURA o BASTIDOR\
+ METÁLICO, una reja, un armazón o un fierro de hierro suelto) tampoco es obstruccion aunque esté\
+ sobre la vereda, aunque sea GRANDE y aunque quede CRUZADO o atravesado sobre parte del paso: es\
+ retiro_muebles (o la categoría de descarte que corresponda), y el estorbo que cause se expresa en\
+ su GRAVEDAD, no duplicando categorías. Que una pila de descarte "cruce la senda peatonal" o\
+ "obstruya el paso" NO la convierte en obstruccion: obstruccion es una BARRERA PUESTA A PROPÓSITO\
+ por un local o particular para reservar o bloquear el espacio (algo anclado o fijado, o un cartel,\
+ valla, cono o caballete puesto DE PIE), no una pila de cosas tiradas para que se las lleve el\
+ camión. Ante la duda entre "barrera colocada" y "descarte tirado", es descarte: no reportes\
+ obstruccion. Y un elemento apoyado ADENTRO de la cantera de un árbol o contra el tronco, fuera de\
+ la senda de paso, no es una barrera: no lo reportes como obstruccion.
+

@@ -1,0 +1,19 @@
+Auditás UNA sola cosa en esta foto: si hay algún OBJETO VOLUMINOSO descartado de verdad (mueble,\
+ electrodoméstico, colchón rígido, puerta, tablones grandes, sanitario, chatarra grande). Decidí:
+- "objeto_identificado": SOLO si podés NOMBRAR el objeto concreto y decir DÓNDE está en el\
+ encuadre. La vara: no entraría en una bolsa de residuos común (con la excepción de\
+ electrodomésticos chicos y latas de pintura, que sí cuentan).
+- "solo_bolsas_o_textiles": lo que se ve son bolsas, cajas de cartón, mantas, frazadas, acolchados\
+ u otros textiles blandos; nada voluminoso identificable. Un textil que cae en pliegues NO es un\
+ colchón; el cartón NO es madera.
+- "no_se_distingue": la foto no permite decidir (resolución, oscuridad, distancia).
+EL MOBILIARIO DE LA CALLE NO ES EL OBJETO: el contenedor municipal, el cesto papelero, el tacho, el\
+ volquete de obra y los postes o carteles instalados son parte de la escena, no residuos\
+ voluminosos descartados. Si lo más grande que ves es el contenedor, NO lo nombres: la respuesta es\
+ "solo_bolsas_o_textiles" o "no_se_distingue".
+IMPORTANTE: en MUCHAS de estas fotos NO hay voluminosos; "solo_bolsas_o_textiles" y\
+ "no_se_distingue" son respuestas correctas y frecuentes. NO nombres un objeto por las dudas: si no\
+ lo podés identificar con seguridad, no está.
+Respondé SOLO con JSON válido: {"veredicto": "objeto_identificado" | "solo_bolsas_o_textiles" |\
+ "no_se_distingue", "objeto": "cuál, o null", "ubicacion": "dónde está en el encuadre, o null",\
+ "evidencia": "qué ves, máx 15 palabras"}

@@ -1,0 +1,9 @@
+- vaciado_cesto: un cesto papelero (canasto chico sobre poste) desbordado o lleno. EXIGE VERLO:\
+ residuos rebalsando o asomando por la boca del cesto. Los cestos de cuerpo CERRADO (los metálicos\
+ tipo buzón) no dejan ver el contenido: sin residuos asomando NO se reportan llenos, no importa qué\
+ haya alrededor. Un balde, tacho o bolsa LLENOS apoyados en el piso al lado del cesto NO son el\
+ cesto: eso es recoleccion si corresponde, y no vuelve lleno al cesto de arriba. ANTES de\
+ reportarlo, chequeá la POSICIÓN del cesto: si está girado, descolgado, inclinado, con la boca\
+ hacia un costado o hacia abajo, o separado de su herraje, el problema principal es\
+ reparacion_cesto (y sumá vaciado_cesto solo si además está lleno).
+

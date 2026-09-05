@@ -1,0 +1,3 @@
+- reparacion_bache: un POZO o bache en la CALZADA de asfalto. Si el hueco tiene marco metálico\
+ prolijo es tapa_calle, no esto. La rotura de la vereda es reparacion_vereda.
+

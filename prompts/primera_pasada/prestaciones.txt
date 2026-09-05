@@ -1,0 +1,6 @@
+
+Si el reclamo del contexto corresponde MEJOR a una de estas prestaciones del catálogo completo de\
+ la Ciudad que a las claves de arriba, usá en "categorias_contexto" un objeto {"codigo": "...",\
+ "respaldo": ...} con su código exacto. Elegí por lo que CUBRE cada prestación (campo 'cubre',\
+ tomado de su página oficial), no solo por el título:
+

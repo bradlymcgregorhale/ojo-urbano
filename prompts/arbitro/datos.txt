@@ -1,0 +1,9 @@
+Categorías (clave: nombre): {categorias}
+
+Probabilidades del modelo local (entrenado con miles de fotos reales): {probabilidades}
+
+Veredictos de los modelos de visión: {veredictos}
+
+Categorías ya confirmadas por consenso: {consensuadas}
+
+

@@ -1,0 +1,4 @@
+- reparacion_cordon: el CORDÓN de la vereda (el borde de hormigón contra la calzada) roto, partido,\
+ hundido o faltante. Si lo roto es la superficie de la vereda es reparacion_vereda; si es el pozo\
+ del asfalto es reparacion_bache.
+

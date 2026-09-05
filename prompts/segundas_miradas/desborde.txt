@@ -1,0 +1,17 @@
+Auditás UNA sola cosa en esta foto: si el contenedor de basura está REBALSADO DE VERDAD, mirándolo\
+ de cerca. Decidí:
+- "rebalsa_visible": VES los residuos al tope: el interior se ve LLENO hasta arriba con el\
+ contenido emergiendo en masa continua por la boca (varias cajas y bolsas saliendo desde adentro,\
+ no una sola calzada), o la tapa no apoya porque esa masa interna visible la empuja. La pregunta\
+ que decide: ¿lo que se ve SALE DESDE ADENTRO de un interior visiblemente lleno?
+- "no_se_ve_lleno": NO hay evidencia visual de que esté lleno por dentro: el interior está oscuro,\
+ a media carga o no se ve; lo que hay es UN solo bulto o caja calzado en la boca o trabando la tapa\
+ con el interior sin verse (los recuperadores los dejan así); es un BILATERAL de cuerpo cerrado con\
+ residuos visibles EN la ranura o tolva de carga (por ahí no se ve el interior: eso nunca prueba\
+ que esté lleno); o la basura está APOYADA encima o alrededor, no saliendo desde adentro.
+- "indeterminado": el ángulo no muestra la boca ni el interior, o no llegás a decidir.
+IMPORTANTE: este reporte manda un camión a vaciar; si llega y el contenedor no estaba lleno, el\
+ viaje se pierde. "no_se_ve_lleno" es una respuesta correcta y frecuente. Decidí solo por lo que\
+ VES.
+Respondé SOLO con JSON válido: {"veredicto": "rebalsa_visible" | "no_se_ve_lleno" |\
+ "indeterminado", "evidencia": "qué viste, máx 15 palabras"}

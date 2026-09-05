@@ -1,0 +1,10 @@
+- volquete_mal_dispuesto: un VOLQUETE de obra (caja metálica abierta para escombros, distinta de\
+ los contenedores municipales de basura) abandonado o MAL dispuesto. OJO: que haya un volquete NO\
+ es una infracción: estar en la calzada, junto al cordón y ocupando parte del carril es su\
+ ubicación LEGAL. Reportalo SOLO si podés señalar en la evidencia la regla incumplida: DESBORDADO\
+ (los residuos llegan o superan el borde superior), ATRAVESADO (no paralelo al cordón), en una\
+ bocacalle u ochava, sobre una rampa para personas con discapacidad, una senda peatonal o un\
+ sumidero, sobre la VEREDA sin dejar ~1,5 m de paso peatonal, o visiblemente abandonado (oxidado,\
+ tapado de basura variada). Si el volquete está paralelo al cordón, sin desbordar y con el paso\
+ libre, NO lo reportes. El contenedor de obra verde NO es contenedor_secos.
+

@@ -1,0 +1,6 @@
+- retiro_afiches: afiches, carteles o pasacalles pegados o COLGADOS del mobiliario y el tendido de\
+ la vía pública: postes, columnas, señales, árboles, cables, vallas, obradores. Es material pegado\
+ o colgado, no pintado. Lo que esté sobre el FRENTE de un inmueble (fachada, persiana, portón,\
+ muro) es hidrolavado_grafitis, sea pintada o pegatina; esta clave es para lo que está fuera del\
+ frente.
+

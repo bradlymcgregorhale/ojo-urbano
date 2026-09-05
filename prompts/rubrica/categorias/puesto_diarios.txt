@@ -1,0 +1,3 @@
+- puesto_diarios: un kiosco o puesto de venta de diarios y revistas en la vía pública abandonado,\
+ muy deteriorado u obstruyendo el paso. Un puesto operando con normalidad NO.
+

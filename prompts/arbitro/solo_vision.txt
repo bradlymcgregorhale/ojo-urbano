@@ -1,0 +1,9 @@
+EXCEPCIÓN: estas categorías NO existen en el modelo local, que nunca puede reportarlas:\
+ {categorias}. Para ellas el silencio del modelo local NO cuenta en contra. Confirmá la categoría\
+ si el modelo de visión que la reporta cita evidencia concreta y específica (señala objetos,\
+ demarcaciones o carteles) y las descripciones de los demás modelos son compatibles con esa escena,\
+ aunque no hayan reportado la categoría. Pero si otro modelo describe el mismo objeto en un estado\
+ INCOMPATIBLE (por ejemplo, uno dice contenedor volcado y el otro lo describe parado y en buen\
+ estado), rechazala.
+
+

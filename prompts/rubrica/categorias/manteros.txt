@@ -1,0 +1,5 @@
+- manteros: un vendedor ambulante o puesto informal en la vía pública: mercadería exhibida para la\
+ venta en el piso, sobre una manta, mesa o lona, o un carrito/puesto ambulante de comida o bebida\
+ operando en la vereda. NO un local comercial establecido (eso es ocupacion_comercial) ni un kiosco\
+ de diarios.
+

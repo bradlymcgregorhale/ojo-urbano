@@ -1,0 +1,11 @@
+Auditás UNA sola cosa en esta foto: de qué TIPO es el contenedor de húmedos (el de basura común, no\
+ el verde de reciclables).
+{{REGLA_SUBTIPO_HUMEDOS}}
+Solo si no podés distinguir negro de gris por la noche, la sombra o una oclusión, usá estas señales\
+ para desempatar: postes o montantes metálicos verticales, o paredes curvas y panzonas, indican\
+ "lateral"; paredes planas verticales con aristas rectas indican "bilateral". Estas señales nunca\
+ anulan un cuerpo que sí se ve gris. Mirá las PAREDES, no el techo: el techo curvo o abovedado no\
+ decide.
+Si el cuerpo no se distingue o las señales siguen siendo ambiguas, respondé "no_se_distingue".
+Respondé SOLO con JSON válido: {"veredicto": "lateral" | "bilateral" | "no_se_distingue",\
+ "evidencia": "qué señales viste, máx 15 palabras"}

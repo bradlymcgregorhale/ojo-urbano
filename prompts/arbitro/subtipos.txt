@@ -1,0 +1,4 @@
+Subtipos ya resueltos por el sistema (la clave correcta es esta; en la descripción usá exactamente\
+ este subtipo Y sus características físicas, aunque algún veredicto diga el otro): {subtipos}
+
+

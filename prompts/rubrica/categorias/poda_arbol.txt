@@ -1,0 +1,4 @@
+- poda_arbol: un árbol VIVO cuyas ramas necesitan poda: tapan una luminaria, un semáforo o un\
+ cartel, cuelgan muy bajo sobre la vereda o la calzada, o se meten entre los cables. Las ramas ya\
+ CORTADAS y apiladas para retirar son retiro_poda, no esto.
+

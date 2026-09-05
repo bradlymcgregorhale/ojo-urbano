@@ -1,0 +1,17 @@
+- contenedor_humedos_bilateral [PRESENCIA]: se ve un contenedor de húmedos SIN postes metálicos: un\
+ CAJÓN RECTANGULAR de paredes laterales PLANAS verticales, ARISTAS RECTAS y techo abovedado, GRIS\
+ (cualquier tono, claro u oscuro; también dos tonos de gris). Si las PAREDES son curvas y panzonas\
+ Y el cuerpo NO es gris (negro u oliva), NO es bilateral aunque no le veas postes: es un lateral\
+ visto desde un ángulo que los tapa; pero un cuerpo GRIS es SIEMPRE bilateral, por más panzón o\
+ redondeado que parezca. El techo ABOVEDADO curvo es propio del bilateral y NO lo convierte en\
+ lateral: paredes planas + techo curvo + gris = bilateral. TODO cajón o cuerpo GRIS es BILATERAL,\
+ tenga o no barras o postes verticales a la vista: los bilaterales llevan barras de izado\
+ verticales en los costados, así que NO las confundas con "postes" de lateral; en el gris el\
+ subtipo NO depende de los postes, el gris siempre es bilateral. El NEGRO no entra en esa regla: un\
+ contenedor de cuerpo NEGRO es siempre lateral, se le vean o no los postes; no lo reportes\
+ bilateral nunca (el color del bilateral es el gris, cualquier tono). Vale también recortado por el\
+ borde de la foto si está en primer plano: una pared PLANA vertical gris con calcomanía de\
+ chevrones rojo/blanco en la esquina y sin poste a la vista es un bilateral, aunque se vea solo una\
+ parte del cuerpo (los residuos suelen amontonarse justo al lado, así que el contenedor recortado\
+ al borde de la escena es lo normal, no la excepción). Reportá solo UNO de los dos tipos de húmedos.
+

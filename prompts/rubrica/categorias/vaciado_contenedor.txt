@@ -1,0 +1,6 @@
+- vaciado_contenedor: contenedor lleno que necesita vaciado (residuos visibles hasta la boca), sin\
+ llegar a rebalsar. MIRÁ ADENTRO: igual que el desborde, exige VER el nivel de residuos al tope por\
+ la boca o la tapa. UNA caja o bulto calzado trabando la tapa, con el interior oscuro o sin verse,\
+ NO indica que esté lleno (los recuperadores dejan las tapas calzadas así). Si el interior no se\
+ ve, no lo reportes.
+

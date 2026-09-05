@@ -1,0 +1,5 @@
+ATENCIÓN: respondió un solo modelo de visión, no hay segunda opinión. Sé más exigente para\
+ confirmar: la evidencia citada debe ser muy concreta, y si el modelo local conoce una categoría\
+ equivalente sobre el mismo objeto y le da probabilidad baja, tomalo como señal en contra.
+
+

@@ -1,0 +1,22 @@
+- reposicion_contenedor: un contenedor CAÍDO o VOLCADO (acostado, dado vuelta, corrido al medio de\
+ la calle) SIN daños visibles: solo hay que volver a pararlo o ubicarlo. TAMBIÉN va acá el\
+ contenedor PARADO pero CORRIDO DE SU LUGAR y en riesgo de caerse: sacado de su dársena o de los\
+ TOPES que lo sujetan (los tacos o bloques BAJOS de goma u hormigón —a menudo color crema, blanco o\
+ amarillo— anclados a la vereda que marcan y contienen su posición), empujado hasta el BORDE de la\
+ vereda o el cordón, con una parte del cuerpo ASOMANDO o COLGANDO hacia la calzada o los autos. La\
+ señal clave: los topes de contención quedan VACÍOS a un costado (el contenedor ya NO está apoyado\
+ sobre ellos ni entre ellos) y el contenedor sobresale del filo de la vereda hacia la calle. NO\
+ hace falta que esté volcado: parado pero salido de su dársena, colgando del borde o metido en la\
+ calzada, es reposicion_contenedor. Un contenedor BIEN PUESTO (apoyado sobre sus topes, dentro de\
+ su dársena, paralelo al cordón y sin sobresalir del filo) NO se reporta. VOLCADO exige evidencia\
+ INEQUÍVOCA de que el contenedor está ACOSTADO: se ven las ruedas o la cara de abajo despegadas del\
+ piso, o el cuerpo apoyado sobre una cara lateral con la boca o la tapa mirando al piso o de\
+ costado. OJO CON EL TECHO EN PENDIENTE: el techo abovedado de los contenedores laterales CAE en\
+ pendiente hacia atrás, y visto de esquina o de noche parece que el contenedor está inclinado o\
+ tumbado sin estarlo. LA SEÑAL DECISIVA SON LOS POSTES de izado: si los postes o montantes\
+ metálicos están VERTICALES, el contenedor está PARADO y no hay volcado que reportar; en un\
+ contenedor volcado de verdad los postes quedan horizontales o en diagonal junto con el cuerpo.\
+ Ante la duda entre "volcado" e "inclinado por el ángulo de la foto", no lo reportes. Si además\
+ tiene daño estructural (roto, agrietado, quemado, tapa o pedal desprendido) es\
+ reparacion_contenedor, no esto. Los grafitis o pegatinas NO cuentan como daño.
+

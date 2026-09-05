@@ -1,0 +1,1 @@
+Analizá la foto adjunta según la rúbrica y respondé solo con el JSON pedido.

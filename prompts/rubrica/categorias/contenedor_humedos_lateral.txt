@@ -1,0 +1,28 @@
+- contenedor_humedos_lateral [PRESENCIA]: se ve un contenedor de húmedos con POSTES o montantes\
+ metálicos VERTICALES en los costados (el brazo del camión los toma para izarlo). Cuerpo plástico\
+ grande REDONDEADO Y PANZÓN: hombros curvos, perfil abombado, boca superior con faldón de goma;\
+ negro u oliva (el GRIS de cualquier tono NO es lateral: es bilateral). LA FORMA DECIDE SOLA, PERO\
+ LA FORMA ES LA DE LAS PAREDES, NO LA DEL TECHO: el lateral tiene las PAREDES curvas, panzonas, que\
+ se abomban de arriba a abajo; el bilateral tiene paredes PLANAS verticales y lo único curvo es su\
+ TECHO abovedado. Un techo curvo asomando por encima de otro contenedor o de una pila NO es un\
+ 'cuerpo redondeado': si las paredes no se ven, NO decidas por forma; decidí por color (negro/verde\
+ oscuro -> lateral; gris de cualquier tono -> bilateral) o por los postes, y si ninguna señal se ve\
+ con seguridad, no reportes el subtipo. Con las paredes panzonas a la vista y color negro u oliva\
+ es LATERAL aunque los postes queden OCULTOS detrás del cuerpo; pero si el cuerpo es GRIS es\
+ BILATERAL por más panzón que parezca (el gris manda, ver abajo). EL COLOR DECIDE EN UN SOLO\
+ SENTIDO: un contenedor de húmedos NEGRO es SIEMPRE lateral: el color del bilateral es el GRIS\
+ (cualquier tono, claro U OSCURO), así que cualquier contenedor de húmedos que claramente NO es\
+ gris (negro, verde oscuro) es lateral, aunque los postes queden del otro lado o fuera del\
+ encuadre; no existe un bilateral negro, y tampoco existe un lateral gris. Tiene que ser NEGRO DE\
+ VERDAD (el plástico se ve negro también donde le pega la luz), no un gris ensombrecido, sucio o a\
+ contraluz: si dudás entre negro y gris oscurecido por la escena, no uses el color y decidí por los\
+ postes. Vale también recortado por el borde de la foto en primer plano o plano medio: un costado o\
+ una esquina NEGROS de contenedor, o los postes/herrajes metálicos de izado a la vista sobre el\
+ borde, alcanzan para reportar lateral aunque se vea solo una franja del cuerpo. OJO CON EL GRIS\
+ (REGLA DOMINANTE): TODO contenedor de húmedos GRIS (cualquier tono, claro u oscuro) es BILATERAL,\
+ sin excepción. Ni la forma (panzona o de cajón) ni los herrajes, postes o barras de izado\
+ convierten un gris en lateral: si el cuerpo es gris, es bilateral. Los postes solo sirven para\
+ DESEMPATAR cuando dudás si el cuerpo es NEGRO o GRIS por la luz (negro de verdad = lateral); una\
+ vez que confirmás que es gris, es bilateral aunque se vea sucio, oscuro o a contraluz. "Oscuro"\
+ por sí solo NO es señal de lateral.
+

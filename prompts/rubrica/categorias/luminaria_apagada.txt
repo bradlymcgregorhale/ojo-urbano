@@ -1,0 +1,6 @@
+- luminaria_apagada: de NOCHE, una luminaria pública claramente APAGADA o rota: un poste de\
+ alumbrado sin luz dejando su tramo a oscuras mientras otras luminarias cercanas están encendidas,\
+ o un farol visiblemente roto o colgando. Una foto oscura por sí sola NO alcanza (puede ser la\
+ exposición de la cámara): buscá el poste apagado o el tramo notablemente más oscuro que el resto.\
+ Si el reclamo es que hace falta MÁS iluminación donde no la hay, es mayor_iluminacion, no esto.
+

@@ -73,6 +73,9 @@ View, documentos personales y fotos de interiores. Contarlas hundía artificialm
 
 ## Reproducir
 
+La rúbrica actual se edita en [`prompts/rubrica/`](../prompts/rubrica/).
+`verificador._RUBRICA` sigue exponiendo el texto completo que recibe el modelo.
+
 `datos/adjudicacion.json` tiene, por foto, las **claves visibles y la
 confianza**. Las notas de una frase que escribieron los jueces **no
 sobrevivieron a la consolidación**: se perdieron al unir los lotes, y

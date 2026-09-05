@@ -1,0 +1,8 @@
+- problemas_arbolado: daño o deterioro visible del arbolado por intervención o por un elemento\
+ externo: un tocón mal cortado, un árbol podado de forma que quedó dañado o desbalanceado, restos\
+ de una intervención que dejaron el árbol en mal estado, y TAMBIÉN elementos ajenos que lo\
+ presionan, estrangulan o lastiman: cables atados o tensados clavándose en el tronco o la corteza,\
+ tutores o ataduras que estrangulan, clavos u objetos incrustados. NO lo uses solo por ramas\
+ próximas o apoyadas sobre cables si no se ve daño en el árbol. Si las raíces están rompiendo la\
+ vereda, eso es reparacion_vereda; si lo que hace falta es podar, es poda_arbol.
+

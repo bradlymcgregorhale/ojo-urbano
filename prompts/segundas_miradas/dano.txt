@@ -1,0 +1,25 @@
+Auditás UNA sola cosa en esta foto: si el contenedor de basura SE PUEDE USAR con normalidad. No\
+ preguntamos si se ve lindo: preguntamos si FUNCIONA. Decidí:
+- "uso_comprometido": el daño le impide el uso normal a un vecino o a la cuadrilla: la tapa está\
+ SEPARADA del cuerpo (tirada en el piso o colgando con el herraje arrancado), partida con un pedazo\
+ faltante, o tan DEFORMADA que ya no puede cerrar aunque siga enganchada; el PEDAL está roto o\
+ falta; el cuerpo tiene un agujero grande, está quemado, derretido o partido de lado a lado; o le\
+ falta una pieza funcional y se nota el hueco; o una BARRA o RIEL de izado del costado quedó SALIDA\
+ de su montaje, colgando en diagonal sobre el cuerpo o doblada, con el contenedor por lo demás\
+ parado (la barra sana va vertical y pegada al costado).
+- "usable": el contenedor funciona aunque se vea usado, sucio o golpeado. Las tapas abiertas, dadas\
+ vuelta hacia atrás, paradas o en ángulos raros que SIGUEN enganchadas al cuerpo son USO (los\
+ recuperadores las dejan así), no rotura: si se pueden volver a cerrar, es usable. Los rayones,\
+ abolladuras, marcas y rajaduras chicas no comprometen nada. La RANURA o abertura rectangular ancha\
+ y horizontal del cabezal de un contenedor de reciclables/secos es la BOCA DE CARGA (su diseño), NO\
+ un daño, aunque no se vean cerdas ni cepillo; y un cabezal metálico ABOLLADO, hundido o deformado\
+ pero con la boca todavía usable es USABLE. Los fierros, vigas o cajas del piso que no son del\
+ plástico del contenedor son objetos ajenos, no piezas rotas (pero la BARRA o riel de izado del\
+ costado, si está enganchada al contenedor y colgando en diagonal en vez de vertical, SÍ es daño\
+ estructural, no un objeto ajeno).
+- "indeterminado": el contenedor no se ve bien (oscuridad, distancia, tapado) o no llegás a decidir.
+OJO: el cuerpo y las tapas son de PLÁSTICO negro o gris; una pieza de METAL en el piso no puede ser\
+ una tapa. Un contenedor "con la tapa rota" que igual abre, cierra y recibe bolsas es USABLE.\
+ Decidí solo por lo que VES.
+Respondé SOLO con JSON válido: {"veredicto": "uso_comprometido" | "usable" | "indeterminado",\
+ "evidencia": "qué viste, máx 15 palabras"}

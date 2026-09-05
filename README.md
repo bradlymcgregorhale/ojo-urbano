@@ -75,6 +75,7 @@ El servicio está escrito en Python.
 - FastAPI y uvicorn exponen la API desde `servidor.py`. La página de demostración está embebida en ese archivo, sin un frontend separado.
 - `model.joblib` contiene el modelo local: embeddings de CLIP, DINOv2 y SigLIP2, un scaler, un OneVsRest de regresión logística y un regresor de gravedad. Corre en CPU con PyTorch, transformers, sentence-transformers, scikit-learn, joblib y Pillow.
 - `verificador.py` hace las llamadas a OpenRouter. Los modelos de visión trabajan en paralelo. DeepSeek interviene como árbitro de texto porque sus modelos en OpenRouter no aceptan imágenes.
+- Los criterios por categoría y las pasadas dirigidas están en [`prompts/`](prompts/README.md), junto con las instrucciones del árbitro y del análisis de texto.
 - [`categorias.json`](categorias.json) contiene las 44 categorías propias. [`prestaciones.json`](prestaciones.json) contiene el catálogo completo de la Ciudad usado para interpretar el texto del vecino.
 
 ## API

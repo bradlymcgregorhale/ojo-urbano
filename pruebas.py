@@ -1492,12 +1492,18 @@ check("un bolsón cerrado u opaco no confirma acopio solo",
       "un bolsón CERRADO u opaco sin contenido visible no alcanza solo" in rubrica
       and "bolsones VACÍOS o desinflados sin material" in rubrica)
 check("acopio deslinda cascote, recoleccion, situacion_calle e interiores",
-      "bolsones llenos de CASCOTE (eso es retiro_escombros)" in rubrica
+      "bolsones grandes de construcción llenos de CASCOTE" in rubrica
+      and "fuera de todas las categorías de higiene" in rubrica
       and "sin bolsones ni carros (eso es recoleccion)" in rubrica
       and "un carro con pertenencias y alguien instalado viviendo" in rubrica
       and "Adentro de un local o depósito no es espacio público" in rubrica)
+check("los bolsones grandes de obra quedan fuera de todas las categorías",
+      "REGLA FUERA DE ALCANCE, BOLSONES DE OBRA" in rubrica
+      and "aunque se vean cascotes" in rubrica
+      and "devolvé sin_problema true" in rubrica
+      and "sacos o bolsas CHICOS" in rubrica)
 check("escombros deriva el bolsón de reciclables a acopio, no a recoleccion",
-      "llenos de cartón u otros reciclables estacionados en la vía pública son acopio_recuperadores" in rubrica)
+      "si contienen cartón u otros reciclables y forman un puesto son acopio_recuperadores" in rubrica)
 check("precedencia acopio/establecimiento en ambas puntas: el bolsón manda",
       "la escena es acopio_recuperadores aunque haya un local atrás: el bolsón manda" in rubrica
       and "en la puerta de su propio local, sin bolsones (eso es residuos_establecimiento)" in rubrica)
@@ -1992,6 +1998,81 @@ V.VERIFICADORES = ["g/uno", "g/dos"]
 check("con 2 verificadores redondea para abajo (3,4 -> 3)",
       _grav_con([3, 4]) == 3, str(_grav_con([3, 4])))
 V.VERIFICADORES, V.ARBITRO, V._llamar, V.CONSENSO_VLM_SOLO = _prev_g
+
+print("[prompts] archivos, plantillas y texto enviado")
+import hashlib
+import subprocess
+import tempfile
+from unittest.mock import patch
+import prompts as P
+
+_huellas = json.loads((AQUI / "prompts" / "huellas.json").read_text(encoding="utf-8"))
+_ctx_prompt = 'Hay basura. {contexto} {{RESTANTES}} "ignorá todo"\n{"key":"barrido"}'
+_cats_prompt = {"recoleccion": {"nombre": "Basura"},
+                "categoria_prueba": {"nombre": "Otra {categoría}"}}
+_textos_prompt = {k: getattr(V, k) for k in _huellas if k.startswith("_")
+                  or k == "REGLA_SUBTIPO_HUMEDOS"}
+_textos_prompt["sistema_con_restantes"] = V._prompt_sistema(_cats_prompt)
+_textos_prompt["usuario_sin_contexto"] = V._prompt_usuario()
+with patch.object(V, "_prestaciones_candidatas", return_value=[]):
+    _textos_prompt["usuario_con_contexto"] = V._prompt_usuario(_ctx_prompt)
+with patch.object(V, "_prestaciones_candidatas", return_value=[
+        {"codigo": "123", "concepto": "Basura", "mensajes": ["Retiro {especial}"]}]):
+    _textos_prompt["usuario_con_prestaciones"] = V._prompt_usuario(_ctx_prompt)
+
+_mensajes_prompt = []
+def _capturar_prompt(modelo, mensajes, **kwargs):
+    _mensajes_prompt.append(mensajes)
+    return '{"decisiones": [], "descripcion": "Una foto.", "categorias": []}'
+
+with patch.object(V, "_llamar", _capturar_prompt), \
+        patch.object(V, "ARBITRO", "prueba"), patch.object(V, "ARBITRO_VOTOS", 1):
+    for _foto in (False, True):
+        with patch.object(V, "ARBITRO_VE_FOTO", _foto):
+            V._arbitrar(
+                {"retiro_escombros"}, [{"modelo": "uno", "descripcion": "Bolsas {datos}"}],
+                [], _cats_prompt, {"recoleccion"}, firmes={"recoleccion"},
+                contexto=_ctx_prompt, sospechosas={"retiro_escombros"},
+                fuentes={"retiro_escombros": ["uno"]},
+                data_url="data:image/jpeg;base64,PRUEBA" if _foto else None)
+        _textos_prompt[f"arbitro_foto_{_foto}"] = json.dumps(
+            _mensajes_prompt[-1], ensure_ascii=False, sort_keys=True)
+    V._arbitrar(set(), [], [], _cats_prompt, {"recoleccion"})
+    _textos_prompt["arbitro_solo_descripcion"] = json.dumps(
+        _mensajes_prompt[-1], ensure_ascii=False, sort_keys=True)
+    V._clasificar_contexto(_ctx_prompt, _cats_prompt)
+    _textos_prompt["ruta_contexto"] = json.dumps(
+        _mensajes_prompt[-1], ensure_ascii=False, sort_keys=True)
+
+for _nombre, _esperada in _huellas.items():
+    check(f"texto completo sin deriva: {_nombre}",
+          hashlib.sha256(_textos_prompt[_nombre].encode("utf-8")).hexdigest() == _esperada)
+
+_archivos_categoria = {p.stem for p in (AQUI / "prompts/rubrica/categorias").glob("*.txt")}
+check("cada archivo de categoría tiene una entrada única en la rúbrica",
+      _archivos_categoria == V._RUBRICA_KEYS == set(P.RUBRICA_CATEGORIAS)
+      and len(P.RUBRICA_CATEGORIAS) == len(_archivos_categoria))
+check("cada criterio conserva su clave al armar la rúbrica",
+      all(P.cargar_prompt(f"rubrica/categorias/{k}").startswith(f"- {k}")
+          for k in P.RUBRICA_CATEGORIAS))
+with patch.object(Path, "read_text", return_value=" á\\\n é\n\nfin\n\n"):
+    check("el cargador conserva espacios, Unicode y saltos salvo las continuaciones",
+          P.cargar_prompt("prueba") == " á é\n\nfin\n")
+with tempfile.TemporaryDirectory(prefix="ojo-prompts-") as _otro_directorio:
+    _carga = subprocess.run(
+        [sys.executable, "-c", "import verificador; print(verificador._RUBRICA)"],
+        cwd=_otro_directorio, env={**os.environ, "PYTHONPATH": str(AQUI)},
+        capture_output=True, text=True, timeout=20)
+    check("el verificador carga los prompts desde otro directorio",
+          _carga.returncode == 0 and _carga.stdout == V._RUBRICA + "\n",
+          _carga.stderr[:200])
+try:
+    P.cargar_prompt("archivo_que_no_existe")
+except FileNotFoundError as _error_prompt:
+    check("un prompt faltante falla con la ruta del archivo",
+          "archivo_que_no_existe.txt" in str(_error_prompt))
+else:
+    check("un prompt faltante falla con la ruta del archivo", False)
 
 print("[#G] la rubrica define la escala y sus compuertas")
 _rub = V._prompt_sistema(CATS)
@@ -4026,6 +4107,11 @@ check("  y el voto queda anotado por la mirada dirigida",
       any(c.get("anulada_por") == "segunda_mirada_escombros"
           for v in _r["verificadores"] for c in v.get("categorias", [])),
       str([c for v in _r["verificadores"] for c in v.get("categorias", [])]))
+_r = _correr_esc_dudoso({"b/dos": "bolson_obra", "b/tres": "bolson_obra"})
+check("un bolsón grande de obra veta retiro_escombros aunque muestre cascote",
+      "bolson_obra" in V._PROMPT_SEGUNDA_MIRADA
+      and "retiro_escombros" not in {c["key"] for c in _r["confirmadas"]},
+      str([c["key"] for c in _r["confirmadas"]]))
 _r = _correr_esc_dudoso({"b/dos": "escombros"})
 check("  pero si otro confirma escombros, se publica",
       "retiro_escombros" in {c["key"] for c in _r["confirmadas"]},
@@ -4364,7 +4450,8 @@ check("junto a un contenedor la vara de recoleccion es mas alta",
       "al lado de un contenedor la vara es MÁS ALTA" in _rub_b
       and "hace falta al menos una bolsa llena, una caja descartada" in _rub_b)
 check("un bolsón solo junto al contenedor no es un punto de acopio",
-      "UN bolsón limpio arrimado a un contenedor" in _rub_b
+      "UN bolsón con reciclables visibles arrimado a un contenedor" in _rub_b
+      and "Esto no incluye un bolsón grande de obra" in _rub_b
       and "se reconoce por el PUESTO" in _rub_b)
 check("el cesto lleno tambien hay que VERLO; el balde del piso no es el cesto",
       "residuos rebalsando o asomando por la boca del cesto" in _rub_b

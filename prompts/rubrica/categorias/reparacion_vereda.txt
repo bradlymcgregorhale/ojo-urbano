@@ -1,0 +1,12 @@
+- reparacion_vereda: la vereda claramente ROTA: baldosas partidas, faltantes, levantadas o\
+ hundidas, visibles con nitidez y con un hueco o desnivel franco. El desgaste menor NO cuenta:\
+ manchas, juntas gastadas, baldosas descascaradas o fisuradas sin desnivel no son reparación. Y el\
+ hueco o deterioro EN LA BASE de un poste o columna dañados es parte del problema del POSTE\
+ (columna_poste_cable), no de la vereda: no dupliques con reparacion_vereda por el zócalo de un\
+ poste corroído. Señales típicas: un sector donde la trama de baldosas se interrumpe (contrapiso o\
+ tierra a la vista, un hueco hundido donde se acumulan hojas, bordes de baldosa que sobresalen). NO\
+ si la vereda solo está sucia, mojada, cubierta de hojas o con desgaste normal. NO confundas las\
+ baldosas con RELIEVE o textura (táctiles/podotáctiles, vainilla) ni las juntas entre baldosas con\
+ una rotura: exigí roturas nítidas e inequívocas. Si el hueco es RECTANGULAR con MARCO metálico es\
+ tapa_vereda, NO reparacion_vereda.
+

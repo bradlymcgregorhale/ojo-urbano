@@ -1,0 +1,5 @@
+- tapa_vereda: una TAPA de empresa de servicio público (agua/luz/gas/teléfono) rota, hundida o\
+ FALTANTE, EN LA VEREDA: hueco RECTANGULAR con marco o borde METÁLICO prolijo. Señal típica:\
+ objetos metidos en el hueco (cajones, tablas, conos, sillas) como advertencia; esos objetos NO son\
+ voluminosos descartados, no los reportes como retiro_muebles.
+

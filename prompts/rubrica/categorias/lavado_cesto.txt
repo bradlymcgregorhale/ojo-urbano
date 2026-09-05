@@ -1,0 +1,6 @@
+- lavado_cesto: un cesto papelero ENTERO y en su lugar, pero visiblemente sucio: chorreaduras,\
+ mugre incrustada, restos pegados, manchas. Es el pedido de higienizarlo, no de arreglarlo ni de\
+ vaciarlo. Si lo que se ve es que está LLENO de residuos, eso es vaciado_cesto. Si el sucio es un\
+ contenedor municipal y no un cesto papelero, es lavado_contenedor. Si además está roto o caído,\
+ reportá también reparacion_cesto.
+

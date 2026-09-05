@@ -1,0 +1,6 @@
+ATENCIÓN: estas categorías en disputa coinciden con lo que el contexto afirma: {sospechosas}.\
+ Existe riesgo de sugestión (que el modelo haya 'visto' lo que el texto le indicó). Para\
+ confirmarlas exigí evidencia visual inequívoca y específica; ante la duda rechazalas: si las\
+ rechazás no se pierden, quedan como sugerencia del contexto en un campo aparte.
+
+

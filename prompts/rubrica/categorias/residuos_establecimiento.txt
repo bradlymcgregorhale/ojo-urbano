@@ -1,0 +1,8 @@
+- residuos_establecimiento: residuos claramente COMERCIALES sacados a la vía pública por un\
+ establecimiento: muchas cajas o bolsas iguales de un mismo local, restos de un comercio apilados\
+ en su frente (cajones de verdulería, cajas de fruta, embalajes uniformes), bolsas sin embolsar\
+ correctamente junto a la puerta de un negocio. Se distingue de recoleccion porque el origen\
+ comercial es evidente por la cantidad y la uniformidad. Si en la escena hay BOLSONES grandes de\
+ rafia llenos de reciclables, la escena es acopio_recuperadores aunque haya un local atrás: el\
+ bolsón manda.
+
