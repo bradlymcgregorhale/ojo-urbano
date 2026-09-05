@@ -92,9 +92,9 @@
  },
  {
   "codigo": "1494418798420",
-  "concepto": "Ajuste de chapa metálica por ruidos molestos en calle",
+  "concepto": "CHAPA METÁLICA: Ajuste por ruidos molestos",
   "rubro": "CALZADA",
-  "categoria_madre": "Calles, Fachadas y Veredas",
+  "categoria_madre": "Calles",
   "palabras_clave": "inconvenientes|problemas|reparación|arreglo|placa|parche|tapa|metálica|chapón|calle|ruido|bache|tránsito|asfalto|pavimento",
   "mensajes": [
    "Aquí podés solicitar la reparación de la chapa metálica fijada al piso para la reparación de la calle, si esta se encuentra deteriorada generando ruidos y trastornos en el tránsito.",
@@ -322,9 +322,9 @@
  },
  {
   "codigo": "154021",
-  "concepto": "Construcción de rampa de accesibilidad",
+  "concepto": "RAMPA DE ACCESIBILIDAD: Construcción",
   "rubro": "VEREDAS",
-  "categoria_madre": "Calles, Fachadas y Veredas",
+  "categoria_madre": "Calles",
   "palabras_clave": "solicitud|contruccion|contruir|poner|rampa|accecibilidad|discapacitados|silla|rueda|esquina|cologar|agregar|acceso|calle|interseccion|mejora|movilida|incluir|adicionar|construir|minusvalido|personas|mayores|pasar",
   "mensajes": [
    "Acá podés pedir la construcción de una rampa de accesibilidad en una esquina de la Ciudad.",
@@ -733,7 +733,7 @@
  },
  {
   "codigo": "1523300589177",
-  "concepto": "Destape de sumidero/alcantarilla o boca de registro pluvial",
+  "concepto": "SUMIDERO Y/O BOCA REGISTRO PLUVIAL: Tapada",
   "rubro": "PLUVIALES",
   "categoria_madre": "Pluviales",
   "palabras_clave": "sumidero|alcantarilla",
@@ -749,7 +749,7 @@
  },
  {
   "codigo": "1424983339408",
-  "concepto": "Disponibilidad de cambio en boleterías - SUBTE",
+  "concepto": "Disponibilidad de cambio en boleterías  - SUBTE",
   "rubro": "SUBTE",
   "categoria_madre": "Tránsito y Transporte",
   "palabras_clave": "cambio|boleteria|boleterias|disponibilidad|vuelto|plata|dinero|subte|subtes|pago|medios",
@@ -777,7 +777,7 @@
   "concepto": "Donación de bienes del hogar en desuso",
   "rubro": "APRA POLÍTICAS AMBIENTALES",
   "categoria_madre": "Limpieza y Reciclado",
-  "palabras_clave": "bien,|bienes,|desuso,|sin,|uso,|donar,|donación,|dar,|entregar,|muebles,|cosas,\r\nobjetos,|hogar,|casa,|sirve,|electrodoméstico",
+  "palabras_clave": "bien,|bienes,|desuso,|sin,|uso,|donar,|donación,|dar,|entregar,|muebles,|cosas,|objetos,|hogar,|casa,|sirve,|electrodoméstico",
   "mensajes": [
    "Aquí podés solicitar el retiro de los bienes que ya no utilices, pero que estén en funcionamiento y/o en buen estado, por ejemplo: muebles, electrodomésticos, materiales de construcción, aberturas, artefactos sanitarios y de cocina.",
    "De esta forma estás ayudando a personas que lo necesitan y también, reduciendo la cantidad de residuos que genera la Ciudad.",
@@ -1946,7 +1946,7 @@
  },
  {
   "codigo": "1720459603540",
-  "concepto": "Educación - Plataformas y sistemas - Inconvenientes técnicos con SINIGEP - Inconvenientes técnicos con trámites contables - Rendición anual de cuentas",
+  "concepto": "Educación - Plataformas y sistemas - Inconvenientes técnicos con SINIGEP  - Inconvenientes técnicos con trámites contables - Rendición anual de cuentas",
   "rubro": "EDUCACIÓN",
   "categoria_madre": "Educación",
   "palabras_clave": "Educacion|Educación",
@@ -2562,7 +2562,7 @@
  },
  {
   "codigo": "1723647075409",
-  "concepto": "Educación - Soporte técnico - Conectividad",
+  "concepto": "Educación - Soporte técnico - Servicio de internet",
   "rubro": "EDUCACIÓN",
   "categoria_madre": "Educación",
   "palabras_clave": "Educacion|Educación",
@@ -2739,7 +2739,7 @@
  },
  {
   "codigo": "1364324419429",
-  "concepto": "Elementos para urgencias y/o emergencias - SUBTE",
+  "concepto": "Elementos para urgencias y/o emergencias  - SUBTE",
   "rubro": "SUBTE",
   "categoria_madre": "Tránsito y Transporte",
   "palabras_clave": "elementos|elemento|urgencia|irgencias|emergencia|emergencias|primeros|auxilios|subte|subtes|seguridad|ayuda",
@@ -2979,7 +2979,7 @@
  },
  {
   "codigo": "176012",
-  "concepto": "Falta de recolección de restos de poda de arbolado público",
+  "concepto": "Falta de recolección de restos de poda de arbolado público",
   "rubro": "ARBOLADO",
   "categoria_madre": "Limpieza y Reciclado",
   "palabras_clave": "solicitud|rama|ramas|troncos|retiro|sacar|tapa|farol|poda|recoger|quitar|restos|resto",
@@ -3425,7 +3425,7 @@
  },
  {
   "codigo": "1739800036598",
-  "concepto": "Gestión Privada - Educación - Plataformas y sistemas - Aprende BA - Nivel Secundario - Auto-registración",
+  "concepto": "Gestión Privada - Educación - Plataformas y sistemas - Aprende BA - Nivel Secundario - Auto-registración",
   "rubro": "EDUCACIÓN",
   "categoria_madre": "Educación",
   "palabras_clave": "Educacion|Educación",
@@ -3999,7 +3999,7 @@
  },
  {
   "codigo": "175011",
-  "concepto": "Instalación de bancos, mesas y sillas en parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: instalación de bancos, mesas y sillas",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "colocacion|colocar|poner|plaza|parque|banco|cantero|central|plazoleta|instalación|instalacion|asiento",
@@ -4012,7 +4012,7 @@
  },
  {
   "codigo": "1538077704226",
-  "concepto": "Instalación de baños públicos en parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: instalación de baños públicos",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "plazas|plaza|parque|espacios|verdes|baño|baños|químicos|públicos|público|toilette|instalar|instalación|poner",
@@ -4025,7 +4025,7 @@
  },
  {
   "codigo": "1538078099161",
-  "concepto": "Instalación de bebederos en parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: instalación de bebederos",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "plazas|plaza|parque|espacios|verdes|bebedero",
@@ -4038,7 +4038,7 @@
  },
  {
   "codigo": "1538078494734",
-  "concepto": "Instalación de caniles en parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: instalación de caniles",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "plazas|plaza|parques|parque|espacios|verdes|canil|mascotas|perros|perro|carriles|mascota",
@@ -4051,7 +4051,7 @@
  },
  {
   "codigo": "160011",
-  "concepto": "Instalación de cestos de basura en parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: instalación de cestos de basura",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "higiene|plaza|limpieza|plazas|control|plazoleta|cantero|central|patio|recreativo|jardin|cesto|tacho|basura|parque|instalación|poner|colocar|incluir|acomodar|arreglar",
@@ -4065,7 +4065,7 @@
  },
  {
   "codigo": "160015",
-  "concepto": "Instalación de fuentes en parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: instalación de fuentes de agua",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "solicitud|instalacion|instalar|poner|fuentes|agua|parque|parques|plaza|plazas|cantero|central|patio|recreativo|jardin",
@@ -4078,7 +4078,7 @@
  },
  {
   "codigo": "1538081975768",
-  "concepto": "Instalación de patio de juegos en parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: instalación de patio de juegos",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "plaza|parque|espacios|verdes|juego|juegos|infantiles|niños|chicos|patio",
@@ -4092,7 +4092,7 @@
  },
  {
   "codigo": "1538082353252",
-  "concepto": "Instalación de postas aeróbicas/áreas deportivas",
+  "concepto": "PLAZAS Y PARQUES: instalación de postas aeróbicas/áreas deportivas",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "plazas|plaza|parque|espacios|verdes|juegos|aeróbicos|ejercicios|ejercitar|gimansia|instalación|estacion|estaciones|cancha|canchas|deporte|deportes",
@@ -4119,7 +4119,7 @@
  },
  {
   "codigo": "1523300784995",
-  "concepto": "Intervención por calle anegada/inundada",
+  "concepto": "CALLE: Inundación y anegamiento",
   "rubro": "PLUVIALES",
   "categoria_madre": "Pluviales",
   "palabras_clave": "anegado|inundacion|inundado|agua",
@@ -4549,7 +4549,7 @@
  },
  {
   "codigo": "167012",
-  "concepto": "Limpieza de artefacto de alumbrado",
+  "concepto": "LUMINARIA: Limpieza de artefacto",
   "rubro": "ALUMBRADO",
   "categoria_madre": "Alumbrado",
   "palabras_clave": "artefacto|luminico|sucio|luz|sucia|luminaria|aparato|limpiar|lampara,|alumbrado",
@@ -4590,7 +4590,7 @@
  },
  {
   "codigo": "1404424841619",
-  "concepto": "Luminaria intermitente",
+  "concepto": "LUMINARIA: Encendido intermitente",
   "rubro": "ALUMBRADO",
   "categoria_madre": "Alumbrado",
   "palabras_clave": "alumbrado,|lumi,|alum,|luminaria|encendida,|intermitente,|luminaria,luz,bombillo,foco,lampara,|falla|de|luces",
@@ -4666,7 +4666,7 @@
  },
  {
   "codigo": "175005",
-  "concepto": "Mantenimiento de bancos, mesas y sillas en parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: mantenimiento de bancos, mesas y sillas",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "reparacion|bancos|plazas|mantenimiento|gastado|pintar|arreglar|plazoleta|plaza|cantero|central|patio|recreativo|jardin|acomodar|mejorar|reparar|no|sirve",
@@ -4679,7 +4679,7 @@
  },
  {
   "codigo": "1538082797796",
-  "concepto": "Mantenimiento de baños públicos en parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: mantenimiento de baños públicos",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "plazas|parque|espacios|verdes|baño|baños|químicos|públicos|público|toilette|reparación|roto|rotos|reparar|arreglar",
@@ -4692,7 +4692,7 @@
  },
  {
   "codigo": "1538083050861",
-  "concepto": "Mantenimiento de bebederos en parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: mantenimiento de bebederos",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "plazas|plaza|parque|parques|espacios|verdes|bebedero|bebederos|agua|fuente|fuentes|tomar|manteniemiento|rota|reparar",
@@ -4705,7 +4705,7 @@
  },
  {
   "codigo": "1538083340831",
-  "concepto": "Mantenimiento de caniles en parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: mantenimiento de caniles",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "estacion|estaciones|cancha|canchas|deportes|deporte",
@@ -4732,7 +4732,7 @@
  },
  {
   "codigo": "175008",
-  "concepto": "Mantenimiento de cestos de basura en parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: mantenimiento de cestos de basura",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "reparacion|cesto|plazas|cambios|reposicion|cestos|plazoleta|plaza|cantero|central|patio|recreativo|jardin|tacho|tachos|arreglar|acomodar|mejorar|reparar|no|sirve|parque",
@@ -4746,7 +4746,7 @@
  },
  {
   "codigo": "160005",
-  "concepto": "Mantenimiento de fuentes en parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: mantenimiento de fuentes de agua",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "fuente|rota|mantenimiento|plaza|parque|plazoleta|patio|jardin|agua|mejora|arreglar|reparar|mejorar|acomodar",
@@ -4759,7 +4759,7 @@
  },
  {
   "codigo": "160002",
-  "concepto": "Mantenimiento de monumento/obra de arte en parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: mantenimiento de monumento/obra de arte",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "obras|monumentos|pintada|Plazoleta|Plaza|Cantero|Central|Patio|Recreativo|Jardin|robo|roto|rota",
@@ -4786,7 +4786,7 @@
  },
  {
   "codigo": "1345657797308",
-  "concepto": "Mantenimiento de patio de juegos en parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: mantenimiento de patio de juegos",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "reparacion|patio|juegos|mantenimiento|plaza|plazas|parque|parques|arreglar|acomodar|ajustar|mejora",
@@ -4800,7 +4800,7 @@
  },
  {
   "codigo": "1538083524587",
-  "concepto": "Mantenimiento de postas aeróbicas/áreas deportivas",
+  "concepto": "PLAZAS Y PARQUES: mantenimiento de postas aeróbicas/áreas deportivas",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "plazas|plaza|parque|espacios|verdes|juegos|aeróbicos|ejercicios|ejercitar|gimansia|mantenimiento|rota|reparar|estacion|estaciones|cancha|canchas|deporte|deportes",
@@ -4814,7 +4814,7 @@
  },
  {
   "codigo": "175001",
-  "concepto": "Mantenimiento de rejas en parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: mantenimiento de rejas",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "plaza|parque|espacios|verdes|rejas|enrejado|reja|mantenimiento|rota|reparar",
@@ -4827,7 +4827,7 @@
  },
  {
   "codigo": "1538083752471",
-  "concepto": "Mantenimiento de senderos de parque/plaza",
+  "concepto": "PLAZAS Y PARQUES: mantenimiento de senderos",
   "rubro": "ESPACIOS VERDES",
   "categoria_madre": "Plazas y Parques de la Ciudad",
   "palabras_clave": "plazas|plaza|parque|parques|espacios|verdes|senderos|caminos|paseos|sendero|camino|paseo|mantenimiento|rota|reparar",
@@ -4853,7 +4853,7 @@
  },
  {
   "codigo": "167014",
-  "concepto": "Mayor iluminación en calle / plaza",
+  "concepto": "LUMINARIA: Refuerzo de alumbrado público",
   "rubro": "ALUMBRADO",
   "categoria_madre": "Alumbrado",
   "palabras_clave": "luminarias|luminaria|alumbrado|insuficiente|refuerzo|publico|luces|luz|alumbrar|oscuro|mejorar|mantenimiento|mayor|bombillo|lampara|vía|via|parque|plaza|ajustar|arreglar|acomodar|poca|poco",
@@ -4947,10 +4947,10 @@
  },
  {
   "codigo": "1516374817349",
-  "concepto": "Nivelación de tapa de empresa de servicio público en calle",
+  "concepto": "TAPA DE EMPRESA DE SERVICIO PUBLICO: Rota/Faltante",
   "rubro": "CALZADA",
-  "categoria_madre": "Calles, Fachadas y Veredas",
-  "palabras_clave": "Reparación/Nivelación|de|tapa|empresa|servicio|público|en|calle",
+  "categoria_madre": "Calles",
+  "palabras_clave": "Reparación/Nivelación|de|tapa|empresa|servicio|público|en|calle|nivelacion|reparacion",
   "mensajes": [
    "Aquí podés solicitar la reparación, reposición y nivelación de una tapa de empresa de servicio público en la calle que se encuentre rota, faltante o desnivelada.",
    "Si la tapa de empresa de servicio público se encuentra en la vereda, ingresá acá ."
@@ -4961,9 +4961,9 @@
  },
  {
   "codigo": "1516371065550",
-  "concepto": "Nivelación de tapa de empresa de servicio público en vereda",
+  "concepto": "TAPA DE EMPRESA DE SERVICIO PÚBLICO: Desnivelada",
   "rubro": "VEREDAS",
-  "categoria_madre": "Calles, Fachadas y Veredas",
+  "categoria_madre": "Calles",
   "palabras_clave": "tapa|tapas|chapa|empresa|servicio|reparacion|nivelacion|falta|faltante|sin|rota|vereda|acera",
   "mensajes": [
    "Aquí podés solicitar la reparación, reposición y nivelación de una tapa de empresa de servicio público en la vereda que se encuentre rota, faltante o desnivelada.",
@@ -5401,9 +5401,9 @@
  },
  {
   "codigo": "155016",
-  "concepto": "Problemas con obras de bacheo",
+  "concepto": "CALLE: Problemas con obras en ejecución",
   "rubro": "CALZADA",
-  "categoria_madre": "Calles, Fachadas y Veredas",
+  "categoria_madre": "Calles",
   "palabras_clave": "problemas|obras|bacheo|pavimentacion|calzada|calle|personal|realiza|inconvenientes|bache|pozo|poso",
   "mensajes": [
    "Aquí podés reportar inconvenientes generados por los trabajos de pavimentación y reparación de baches llevados a cabo por el Gobierno de la Ciudad de Buenos Aires."
@@ -5641,7 +5641,7 @@
  },
  {
   "codigo": "1507208211161",
-  "concepto": "Refugio de transporte en mal estado o abandonado",
+  "concepto": "PARADA DE COLECTIVO: En mal estado o abandonado",
   "rubro": "MOBILIARIO URBANO",
   "categoria_madre": "Ordenamiento del Espacio Público",
   "palabras_clave": "refugio|de|transporte|colectivo|parada|poste",
@@ -5685,7 +5685,7 @@
   "codigo": "155004",
   "concepto": "Reparación / Construcción de cordón de vereda",
   "rubro": "RESOLUCIONES URBANAS",
-  "categoria_madre": "Calles, Fachadas y Veredas",
+  "categoria_madre": "Calles",
   "palabras_clave": "cordon|vereda|rota|faltante|falta|acomodar|reparar|mejorar|construccion|arreglar|acera|Acera|veredas",
   "mensajes": [
    "Aquí podés solicitar la construcción o reparación del cordón de una vereda.",
@@ -5698,9 +5698,9 @@
  },
  {
   "codigo": "155010",
-  "concepto": "Reparación de bache en calle",
+  "concepto": "CALLE: Reparación de bache",
   "rubro": "CALZADA",
-  "categoria_madre": "Calles, Fachadas y Veredas",
+  "categoria_madre": "Calles",
   "palabras_clave": "bache|agujero|hueco|rotura|calle|rota|calzada|vache|auero|roto|poso|pozo|pavimento|pabimento|vereda|daño|reparacion|arreglar|mejorar|reparación",
   "mensajes": [
    "Acá podés solicitar la reparación de un bache en la calle.",
@@ -5709,20 +5709,6 @@
    "Para la reparación de una cuneta, que sirve para recoger el agua de la lluvia, ingresá desde la opción de \"Reparación de cuneta\"."
   ],
   "foto_obligatoria": false,
-  "tiene_cuestionario": false,
-  "no_requiere_direccion": false
- },
- {
-  "codigo": "1666371818821",
-  "concepto": "Reparación de bache en ciclovía",
-  "rubro": "CALZADA",
-  "categoria_madre": "Calles, Fachadas y Veredas",
-  "palabras_clave": "bache|agujero|hueco|rotura|calle|rota|calzada|vache|auero|roto|poso|pozo|pavimento|pabimento|vereda|daño|reparacion|arreglar|mejorar|reparación",
-  "mensajes": [
-   "Acá podés solicitar la reparación de un bache en la ciclovía.",
-   "En caso de peligro por hundimiento de veredas debés llamar al 103 (Emergencias las 24 horas los 365 días del año) para su intervención en forma inmediata."
-  ],
-  "foto_obligatoria": true,
   "tiene_cuestionario": false,
   "no_requiere_direccion": false
  },
@@ -5740,20 +5726,6 @@
   ],
   "foto_obligatoria": false,
   "tiene_cuestionario": true,
-  "no_requiere_direccion": false
- },
- {
-  "codigo": "1507207484798",
-  "concepto": "Reparación de bicisenda",
-  "rubro": "TRÁNSITO Y TRANSPORTE",
-  "categoria_madre": "Tránsito y Transporte",
-  "palabras_clave": "bicicleta|auto|bicicletas|bisicleta|ruedas|bicisenda|visicenda|bicis|casco|peaton|senda|cenda|sendas|rota|bache|vache|cortada|semaforo|interrumpida|liberar|bici|coche",
-  "mensajes": [
-   "Aquí podes solicitar el mantenimiento y reparación de bicisendas. Esto incluye los cordones que las delimitan, los rebatibles de plástico amarillo, el repintado de las marcas viales, la cartelería (prohibido estacionar y detenerse, ceda el paso, cruce de ciclistas, pare y exclusivo ciclista) y rampas de ciclovías o bicisendas.",
-   "Si lo que querés es solicitar la reparación de un bache, ingresá tu solicitud desde la opción de “Reparación de baches”."
-  ],
-  "foto_obligatoria": false,
-  "tiene_cuestionario": false,
   "no_requiere_direccion": false
  },
  {
@@ -5785,10 +5757,10 @@
  },
  {
   "codigo": "155012",
-  "concepto": "Reparación de cuneta",
+  "concepto": "CUNETA: Reparación",
   "rubro": "CALZADA",
-  "categoria_madre": "Calles, Fachadas y Veredas",
-  "palabras_clave": "cunetas|zanja|desaguadero|reparacion|reparar|mejorar|pavimento|desague",
+  "categoria_madre": "Calles",
+  "palabras_clave": "cunetas|zanja|desaguadero|reparacion|reparar|mejorar|pavimento|desague|CUNETA",
   "mensajes": [
    "Aquí podés solicitar la reparación de una cuneta. Esta sirve para asegurar el deslizamiento continuo y sin obstáculos del agua.",
    "Si lo que querés es la reparación de un bache en la calle, ingresá tu solicitud desde la opción de \"Reparación de bache\" .",
@@ -5800,10 +5772,10 @@
  },
  {
   "codigo": "1494419274719",
-  "concepto": "Reparación de dársena para ascenso/descenso de colectivos",
+  "concepto": "DÁRSENA DE COLECTIVOS: Reparación",
   "rubro": "CALZADA",
-  "categoria_madre": "Calles, Fachadas y Veredas",
-  "palabras_clave": "inconvenientes|problemas|reparación|construcción|dársena|calle|parada|colectivo|detención",
+  "categoria_madre": "Calles",
+  "palabras_clave": "inconvenientes|problemas|reparación|construcción|dársena|calle|parada|colectivo|detención|Darsena|DASERNA|DARSENAS",
   "mensajes": [
    "Aquí podés solicitar la construcción/reparación del hormigón de las calzadas cuyo propósito es la detención transitoria de vehículos para operaciones de descenso o ascenso de pasajeros a colectivos.",
    "Si te referís a la reparación de una parada de colectivo, ingresá desde la opción de \"Reparación de parada de colectivo\"; si te referís a un refugio, desde la opción de \"Reparación de refugio de colectivo\"."
@@ -5814,7 +5786,7 @@
  },
  {
   "codigo": "1422305271871",
-  "concepto": "Reparación de elementos en túneles/puentes y pasarelas",
+  "concepto": "TÚNELES Y PUENTES: Reparación de elementos",
   "rubro": "CALZADA",
   "categoria_madre": "Tránsito y Transporte",
   "palabras_clave": "elementos|rotos|arreglar|tunel|viaducto|bajo|tierra|mantenimiento|mantener|tuneles|puente|puentes|acomodar|mejorar|reparar",
@@ -5827,9 +5799,9 @@
  },
  {
   "codigo": "155006",
-  "concepto": "Reparación de lomo de burro",
+  "concepto": "LOMO DE BURRO: Reparación",
   "rubro": "CALZADA",
-  "categoria_madre": "Calles, Fachadas y Veredas",
+  "categoria_madre": "Calles",
   "palabras_clave": "reductores|velocidad|loma|burro|pavimento|reparación|acomodar|ajustar|mantenimiento",
   "mensajes": [
    "Aquí podés solicitar la reparación de un reductor de velocidad si este se encuentra deteriorado.",
@@ -5841,7 +5813,7 @@
  },
  {
   "codigo": "167004",
-  "concepto": "Reparación de luminaria apagada durante la noche",
+  "concepto": "LUMINARIA: Apagada permanente",
   "rubro": "ALUMBRADO",
   "categoria_madre": "Alumbrado",
   "palabras_clave": "luminaria|apagada|luz|rota|funciona|prende|alumbrado|apagado|poste|postes|luces|iluminar|iluminacion|iluminaba|alumbra|lumbran|prender|lampara|reparacion|arreglar|mejorar|acomodar|mantenimiento|foco|bombillo|sirve|no|dañado|daño|vereda|parque|plaza",
@@ -5858,7 +5830,7 @@
  },
  {
   "codigo": "167010",
-  "concepto": "Reparación de luminaria encendida durante el día",
+  "concepto": "LUMINARIA: Encendido permanente",
   "rubro": "ALUMBRADO",
   "categoria_madre": "Alumbrado",
   "palabras_clave": "luminaria|prendida|permanente|dia|sin|apagar|luz|encendida|todo|el|tiempo|lampara|reparacion|arreglar|reparación|mejorar|acomodar|mantenimiento|foco|bombillo|sirve|no|dañado|daño|parque|plaza|calle|vereda",
@@ -5873,7 +5845,7 @@
  },
  {
   "codigo": "167007",
-  "concepto": "Reparación de luminaria por artefacto roto",
+  "concepto": "LUMINARIA: Artefacto roto y/o faltante",
   "rubro": "ALUMBRADO",
   "categoria_madre": "Alumbrado",
   "palabras_clave": "artefacto|luminico|roto|luz|rota|alumbrado|luminaria|faltante|aparato,|lampara|reparacion|falta",
@@ -5889,7 +5861,7 @@
  },
  {
   "codigo": "1408634824046",
-  "concepto": "Reparación de pantalla publicitaria en vía pública",
+  "concepto": "PANTALLA PUBLICITARIA EN VIA PUBLICA: Reparación",
   "rubro": "MOBILIARIO URBANO",
   "categoria_madre": "Ordenamiento del Espacio Público",
   "palabras_clave": "pantalla|pantallas|carteles|cartel|publicidad|via|publica|espacio|publicitarias|vía",
@@ -5904,9 +5876,9 @@
  },
  {
   "codigo": "154009",
-  "concepto": "Reparación de rampa de accesibilidad",
+  "concepto": "RAMPA DE ACCESIBILIDAD: Reparación",
   "rubro": "VEREDAS",
-  "categoria_madre": "Calles, Fachadas y Veredas",
+  "categoria_madre": "Calles",
   "palabras_clave": "rampa|poca|movilidad|gastada|rota|vereda|calle|reparación|acomodar|arreglar|silla|rueda|discapacitado|minusvalido|acceso|poco|ninguna|incorporar|adicionar|colocar|mejorar",
   "mensajes": [
    "Acá podés solicitar la reparación de una rampa de accesibilidad.",
@@ -5920,7 +5892,7 @@
   "codigo": "1408634974100",
   "concepto": "Reparación de rejas en esquina",
   "rubro": "MOBILIARIO URBANO",
-  "categoria_madre": "Calles, Fachadas y Veredas",
+  "categoria_madre": "Calles",
   "palabras_clave": "reparacion|reparar|arreglar|reja|rejas|esquina|esquinas|acomodar|ajustar|cambiar|mobiliario|plaza|parque|mejora|mantenimiento",
   "mensajes": [
    "Acá podés solicitar la reparación de las rejas de seguridad que previenen accidentes viales en esquinas de las calles de la Ciudad Autónoma de Buenos Aires."
@@ -5933,7 +5905,7 @@
   "codigo": "175007",
   "concepto": "Reparación de reloj público",
   "rubro": "MOBILIARIO URBANO",
-  "categoria_madre": "Calles, Fachadas y Veredas",
+  "categoria_madre": "Calles",
   "palabras_clave": "reloj|relojes|publico|deteriorado|roto|mal|estado|caido|reparación|acomodar|arreglar|ajustar|cambiar|mobiliario|plaza|parque|mejora|mantenimiento",
   "mensajes": [
    "Acá podés pedir la reparación de un reloj que se encuentre en un espacio público de la Ciudad Autónoma de Buenos Aires."
@@ -5974,7 +5946,7 @@
  },
  {
   "codigo": "1523300959205",
-  "concepto": "Reparación de sumidero/alcantarilla o boca de registro pluvial faltante",
+  "concepto": "SUMIDERO Y/O BOCA REGISTRO PLUVIAL: Faltante",
   "rubro": "PLUVIALES",
   "categoria_madre": "Pluviales",
   "palabras_clave": "boca|registro|pluvial|tapa|abierta|calle|hedijas",
@@ -5990,7 +5962,7 @@
  },
  {
   "codigo": "1523624256044",
-  "concepto": "Reparación de sumidero/alcantarilla o boca de registro pluvial rota",
+  "concepto": "SUMIDERO Y/O BOCA REGISTRO PLUVIAL: Rota",
   "rubro": "PLUVIALES",
   "categoria_madre": "Pluviales",
   "palabras_clave": "boca|registro|pluvial|tapa|abierta|calle|hedijas",
@@ -6004,7 +5976,7 @@
  },
  {
   "codigo": "167003",
-  "concepto": "Reparación de tapa faltante / deteriorada en columna de alumbrado",
+  "concepto": "COLUMNA DE ALUMBRADO: Tapa faltante y/o deteriorada",
   "rubro": "ALUMBRADO",
   "categoria_madre": "Alumbrado",
   "palabras_clave": "tapa|luz|rota|sobre|columna|alumbrado|luminaria|falta|sin|reparacion|arreglar|poner|colocar|dañada|deterioro|deteriorado",
@@ -6018,7 +5990,7 @@
  },
  {
   "codigo": "167009",
-  "concepto": "Reparación de toma de energía de alumbrado público",
+  "concepto": "TOMA DE ENERGIA: Faltante o deteriorada",
   "rubro": "ALUMBRADO",
   "categoria_madre": "Alumbrado",
   "palabras_clave": "toma|energia|tapa|sobre|pared|caja|luz|rota|falta|faltante|alumbrado|publico",
@@ -6033,9 +6005,9 @@
  },
  {
   "codigo": "154018",
-  "concepto": "Reparación de vereda",
+  "concepto": "Veredas: Rotas",
   "rubro": "VEREDAS",
-  "categoria_madre": "Calles, Fachadas y Veredas",
+  "categoria_madre": "Calles",
   "palabras_clave": "vereda|veredas|baldosa|bereda|rotosa|rotoza|haceras|haseras|aseras|baldoza|valdosa|valdoza|pozo|poso|caminar|camino|pisar|pizar|asfalto|azfalto|grieta|rompido|rompidas|rompida|rota|romper|acera",
   "mensajes": [
    "Es obligación de cada frentista construir, reparar y mantener la vereda, así como ejecutar el rebaje del cordón para acceso vehicular (Ley 5.902).",
@@ -6048,10 +6020,10 @@
  },
  {
   "codigo": "155020",
-  "concepto": "Repintado / reparación de marca vial en calle o cordón",
+  "concepto": "CORDÓN: Repintado",
   "rubro": "CALZADA",
-  "categoria_madre": "Calles, Fachadas y Veredas",
-  "palabras_clave": "senda|peatonal|demarcacion|horizontal|calle|cordon|mantenimiento|reparar|acomodar|pintar|pavimento|marcacion|via|publica|vereda",
+  "categoria_madre": "Calles",
+  "palabras_clave": "senda|peatonal|demarcacion|horizontal|calle|cordon|mantenimiento|reparar|acomodar|pintar|pavimento|marcacion|via|publica|vereda|CORDON",
   "mensajes": [
    "Aquí podrás solicitar el mantenimiento de una marca vial. Esto incluye: sendas peatonales, marcas amarillas en cordón, líneas, flechas y letras de circulación en la calle.",
    "Para la reparación de carteles para la señalización del tránsito, ingresá desde la opción de \"Reparación de señal de tránsito\".",
@@ -6123,7 +6095,7 @@
   "codigo": "154014",
   "concepto": "Restos de obra en vereda que impiden el paso",
   "rubro": "VEREDAS",
-  "categoria_madre": "Calles, Fachadas y Veredas",
+  "categoria_madre": "Calles",
   "palabras_clave": "esconbro|escombro|esconvro|escomvro|esconbros|escombros|esconvros|escomvros|obra|ovra|acera|hacera|vereda|ranpa|rampa|recoger|retirar|residuos|quitar|calle|paso|obstaculiza|impiden",
   "mensajes": [
    "Aquí podés reportar obras realizadas por empresas de servicios públicos que dejaron abandonados los restos, escombros o vallados, dificultando o impidiendo la normal circulación sobre la vereda."
@@ -6276,7 +6248,7 @@
   "concepto": "Servicio de eBUS en Casco Histórico - Ciudad Autónoma de Buenos Aires",
   "rubro": "TRÁNSITO Y TRANSPORTE",
   "categoria_madre": "Tránsito y Transporte",
-  "palabras_clave": "eBUS\r\nBuses|eléctricos\r\nMinibus\r\nCasco|histórico\r\nMicrocentro\r\nColectivito\r\nColectivo|eléctrico\r\nBus|eléctrico\r\nMovilidad|eléctrica",
+  "palabras_clave": "eBUS|Buses|eléctricos|Minibus|Casco|histórico|Microcentro|Colectivito|Colectivo|eléctrico|Bus|eléctrico|Movilidad|eléctrica",
   "mensajes": [
    "Gracias por tomarte el tiempo para responder este formulario. Tu opinión es fundamental para conocer el desarrollo de la prueba piloto con buses eléctricos en el microcentro/casco histórico.",
    "Este canal está destinado a recibir sugerencias, valoración del servicio y consultas sobre el servicio de eBUS de Ciudad de Buenos Aires.",
@@ -6379,7 +6351,7 @@
   ],
   "foto_obligatoria": false,
   "tiene_cuestionario": true,
-  "no_requiere_direccion": true
+  "no_requiere_direccion": false
  },
  {
   "codigo": "1675868651969",
@@ -6722,7 +6694,7 @@
   "concepto": "Vehículo mal estacionado",
   "rubro": "DENUNCIA VIAL",
   "categoria_madre": "Tránsito y Transporte",
-  "palabras_clave": "auto|AUTO|estacionado|estacionamiento|bloqueo|garaje|obstruccion|cordon|amarillo|rampa|discapacitado|doble|fila|colegio|escuela|ciclovia\r\ncarril|y|descarga|vehiculo|senda|peatonal|exclusivo|carga|mal",
+  "palabras_clave": "auto|AUTO|estacionado|estacionamiento|bloqueo|garaje|obstruccion|cordon|amarillo|rampa|discapacitado|doble|fila|colegio|escuela|ciclovia|carril|y|descarga|vehiculo|senda|peatonal|exclusivo|carga|mal",
   "mensajes": [
    "Acá podés reportar un vehículo que se encuentre mal estacionado, infringiendo una norma de tránsito. Algunas de las infracciones son: estacionar sobre la vereda, ochava o sumidero/alcantarilla, o hacerlo en doble fila u obstruyendo una senda peatonal o, una rampa para personas con movilidad reducida o garaje.",
    "Analizaremos tu reporte, en caso de contar con la información solicitada y de comprobar con la prueba fotográfica, se labrará una infracción al titular del vehículo.",
@@ -6845,6 +6817,51 @@
   ],
   "foto_obligatoria": false,
   "tiene_cuestionario": false,
+  "no_requiere_direccion": false
+ },
+ {
+  "codigo": "1786458456916",
+  "concepto": "Formulario de inscripción a la Expo Empleo Barrio Mugica del 10 de Septiembre",
+  "rubro": "Expo Empleo Barrio Mugica",
+  "categoria_madre": "Desarrollo Económico",
+  "palabras_clave": "Inscripción,|Expo|Empleo,|Búsqueda|de|trabajo,|Barrio|Busqueda|inscripcion|mugica",
+  "mensajes": [
+   "Si estás buscando trabajo o querés conocer nuevas oportunidades laborales, te esperamos en la <b>Expo Empleo del Barrio Mugica Jueves 10 de Septiembre de 11hs a 16hs. Centro Comunitario Barrio Mugica (Vicuña 885) <b>",
+   "¡No te pierdas la oportunidad de que muchas empresas te conozcan!</P>",
+   "<b>Para asistir, inscribite en el siguiente formulario. </b>",
+   "Si necesitás más información escribinos al 11 2243-7571 <P> <b>Términos y condiciones: </b>",
+   "Se admitirá una inscripción por persona. No serán válidos los formularios que se encuentren incompletos o que contengan datos falsos o inexactos.",
+   "Al dejarnos tus datos prestas tu consentimiento para recibir por WhatsApp, correo electrónico, SMS, llamado telefónico y demás canales digitales, información sobre actos, actividades y servicios del GCABA. Siempre tendrás la posibilidad de darte de baja cuando recibas la información.",
+   "El GCABA tratará tus datos personales de acuerdo a la Ley 1845, de Protección de Datos de CABA. Podrás solicitar el acceso, la supresión o actualización de tus datos. La Defensoría del Pueblo es el órgano de control de la Ley 1845. Ante cualquier duda ponerse en contacto al 147 o al 0800-999-2727 (si llamas desde fuera de CABA).</p>"
+  ],
+  "foto_obligatoria": false,
+  "tiene_cuestionario": true,
+  "no_requiere_direccion": true
+ },
+ {
+  "codigo": "1784640033320",
+  "concepto": "Consultá el estado de tu denuncia - Dirección General de Defensa y Protección al Consumidor",
+  "rubro": "DEFENSA AL CONSUMIDOR",
+  "categoria_madre": "Mesa de ayuda de sistemas y trámites digitales",
+  "palabras_clave": "Defensa|al|consumidor|Denuncia|Reclamo|empresa|administradores|de|consorcio|Denuncias|administrador|RPA|RPAeucniac-def|defensa|del|denunciar|comercio|reclamo|reclamo|comercio|reclamo|reclamo|derechos|protección|proteccion|consulta|denuncia|edificio|RPAC",
+  "mensajes": [
+   "Debes completar los datos para conocer el estado de tu denuncia. "
+  ],
+  "foto_obligatoria": false,
+  "tiene_cuestionario": true,
+  "no_requiere_direccion": true
+ },
+ {
+  "codigo": "1787330071119",
+  "concepto": "PLAZAS Y PARQUES: mantenimiento y/o riego de césped",
+  "rubro": "ESPACIOS VERDES",
+  "categoria_madre": "Plazas y Parques de la Ciudad",
+  "palabras_clave": "corte|cesped|mantenimiento|deterioro|plazas|parques|plazoleta|plaza|cantero|central|patio|recreativo|jardin|cortar|mejorar|limpiar",
+  "mensajes": [
+   "Aquí podés pedir el corte, limpieza del césped o reportar inconvenientes con el riego en una plaza o parque."
+  ],
+  "foto_obligatoria": false,
+  "tiene_cuestionario": true,
   "no_requiere_direccion": false
  }
 ]
