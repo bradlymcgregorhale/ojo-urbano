@@ -70,6 +70,9 @@ _RUBRICA = (
 
 _PROMPT_PATENTE = cargar_prompt('dirigidos/patente')
 
+_PROMPT_ALCANCE_ESCOMBROS = cargar_prompt('dirigidos/alcance_escombros')
+_PROMPT_OBRA_SERVICIOS_CONTEXTO = cargar_prompt('dirigidos/obra_servicios_contexto')
+
 _PROMPT_SEGUNDA_MIRADA = cargar_prompt('segundas_miradas/escombros')
 
 _PROMPT_SEGUNDA_MIRADA_BASE = cargar_prompt('segundas_miradas/base')

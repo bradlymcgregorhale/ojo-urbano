@@ -10,7 +10,7 @@ mirar las bolsas está en [segundas_miradas/escombros.txt](segundas_miradas/esco
 | `rubrica/general.txt` y `rubrica/categorias/*.txt` | Política de la primera pasada, en el mensaje `system` de cada verificador. Incluye gravedad, evidencia y formato de respuesta. |
 | `primera_pasada/*.txt` | Mensaje `user` que acompaña la foto, con el contexto vecinal y las prestaciones candidatas cuando corresponde. |
 | `segundas_miradas/*.txt` | Auditorías de escombros, presencia, subtipo, base, postes, daño, volcado, desborde y voluminosos. |
-| `dirigidos/*.txt` | Lectura de patente, pregunta abierta y búsqueda de un objeto concreto. |
+| `dirigidos/*.txt` | Lectura de patente, pregunta abierta, búsqueda de un objeto concreto y alcance del retiro de escombros. |
 | `arbitro/*.txt` | Sistema del árbitro y bloques del mensaje de usuario para resolver disputas y redactar la descripción. |
 | `contexto/*.txt` | Clasificación del reclamo escrito cuando la foto no corresponde. |
 | `compartidos/subtipo_humedos.txt` | Regla única del color del contenedor de húmedos, insertada en la rúbrica y en la segunda mirada de subtipo. |
@@ -19,6 +19,18 @@ mirar las bolsas está en [segundas_miradas/escombros.txt](segundas_miradas/esco
 procesa las respuestas. Los umbrales, vetos y reglas de consenso están ahí.
 Las pasadas dirigidas se activan según los votos y la configuración; no todas
 corren para cada foto.
+
+`dirigidos/alcance_escombros.txt` separa ubicación, presentación, contenido
+visible y testimonio vecinal. No recibe puntajes locales ni votos anteriores.
+`politica_escombros.py` aplica esa revisión al final del pipeline de
+`servidor.py`, después de la fusión y del ruteo textual. La primera pasada
+conserva su exigencia de evidencia visual; el contenido oculto aceptado por
+testimonio se marca aparte, sin crear votos visuales.
+
+`dirigidos/obra_servicios_contexto.txt` se usa sólo si aparece el código
+`154014`. Comprueba que el texto describa el reclamo específico de obras de
+servicios públicos que dificultan el paso, no cualquier refacción. No recibe
+la foto ni convierte ese código en un alias del retiro de escombros.
 
 ## Cómo editar
 
@@ -67,6 +79,7 @@ Los textos se cargan una vez al importar, con rutas relativas a este paquete.
 El proceso puede arrancar desde otro directorio. Un archivo faltante impide
 el arranque y muestra su ruta.
 
-Al desplegar, copiá `prompts/` completo junto con `verificador.py` antes de
-reiniciar el servicio. Copiar solo `verificador.py` no alcanza. Los cambios
+Al desplegar, copiá `prompts/` completo junto con `verificador.py`,
+`servidor.py` y `politica_escombros.py` antes de reiniciar el servicio.
+Copiar solo `verificador.py` no alcanza. Los cambios
 en los textos necesitan reinicio para entrar en uso.

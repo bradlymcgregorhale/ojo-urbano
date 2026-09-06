@@ -1,0 +1,412 @@
+"""Regresiones de alcance y contexto. Se ejecutan desde pruebas.py sin pesos."""
+import copy
+import io
+import json
+import unittest
+from unittest.mock import patch
+
+from PIL import Image
+import politica_escombros as P
+import verificador as V
+
+
+def categoria(key=P.KEY, fuentes=None):
+    return {"key": key, "nombre": key, "gravedad": 2,
+            "fuentes": fuentes if fuentes is not None else ["m1", "m2"]}
+
+
+def salida(problemas=None):
+    return {"problemas": problemas if problemas is not None else [categoria()],
+            "categorias_contexto": [], "posibles": [], "descartados_por_foto": [],
+            "elementos_detectados": [], "en_duda": [], "descripcion": "escena original",
+            "foto_valida": None, "foto_valida_estado": "sin_contexto",
+            "detalle": {"modelo_local": {}, "verificacion": {"activa": True}}}
+
+
+def alcance(**cambios):
+    return dict({"estado": "apto", "contexto_resuelve": False, "fallo": False,
+                 "afirmacion_explicita": False, "basura_independiente": False,
+                 "motivo": "motivo visual"}, **cambios)
+
+
+def respuesta(**cambios):
+    return dict({"ubicacion": "publica", "presentacion": "bolsas_chicas_o_suelto",
+                 "hay_bolsas_opacas_o_parciales": "si",
+                 "material": "oculto_o_ambiguo", "afirmacion_vecinal": "afirma",
+                 "cita_vecinal": "son escombros", "residuos_comunes_independientes": "no",
+                 "otros_retiros_independientes": [],
+                 "evidencia_ubicacion": "Bolsas en la vereda del lado público",
+                 "evidencia_presentacion": "Sacos chicos separados del bolsón grande",
+                 "evidencia_material": "Contenido de las bolsas opaco"}, **cambios)
+
+
+class PoliticaTest(unittest.TestCase):
+    cats = {P.KEY: {"nombre": "Retiro de escombros"}}
+
+    def aplicar(self, r, **cambios):
+        return P.aplicar(r, alcance(**cambios), self.cats)
+
+    def test_publico_conserva_confirmacion_visual_y_no_muta(self):
+        r = salida()
+        antes = copy.deepcopy(r)
+        nuevo = self.aplicar(r)
+        self.assertEqual(nuevo["problemas"], r["problemas"])
+        self.assertEqual(r, antes)
+
+    def test_privado_y_bolson_no_se_aceptan(self):
+        for razon in ("privada", "solo_bolson"):
+            with self.subTest(razon=razon):
+                r = self.aplicar(salida(), estado="excluido", motivo=razon)
+                self.assertFalse(r["hay_reclamo"])
+                self.assertEqual(r["posibles"][0]["arbitro"], "rechazar")
+                self.assertTrue(r["verificacion_escombros"]["requiere_nueva_foto"])
+
+    def test_indeterminado_demueve_aceptado(self):
+        r = self.aplicar(salida(), estado="indeterminado", fallo=True)
+        self.assertFalse(r["hay_problema"])
+        self.assertIn(P.KEY, r["en_duda"])
+
+    def test_contexto_resuelve_sin_inventar_votos(self):
+        r = self.aplicar(salida([categoria("recoleccion")]), contexto_resuelve=True,
+                         afirmacion_explicita=True)
+        self.assertEqual([c["key"] for c in r["problemas"]], [P.KEY])
+        self.assertEqual(r["problemas"][0]["fuentes"], ["contexto_vecinal"])
+        self.assertEqual(r["problemas"][0]["origen"], "contexto_vecinal")
+        self.assertIn("El vecino informa", r["descripcion"])
+
+    def test_sin_afirmacion_no_promueve_ambiguas(self):
+        r = self.aplicar(salida([categoria("recoleccion")]))
+        self.assertEqual([c["key"] for c in r["problemas"]], ["recoleccion"])
+
+    def test_basura_independiente_se_conserva(self):
+        for estado in ("apto", "excluido"):
+            with self.subTest(estado=estado):
+                r = self.aplicar(salida([categoria(), categoria("recoleccion")]),
+                                 estado=estado, contexto_resuelve=True,
+                                 basura_independiente=True)
+                self.assertIn("recoleccion", [c["key"] for c in r["problemas"]])
+
+    def test_privado_no_remapea_mismas_bolsas_a_basura(self):
+        r = self.aplicar(salida([categoria(), categoria("recoleccion")]), estado="excluido")
+        self.assertEqual(r["problemas"], [])
+
+    def test_otros_reclamos_no_cambian(self):
+        r = salida([categoria(), categoria("barrido")])
+        r["categorias_contexto"] = [categoria("arbolado")]
+        nuevo = self.aplicar(r, estado="excluido")
+        self.assertEqual([c["key"] for c in nuevo["problemas"]], ["barrido"])
+        self.assertEqual(nuevo["categorias_contexto"], r["categorias_contexto"])
+
+    def test_codigo_y_alias_no_evaden_veto(self):
+        for c in ({"codigo": P.CODIGO}, categoria("recoleccion_restos_obra")):
+            with self.subTest(c=c):
+                r = salida([dict(c, fuentes=["contexto_vecinal"])])
+                r["categorias_contexto"] = [c]
+                self.assertTrue(P.requiere_revision(r, ""))
+                self.assertFalse(self.aplicar(r, estado="excluido")["hay_reclamo"])
+
+    def test_solo_texto_no_evita_contradiccion(self):
+        r = self.aplicar(salida([categoria(fuentes=["contexto_vecinal"])]))
+        self.assertFalse(r["hay_problema"])
+        self.assertIn("no resuelve", r["posibles"][0]["motivo"])
+
+    def test_contradiccion_retira_confirmacion_anterior(self):
+        r = self.aplicar(salida(), material_contradictorio=True)
+        self.assertFalse(r["hay_problema"])
+        self.assertIn("contradice", r["descripcion"])
+
+    def test_incertidumbre_no_deja_camion_comun(self):
+        r = self.aplicar(salida([categoria(), categoria("recoleccion")]), estado="indeterminado")
+        self.assertEqual(r["problemas"], [])
+
+    def test_no_retiro_alternativo_de_misma_pila_privada(self):
+        r = self.aplicar(salida([categoria(), categoria("retiro_muebles"), categoria("retiro_poda")]),
+                         estado="excluido")
+        self.assertEqual(r["problemas"], [])
+
+    def test_otros_retiros_publicos_independientes_se_conservan(self):
+        r = self.aplicar(salida([categoria(), categoria("retiro_muebles")]), estado="excluido",
+                         otros_retiros_independientes=["retiro_muebles"])
+        self.assertEqual([c["key"] for c in r["problemas"]], ["retiro_muebles"])
+
+    def test_fallback_textual_tambien_tiene_procedencia(self):
+        r = self.aplicar(salida([categoria(fuentes=["contexto_vecinal"])]), contexto_resuelve=True)
+        self.assertEqual(r["problemas"][0]["origen"], "contexto_vecinal")
+
+    def test_bolsas_ocultas_no_multiplican_testimonio_vecinal(self):
+        original = salida([categoria(fuentes=["m1", "m2", "modelo_local"])])
+        r = self.aplicar(original, contexto_resuelve=True)
+        self.assertEqual(r["problemas"][0]["fuentes"], ["contexto_vecinal"])
+        self.assertTrue(r["verificacion_escombros"]["basado_en_contexto"])
+        self.assertEqual(original["problemas"][0]["fuentes"], ["m1", "m2", "modelo_local"])
+
+    def test_material_realmente_visible_conserva_fuentes(self):
+        r = self.aplicar(salida(), contexto_resuelve=True, material_visible_confirmado=True)
+        self.assertEqual(r["problemas"][0]["fuentes"], ["m1", "m2"])
+        self.assertFalse(r["verificacion_escombros"]["basado_en_contexto"])
+
+    def test_no_crea_duda_fantasma(self):
+        r = salida([categoria("barrido")])
+        r["posibles"] = [categoria("arbolado")]
+        nuevo = self.aplicar(r, estado="indeterminado")
+        self.assertNotIn(P.KEY, nuevo["en_duda"])
+        self.assertEqual(nuevo["descripcion"], r["descripcion"])
+
+    def test_no_corrige_foto_invalida_por_otro_reclamo(self):
+        r = salida([categoria("recoleccion")])
+        r["foto_valida"], r["foto_valida_estado"] = False, "no_corresponde"
+        r["categorias_contexto"] = [categoria("barrido")]
+        nuevo = self.aplicar(r, contexto_resuelve=True)
+        self.assertIs(nuevo["foto_valida"], False)
+
+    def test_disparadores_limitados_y_sin_verificacion(self):
+        r = salida([])
+        self.assertFalse(P.requiere_revision(r, None))
+        self.assertTrue(P.requiere_revision(r, "son cascotes de obra"))
+        r["detalle"]["modelo_local"] = {"probabilidades": [{"key": P.KEY, "score": .7}]}
+        self.assertTrue(P.requiere_revision(r, ""))
+        r["detalle"]["verificacion"]["activa"] = False
+        self.assertFalse(P.requiere_revision(r, "escombros"))
+
+
+class RevisionTest(unittest.TestCase):
+    def revisar(self, respuestas, contexto="Estas bolsas son escombros"):
+        self.llamadas = []
+
+        def llamar(modelo, mensajes, **opciones):
+            self.llamadas.append((modelo, mensajes, opciones))
+            r = respuestas[int(modelo[-1]) - 1]
+            if isinstance(r, Exception):
+                raise r
+            return json.dumps(r)
+
+        with patch.object(V, "VERIFICADORES", ["m1", "m2", "m3"]), patch.object(V, "_llamar", llamar):
+            return V.validar_alcance_escombros(Image.new("RGB", (64, 64)), contexto)
+
+    def test_contexto_explicito_compatible(self):
+        r = self.revisar([respuesta()] * 3)
+        self.assertTrue(r["contexto_resuelve"])
+        self.assertEqual(r["estado"], "apto")
+        self.assertNotIn("cita_vecinal", json.dumps(r))
+        for _, mensajes, opciones in self.llamadas:
+            self.assertEqual(opciones["etapa"], "alcance_escombros")
+            self.assertEqual(opciones["max_tokens"], 1000)
+            self.assertEqual(mensajes[0]["role"], "system")
+            self.assertNotIn("modelo_local", json.dumps(mensajes))
+
+    def test_privado_bolson_y_sin_pila(self):
+        for cambio in ({"ubicacion": "privada"}, {"presentacion": "solo_bolson"},
+                       {"presentacion": "sin_pila"}):
+            with self.subTest(cambio=cambio):
+                r = self.revisar([respuesta(**cambio)] * 3)
+                self.assertEqual(r["estado"], "excluido")
+                self.assertFalse(r["contexto_resuelve"])
+
+    def test_conflicto_de_ubicacion_abstiene(self):
+        r = self.revisar([respuesta(), respuesta(), respuesta(ubicacion="privada")])
+        self.assertEqual(r["estado"], "indeterminado")
+        self.assertFalse(r["contexto_resuelve"])
+
+    def test_dos_votos_y_un_fallo_no_se_cachean(self):
+        r = self.revisar([respuesta(), respuesta(), RuntimeError("sin red")])
+        self.assertEqual(r["estado"], "apto")
+        self.assertTrue(r["fallo"])
+
+    def test_un_solo_voto_no_alcanza(self):
+        r = self.revisar([respuesta(), {}, []])
+        self.assertEqual(r["estado"], "indeterminado")
+        self.assertTrue(r["fallo"])
+
+    def test_respuesta_incompleta_sin_evidencia_no_cuenta(self):
+        for cambio in ({"ubicacion": "pública"}, {"evidencia_material": ""}, {"material": True}):
+            with self.subTest(cambio=cambio):
+                r = self.revisar([respuesta(**cambio)] * 3)
+                self.assertEqual(r["estado"], "indeterminado")
+
+    def test_cita_inventada_no_es_contexto(self):
+        r = self.revisar([respuesta()] * 3, "Por favor retiren las bolsas")
+        self.assertFalse(r["contexto_resuelve"])
+        self.assertFalse(r["afirmacion_explicita"])
+
+    def test_negacion_duda_y_orden_no_promueven(self):
+        for tipo in ("niega", "duda", "no_menciona"):
+            with self.subTest(tipo=tipo):
+                r = self.revisar([respuesta(afirmacion_vecinal=tipo)] * 3)
+                self.assertFalse(r["contexto_resuelve"])
+
+    def test_contenido_visible_incompatible_veta_contexto(self):
+        r = self.revisar([respuesta(), respuesta(), respuesta(
+            material="incompatible_visible", hay_bolsas_opacas_o_parciales="no")])
+        self.assertFalse(r["contexto_resuelve"])
+
+    def test_carton_visible_no_desmiente_bolsas_opacas(self):
+        r = self.revisar([respuesta(material="incompatible_visible")] * 3)
+        self.assertFalse(r["material_contradictorio"])
+        self.assertTrue(r["contexto_resuelve"])
+
+    def test_modelos_duplicados_no_suman_votos(self):
+        with patch.object(V, "VERIFICADORES", ["m1", "m1", "m1"]), patch.object(
+                V, "_llamar", return_value=json.dumps(respuesta())) as llamada:
+            r = V.validar_alcance_escombros(Image.new("RGB", (64, 64)), "son escombros")
+        self.assertEqual(llamada.call_count, 1)
+        self.assertEqual(r["estado"], "indeterminado")
+
+
+class PipelineTest(unittest.TestCase):
+    def procesar(self, revision, foto_valida=None, texto=False, fusion=False,
+                 obra=False, obra_aceptada=False):
+        import servidor as S
+        buf = io.BytesIO()
+        Image.new("RGB", (64, 64)).save(buf, format="JPEG")
+        r = salida([categoria(fusion if isinstance(fusion, str) else "recoleccion") if fusion else categoria()])
+        veri = dict(r["detalle"]["verificacion"], confirmadas=r["problemas"], en_duda=[],
+                    categorias_contexto=[], descripcion="una escena", foto_valida=foto_valida,
+                    por_contexto=[categoria(fuentes=["contexto_vecinal"])] if texto else [])
+        if obra:
+            entrada = {"codigo": P.CODIGO_OBRA_SERVICIOS, "nombre": "Restos de obra en vereda",
+                       "fuentes": 1, "de": 3, "gravedad": 2}
+            veri["categorias_contexto"] = [entrada]
+            if texto:
+                veri["por_contexto"] = [dict(entrada, fuentes=["contexto_vecinal"])]
+        local = {"probabilidades": [{"key": P.KEY, "score": 1}, {"key": "recoleccion", "score": 0}],
+                 "predichas": [], "top5": [], "gravedad": {"value": 2}}
+        def verificar(*args):
+            V._costo_sumar({"cost": .01})
+            return veri
+
+        def revisar(*args):
+            V._costo_sumar({"cost": .003})
+            return revision
+
+        with patch.object(V, "disponible", return_value=True), patch.object(V, "verificar", side_effect=verificar), \
+                patch.object(V, "validar_alcance_escombros", side_effect=revisar) as guardia, \
+                patch.object(V, "validar_contexto_obra_servicios", return_value={"aceptado": obra_aceptada, "fallo": False}), \
+                patch.object(S, "clasificar_local", return_value=local), patch.object(S, "_hay_cuota", return_value=True), \
+                patch.object(S, "FUSION_ESCOMBROS", True):
+            result = S.procesar(buf.getvalue(), "son escombros", "1")
+        guardia.assert_called_once()
+        return result, S._publica(result)
+
+    def test_fusion_local_no_restaurara_privados(self):
+        _, pub = self.procesar(alcance(estado="excluido"), fusion=True)
+        self.assertEqual(pub["problemas"], [])
+        self.assertFalse(pub["hay_reclamo"])
+
+    def test_fallback_textual_no_restaurara_privados(self):
+        _, pub = self.procesar(alcance(estado="excluido"), foto_valida=False, texto=True)
+        self.assertEqual(pub["problemas"], [])
+
+    def test_fusion_desde_muebles_no_evita_exclusion(self):
+        _, pub = self.procesar(alcance(estado="excluido"), fusion="retiro_muebles")
+        self.assertEqual(pub["problemas"], [])
+
+    def test_costo_incluye_revision_final(self):
+        r, pub = self.procesar(alcance())
+        self.assertEqual(r["costo_api"], .013)
+        self.assertEqual(pub["costo_api"], .013)
+
+    def test_fallback_contextual_apto_tiene_una_fuente(self):
+        _, pub = self.procesar(alcance(contexto_resuelve=True, afirmacion_explicita=True),
+                               foto_valida=False, texto=True)
+        self.assertEqual(pub["problemas"][0]["fuentes"], 1)
+        self.assertEqual(pub["problemas"][0]["confianza"], "baja")
+
+    def test_obra_no_declarada_no_restaura_reclamo_tras_exclusion(self):
+        _, pub = self.procesar(alcance(estado="excluido"), foto_valida=False, texto=True, obra=True)
+        self.assertFalse(pub["hay_reclamo"])
+        self.assertEqual(pub["categorias_contexto"], [])
+
+    def test_catalogo_con_conteo_entero_se_serializa_tras_rechazo(self):
+        _, pub = self.procesar(alcance(estado="excluido"), obra=True)
+        self.assertFalse(pub["hay_reclamo"])
+        entrada = next(c for c in pub["posibles"] if c.get("codigo") == P.CODIGO_OBRA_SERVICIOS)
+        self.assertEqual(entrada["fuentes"], 1)
+
+    def test_obra_independiente_declarada_sobrevive_exclusion(self):
+        _, pub = self.procesar(alcance(estado="excluido"), foto_valida=False, texto=True,
+                               obra=True, obra_aceptada=True)
+        self.assertTrue(pub["hay_reclamo"])
+        self.assertEqual(pub["problemas"][0]["codigo"], P.CODIGO_OBRA_SERVICIOS)
+
+    def test_fallo_final_no_se_cachea(self):
+        import servidor as S
+        r, pub = self.procesar(alcance(estado="indeterminado", fallo=True))
+        self.assertFalse(S._cacheable(r))
+        self.assertFalse(pub["hay_problema"])
+
+    def test_contexto_publico_confianza_baja_y_sin_doble_camion(self):
+        import servidor as S
+        r = P.aplicar(salida([categoria("recoleccion")]),
+                      alcance(contexto_resuelve=True, afirmacion_explicita=True), PoliticaTest.cats)
+        pub = S._publica(r)
+        self.assertEqual(pub["predominante"], P.KEY)
+        self.assertEqual(len(pub["problemas"]), 1)
+        self.assertEqual(pub["problemas"][0]["confianza"], "baja")
+        self.assertEqual(pub["problemas"][0]["fuentes"], 1)
+        self.assertNotIn("detalle", pub)
+
+
+class ObraServiciosTest(unittest.TestCase):
+    def test_no_repite_categoria_descartada_en_descripcion_mixta(self):
+        r = salida([dict(categoria(), origen="contexto_vecinal"),
+                    {"codigo": P.CODIGO_OBRA_SERVICIOS, "nombre": "Restos de obra en vereda que impiden el paso"}])
+        r["descripcion"] = P.DESCRIPCION_CONTEXTUAL + " Otros hallazgos: Restos de obra en vereda que impiden el paso."
+        nuevo = P.aplicar_obra_servicios(r, {"aceptado": False, "estado": "rechazado"})
+        self.assertIn(P.DESCRIPCION_CONTEXTUAL, nuevo["descripcion"])
+        self.assertNotIn("Otros hallazgos: Restos de obra", nuevo["descripcion"])
+
+    def test_duda_no_es_rechazo_definitivo(self):
+        with patch.object(V, "VERIFICADORES", ["m1", "m2", "m3"]), patch.object(
+                V, "_llamar", return_value='{"declarada":"duda","cita":""}'):
+            revision = V.validar_contexto_obra_servicios("Quizás sea una obra de servicios")
+        self.assertEqual(revision["estado"], "indeterminado")
+        r = salida([])
+        r["categorias_contexto"] = [{"codigo": P.CODIGO_OBRA_SERVICIOS, "fuentes": 1, "de": 3}]
+        nuevo = P.aplicar_obra_servicios(r, revision)
+        self.assertIsNone(nuevo["posibles"][0]["arbitro"])
+
+    def test_no_es_alias_del_retiro(self):
+        self.assertFalse(P.es_escombros({"codigo": P.CODIGO_OBRA_SERVICIOS}))
+        self.assertFalse(P.requiere_obra_servicios(salida()))
+
+    def test_se_dispara_en_cualquiera_de_los_campos(self):
+        for campo in ("problemas", "categorias_contexto", "posibles"):
+            r = salida([])
+            r[campo] = [{"codigo": P.CODIGO_OBRA_SERVICIOS}]
+            self.assertTrue(P.requiere_obra_servicios(r))
+
+    def test_fallo_no_cachea_y_no_acepta_catalogo(self):
+        import servidor as S
+        r = salida([])
+        r["categorias_contexto"] = [{"codigo": P.CODIGO_OBRA_SERVICIOS, "fuentes": ["contexto_vecinal"]}]
+        r = P.aplicar_obra_servicios(r, {"aceptado": False, "fallo": True})
+        self.assertFalse(S._cacheable(r))
+        self.assertFalse(r["hay_reclamo"])
+
+    def test_no_toca_otros_reclamos(self):
+        r = salida([categoria("barrido")])
+        r["categorias_contexto"] = [{"codigo": P.CODIGO_OBRA_SERVICIOS}, {"codigo": "otro"}]
+        nuevo = P.aplicar_obra_servicios(r, {"aceptado": False})
+        self.assertEqual(nuevo["problemas"], r["problemas"])
+        self.assertEqual(nuevo["categorias_contexto"], [{"codigo": "otro"}])
+
+    def test_exige_consenso_y_cita_del_comentario(self):
+        texto = "La empresa de agua dejó escombros de su obra que impiden pasar por la vereda."
+        for declarada, cita, esperado in (("si", texto, True), ("si", "frase inventada", False),
+                                         ("no", "", False), ("duda", "", False)):
+            with self.subTest(declarada=declarada, cita=cita), patch.object(
+                    V, "VERIFICADORES", ["m1", "m2", "m3"]), patch.object(
+                    V, "_llamar", return_value=json.dumps({"declarada": declarada, "cita": cita})) as llamada:
+                r = V.validar_contexto_obra_servicios(texto)
+                self.assertEqual(r["aceptado"], esperado)
+                self.assertNotIn("cita", json.dumps(r))
+                self.assertEqual(llamada.call_args.kwargs["etapa"], "obra_servicios_contexto")
+
+    def test_respuesta_malformada_y_modelos_duplicados_no_aceptan(self):
+        with patch.object(V, "VERIFICADORES", ["m1", "m1"]), patch.object(
+                V, "_llamar", return_value='{"declarada":"si","cita":"obra"}'):
+            self.assertFalse(V.validar_contexto_obra_servicios("obra")["aceptado"])
+        with patch.object(V, "_llamar", return_value='{}'):
+            r = V.validar_contexto_obra_servicios("obra")
+            self.assertFalse(r["aceptado"])
+            self.assertTrue(r["fallo"])

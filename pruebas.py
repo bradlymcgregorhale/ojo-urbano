@@ -74,8 +74,15 @@ _jl.load = lambda p: {"clf": _Clf(), "classes": _Clf.classes_, "sev_model": None
                       "embed_model": "clip-ViT-B-32"}
 sys.modules["joblib"] = _jl
 
+# No se cargan pesos reales: importar el servidor no debe tomar el candado
+# de producción ni terminar otro proceso que sí está usando el modelo.
+import guard_modelo
+_adquirir_real = guard_modelo.adquirir_singleton
+guard_modelo.adquirir_singleton = lambda *a, **k: None
+
 import servidor as S  # noqa: E402
 import servidor
+guard_modelo.adquirir_singleton = _adquirir_real
 S_ROOT = AQUI
 import verificador as V  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
@@ -1654,7 +1661,8 @@ print("[foto_valida] respuesta REAL de servidor.procesar")
 # contaminar las que siguen si algo revienta en el medio.
 _previo = {n: getattr(V, n) for n in (
     "_verificar_uno", "_llamar", "disponible", "VERIFICADORES", "ARBITRO",
-    "CONSENSO_VLM_SOLO", "ARBITRO_CONFIRMA", "_clasificar_contexto")}
+    "CONSENSO_VLM_SOLO", "ARBITRO_CONFIRMA", "_clasificar_contexto",
+    "validar_alcance_escombros")}
 
 def _mock(cats_foto, ctx_cats, corresponde, por_modelo=None):
     """por_modelo: dict modelo -> foto_corresponde, para simular desacuerdo.
@@ -1687,6 +1695,10 @@ else:
     # La suite corre sin clave a propósito; para entrar al camino con
     # verificación hay que decir que está disponible, con los modelos mockeados.
     V.disponible = lambda: True
+    # Estas pruebas aíslan la fusión anterior. La revisión final tiene
+    # sus propias pruebas de integración y de respuestas dirigidas abajo.
+    V.validar_alcance_escombros = lambda *a: {
+        "estado": "apto", "contexto_resuelve": False, "fallo": False}
     _bytes = _foto.read_bytes()
     _pares_vistos = []
 
@@ -4609,6 +4621,14 @@ check("el volcado exige evidencia inequívoca y postes horizontales",
       "VOLCADO exige evidencia INEQUÍVOCA" in _rub_b
       and "LA SEÑAL DECISIVA SON LOS POSTES" in _rub_b
       and "postes o montantes metálicos están VERTICALES" in _rub_b)
+
+import unittest
+import test_politica_escombros
+_suite_alcance = unittest.defaultTestLoader.loadTestsFromModule(test_politica_escombros)
+_resultado_alcance = unittest.TextTestRunner(verbosity=2).run(_suite_alcance)
+_fallas_alcance = len(_resultado_alcance.errors) + len(_resultado_alcance.failures)
+_ok += _resultado_alcance.testsRun - _fallas_alcance
+_fallos += _fallas_alcance
 
 print(f"\n{_ok} OK, {_fallos} fallas")
 _srv.should_exit = True

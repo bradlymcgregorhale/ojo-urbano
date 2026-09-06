@@ -5,7 +5,9 @@ EXCLUSIÓN PRIORITARIA: un bolsón GRANDE de construcción tipo big-bag, de apro
  servicio público de higiene urbana. Si el material de obra está dentro de uno de esos bolsones,\
  devolvé "bolson_obra" aunque el bolsón esté abierto o roto y aunque el cascote sea visible. No\
  evalúes su contenido con las señales positivas de abajo. Esta exclusión no alcanza a bolsas o\
- sacos chicos cargables a mano.
+ sacos chicos cargables a mano. Si hay sacos chicos o cascote suelto INDEPENDIENTES del bolsón,\
+ evaluá esos residuos: "bolson_obra" sólo corresponde cuando no hay otros escombros elegibles\
+ fuera de los bolsones. La presencia de un bolsón no veta toda una escena mixta.
 SEÑALES POSITIVAS (hace falta evidencia directa, o DOS señales independientes):
 - Evidencia directa: cascote, ladrillo, revoque o arena de obra a la vista (suelto, sobre las\
  bolsas o asomando por una boca o rotura); una bolsa rasgada cuyo relleno visible es material denso\

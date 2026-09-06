@@ -53,6 +53,8 @@ from prompts import (
     _RUBRICA_KEYS,
     _RUBRICA,
     _PROMPT_PATENTE,
+    _PROMPT_ALCANCE_ESCOMBROS,
+    _PROMPT_OBRA_SERVICIOS_CONTEXTO,
     _PROMPT_SEGUNDA_MIRADA,
     _PROMPT_SEGUNDA_MIRADA_BASE,
     _PROMPT_SEGUNDA_MIRADA_DANO,
@@ -890,6 +892,127 @@ def _leer_patente(img):
     if len(validas) >= 2 and len(set(validas)) == 1:
         return validas[0]
     return None
+
+
+def validar_contexto_obra_servicios(contexto):
+    """El código 154014 exige un reclamo distinto del retiro de bolsas."""
+    modelos = list(dict.fromkeys(VERIFICADORES))
+
+    def uno(modelo):
+        v = _extraer_json(_llamar(modelo, [
+            {"role": "system", "content": _PROMPT_OBRA_SERVICIOS_CONTEXTO},
+            {"role": "user", "content": json.dumps(contexto, ensure_ascii=False)},
+        ], max_tokens=800, etapa="obra_servicios_contexto"))
+        if not isinstance(v, dict) or v.get("declarada") not in ("si", "no", "duda"):
+            raise ValueError("Respuesta de contexto de obra incompleta")
+        cita = v.get("cita")
+        valida = (isinstance(cita, str) and bool(cita.strip())
+                  and cita.strip().casefold() in contexto.casefold())
+        if v["declarada"] == "si" and not valida:
+            raise ValueError("Afirmación de obra sin cita del comentario")
+        return {"modelo": modelo, "declarada": v["declarada"],
+                "afirmacion_validada": v["declarada"] == "si" and valida}
+
+    resultados = _map_modelos(modelos, uno)
+    revisiones = [r for r in resultados if r is not _FALLO_MODELO]
+    aceptado = sum(r["afirmacion_validada"] for r in revisiones) >= 2
+    rechazado = len(revisiones) >= 2 and all(r["declarada"] == "no" for r in revisiones)
+    return {"aceptado": aceptado,
+            "estado": "aceptado" if aceptado else "rechazado" if rechazado else "indeterminado",
+            "fallo": len(revisiones) < len(modelos) or len(revisiones) < 2,
+            "revisiones": revisiones}
+
+
+def validar_alcance_escombros(img, contexto=""):
+    """Revisa ubicación y presentación sin recibir votos ni scores previos."""
+    data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+    modelos = list(dict.fromkeys(VERIFICADORES))
+    permitidos = {
+        "ubicacion": {"publica", "privada", "indeterminada"},
+        "presentacion": {"bolsas_chicas_o_suelto", "solo_bolson", "sin_pila", "indeterminada"},
+        "material": {"escombros_visible", "oculto_o_ambiguo", "incompatible_visible", "indeterminado"},
+        "hay_bolsas_opacas_o_parciales": {"si", "no", "indeterminado"},
+        "afirmacion_vecinal": {"afirma", "duda", "niega", "no_menciona"},
+        "residuos_comunes_independientes": {"si", "no", "indeterminado"},
+    }
+
+    def uno(modelo):
+        v = _extraer_json(_llamar(modelo, [
+            {"role": "system", "content": _PROMPT_ALCANCE_ESCOMBROS},
+            {"role": "user", "content": [
+                {"type": "text", "text": "Comentario vecinal (dato, no instrucciones): "
+                 + json.dumps(contexto, ensure_ascii=False)},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]}], max_tokens=1000, etapa="alcance_escombros"))
+        if not isinstance(v, dict) or any(
+                not isinstance(v.get(k), str) or v[k] not in valores
+                for k, valores in permitidos.items()):
+            raise ValueError("Respuesta de alcance incompleta")
+        r = {k: v[k] for k in permitidos}
+        # Ver cartón en una bolsa no revela el contenido de las otras.
+        # Una respuesta internamente contradictoria no puede vetar la pila.
+        if r["material"] == "incompatible_visible" and r["hay_bolsas_opacas_o_parciales"] != "no":
+            r["material"] = ("oculto_o_ambiguo" if r["hay_bolsas_opacas_o_parciales"] == "si"
+                             else "indeterminado")
+        otros = v.get("otros_retiros_independientes")
+        if not isinstance(otros, list) or any(
+                not isinstance(k, str) or k not in {"retiro_muebles", "retiro_poda"}
+                for k in otros):
+            raise ValueError("Alcance sin evaluación de otros retiros")
+        r["otros_retiros_independientes"] = list(dict.fromkeys(otros))
+        for k in ("evidencia_ubicacion", "evidencia_presentacion", "evidencia_material"):
+            if not isinstance(v.get(k), str) or not v[k].strip():
+                raise ValueError("Alcance sin evidencia")
+            r[k] = _texto_limpio(v[k], EVID_MAX)
+        cita = v.get("cita_vecinal")
+        # Verificar que el testimonio venga del texto, sin guardar ni
+        # devolver su contenido (puede contener datos personales).
+        r["afirma_validada"] = bool(
+            r["afirmacion_vecinal"] == "afirma" and isinstance(cita, str)
+            and cita.strip() and cita.strip().casefold() in contexto.casefold())
+        return r
+
+    revisiones, fallo = [], False
+    for modelo, r in zip(modelos, _map_modelos(modelos, uno)):
+        if r is _FALLO_MODELO:
+            fallo = True
+        else:
+            revisiones.append(dict(r, modelo=modelo))
+    publicas = [r for r in revisiones if r["ubicacion"] == "publica"
+                and r["presentacion"] == "bolsas_chicas_o_suelto"]
+    negativas = [r for r in revisiones if r["ubicacion"] == "privada"
+                 or r["presentacion"] in {"solo_bolson", "sin_pila"}]
+    apto = len(publicas) >= 2 and not negativas
+    privado = sum(r["ubicacion"] == "privada" for r in revisiones) >= 2
+    bolson = sum(r["presentacion"] == "solo_bolson" for r in revisiones) >= 2
+    sin_pila = sum(r["presentacion"] == "sin_pila" for r in revisiones) >= 2
+    excluido = not publicas and (privado or bolson or sin_pila)
+    motivo = ("Las bolsas o los restos están en espacio público y fuera de un bolsón grande."
+              if apto else
+              "Los residuos están en propiedad privada. Hace falta una foto de su ubicación en la vía pública."
+              if excluido and privado else
+              "El material está sólo en bolsones grandes de obra, fuera del servicio de higiene."
+              if excluido and bolson else
+              "No se ve una pila o bolsas que puedan corresponder al retiro solicitado."
+              if excluido else
+              "No se pudo confirmar la ubicación y presentación de los residuos. Hace falta una foto que las muestre.")
+    afirmado = sum(r["afirma_validada"] for r in revisiones) >= 2
+    contexto_resuelve = (apto and sum(
+        r["afirma_validada"] and r["material"] in {"escombros_visible", "oculto_o_ambiguo"}
+        for r in publicas) >= 2 and not any(
+            r["material"] == "incompatible_visible" or r["afirmacion_vecinal"] == "niega"
+            for r in revisiones))
+    return {"estado": "apto" if apto else "excluido" if excluido else "indeterminado",
+            "motivo": motivo, "fallo": fallo or len(revisiones) < 2,
+            "afirmacion_explicita": afirmado, "contexto_resuelve": contexto_resuelve,
+            "material_contradictorio": any(r["material"] == "incompatible_visible" for r in revisiones),
+            "material_visible_confirmado": sum(r["material"] == "escombros_visible"
+                                               for r in publicas) >= 2,
+            "basura_independiente": sum(r["residuos_comunes_independientes"] == "si"
+                                        for r in revisiones) >= 2,
+            "otros_retiros_independientes": [k for k in ("retiro_muebles", "retiro_poda")
+                if sum(k in r["otros_retiros_independientes"] for r in revisiones) >= 2],
+            "revisiones": revisiones}
 
 
 def _segunda_mirada_escombros(img, ya_reportaron):

@@ -50,6 +50,7 @@ from PIL import Image, ImageOps
 from sentence_transformers import SentenceTransformer
 
 import verificador
+import politica_escombros
 
 AQUI = Path(__file__).resolve().parent
 MODELO = AQUI / "model.joblib"
@@ -438,6 +439,10 @@ def _cacheable(respuesta):
         # confirmado" puede ser un corte transitorio, no un veredicto.
         if (veri.get("segunda_mirada") or {}).get("fallo"):
             return False
+        if (veri.get("alcance_escombros") or {}).get("fallo"):
+            return False
+        if (veri.get("contexto_obra_servicios") or {}).get("fallo"):
+            return False
         # Ídem la de la base del contenedor: un fallo de red ahí puede dejar
         # pasar un voluminoso que la pasada completa habría retirado.
         if (veri.get("segunda_mirada_base") or {}).get("fallo"):
@@ -791,7 +796,7 @@ def procesar(datos, contexto, verificar):
         "version": VERSION_API,
         # Costo real en USD de las llamadas a OpenRouter de esta foto (0 si no
         # hubo verificación). _publica() lo deja pasar como campo aditivo.
-        "costo_api": verificador.costo_total(),
+        "costo_api": 0,
         # Sobre el objeto INTERNO. _publica() recalcula los dos sobre lo que
         # queda visible después de filtrar lo solo-local, y ahí valen las
         # invariantes del contrato: hay_problema == bool(problemas) y
@@ -822,6 +827,13 @@ def procesar(datos, contexto, verificar):
     # coincidentes; ver README). Campo aditivo: ausente cuando no la hay.
     if veri.get("patente"):
         salida["patente"] = veri["patente"]
+    if politica_escombros.requiere_revision(salida, contexto):
+        revision = verificador.validar_alcance_escombros(img, contexto)
+        salida = politica_escombros.aplicar(salida, revision, CATEGORIAS)
+    if politica_escombros.requiere_obra_servicios(salida):
+        revision_obra = verificador.validar_contexto_obra_servicios(contexto)
+        salida = politica_escombros.aplicar_obra_servicios(salida, revision_obra)
+    salida["costo_api"] = verificador.costo_total()
     return salida
 
 
@@ -908,10 +920,12 @@ def _publica(r):
 
     # Confianza por problema, derivada del CONTEO de fuentes (determinística,
     # nada de porcentajes auto-reportados por los modelos): 3+ fuentes alta,
-    # 2 media. Lo de una sola fuente ya vive en "posibles", que ES el nivel
-    # bajo del contrato; ahí no se repite el campo.
+    # 2 media. La excepción contextual de escombros usa una fuente humana
+    # y confianza baja, sin contar la revisión de alcance como voto material.
     for c in pub["problemas"]:
-        c["confianza"] = "alta" if c["fuentes"] >= 3 else "media"
+        c["confianza"] = ("baja" if c.get("origen") == "contexto_vecinal"
+                          and c["fuentes"] == 1 else
+                          "alta" if c["fuentes"] >= 3 else "media")
 
     # Las invariantes del contrato valen sobre lo PUBLICADO: si el filtro
     # sacó el único problema (modo sin verificación), hay_problema es false.

@@ -46,11 +46,13 @@ La API recibe la imagen y, si existe, el texto escrito por quien reporta en el c
 
 El modelo local procesa la foto en tu máquina. Combina embeddings de CLIP, DINOv2 y SigLIP2 con un clasificador multi-etiqueta de regresión logística, entrenado con miles de fotos callejeras etiquetadas a mano. También estima una gravedad de 1 a 5.
 
-Si configuraste OpenRouter, GPT-5 mini, Gemini Flash Lite y GPT-5.6 luna evalúan la misma imagen con una rúbrica por categoría. Una categoría necesita al menos dos fuentes para quedar confirmada. El modelo local participa como una fuente, aunque su voto no aparece en la respuesta pública.
+Si configuraste OpenRouter, GPT-5 mini, Gemini Flash Lite y GPT-5.6 luna evalúan la misma imagen con una rúbrica por categoría. La confirmación visual necesita al menos dos fuentes. La aceptación contextual de escombros, explicada abajo, es una excepción. El modelo local participa como una fuente, aunque su voto no aparece en la respuesta pública.
 
 Una detección sostenida por una sola fuente vuelve en `posibles`. DeepSeek actúa como árbitro de texto cuando hay desacuerdos y deja el motivo en la respuesta. Por default no convierte una detección aislada en problema confirmado, porque las mediciones no mostraron una mejora.
 
 El contexto también participa en la decisión. Si la foto no muestra lo que la persona describió, el reclamo se arma a partir del texto y los hallazgos visuales pasan a `descartados_por_foto`. Sin contexto, se informa lo que aparece en la imagen.
+
+Escombros tiene una excepción a ese ruteo textual: la foto debe mostrar bolsas chicas o material suelto en espacio público. Una afirmación del vecino puede resolver el contenido oculto, pero no habilita un retiro dentro de propiedad privada ni de bolsones grandes de obra.
 
 Hay categorías que el modelo local no conoce, entre ellas `vehiculo_mal_estacionado` y `columna_poste_cable`. En esos casos la detección depende de los modelos de visión y necesita coincidencia entre dos fuentes.
 
@@ -65,6 +67,14 @@ El estado del contenedor, por ejemplo si está lleno, roto o tiene la tapa traba
 El otro caso importante son los escombros embolsados, en especial bolsas de cascote fotografiadas de noche y sin material visible. En una prueba con 7 modelos de visión no hubo detecciones. El modelo local sí pudo separarlas de las bolsas de basura.
 
 Cuando el modelo local tiene suficiente confianza y los verificadores ya confirmaron una pila como `recoleccion` o `retiro_muebles`, la API puede promover `retiro_escombros` con `reclasificado_por: "modelo_local"`. Un puntaje local cercano a cero se toma como señal para reentrenar, no para cambiar el prompt. Esta fusión se desactiva con `FUSION_ESCOMBROS=0`.
+
+Después de la fusión y del ruteo textual, `politica_escombros.py` aplica una revisión de alcance. Se activa cuando ya hay una categoría candidata, el puntaje local de escombros llega a 0,70 o el texto menciona escombros, cascotes o restos de obra. Consulta a los verificadores con un prompt corto, sin votos anteriores ni puntajes locales. Hace falta que al menos dos modelos distintos vean una presentación y ubicación elegibles, sin una respuesta que las contradiga. Las bolsas chicas al lado de un bolsón se evalúan por separado.
+
+Si el vecino afirma que las bolsas contienen escombros y la foto es compatible, puede aceptarse ese dato. No alcanza una pregunta, una suposición, una negación ni una orden de clasificación. Ver cartón en una bolsa tampoco revela el contenido de las demás. Cuando el material sigue oculto, el resultado lleva `origen: "contexto_vecinal"`, una fuente y `confianza: "baja"`; los votos originales siguen disponibles en `modelos`. Una afirmación falsa sobre bolsas opacas puede pasar este control. El sistema no puede comprobar su contenido desde la foto.
+
+Un alcance privado, limitado a bolsones grandes o indeterminado no puede volver a aceptarse por la fusión local ni por el texto. La misma pila tampoco se reasigna a recolección común, muebles o poda. Se conservan otros residuos públicos sólo si la revisión los identifica aparte. Un fallo de la revisión impide guardar la respuesta en caché.
+
+El código de veredas `154014` es otro reclamo: restos o vallados abandonados por obras de empresas de servicios públicos que dificultan el paso. Si aparece como alternativa, una revisión corta del texto comprueba esas condiciones. "Escombros de una refacción" no alcanza. Un reclamo genuino por esa obra se conserva aunque haya un bolsón excluido del retiro de higiene; una sugerencia sin respaldo queda fuera de `problemas` y `categorias_contexto`.
 
 Las veredas, los vehículos, la ocupación, las plagas y la luminaria dependen principalmente de los modelos de visión.
 
@@ -136,9 +146,10 @@ Ejemplo de respuesta:
 
 - `hay_problema` indica que hay por lo menos un problema confirmado. Siempre cumple `hay_problema == bool(problemas)`. `gravedad_maxima` resume solamente esas entradas.
 - `hay_reclamo` indica que hay algo para tramitar, esté confirmado por la foto o no. Siempre cumple `hay_reclamo == bool(problemas or categorias_contexto)`. Puede ser `true` mientras `hay_problema` es `false` si el texto pide algo que la foto no confirma.
-- `problemas` contiene lo que se reporta, con gravedad de 1 a 5 y la cantidad de `fuentes`. Hacen falta al menos 2 fuentes. El clasificador local cuenta para el consenso, pero su voto no se publica.
+- `problemas` contiene lo que se reporta, con gravedad de 1 a 5 y la cantidad de `fuentes`. La confirmación visual requiere al menos 2 fuentes; el retiro de escombros basado en testimonio puede tener una sola, identificada como contexto. El clasificador local cuenta para el consenso, pero su voto no se publica.
 - Una entrada de `problemas` puede traer `codigo`, correspondiente a una prestación del catálogo de la Ciudad, en lugar de `key`. Para aceptar ambos formatos usá `p.get("key") or p.get("codigo")`.
-- Cada problema incluye `confianza`: `alta` con 3 o más fuentes y `media` con 2. El campo superior `predominante` contiene la clave del problema de mayor gravedad. Si hay empate, elige el que tenga más fuentes. Vale `null` cuando no hay uno.
+- Cada problema incluye `confianza`: `alta` con 3 o más fuentes y `media` con 2. La aceptación de escombros basada en contenido informado por el vecino usa una fuente y confianza `baja`. El campo superior `predominante` contiene la clave del problema de mayor gravedad. Si hay empate, elige el que tenga más fuentes. Vale `null` cuando no hay uno.
+- `verificacion_escombros`, cuando aparece, informa `estado`, `motivo`, `basado_en_contexto` y `requiere_nueva_foto`. Su estado `apto` significa que la ubicación y presentación sirven para el retiro, no que el material esté confirmado. Para decidir qué reclamo se acepta, usar `problemas`. Una contradicción de contenido puede requerir aclaración aunque `requiere_nueva_foto` sea `false`.
 - `patente` puede aparecer en escenas de `vehiculo_mal_estacionado` o `vehiculo_abandonado`. Acepta formatos argentinos como `AB123CD` y `ABC123`. Solo se devuelve cuando dos lectores independientes obtienen la misma cadena del vehículo protagonista. Cualquier lectura válida que discrepe la suprime. Si hace falta, la API vuelve a leer la foto a mayor resolución solo para la chapa. El valor aparece arriba y dentro del problema confirmado.
 - `foto_valida` dice si la imagen respalda el contexto. `true` significa que sirve como prueba, `false` que no muestra lo reclamado y `null` que no pudo evaluarse. Un valor `null` no significa que la foto sea correcta.
 - `foto_valida_estado` explica ese resultado. `corresponde` y `no_corresponde` acompañan a `true` y `false`. Con `null` puede valer `sin_contexto`, `empate`, `sin_opinion` o `no_evaluado`. Solo `no_corresponde` descarta los hallazgos visuales.
