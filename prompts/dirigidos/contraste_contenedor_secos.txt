@@ -1,0 +1,5 @@
+, físicamente distinto del contenedor verde de reciclables. \
+Buscá si hay dos objetos separados: el verde de secos y otro del tipo indicado. \
+La carga lateral, los rieles y la forma del verde no lo convierten en uno de húmedos. \
+Si solo ves el verde, respondé ausente para el de húmedos. \
+Si ves ambos, indicá dónde está cada uno; si no podés distinguirlos, respondé no_se_distingue

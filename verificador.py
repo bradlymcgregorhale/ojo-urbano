@@ -57,15 +57,18 @@ from prompts import (
     _PROMPT_OBRA_SERVICIOS_CONTEXTO,
     _PROMPT_SEGUNDA_MIRADA,
     _PROMPT_SEGUNDA_MIRADA_BASE,
+    _PROMPT_RELACION_CONTENEDOR,
     _PROMPT_SEGUNDA_MIRADA_DANO,
     _PROMPT_SEGUNDA_MIRADA_POSTES,
     _PROMPT_SEGUNDA_MIRADA_VOLCADO,
     _PROMPT_SEGUNDA_MIRADA_SUBTIPO,
     _PROMPT_REPREGUNTA,
     _PROMPT_REPREGUNTA_ESTADO,
+    _CONTRASTE_CONTENEDOR_SECOS,
     _PROMPT_PREGUNTA_ABIERTA,
     _PROMPT_SEGUNDA_MIRADA_VOLUMINOSO,
     _PROMPT_SEGUNDA_MIRADA_DESBORDE,
+    _CONTRASTE_CUERPO_DESTRUIDO,
     _PROMPT_SEGUNDA_MIRADA_PRESENCIA,
     _PROMPT_SEGUNDA_MIRADA_PRESENCIA_CLAVE,
     _SISTEMA_ARBITRO_TEXTO,
@@ -949,6 +952,12 @@ def validar_alcance_escombros(img, contexto=""):
                 for k, valores in permitidos.items()):
             raise ValueError("Respuesta de alcance incompleta")
         r = {k: v[k] for k in permitidos}
+        # "Sin bolsas" y "hay una bolsa opaca" no pueden ser ciertos a la
+        # vez. Abstenerse sobre presentación conserva los otros campos;
+        # nunca inventa un voto de pila pública ni anula una ubicación privada.
+        if r['presentacion'] == 'sin_pila' and r['hay_bolsas_opacas_o_parciales'] == 'si':
+            r['presentacion_original'] = 'sin_pila'
+            r['presentacion'] = 'indeterminada'
         # Ver cartón en una bolsa no revela el contenido de las otras.
         # Una respuesta internamente contradictoria no puede vetar la pila.
         if r["material"] == "incompatible_visible" and r["hay_bolsas_opacas_o_parciales"] != "no":
@@ -1078,7 +1087,7 @@ _PATRON_MUEBLE = re.compile(
     r"\b(?:sillon(?:es)?|sofas?|sillas?|colchon(?:es)?|muebles?|heladeras?|"
     r"lavarropas|cocinas?|electrodomest\w*|mesas?|roperos?|placard(?:es)?|"
     r"estanterias?|puertas?|ventanas?|valijas?|alfombras?|tapetes?|cunas?|"
-    r"colchas?)\b")
+    r"colchas?|camas?|som+m?iers?)\b")
 
 
 # Evidencia de reparacion_contenedor que habla de la base (y no de una tapa o
@@ -1110,6 +1119,40 @@ def _evidencia_metalica(texto):
     if _PATRON_METAL_FUERTE.search(t):
         return True
     return bool(_PATRON_ESTRUCTURA.search(t)) and not _PATRON_NO_METAL.search(t)
+
+
+def _segunda_mirada_relacion(img):
+    data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+    def uno(modelo):
+        raw = _extraer_json(_llamar(modelo, [
+            {'role': 'system', 'content': _PROMPT_RELACION_CONTENEDOR},
+            {'role': 'user', 'content': [{'type': 'text', 'text': 'La foto:'},
+             {'type': 'image_url', 'image_url': {'url': data_url}}]}],
+            max_tokens=650, etapa='relacion_contenedor'))
+        if (raw.get('relacion') not in {'base_municipal', 'descarte_independiente', 'indeterminada', 'no_hay_objeto'}
+                or raw.get('otro_dano_contenedor') not in {'si', 'no', 'indeterminado'}):
+            raise ValueError('Respuesta de relación incompleta')
+        return dict(raw, modelo=modelo)
+    resultados = _map_modelos(VERIFICADORES, uno)
+    return [r for r in resultados if r is not _FALLO_MODELO], any(r is _FALLO_MODELO for r in resultados)
+
+
+def _descarte_ajeno_corrobado(respuestas, fallo):
+    if (fallo or len({r.get('modelo') for r in respuestas if r.get('modelo')}) < 2
+            or any(r.get('relacion') != 'descarte_independiente'
+                   or r.get('otro_dano_contenedor') != 'no' for r in respuestas)):
+        return []
+    identificados = [r for r in respuestas if r.get('ubicacion') and r.get('rasgos')
+                     and _PATRON_MUEBLE.search(_sin_negado(_norm_texto(r.get('objeto') or '')))
+                     and not _es_mobiliario_urbano(r.get('objeto') or '')]
+    return identificados if len({r['modelo'] for r in identificados}) >= 2 else []
+
+
+def _reparacion_solo_base(voto):
+    texto = _norm_texto(voto.get('evidencia') or '')
+    return (voto.get('key') == 'reparacion_contenedor' and bool(_PATRON_BASE.search(texto))
+            and not re.search(r'tapa|pedal|cuerpo|pared|panel|quemad|derretid|fundid', texto)
+            and not _PATRON_BARRA_IZADO.search(texto))
 
 
 def _segunda_mirada_base(img):
@@ -1390,6 +1433,29 @@ def _sin_negado(texto):
     return " ".join(trozos)
 
 
+def _niega_escombros(texto):
+    """Detecta una negación del material, sin confundirla con falta de daño."""
+    material = r"\b(?:escombros?|cascotes?|material(?:es)? de (?:obra|construccion))\b"
+    for tramo in re.split(r"[.;!?]|,|\bpero\b|\bsino\b", _norm_texto(texto)):
+        if re.search(r"\b(?:no|sin|ningun\w*)\b[^.;!?]{0,100}" + material, tramo):
+            return True
+        if re.search(material + r"\s+no\s+(?:se\s+)?(?:ven|ve|observan|distinguen|estan|hay)\b", tramo):
+            return True
+    return False
+
+
+def _trabajos_contenedor_descritos(texto):
+    afirmado = _sin_negado(texto or "")
+    trabajos = set()
+    for key, accion in [("reparacion_contenedor", "reparacion"),
+                        ("reposicion_contenedor", "(?:reposicion|reubicacion)")]:
+        if re.search(rf"\brequiere\s+(?:la\s+)?{accion}\s+del\s+contenedor\b"
+                     rf"|\bcontenedor\s+requiere\s+(?:la\s+)?{accion}\b"
+                     rf"|\bcontenedor\b[^.!?;]*\blo que requiere\s+{accion}\b", afirmado):
+            trabajos.add(key)
+    return trabajos
+
+
 def _stems(texto, sin_negados=False):
     """Palabras de 4+ letras con sus variantes de plural, para corroborar por
     PALABRA (dos fuentes tienen que nombrar LA MISMA cosa).
@@ -1505,6 +1571,80 @@ _INCOMPATIBLE_ABIERTA = {
 }
 
 
+def _carton_en_piso(r):
+    """Cartón identificado aparte del mueble por una respuesta abierta."""
+    objeto = _sin_negado(r.get("que_es") or "")
+    lugar = _sin_negado(r.get("ubicacion") or "")
+    texto = _norm_texto(" ".join(str(r.get(k) or "")
+                                 for k in ("que_es", "ubicacion", "evidencia")))
+    return bool(r.get("veredicto") == "identificado"
+                and re.search(r"\bcarton\w*\b", objeto)
+                and re.search(r"\b(?:y|junto|ademas)\b", objeto)
+                and re.search(r"\b(?:piso|suelo|vereda|calzada|acera|calle)\b", lugar)
+                and not re.search(r"\bdentro\b|\binterior\b|sobre la tapa|\ben uso\b|"
+                                  r"envolvi|envuelt|mueble de carton|hech[oa] de carton|"
+                                  r"parte del mueble", texto))
+
+
+def _carton_mixto_corroborado(resultados, fallo):
+    return not fallo and len({r.get("modelo") for r in resultados
+                              if r.get("modelo") and _carton_en_piso(r)}) >= 2
+
+
+def _contrastar_con_secos(key, local, veredictos):
+    """Detecta un desacuerdo de tipo para precisar la pregunta de presencia.
+
+    El puntaje local abre la pregunta; no elimina ni confirma contenedores.
+    Una lectura que ya ve ambos tipos conserva la pregunta habitual.
+    """
+    if key not in {"contenedor_humedos_lateral", "contenedor_humedos_bilateral"}:
+        return False
+    scores = {p.get("key"): p.get("score")
+              for p in local.get("probabilidades") or []}
+    seco, humedo = scores.get("contenedor_secos"), scores.get(key)
+    if not (isinstance(seco, (int, float)) and isinstance(humedo, (int, float))
+            and 0 <= humedo <= 0.05 and 0.95 <= seco <= 1
+            and seco - humedo >= 0.95):
+        return False
+    secos, humedos = set(), set()
+    for v in veredictos:
+        if not v.get("ok"):
+            continue
+        keys = {c.get("key") for c in v.get("categorias") or []}
+        if "contenedor_secos" in keys:
+            secos.add(v["modelo"])
+        if key in keys:
+            humedos.add(v["modelo"])
+    return len(secos) >= 2 and len(humedos) == 1 and not (secos & humedos)
+
+
+def _secos_local_discrepante(local, veredictos):
+    """Los pesos revisados abren una auditoría; no publican un tipo por sí solos."""
+    if local.get('revision_contenedores') != 'contenedores-preservacion-20260906':
+        return None
+    scores = {p['key']: p.get('score', 0) for p in local.get('probabilidades') or []}
+    humedos = {'contenedor_humedos_lateral', 'contenedor_humedos_bilateral'}
+    if (not isinstance(scores.get('contenedor_secos'), (int, float))
+            or not .99 <= scores['contenedor_secos'] <= 1
+            or any(not isinstance(scores.get(k), (int, float))
+                   or not 0 <= scores[k] <= .01 for k in humedos)):
+        return None
+    vistos, modelos = set(), set()
+    for v in veredictos:
+        tipos = {c['key'] for c in v.get('categorias') or []} & (humedos | {'contenedor_secos'})
+        if not v.get('ok') or len(tipos) != 1 or not tipos <= humedos:
+            return None
+        vistos.update(tipos)
+        modelos.add(v.get('modelo'))
+    return next(iter(vistos)) if len(modelos - {None}) >= 3 and len(vistos) == 1 else None
+
+
+def _verdes_explicitos(presentes):
+    return [(m, e) for m, e in presentes
+            if re.search(r'\bverde\b', _sin_negado(e))
+            and not re.search(r'\b(?:negro|gris|oliva)\b', _sin_negado(e))]
+
+
 def _repregunta_objeto(img, objeto, modelos, con_estado):
     """Le pregunta a los modelos que NO vieron el objeto si lo ven. Anti
     sugestión: nunca se dice que otro modelo lo reportó, la localización es
@@ -1590,7 +1730,29 @@ def _segunda_mirada_presencia(img, descripcion=None):
     return presentes, ausentes, fallo
 
 
-def _segunda_mirada_desborde(img):
+def _cuerpo_quemado_destruido(revision):
+    """Dos revisores corroboran destrucción por fuego, sin afirmar uso normal."""
+    if not revision or revision.get('fallo') or revision.get('sin_dano'):
+        return False
+    modelos = set()
+    for r in revision.get('dano') or []:
+        texto = _sin_negado(_norm_texto(r.get('evidencia') or ''))
+        if (re.search(r'quemad|incendi|fuego', texto)
+                and re.search(r'destruid|derretid|fundid|paredes faltantes', texto)
+                and r.get('modelo')):
+            modelos.add(r['modelo'])
+    return len(modelos) >= 2
+
+
+def _vaciado_solo_por_tapa(activos):
+    votos = [c for v in activos for c in v['categorias'] if c['key'] == 'vaciado_contenedor']
+    textos = [_norm_texto(c.get('evidencia') or '') for c in votos]
+    return bool(textos) and all(
+        re.search(r'tapa|puerta', t) and re.search(r'abiert|trabad|calzad', t)
+        and not re.search(r'llen|colmad|capacidad|rebals|desbord', t) for t in textos)
+
+
+def _segunda_mirada_desborde(img, cuerpo_destruido=False):
     """Mirada dirigida del desborde: el rebalse hay que VERLO. El umbral
     del veto acá es por MAYORÍA (ver el comentario en la fusión), no el
     estricto del uso del contenedor."""
@@ -1598,7 +1760,8 @@ def _segunda_mirada_desborde(img):
 
     def _uno(modelo):
         contenido = _llamar(modelo, [
-            {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_DESBORDE},
+            {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_DESBORDE
+             + (_CONTRASTE_CUERPO_DESTRUIDO if cuerpo_destruido else '')},
             {"role": "user", "content": [
                 {"type": "text", "text": "La foto:"},
                 {"type": "image_url", "image_url": {"url": data_url}},
@@ -2074,6 +2237,27 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                 grav_votos.setdefault(elegido, []).extend(grav_votos.pop(otro))
 
     subtipos_firmes = {}  # subtipo elegido -> subtipos descartados
+    segunda_mirada_secos = None
+    otro_tipo = _secos_local_discrepante(prediccion_local, veredictos)
+    if otro_tipo:
+        presentes, ausentes, fallo = _segunda_mirada_presencia(
+            img, DESCRIPTOR_CONTENEDOR['contenedor_secos'])
+        verdes = _verdes_explicitos(presentes)
+        segunda_mirada_secos = dict(verdes=verdes, ausentes=ausentes,
+                                    fallo=fallo, promovio=False)
+        if len({m for m, _ in verdes}) >= 2 and not ausentes and not fallo:
+            separados, no_separados, fallo_otro = _segunda_mirada_presencia(
+                img, DESCRIPTOR_CONTENEDOR[otro_tipo] + _CONTRASTE_CONTENEDOR_SECOS)
+            segunda_mirada_secos.update(separados=separados, no_separados=no_separados,
+                                        fallo=fallo_otro)
+            if (len({m for m, _ in no_separados}) >= 2
+                    and len(no_separados) > len(separados) and not fallo_otro):
+                fuentes['contenedor_secos'] = ['modelo_local'] + sorted({m for m, _ in verdes})
+                fuentes.pop(otro_tipo, None)
+                grav_votos.pop(otro_tipo, None)
+                grav_votos['contenedor_secos'] = [1] * len(verdes)
+                subtipos_firmes['contenedor_secos'] = [otro_tipo]
+                segunda_mirada_secos['promovio'] = True
 
     # Un contenedor de húmedos es lateral O bilateral, nunca ambos. Deciden
     # los votos de los modelos de visión, que son los testigos de ESTA foto,
@@ -2589,6 +2773,61 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                     disputadas.add("reparacion_contenedor")
                 adjudicadas_dirigidas.add("reparacion_contenedor")
 
+    # Una base confirmada puede ser un mueble ajeno. El local solo habilita
+    # la revisión; el cambio exige identidad física corroborada y ausencia
+    # de otra avería, sin invalidar daños de tapa/cuerpo por proximidad.
+    segunda_mirada_relacion = None
+    votos_base = [(v, c) for v in activos for c in v['categorias'] if _reparacion_solo_base(c)]
+    local_muebles = max((p.get('score', 0) for p in prediccion_local.get('probabilidades', [])
+                         if p['key'] == 'retiro_muebles'), default=0)
+    if (SEGUNDA_MIRADA_BASE and 'reparacion_contenedor' in confirmadas
+            and len({v['modelo'] for v, c in votos_base}) >= 2 and local_muebles >= .95
+            and not (segunda_mirada_base or {}).get('promovio')):
+        relaciones, fallo_rel = _segunda_mirada_relacion(img)
+        objetos_ajenos = _descarte_ajeno_corrobado(relaciones, fallo_rel)
+        segunda_mirada_relacion = {'respuestas': relaciones, 'fallo': fallo_rel,
+                                  'retiro_votos': bool(objetos_ajenos)}
+        if objetos_ajenos:
+            for v, c in votos_base:
+                v['categorias'].remove(c)
+                votos_anulados.append((v, c, 'segunda_mirada_relacion'))
+                desc_desautorizadas.add(v['modelo'])
+                if v['modelo'] in fuentes.get('reparacion_contenedor', []):
+                    fuentes['reparacion_contenedor'].remove(v['modelo'])
+                try:
+                    gravedad_retirada = min(5, max(1, int(c.get('gravedad', 1))))
+                except (TypeError, ValueError):
+                    gravedad_retirada = 1
+                if gravedad_retirada in grav_votos.get('reparacion_contenedor', []):
+                    grav_votos['reparacion_contenedor'].remove(gravedad_retirada)
+                for quienes in partes.get('reparacion_contenedor', {}).values():
+                    if v['modelo'] in quienes:
+                        quienes.remove(v['modelo'])
+            restantes = fuentes.get('reparacion_contenedor', [])
+            if len(restantes) < 2:
+                confirmadas.discard('reparacion_contenedor')
+                adjudicadas_dirigidas.add('reparacion_contenedor')
+                if restantes:
+                    disputadas.add('reparacion_contenedor')
+                else:
+                    disputadas.discard('reparacion_contenedor')
+                    fuentes.pop('reparacion_contenedor', None)
+                    grav_votos.pop('reparacion_contenedor', None)
+                    partes.pop('reparacion_contenedor', None)
+            for r in objetos_ajenos:
+                m = r['modelo']
+                if m not in fuentes.setdefault('retiro_muebles', []):
+                    fuentes['retiro_muebles'].append(m)
+                voto = {'key': 'retiro_muebles', 'gravedad': 3,
+                        'origen': 'segunda_mirada_relacion',
+                        'evidencia': _texto_limpio(f"{r['objeto']} ({r['ubicacion']}): {r['rasgos']}", EVID_MAX)}
+                veredicto = next(v for v in activos if v['modelo'] == m)
+                if not any(c['key'] == 'retiro_muebles' for c in veredicto['categorias']):
+                    veredicto['categorias'].append(voto)
+            grav_votos.setdefault('retiro_muebles', [3])
+            confirmadas.add('retiro_muebles')
+            disputadas.discard('retiro_muebles')
+
     # SEGUNDA MIRADA (volcado): el techo en pendiente de los laterales, de
     # esquina y de noche, produce "contenedor volcado" en dos modelos a la
     # vez sobre un contenedor parado (medido: 2 de 3 corridas con la rúbrica
@@ -2660,24 +2899,33 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # no frenaron el error correlacionado; mismo remedio de siempre, con
     # veto por MAYORÍA (abajo el porqué medido).
     segunda_mirada_desborde = None
-    if SEGUNDA_MIRADA_DESBORDE and "contenedor_desbordado" in confirmadas:
-        reb_sm, nol_sm, fallo_de = _segunda_mirada_desborde(img)
+    vaciado_por_tapa = ('vaciado_contenedor' in confirmadas and _vaciado_solo_por_tapa(activos))
+    if SEGUNDA_MIRADA_DESBORDE and ('contenedor_desbordado' in confirmadas or vaciado_por_tapa):
+        cuerpo_destruido = ('reparacion_contenedor' in confirmadas
+                            and _cuerpo_quemado_destruido(segunda_mirada_dano))
+        reb_sm, nol_sm, fallo_de = (_segunda_mirada_desborde(img, cuerpo_destruido=True)
+                                   if cuerpo_destruido else _segunda_mirada_desborde(img))
         # Acá el veto es por MAYORÍA, no estricto: 'no_se_ve_lleno' es una
         # respuesta conservadora fácil de dar frente a un rebalse real
         # (medido: el veto estricto tumbó 4 de 5 positivos verdaderos),
         # mientras que en el uso del contenedor el 'usable' es difícil de
         # alucinar. Empate = se mantiene lo confirmado.
         retira_desb = len(nol_sm) > len(reb_sm)
+        if 'contenedor_desbordado' not in confirmadas:
+            retira_desb = retira_desb and len(nol_sm) >= 2 and not fallo_de
         segunda_mirada_desborde = {
             "rebalsa": [{"modelo": m, "evidencia": e} for m, e in reb_sm],
             "no_lleno": [{"modelo": m, "evidencia": e} for m, e in nol_sm],
             "retiro_votos": retira_desb,
             "fallo": fallo_de,
+            "contraste_cuerpo_destruido": cuerpo_destruido,
+            "vaciado_por_tapa": vaciado_por_tapa,
         }
         if retira_desb:
-            confirmadas.discard("contenedor_desbordado")
-            disputadas.add("contenedor_desbordado")
-            adjudicadas_dirigidas.add("contenedor_desbordado")
+            if 'contenedor_desbordado' in confirmadas:
+                confirmadas.discard("contenedor_desbordado")
+                disputadas.add("contenedor_desbordado")
+                adjudicadas_dirigidas.add("contenedor_desbordado")
             # vaciado_contenedor pide el MISMO predicado (interior
             # visiblemente lleno): si la mirada dirigida acaba de negarlo,
             # el vaciado co-confirmado cae con él (hallazgo de codex)
@@ -2730,6 +2978,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
 
     repreguntas = None
     repregunta_confirmadas = set()
+    contrastes_secos = set()
     # La medición previa (7/7 y 0/9) se hizo con TRES verificadores; con dos,
     # el "ausente" que bloquea solo puede venir del único repreguntado y el
     # chequeo cruzado deja de ser independiente. La repregunta corre solo
@@ -2792,6 +3041,10 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                 objeto = ("un contenedor municipal de basura "
                           + DESCRIPTOR_CONTENEDOR[k]
                           + " (aunque sea recortado por el borde del encuadre)")
+                if (k not in subtipos_firmes
+                        and _contrastar_con_secos(k, prediccion_local, veredictos)):
+                    contrastes_secos.add(k)
+                    objeto += _CONTRASTE_CONTENEDOR_SECOS
                 pendientes.append((k, objeto, vlm_p[0], False))
         # Una pendiente SIN jurado disponible no puede consumir uno de los dos
         # cupos: si lo hace, se come el turno de la que sí tenía a quién
@@ -2833,6 +3086,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             _abierta = _esperado is not None
             if _abierta:
                 resultados, fallo_r = _pregunta_abierta(img, otros)
+                carton_mixto = (k == "recoleccion" and "retiro_muebles" in confirmadas
+                                and _carton_mixto_corroborado(resultados, fallo_r))
                 for r in resultados:
                     # el modelo nombró lo suyo: corrobora si nombró lo que el
                     # reclamo necesita; si nombró OTRA cosa (en U030, "ramas o
@@ -2844,7 +3099,9 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                         # (hallazgo de codex)
                         _qe = _sin_negado(r.get("que_es") or "")
                         _inc = bool(_incompat and _incompat.search(_qe))
-                        if _esperado.search(_qe) and not _inc:
+                        if carton_mixto and _carton_en_piso(r):
+                            r["veredicto"] = "presente"
+                        elif _esperado.search(_qe) and not _inc:
                             r["veredicto"] = "presente"
                         elif _inc and not _esperado.search(_qe):
                             r["veredicto"] = "ausente"
@@ -2968,6 +3225,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             repreguntas.append({"key": k, "objeto": objeto,
                                 "respuestas": resultados,
                                 "confirmo": confirmo, "fallo": fallo_r})
+            if k in contrastes_secos:
+                repreguntas[-1]["contraste_secos"] = True
         if not repreguntas:
             repreguntas = None
 
@@ -3021,7 +3280,16 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # de PRESENCIA_POR_CLAVE) y, como todas las pasadas hermanas, no decide
     # sola: pregunta dirigido por ESE contenedor y necesita mayoría de
     # "ausente" para bajarlo a en_duda.
-    segunda_mirada_presencia_clave = {}
+    # Reutiliza el saneo de descripción cuando la pregunta de objetos
+    # separados retiró el voto de húmedos. No repite la llamada de visión.
+    segunda_mirada_presencia_clave = {
+        q["key"]: {"retiro_votos": True, "fallo": q["fallo"],
+                   "origen": "repregunta_cruzada", "presentes": [],
+                   "ausentes": [{"modelo": r["modelo"], "evidencia": r["evidencia"]}
+                                for r in q["respuestas"]
+                                if r["veredicto"] == "ausente"]}
+        for q in repreguntas or [] if q.get("contraste_secos")
+        and sum(r["veredicto"] == "ausente" for r in q["respuestas"]) >= 2}
     if SEGUNDA_MIRADA_PRESENCIA_CLAVE:
         _locales = {p.get("key"): p.get("score", 0.0)
                     for p in prediccion_local.get("probabilidades") or []}
@@ -3213,7 +3481,11 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # ARBITRO_VE_FOTO está activo: si no la ve, no puede corregir nada.
     perdidos = {k for otros in subtipos_firmes.values() for k in otros}
     descripcion, descripcion_fuente = None, None
-    if arbitro and arbitro.get("ok") and arbitro.get("descripcion"):
+    def _contradice_material(texto):
+        return "retiro_escombros" in confirmadas and _niega_escombros(texto or "")
+
+    if (arbitro and arbitro.get("ok") and arbitro.get("descripcion")
+            and not _contradice_material(arbitro["descripcion"])):
         descripcion, descripcion_fuente = arbitro["descripcion"], ARBITRO
     else:
         mejor = None
@@ -3226,6 +3498,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         for v in candidatos:
             claves_v = {c["key"] for c in v["categorias"]}
             clave = (not (claves_v & perdidos),
+                     not _contradice_material(v["descripcion"]),
                      len(claves_v & confirmadas), len(v["descripcion"]))
             if mejor is None or clave > mejor[0]:
                 mejor = (clave, v)
@@ -3233,7 +3506,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             arbitro = _arbitrar(set(), activos, prediccion_local["probabilidades"],
                                 categorias, confirmadas, sorted(subtipos_firmes),
                                 contexto, data_url=data_url)
-        if arbitro and arbitro.get("ok") and arbitro.get("descripcion"):
+        if (arbitro and arbitro.get("ok") and arbitro.get("descripcion")
+                and not _contradice_material(arbitro["descripcion"])):
             descripcion, descripcion_fuente = arbitro["descripcion"], ARBITRO
         elif mejor:
             descripcion, descripcion_fuente = mejor[1]["descripcion"], mejor[1]["modelo"]
@@ -3342,6 +3616,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                     # arriba, que hasta paga una llamada extra al árbitro
                     # (hallazgo de fable)
                     if {c["key"] for c in v["categorias"]} & perdidos:
+                        continue
+                    if _contradice_material(otra):
                         continue
                     cand, _ = _sanear(otra)
                     if len(cand) > len(_saneada):
@@ -3708,12 +3984,14 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         "segunda_mirada_base": segunda_mirada_base,
         # Ídem para la del daño del contenedor (tapas dadas vuelta, fierros).
         "segunda_mirada_dano": segunda_mirada_dano,
+        "segunda_mirada_relacion": segunda_mirada_relacion,
         # Ídem para la del volcado (techo en pendiente leído como tumbado).
         "segunda_mirada_volcado": segunda_mirada_volcado,
         # Repreguntas dirigidas entre modelos (None si no corrió ninguna).
         "repreguntas": repreguntas,
         # Mirada dirigida del subtipo (None si no corrió).
         "segunda_mirada_subtipo": segunda_mirada_subtipo,
+        "segunda_mirada_secos": segunda_mirada_secos,
         # Chequeo de los postes citados (None si no corrió).
         "segunda_mirada_postes": segunda_mirada_postes,
         # Firma de identidad del voluminoso marginal (None si no corrió).

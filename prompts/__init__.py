@@ -76,6 +76,7 @@ _PROMPT_OBRA_SERVICIOS_CONTEXTO = cargar_prompt('dirigidos/obra_servicios_contex
 _PROMPT_SEGUNDA_MIRADA = cargar_prompt('segundas_miradas/escombros')
 
 _PROMPT_SEGUNDA_MIRADA_BASE = cargar_prompt('segundas_miradas/base')
+_PROMPT_RELACION_CONTENEDOR = cargar_prompt('segundas_miradas/relacion_contenedor')
 
 _PROMPT_SEGUNDA_MIRADA_DANO = cargar_prompt('segundas_miradas/dano')
 
@@ -90,11 +91,14 @@ _PROMPT_REPREGUNTA = cargar_prompt('dirigidos/repregunta')
 
 _PROMPT_REPREGUNTA_ESTADO = cargar_prompt('dirigidos/repregunta_estado')
 
+_CONTRASTE_CONTENEDOR_SECOS = cargar_prompt('dirigidos/contraste_contenedor_secos')
+
 _PROMPT_PREGUNTA_ABIERTA = cargar_prompt('dirigidos/pregunta_abierta')
 
 _PROMPT_SEGUNDA_MIRADA_VOLUMINOSO = cargar_prompt('segundas_miradas/voluminoso')
 
 _PROMPT_SEGUNDA_MIRADA_DESBORDE = cargar_prompt('segundas_miradas/desborde')
+_CONTRASTE_CUERPO_DESTRUIDO = cargar_prompt('dirigidos/contraste_cuerpo_destruido')
 
 _PROMPT_SEGUNDA_MIRADA_PRESENCIA = cargar_prompt('segundas_miradas/presencia')
 

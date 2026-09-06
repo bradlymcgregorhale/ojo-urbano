@@ -53,6 +53,92 @@ class PoliticaTest(unittest.TestCase):
         self.assertEqual(nuevo["problemas"], r["problemas"])
         self.assertEqual(r, antes)
 
+    def revision_cartones(self):
+        return [dict(respuesta(afirmacion_vecinal='no_menciona',
+                               material='incompatible_visible', hay_bolsas_opacas_o_parciales='no'), modelo='m1'),
+                dict(respuesta(afirmacion_vecinal='no_menciona', presentacion='sin_pila',
+                               material='indeterminado', hay_bolsas_opacas_o_parciales='indeterminado'), modelo='m2'),
+                dict(respuesta(afirmacion_vecinal='no_menciona', presentacion='sin_pila',
+                               material='indeterminado', hay_bolsas_opacas_o_parciales='no'), modelo='m3')]
+
+    def cartones(self, revisiones=None, **cambios):
+        r = salida([categoria('recoleccion')])
+        r['posibles'] = [categoria(fuentes=['modelo_local'])]
+        return self.aplicar(r, estado='indeterminado', material_contradictorio=True,
+                            revisiones=revisiones if revisiones is not None else self.revision_cartones(), **cambios)
+
+    def test_cartones_publicos_confirmados_no_desaparecen_al_descartar_escombros(self):
+        r = self.cartones()
+        self.assertEqual([c['key'] for c in r['problemas']], ['recoleccion'])
+        self.assertTrue(r['hay_problema'])
+        self.assertIn('residuos comunes', r['descripcion'])
+        self.assertFalse(any(c['key'] == 'recoleccion' for c in r['descartados_por_foto']))
+
+    def test_no_extiende_excepcion_de_cartones_a_bolsas_privados_o_testimonio(self):
+        for field, value in [('ubicacion', 'privada'), ('ubicacion', 'indeterminada'),
+                             ('presentacion', 'solo_bolson'), ('material', 'oculto_o_ambiguo'),
+                             ('material', 'escombros_visible'), ('afirmacion_vecinal', 'afirma'),
+                             ('hay_bolsas_opacas_o_parciales', 'si')]:
+            reviews = self.revision_cartones()
+            reviews[0][field] = value
+            with self.subTest(field=field, value=value):
+                self.assertFalse(self.cartones(reviews)['problemas'])
+        for updates in [{'fallo': True}, {'afirmacion_explicita': True}]:
+            with self.subTest(updates=updates):
+                self.assertFalse(self.cartones(**updates)['problemas'])
+
+    def test_cartones_no_promueve_recoleccion_ausente_o_solo_local(self):
+        for problems in [[], [categoria('recoleccion', fuentes=['modelo_local'])]]:
+            r = salida(problems)
+            r['posibles'] = [categoria(fuentes=['modelo_local'])]
+            out = self.aplicar(r, estado='indeterminado', material_contradictorio=True,
+                               revisiones=self.revision_cartones())
+            self.assertFalse(out['problemas'])
+
+    def fusion_recoleccion(self):
+        rec = categoria('recoleccion')
+        r = salida([dict(categoria(), reclasificado_por='modelo_local')])
+        r['detalle']['verificacion']['confirmadas'] = [copy.deepcopy(rec)]
+        r['posibles'] = [dict(rec, origen='foto')]
+        return r
+
+    def test_restaura_basura_visible_tras_rechazar_reclasificacion_local(self):
+        r = self.fusion_recoleccion()
+        antes = copy.deepcopy(r)
+        nuevo = self.aplicar(r, material_contradictorio=True,
+                            revisiones=self.revision_cartones())
+        self.assertEqual(nuevo['problemas'], [categoria('recoleccion')])
+        self.assertFalse(any(c['key'] == 'recoleccion' for c in nuevo['posibles']))
+        self.assertIn('residuos comunes', nuevo['descripcion'])
+        self.assertEqual(r, antes)
+
+    def test_no_restaura_fusion_con_bolsas_ocultas_o_revision_incompleta(self):
+        for updates in [{'fallo': True}, {'afirmacion_explicita': True},
+                        {'material_contradictorio': False}, {'estado': 'excluido'},
+                        {'revisiones': [dict(respuesta(), modelo='m1'),
+                                        dict(respuesta(), modelo='m2')]}]:
+            review = dict(material_contradictorio=True, revisiones=self.revision_cartones())
+            review.update(updates)
+            with self.subTest(updates=updates):
+                nuevo = self.aplicar(self.fusion_recoleccion(), **review)
+                self.assertNotIn('recoleccion', [c['key'] for c in nuevo['problemas']])
+
+    def test_no_resucita_rechazos_ajenos_a_fusion_ni_inventa_fuentes(self):
+        for variant in ('sin_fusion', 'sin_confirmacion', 'sin_posible', 'solo_local'):
+            r = self.fusion_recoleccion()
+            if variant == 'sin_fusion':
+                r['problemas'][0].pop('reclasificado_por')
+            elif variant == 'sin_confirmacion':
+                r['detalle']['verificacion']['confirmadas'] = []
+            elif variant == 'sin_posible':
+                r['posibles'] = []
+            else:
+                r['detalle']['verificacion']['confirmadas'][0]['fuentes'] = ['modelo_local']
+            with self.subTest(variant=variant):
+                nuevo = self.aplicar(r, material_contradictorio=True,
+                                    revisiones=self.revision_cartones())
+                self.assertFalse(nuevo['problemas'])
+
     def test_privado_y_bolson_no_se_aceptan(self):
         for razon in ("privada", "solo_bolson"):
             with self.subTest(razon=razon):
@@ -196,11 +282,26 @@ class RevisionTest(unittest.TestCase):
 
     def test_privado_bolson_y_sin_pila(self):
         for cambio in ({"ubicacion": "privada"}, {"presentacion": "solo_bolson"},
-                       {"presentacion": "sin_pila"}):
+                       {"presentacion": "sin_pila", "hay_bolsas_opacas_o_parciales": "no"}):
             with self.subTest(cambio=cambio):
                 r = self.revisar([respuesta(**cambio)] * 3)
                 self.assertEqual(r["estado"], "excluido")
                 self.assertFalse(r["contexto_resuelve"])
+
+    def test_ausencia_de_pila_con_bolsas_opacas_no_veta_dos_testigos(self):
+        r = self.revisar([respuesta(), respuesta(), respuesta(presentacion='sin_pila')])
+        self.assertEqual(r['estado'], 'apto')
+        self.assertEqual(r['revisiones'][2]['presentacion'], 'indeterminada')
+        self.assertEqual(r['revisiones'][2]['presentacion_original'], 'sin_pila')
+        # Una ausencia consistente sigue impidiendo confirmar la pila.
+        r = self.revisar([respuesta(), respuesta(), respuesta(presentacion='sin_pila',
+                                                             hay_bolsas_opacas_o_parciales='no')])
+        self.assertEqual(r['estado'], 'indeterminado')
+        # Tres contradicciones no se convierten en tres positivos.
+        r = self.revisar([respuesta(presentacion='sin_pila')] * 3)
+        self.assertEqual(r['estado'], 'indeterminado')
+        r = self.revisar([respuesta(ubicacion='privada', presentacion='sin_pila')] * 3)
+        self.assertEqual(r['estado'], 'excluido')
 
     def test_conflicto_de_ubicacion_abstiene(self):
         r = self.revisar([respuesta(), respuesta(), respuesta(ubicacion="privada")])
@@ -253,8 +354,33 @@ class RevisionTest(unittest.TestCase):
 
 
 class PipelineTest(unittest.TestCase):
+    @patch.object(V, "ARBITRO", "test/arbiter")
+    @patch.object(V, "VERIFICADORES", ["test/vision-1", "test/vision-2"])
+    def test_descripcion_no_niega_material_confirmado(self):
+        import servidor as S
+        r = salida()
+        r["descripcion"] = ("Hay dos bolsas junto al contenedor. Las bolsas son residuos "
+                            "comunes y no muestran señales visibles de escombros.")
+        pub = S._publica(r)
+        self.assertFalse(V._niega_escombros(pub["descripcion"]))
+        self.assertIn("escombros", pub["descripcion"])
+        self.assertEqual(pub["problemas"][0]["key"], P.KEY)
+        r["problemas"] = [categoria("recoleccion")]
+        self.assertEqual(S._publica(r)["descripcion"], r["descripcion"])
+
+    def test_negacion_material_no_confunde_otras_negaciones(self):
+        for texto in ["No se ven escombros.", "Sin señales visibles de cascotes.",
+                      "Los escombros no se distinguen."]:
+            self.assertTrue(V._niega_escombros(texto), texto)
+        for texto in ["Hay escombros sin daños en el contenedor.",
+                      "No hay daños; hay escombros.", "Son escombros, no basura.",
+                      "No es basura sino escombros."]:
+            self.assertFalse(V._niega_escombros(texto), texto)
+
     def procesar(self, revision, foto_valida=None, texto=False, fusion=False,
-                 obra=False, obra_aceptada=False):
+                 obra=False, obra_aceptada=False, reco_local=0,
+                 revision_material=None, poda=False, adjudicado=False, veri_extra=None,
+                 score_mixto=.99):
         import servidor as S
         buf = io.BytesIO()
         Image.new("RGB", (64, 64)).save(buf, format="JPEG")
@@ -268,8 +394,15 @@ class PipelineTest(unittest.TestCase):
             veri["categorias_contexto"] = [entrada]
             if texto:
                 veri["por_contexto"] = [dict(entrada, fuentes=["contexto_vecinal"])]
-        local = {"probabilidades": [{"key": P.KEY, "score": 1}, {"key": "recoleccion", "score": 0}],
-                 "predichas": [], "top5": [], "gravedad": {"value": 2}}
+        if poda:
+            veri["confirmadas"].append(categoria("retiro_poda"))
+        if adjudicado:
+            veri["adjudicadas_dirigidas"] = [P.KEY]
+        if veri_extra:
+            veri.update(copy.deepcopy(veri_extra))
+        local = {"probabilidades": [{"key": P.KEY, "score": 1}, {"key": "recoleccion", "score": reco_local}],
+                 "predichas": [], "top5": [], "gravedad": {"value": 2},
+                 "revision_material": revision_material, "escombros_mixtos": score_mixto}
         def verificar(*args):
             V._costo_sumar({"cost": .01})
             return veri
@@ -286,6 +419,66 @@ class PipelineTest(unittest.TestCase):
             result = S.procesar(buf.getvalue(), "son escombros", "1")
         guardia.assert_called_once()
         return result, S._publica(result)
+
+    def test_confirmar_saco_de_cemento_no_confirma_basura_independiente(self):
+        for objeto, evidencia, conserva in [
+                ("un saco de cemento", "Dos bolsas cerradas", False),
+                ("una bolsa de basura común", "Dos bolsas cerradas", True),
+                ("un saco de cemento", "Dos bolsas y cartón en el piso", True)]:
+            with self.subTest(objeto=objeto, evidencia=evidencia):
+                veri = {"confirmadas": [categoria("recoleccion", ["m1", "m3"]), categoria()],
+                        "verificadores": [
+                            {"modelo": "m1", "categorias": [{"key": P.KEY}]},
+                            {"modelo": "m2", "categorias": [{"key": P.KEY}]},
+                            {"modelo": "m3", "categorias": [
+                                {"key": "recoleccion", "evidencia": evidencia}]}],
+                        "repreguntas": [{"key": "recoleccion", "respuestas": [
+                            {"modelo": "m1", "veredicto": "presente", "que_es": objeto}]}]}
+                _, pub = self.procesar(alcance(), reco_local=.99, veri_extra=veri)
+                keys = {c["key"] for c in pub["problemas"]}
+                self.assertIn(P.KEY, keys)
+                self.assertEqual("recoleccion" in keys, conserva)
+
+    def test_carton_mixto_necesita_dos_lecturas_y_descarte_en_piso(self):
+        a = {"modelo": "m1", "veredicto": "identificado",
+             "que_es": "cajas de cartón y mueble desmontado",
+             "ubicacion": "en la vereda", "evidencia": "paneles de cartón junto al mueble"}
+        b = dict(a, modelo="m2")
+        self.assertTrue(V._carton_mixto_corroborado([a, b], False))
+        self.assertFalse(V._carton_mixto_corroborado([a, b], True))
+        self.assertFalse(V._carton_mixto_corroborado([a, a], False))
+        for cambio in [{"que_es": "un mueble de cartón"},
+                       {"que_es": "madera y muebles, no cartón"},
+                       {"ubicacion": "dentro del contenedor, frente a la vereda"},
+                       {"evidencia": "cartón envolviendo un mueble en uso"},
+                       {"veredicto": "no_identificable"}, {"ubicacion": ""}]:
+            self.assertFalse(V._carton_mixto_corroborado([a, dict(b, **cambio)], False), cambio)
+
+    def test_pila_mixta_exige_pesos_revisados_y_respeta_vetos(self):
+        casos = [
+            ({}, True),
+            ({"revision_material": None}, False),
+            ({"revision_material": "otra-revision"}, False),
+            ({"score_mixto": None}, False),
+            ({"score_mixto": .94}, False),
+            ({"reco_local": .64}, False),
+            ({"poda": True}, False),
+            ({"adjudicado": True}, False),
+        ]
+        for cambios, esperado in casos:
+            with self.subTest(cambios=cambios):
+                opciones = dict(fusion=True, reco_local=.99,
+                                revision_material="escombros-preservacion-20260906")
+                opciones.update(cambios)
+                _, pub = self.procesar(alcance(), **opciones)
+                keys = {c["key"] for c in pub["problemas"]}
+                self.assertEqual(P.KEY in keys, esperado)
+                self.assertIn("recoleccion", keys)
+
+    def test_pila_mixta_no_evade_exclusion_de_espacio_privado(self):
+        _, pub = self.procesar(alcance(estado="excluido"), fusion=True,
+                               reco_local=.99, revision_material="escombros-preservacion-20260906")
+        self.assertNotIn(P.KEY, {c["key"] for c in pub["problemas"]})
 
     def test_fusion_local_no_restaurara_privados(self):
         _, pub = self.procesar(alcance(estado="excluido"), fusion=True)

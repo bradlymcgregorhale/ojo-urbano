@@ -46,7 +46,7 @@ La API recibe la imagen y, si existe, el texto escrito por quien reporta en el c
 
 El modelo local procesa la foto en tu máquina. Combina embeddings de CLIP, DINOv2 y SigLIP2 con un clasificador multi-etiqueta de regresión logística, entrenado con miles de fotos callejeras etiquetadas a mano. También estima una gravedad de 1 a 5.
 
-Si configuraste OpenRouter, GPT-5 mini, Gemini Flash Lite y GPT-5.6 luna evalúan la misma imagen con una rúbrica por categoría. La confirmación visual necesita al menos dos fuentes. La aceptación contextual de escombros, explicada abajo, es una excepción. El modelo local participa como una fuente, aunque su voto no aparece en la respuesta pública.
+Si configuraste OpenRouter, GPT-5 mini, Gemini Flash Lite y GPT-5.6 luna evalúan la misma imagen con una rúbrica por categoría. La confirmación visual necesita al menos dos fuentes. La aceptación contextual de escombros, explicada abajo, es una excepción. El modelo local participa como una fuente y sus puntuaciones aparecen por separado en `modelo_local`.
 
 Una detección sostenida por una sola fuente vuelve en `posibles`. DeepSeek actúa como árbitro de texto cuando hay desacuerdos y deja el motivo en la respuesta. Por default no convierte una detección aislada en problema confirmado, porque las mediciones no mostraron una mejora.
 
@@ -61,6 +61,10 @@ Hay categorías que el modelo local no conoce, entre ellas `vehiculo_mal_estacio
 Su aporte más claro está en la identificación de contenedores. Detecta si hay uno y distingue entre húmedos de carga lateral, húmedos de carga bilateral y secos. En las fotos etiquetadas, la presencia y el tipo alcanzan F1 0,97.
 
 Los modelos de visión confunden seguido los contenedores laterales con los bilaterales. El modelo local ayuda a desempatar y, ante un desacuerdo fuerte, puede corregir incluso un voto unánime equivocado. También reduce falsos contenedores, como una bolsa verde interpretada como uno de secos junto a un contenedor real.
+
+Si dos verificadores ven un contenedor verde y uno solo lo clasifica como húmedos, el modelo local puede precisar la pregunta de seguimiento: se busca un contenedor de húmedos físicamente separado del verde. Esto requiere un puntaje local de secos de al menos 0,95, uno de húmedos de hasta 0,05 y una diferencia de al menos 0,95. Si algún verificador ya vio ambos tipos, se conserva la pregunta habitual. El puntaje no descarta el contenedor: los otros verificadores tienen que revisar la foto. Se usa la misma llamada de seguimiento, sin agregar otra pasada.
+
+La tarjeta muestra el tipo de contenedor detectado antes de la descripción. Si se confirman varios tipos, los enumera; las presencias sin confirmar quedan en el detalle.
 
 El estado del contenedor, por ejemplo si está lleno, roto o tiene la tapa trabada, queda principalmente a cargo de los modelos de visión. "Lleno/desbordado" es el punto con menor precisión.
 
@@ -146,7 +150,7 @@ Ejemplo de respuesta:
 
 - `hay_problema` indica que hay por lo menos un problema confirmado. Siempre cumple `hay_problema == bool(problemas)`. `gravedad_maxima` resume solamente esas entradas.
 - `hay_reclamo` indica que hay algo para tramitar, esté confirmado por la foto o no. Siempre cumple `hay_reclamo == bool(problemas or categorias_contexto)`. Puede ser `true` mientras `hay_problema` es `false` si el texto pide algo que la foto no confirma.
-- `problemas` contiene lo que se reporta, con gravedad de 1 a 5 y la cantidad de `fuentes`. La confirmación visual requiere al menos 2 fuentes; el retiro de escombros basado en testimonio puede tener una sola, identificada como contexto. El clasificador local cuenta para el consenso, pero su voto no se publica.
+- `problemas` contiene lo que se reporta, con gravedad de 1 a 5 y la cantidad de `fuentes`. La confirmación visual requiere al menos 2 fuentes; el retiro de escombros basado en testimonio puede tener una sola, identificada como contexto. El clasificador local cuenta para el consenso. Sus detecciones aisladas no se convierten en incidencias publicadas.
 - Una entrada de `problemas` puede traer `codigo`, correspondiente a una prestación del catálogo de la Ciudad, en lugar de `key`. Para aceptar ambos formatos usá `p.get("key") or p.get("codigo")`.
 - Cada problema incluye `confianza`: `alta` con 3 o más fuentes y `media` con 2. La aceptación de escombros basada en contenido informado por el vecino usa una fuente y confianza `baja`. El campo superior `predominante` contiene la clave del problema de mayor gravedad. Si hay empate, elige el que tenga más fuentes. Vale `null` cuando no hay uno.
 - `verificacion_escombros`, cuando aparece, informa `estado`, `motivo`, `basado_en_contexto` y `requiere_nueva_foto`. Su estado `apto` significa que la ubicación y presentación sirven para el retiro, no que el material esté confirmado. Para decidir qué reclamo se acepta, usar `problemas`. Una contradicción de contenido puede requerir aclaración aunque `requiere_nueva_foto` sea `false`.
@@ -161,6 +165,7 @@ Ejemplo de respuesta:
 - `en_duda` contiene categorías con una fuente que el árbitro no resolvió. Las detecciones aisladas normalmente aparecen en `posibles`. La excepción son las claves de presencia `contenedor_*`: no pasan por el árbitro ni por `posibles`. Con una fuente quedan en `en_duda`; con dos pasan a `elementos_detectados`.
 - `calidad_foto` informa `lado_menor`, `nitidez`, `luminancia` y `definicion`, que puede ser `buena` o `limitada`. No filtra resultados ni cambia decisiones. Sobre 200 fotos etiquetadas por personas, la calidad global no predijo los errores.
 - `modelos` contiene la salida de cada modelo de visión. El clasificador local no aparece ahí.
+- `modelo_local`, cuando se ejecutó, contiene `probabilidades` con clave, nombre y `score`, además de `umbral` y `revision_material`. El nombre histórico del campo no implica probabilidades calibradas: son puntuaciones del clasificador, separadas del veredicto. La interfaz las muestra en "Más detalle". No se publican el contexto ni los demás datos internos.
 
 ## Reglas de clasificación
 
@@ -187,11 +192,19 @@ El veto general corre cuando los verificadores confirman un contenedor pero el c
 
 El segundo veto revisa una clave concreta cuando un objeto junto a un contenedor real fue interpretado como otro contenedor. Se aplica a `contenedor_secos` y al bilateral, donde el clasificador local es un detector confiable. No se aplica al lateral porque es el tipo más común y el que el modelo local más omite. Cuando este veto se activa, la descripción pierde solamente las frases referidas al contenedor descartado.
 
+Con `revision_contenedores: "contenedores-preservacion-20260906"`, una discrepancia local fuerte puede abrir una revisión de color: secos al menos `0.99`, ambos húmedos como máximo `0.01` y tres verificadores independientes que sólo identificaron el mismo tipo húmedo. Para cambiarlo a secos, al menos dos revisores deben describir verde explícitamente, sin votos de ausencia ni errores. Después se comprueba que no haya otro contenedor húmedo físicamente separado. La descripción se ajusta al tipo confirmado y las lecturas originales siguen disponibles en el detalle.
+
 ### Fusión de escombros embolsados
 
 Esta fusión solo corre con la verificación activa. Tiene un nivel confiado, con puntaje interno mayor o igual a `0.95` y puntaje local de recolección menor o igual a `0.2`, y uno de rescate, con valores de `0.70` y `0.1`.
 
 En ambos niveles debe existir otra pila confirmada. Una poda confirmada bloquea la fusión. También la bloquea el rechazo dirigido de un verificador que indique que no son escombros, salvo en el nivel confiado cuando la corroboración viene solamente de `retiro_muebles`.
+
+Los pesos con `revision_material: "escombros-preservacion-20260906"` permiten además una escena mixta cuando escombros y recolección puntúan al menos `0.95`, un clasificador auxiliar de material también alcanza `0.95` y los verificadores ya confirmaron recolección. Se conservan ambos servicios; poda, rechazo dirigido y exclusiones de alcance siguen bloqueando la promoción. Los pesos anteriores no habilitan esta ruta.
+
+El ajuste parte de los pesos originales y conserva sus puntuaciones sobre fotos de referencia, salvo las correcciones revisadas. Cambia los dos cabezales plegados a escombros y los tres tipos de contenedor; conserva el scaler, la gravedad y los demás cabezales. El auxiliar usa todas las etiquetas de `photo_tags`: una etiqueta principal de recolección no excluye una segunda etiqueta de escombros.
+
+Una respuesta que confirma la existencia de un saco de cemento no demuestra basura común aparte. Tampoco se descarta el cartón por aparecer junto a un mueble: dos respuestas abiertas que identifican cartón separado en el piso pueden corroborar la recolección sin duplicar el voluminoso. La descripción final no puede negar escombros confirmados.
 
 Si la fusión se activa y `recoleccion` estaba confirmada con un puntaje local bajo, esa entrada pasa a `posibles`.
 

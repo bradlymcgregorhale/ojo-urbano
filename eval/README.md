@@ -1,5 +1,7 @@
 # Eval del árbitro y de la rúbrica (agosto 2026)
 
+Las pruebas de fotos con los prompts actuales de OpenRouter, etiquetas humanas y control de gasto están en [vision/README.md](vision/README.md). Incluyen una selección habitual, casos difíciles y reutilización de peticiones idénticas.
+
 Los números que aparecen en los comentarios de `verificador.py` y en los
 mensajes de commit salen de acá. Están versionados para que se puedan
 auditar y rehacer, no para que haya que creerlos.

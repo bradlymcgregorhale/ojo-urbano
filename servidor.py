@@ -272,12 +272,20 @@ def clasificar_local(img):
         # piso, no redondeo: 2.51 es gravedad 2, no 3
         gravedad = {"value": int(min(GRAV_MAX, max(1, math.floor(raw)))), "raw": round(raw, 2)}
 
+    mixtos = bundle.get("escombros_mixtos")
+    score_mixto = (float(mixtos.predict_proba(
+        clf.named_steps["standardscaler"].transform(feats))[0, 1])
+        if mixtos is not None else None)
+
     return {
         "predichas": fmt(predichas),
         "top5": fmt(ranking[:5]),
         "probabilidades": fmt(ranking),
         "gravedad": gravedad,
         "umbral": UMBRAL,
+        "revision_material": bundle.get("revision_material"),
+        "revision_contenedores": bundle.get("revision_contenedores"),
+        "escombros_mixtos": round(score_mixto, 4) if score_mixto is not None else None,
     }
 
 
@@ -450,6 +458,10 @@ def _cacheable(respuesta):
         # Ídem la del daño del contenedor.
         if (veri.get("segunda_mirada_dano") or {}).get("fallo"):
             return False
+        if (veri.get("segunda_mirada_relacion") or {}).get("fallo"):
+            return False
+        if (veri.get("segunda_mirada_secos") or {}).get("fallo"):
+            return False
         # Ídem la del volcado.
         if (veri.get("segunda_mirada_volcado") or {}).get("fallo"):
             return False
@@ -606,13 +618,9 @@ def procesar(datos, contexto, verificar):
     #     se agrega nada, pero la demotion de abajo aplica igual. Antes este
     #     caso se salteaba entero y la misma pila salía DOBLE (recoleccion +
     #     escombros), con una descripción que podía seguir negando escombros.
-    # El bloque entero corre SOLO con la firma "escombros alto Y recoleccion
-    # baja" del modelo local: ahí la entrada recoleccion baja a posibles con
-    # su motivo. Si el local puntúa alto en las dos (pila "mixta" según él),
-    # NO decide nada: las categorías quedan como las dejaron los
-    # verificadores (las dos, si ellos confirmaron las dos). Sin recoleccion
-    # confirmada tampoco se dispara: el voto local solo sigue sin publicarse
-    # (contrato v4).
+    # Con escombros alto y recolección baja, la pila se reclasifica. Los pesos
+    # revisados permiten además el caso mixto, conservando recolección. Siempre
+    # hace falta una pila corroborada por los verificadores y cumplir los vetos.
     if FUSION_ESCOMBROS and activar:
         prob_local = {p["key"]: p["score"]
                       for p in local.get("probabilidades") or []}
@@ -637,7 +645,8 @@ def procesar(datos, contexto, verificar):
         # de la ronda 1 nocturna) dan recoleccion 0.000-0.164. Un umbral de
         # escombros no los separa (los FP puntúan MÁS que los TP); la
         # ambivalencia del propio modelo local sí, 5/5 en los casos
-        # revisados. Si el local dice "las dos cosas", no decide nada.
+        # revisados con los pesos anteriores. La ruta mixta de abajo exige los
+        # nuevos cabezales, que también se validaron contra esos negativos.
         # Si una pasada dirigida ya adjudicó los escombros (por ejemplo la
         # validación cruzada: los otros modelos miraron ESE objeto y dijeron
         # que no está), la fusión NO los vuelve a inyectar por la ventana
@@ -667,7 +676,14 @@ def procesar(datos, contexto, verificar):
         # tipo bolsas-blandas/comida donde el "no" dirigido sí vale). La poda
         # veta AMBOS niveles siempre (M020).
         _veto_dirigido = _esc_adjudicado and not (_esc_confiado and rec is None)
-        _dispara_fusion = ((_esc_confiado or _esc_rescate)
+        # Los cabezales revisados separan las bolsas domésticas de los restos
+        # de obra también cuando hay cartón independiente. Los pesos anteriores
+        # no habilitan esta ruta: sus falsos positivos motivaron el veto mixto.
+        _esc_mixto = (local.get("revision_material") == "escombros-preservacion-20260906"
+                      and (local.get("escombros_mixtos") or 0) >= .95
+                      and esc_local >= FUSION_ESCOMBROS_UMBRAL
+                      and _reco_local >= .95 and rec is not None)
+        _dispara_fusion = ((_esc_confiado or _esc_rescate or _esc_mixto)
                            and pila is not None and not _poda_confirmada
                            and not _veto_dirigido)
         if _dispara_fusion:
@@ -747,6 +763,22 @@ def procesar(datos, contexto, verificar):
                                    for c in problemas):
         vlm_rec = [f for f in (rec_dup.get("fuentes") or [])
                    if f != "modelo_local"]
+        # Confirmar que existe un saco no confirma basura domiciliaria. Si el
+        # mismo revisor lo clasificó como obra y la repregunta vuelve a nombrar
+        # cemento/escombros, ese voto no demuestra una segunda pila común.
+        for v in veri.get("verificadores") or []:
+            keys_v = {c.get("key") for c in v.get("categorias") or []}
+            if "retiro_escombros" not in keys_v or "recoleccion" in keys_v:
+                continue
+            for q in veri.get("repreguntas") or []:
+                if q.get("key") != "recoleccion":
+                    continue
+                for respuesta in q.get("respuestas") or []:
+                    material = verificador._sin_negado(respuesta.get("que_es") or "")
+                    if (respuesta.get("modelo") == v.get("modelo")
+                            and respuesta.get("veredicto") == "presente"
+                            and re.search(r"\bescombro\w*\b|\bcemento\b|material de obra", material)):
+                        vlm_rec = [f for f in vlm_rec if f != v.get("modelo")]
         evid_rec = ""
         for v in (veri.get("verificadores") or []):
             if vlm_rec and v.get("modelo") == vlm_rec[0]:
@@ -866,11 +898,7 @@ def _sanear_motivo(texto):
 
 
 def _publica(r):
-    """Contrato v4: el veredicto, lo que dijo cada modelo de visión, y lo que
-    podría ser un reporte. El modelo local no aparece: sigue corriendo y
-    contando como fuente del consenso, pero su voto no se publica (README,
-    "Cambios de contrato").
-    """
+    """Veredicto y diagnóstico local separado de las incidencias confirmadas."""
     veri = (r.get("detalle") or {}).get("verificacion") or {}
     pub = {k: v for k, v in r.items() if k != "detalle"}
 
@@ -917,6 +945,17 @@ def _publica(r):
     # La descripción consolidada la redacta un LLM: mismo backstop que los
     # motivos para que no cuente el mecanismo interno.
     pub["descripcion"] = _sanear_motivo(pub.get("descripcion"))
+    keys_publicas = {c.get("key") for c in pub["problemas"]}
+    if pub.get("descripcion"):
+        pub["descripcion"] = " ".join(
+            f for f in re.split(r"(?<=[.!?])\s+", pub["descripcion"])
+            if not (verificador._trabajos_contenedor_descritos(f) - keys_publicas))
+    if any(c.get("key") == "retiro_escombros" for c in pub["problemas"]):
+        frases = re.split(r"(?<=[.!?])\s+", pub.get("descripcion") or "")
+        limpias = [f for f in frases if not verificador._niega_escombros(f)]
+        if len(limpias) != len(frases):
+            pub["descripcion"] = " ".join(limpias + [
+                "Se detectan escombros o restos de obra para retirar."]).strip()
 
     # Confianza por problema, derivada del CONTEO de fuentes (determinística,
     # nada de porcentajes auto-reportados por los modelos): 3+ fuentes alta,
@@ -962,6 +1001,18 @@ def _publica(r):
                         for c in (v.get("categorias") or [])],
          "descripcion": v.get("descripcion")}
         for v in (veri.get("verificadores") or [])]
+    local = (r.get("detalle") or {}).get("modelo_local") or {}
+    if local.get("probabilidades"):
+        pub["modelo_local"] = {
+            "probabilidades": [{"key": p.get("key"), "nombre": p.get("nombre"),
+                                 "score": p.get("score")}
+                                for p in local["probabilidades"]],
+            "umbral": local.get("umbral"),
+            "revision_material": local.get("revision_material"),
+        }
+        for campo in ("revision_contenedores", "escombros_mixtos"):
+            if local.get(campo) is not None:
+                pub["modelo_local"][campo] = local[campo]
     return pub
 
 
@@ -1536,6 +1587,7 @@ PAGINA = r"""<!DOCTYPE html>
   .tarres{display:flex;flex-direction:column;gap:8px}
   .tarconcl{font-size:13.5px;font-weight:600}
   .tarcosto{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .tarcontenedor{font-size:13px;margin-top:5px}
   .minicats{display:flex;flex-wrap:wrap;gap:6px}
   .minicat{border:1px solid var(--line2);border-radius:6px;background:var(--soft);padding:4px 9px;font-size:12px}
   .minicat b{display:block;font-size:12.5px}
@@ -2076,6 +2128,16 @@ function renderResultado(d){
   let h=`<div class="tarconcl">${esc(concl+aviso)}</div>`;
   if(typeof d.costo_api==='number'&&d.costo_api>0)
     h+=`<div class="tarcosto">Costo de procesamiento (API): US$${d.costo_api.toFixed(4)}</div>`;
+  const tiposContenedor={
+    contenedor_secos:'reciclables / secos (verde)',
+    contenedor_humedos_lateral:'húmedos, carga lateral',
+    contenedor_humedos_bilateral:'húmedos, carga bilateral'
+  };
+  const contenedores=[...new Set((d.elementos_detectados||[])
+    .map(e=>e.key).filter(k=>Object.hasOwn(tiposContenedor,k)))];
+  if(contenedores.length)h+=`<div class="tarcontenedor">${contenedores.length===1
+    ?'Contenedor':'Tipos de contenedor'}: ${esc(contenedores
+      .map(k=>tiposContenedor[k]).join('; '))}</div>`;
   if(probs.length)h+='<div class="minicats">'+probs.map(c=>
     `<div class="minicat"><b>${esc(c.nombre)}</b><span>${c.gravedad?c.gravedad+'/5':''}`+
     `${c.fuentes?' · '+c.fuentes+(c.fuentes===1?' fuente':' fuentes'):''}${c.patente?' · patente '+esc(c.patente):''}</span></div>`).join('')+'</div>';
@@ -2097,6 +2159,10 @@ function renderResultado(d){
       ?`<div class="voto"><b>${esc(x.modelo)}</b>: ${(x.categorias||[]).length?esc(x.categorias.map(c=>c.key.replace(/_/g,' ')).join(', ')):'sin hallazgos'}${x.descripcion?' · '+esc(x.descripcion):''}</div>`
       :`<div class="voto"><b>${esc(x.modelo)}</b>: no respondió</div>`).join('');
   if(!d.verificacion_activa)det+=`<div class="voto">Sin verificación cruzada (${esc(d.verificacion_motivo||'desactivada')}): no hay resultado confiable.</div>`;
+  if((d.modelo_local?.probabilidades||[]).length){
+    det+='<h4 class="mini">Modelo local</h4><div class="voto">Puntuaciones del clasificador, no porcentajes de certeza ni incidencias confirmadas.</div>';
+    det+=(d.modelo_local.probabilidades||[]).map(p=>`<div class="voto">${esc(p.nombre||p.key)}: ${esc(Number(p.score).toFixed(4))}</div>`).join('');
+  }
   det+='<h4 class="mini">JSON</h4><button type="button" class="copyjson" data-copiar>Copiar JSON</button>'+
        '<pre class="json">'+esc(JSON.stringify(d,null,2))+'</pre>';
   h+=`<details class="tardet"><summary>Más detalle</summary><div class="detbody">${det}</div></details>`;

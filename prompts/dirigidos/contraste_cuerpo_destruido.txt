@@ -1,0 +1,3 @@
+
+Antes de juzgar el nivel, comprobá que el cuerpo conserva las paredes que delimitan su capacidad. Si está destruido o derretido y los residuos quedan expuestos por las paredes faltantes, eso es daño, no prueba de llenado ni desborde: no_se_ve_lleno. Las marcas de quemadura en un cuerpo intacto no impiden reconocer un desborde real.
+

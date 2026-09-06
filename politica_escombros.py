@@ -85,6 +85,44 @@ def requiere_revision(salida, contexto):
             or bool(re.search(r"escombr|cascot|restos?\s+de\s+obra", contexto or "", re.I)))
 
 
+def _recoleccion_previa(salida):
+    """Recupera el consenso que una reclasificación local desplazó."""
+    problemas = salida.get('problemas') or []
+    candidatos = [c for c in problemas if c.get('key') == 'recoleccion']
+    if (not candidatos and any(es_escombros(c) and c.get('reclasificado_por') == 'modelo_local'
+                               for c in problemas)
+            and any(c.get('key') == 'recoleccion' for c in salida.get('posibles') or [])):
+        veri = (salida.get('detalle') or {}).get('verificacion') or {}
+        candidatos = [c for c in veri.get('confirmadas') or [] if c.get('key') == 'recoleccion']
+    return next((c for c in candidatos if len(
+        set(c.get('fuentes') or []) - {'modelo_local', 'contexto_vecinal', 'revision_alcance'}) >= 2), None)
+
+
+def _basura_publica_visible(salida, revision):
+    """Una negativa sobre escombros no borra cartones públicos corroborados."""
+    if (revision.get('fallo') or revision.get('afirmacion_explicita')
+            or revision.get('estado') == 'excluido'
+            or revision.get('material_contradictorio') is not True):
+        return False
+    revisiones = revision.get('revisiones') or []
+    if len({r.get('modelo') for r in revisiones if r.get('modelo')}) < 2:
+        return False
+    for r in revisiones:
+        if (r.get('ubicacion') != 'publica'
+                or r.get('afirmacion_vecinal') != 'no_menciona'
+                or r.get('presentacion') not in {'bolsas_chicas_o_suelto', 'sin_pila'}
+                or r.get('hay_bolsas_opacas_o_parciales') == 'si'
+                or r.get('material') not in {'incompatible_visible', 'indeterminado'}):
+            return False
+        # Un material indeterminado solo es neutro si el revisor descarta
+        # una pila candidata. No extrapolar el cartón a otras bolsas cerradas.
+        if r.get('material') == 'indeterminado' and r.get('presentacion') != 'sin_pila':
+            return False
+        if r.get('material') == 'incompatible_visible' and r.get('hay_bolsas_opacas_o_parciales') != 'no':
+            return False
+    return _recoleccion_previa(salida) is not None
+
+
 def aplicar(salida, revision, categorias):
     """Aplica el veto después de fusión y ruteo textual, sin crear votos visuales."""
     r = copy.deepcopy(salida)
@@ -109,6 +147,10 @@ def aplicar(salida, revision, categorias):
     if contradiccion and apto:
         motivo = "El contenido visible contradice el retiro de escombros. Hace falta aclarar qué contienen las bolsas."
     retirados = []
+    conservar_basura = _basura_publica_visible(salida, revision)
+    if retirar and conservar_basura and not any(c.get('key') == 'recoleccion' for c in r['problemas']):
+        r['problemas'].append(copy.deepcopy(_recoleccion_previa(salida)))
+        r['posibles'] = [c for c in r['posibles'] if c.get('key') != 'recoleccion']
     if retirar:
         retirados = existentes
         r["problemas"] = [c for c in r["problemas"] if not es_escombros(c)]
@@ -144,7 +186,8 @@ def aplicar(salida, revision, categorias):
     # las que el vecino identificó como escombros. Conservar otra basura
     # pública únicamente cuando la revisión identifica residuos aparte.
     if contextual or (retirar and candidato) or revision.get("estado") == "excluido":
-        quitar = {"recoleccion"} if revision.get("basura_independiente") is not True else set()
+        quitar = {"recoleccion"} if (revision.get("basura_independiente") is not True
+                                     and not conservar_basura) else set()
         quitar.update({"retiro_muebles", "retiro_poda"} - set(
             revision.get("otros_retiros_independientes") or []))
         retirados += [c for c in r["problemas"] if c.get("key") in quitar]
@@ -161,7 +204,9 @@ def aplicar(salida, revision, categorias):
         # No conservar una descripción consolidada que niegue el material
         # contextual o afirme un retiro que acaba de quedar excluido.
         otros = [c["nombre"] for c in r["problemas"] if not es_escombros(c)]
-        nota = (DESCRIPCION_CONTEXTUAL if uso_contexto else
+        nota = ("Se observan residuos comunes en la vía pública; no se confirmaron escombros."
+                if conservar_basura else
+                DESCRIPCION_CONTEXTUAL if uso_contexto else
                 "Se observan escombros en bolsas chicas o sueltos en la vía pública."
                 if contextual else motivo)
         if contextual or retirados or any(es_escombros(c) for c in r["posibles"]):

@@ -609,6 +609,14 @@ check("sí se cachea si el veto por clave corrió entero",
           "activa": True, "verificadores": [{"ok": True}, {"ok": True}],
           "segunda_mirada_presencia_clave": {
               "contenedor_secos": {"fallo": False, "retiro_votos": True}}}}}))
+check("no se cachea una revisión de color incompleta",
+      not S._cacheable({"detalle": {"verificacion": {
+          "activa": True, "verificadores": [{"ok": True}],
+          "segunda_mirada_secos": {"fallo": True, "promovio": False}}}}))
+check("sí se cachea una revisión de color completa",
+      S._cacheable({"detalle": {"verificacion": {
+          "activa": True, "verificadores": [{"ok": True}],
+          "segunda_mirada_secos": {"fallo": False, "promovio": True}}}}))
 check("la señal de calidad nunca tumba el análisis",
       S._calidad_segura(object()) is None)
 check("no se cachea si el chequeo de los postes falló",
@@ -965,8 +973,9 @@ for _vuelta in ("fresca", "cacheada"):
     check(f"({_vuelta}) contrato v4 con las claves esperadas",
           _c == 200 and _r.get("version") == "4" and all(k in _r for k in _LEAN),
           f"HTTP {_c} claves={sorted(_r)[:8]}")
-    _coladas = set(_claves_recursivas(_r)) & _PROHIBIDAS
-    check(f"  ({_vuelta}) ninguna clave interna aparece, a ninguna profundidad",
+    _coladas = set(_claves_recursivas({k: v for k, v in _r.items()
+                                     if k != "modelo_local"})) & _PROHIBIDAS
+    check(f"  ({_vuelta}) los diagnósticos locales no se mezclan con el veredicto",
           not _coladas, str(_coladas))
     check(f"  ({_vuelta}) hay_problema == bool(problemas), siempre",
           _r["hay_problema"] == bool(_r["problemas"]))
@@ -1042,6 +1051,17 @@ check("en_duda filtra lo solo-local pero conserva una PRESENCIA disputada",
       str(_pub["en_duda"]))
 check("la descripción también pasa por el saneador (variante 'clasificador local')",
       _pub["descripcion"] == servidor._MOTIVO_GENERICO, _pub["descripcion"])
+
+_local_diag = dict(_interno, detalle=dict(_interno["detalle"], modelo_local={
+    "probabilidades": [{"key": "retiro_escombros", "nombre": "Escombros", "score": .7991,
+                        "interno": "no publicar"}],
+    "umbral": .5, "revision_material": "escombros-20260906", "contexto": "no publicar"}))
+_diag = servidor._publica(_local_diag)
+check("el diagnóstico local publica puntuaciones sin convertirlas en incidencias",
+      _diag["modelo_local"]["probabilidades"] == [
+          {"key": "retiro_escombros", "nombre": "Escombros", "score": .7991}]
+      and _diag["problemas"] == _pub["problemas"]
+      and set(_diag["modelo_local"]) == {"probabilidades", "umbral", "revision_material"})
 
 # El saneador, variante por variante: cada frase atada al mecanismo se
 # reemplaza entera; el lenguaje urbano legítimo pasa intacto.
@@ -3635,7 +3655,7 @@ check("mayoría de 'no_se_ve_lleno' tumba el desborde",
       str([c["key"] for c in _r["confirmadas"]]))
 
 # vaciado co-confirmado cae con el desborde vetado (misma base de evidencia)
-def _correr_desb_vac(desb_resp):
+def _correr_desb_vac(desb_resp, solo_tapa=False):
     global _desborde_resp
     _desborde_resp = desb_resp
     _VAC = {"key": "vaciado_contenedor", "gravedad": 2,
@@ -3648,6 +3668,8 @@ def _correr_desb_vac(desb_resp):
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_DESBORDE:
             return json.dumps(dict(desb_resp.get(
                 modelo, {"veredicto": "indeterminado"}), evidencia="lo que vi"))
+        if solo_tapa:
+            return _resp_b([dict(_VAC, evidencia='Tapa abierta con residuos visibles'), dict(_CONT)], 'Tapa abierta.')
         return _resp_b([dict(_DESB), dict(_VAC), dict(_CONT)], "Lleno.")
     V._llamar = _llamar_dv
     return V.verificar(_Img(), CATS, _LOCAL_B, "")
@@ -3656,6 +3678,20 @@ _r = _correr_desb_vac({"b/uno": {"veredicto": "no_se_ve_lleno"},
 check("  y el vaciado co-confirmado cae con él",
       "vaciado_contenedor" not in {c["key"] for c in _r["confirmadas"]},
       str([c["key"] for c in _r["confirmadas"]]))
+_r = _correr_desb_vac({'b/uno': {'veredicto': 'no_se_ve_lleno'},
+                       'b/dos': {'veredicto': 'no_se_ve_lleno'}}, solo_tapa=True)
+check('  tapa abierta sin desborde también audita vaciado',
+      'vaciado_contenedor' not in {c['key'] for c in _r['confirmadas']}
+      and _r['segunda_mirada_desborde']['vaciado_por_tapa'])
+check('  el audit de vaciado no inventa desborde',
+      'contenedor_desbordado' not in {c['key'] for c in _r['posibles']})
+_r = _correr_desb_vac({'b/uno': {'veredicto': 'rebalsa_visible'},
+                       'b/dos': {'veredicto': 'rebalsa_visible'}}, solo_tapa=True)
+check('  llenado corroborado conserva vaciado',
+      'vaciado_contenedor' in {c['key'] for c in _r['confirmadas']})
+_r = _correr_desb_vac({'b/uno': {'veredicto': 'no_se_ve_lleno'}}, solo_tapa=True)
+check('  una sola negativa no veta vaciado',
+      'vaciado_contenedor' in {c['key'] for c in _r['confirmadas']})
 _r = _correr_desb({"b/uno": {"veredicto": "no_se_ve_lleno"},
                    "b/dos": {"veredicto": "rebalsa_visible"}})
 check("  el empate mantiene lo confirmado (el conservador no gana solo)",
@@ -4624,7 +4660,13 @@ check("el volcado exige evidencia inequívoca y postes horizontales",
 
 import unittest
 import test_politica_escombros
+import test_contenedores
+from eval.vision import test_runner as test_vision_runner
+from eval.vision import test_pipeline as test_vision_pipeline
 _suite_alcance = unittest.defaultTestLoader.loadTestsFromModule(test_politica_escombros)
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_contenedores))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_vision_runner))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_vision_pipeline))
 _resultado_alcance = unittest.TextTestRunner(verbosity=2).run(_suite_alcance)
 _fallas_alcance = len(_resultado_alcance.errors) + len(_resultado_alcance.failures)
 _ok += _resultado_alcance.testsRun - _fallas_alcance
