@@ -88,6 +88,13 @@ class ContenedoresTest(unittest.TestCase):
             ('m3', 'Contenedor negro o verde'), ('m4', 'No es verde'),
             ('m5', 'Contenedor gris oliva')]), [('m1', 'Contenedor verde oscuro')])
 
+    def test_omision_de_tipo_no_equivale_a_ausencia_del_contenedor(self):
+        local, votes = self.oscuro()
+        votes[0]['categorias'] = [c for c in votes[0]['categorias'] if c['key'] != LATERAL]
+        self.assertEqual(V._secos_local_discrepante(local, votes), LATERAL)
+        votes[1]['categorias'] = [c for c in votes[1]['categorias'] if c['key'] != LATERAL]
+        self.assertIsNone(V._secos_local_discrepante(local, votes))
+
     def test_segunda_mirada_oscura_necesita_color_y_ausencia_de_otro_contenedor(self):
         green = [('m1', 'Contenedor verde'), ('m2', 'Cuerpo pintado de verde')]
         absent = [('m1', 'No hay otro contenedor'), ('m2', 'Solo hay un contenedor')]

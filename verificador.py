@@ -1629,14 +1629,17 @@ def _secos_local_discrepante(local, veredictos):
             or any(not isinstance(scores.get(k), (int, float))
                    or not 0 <= scores[k] <= .01 for k in humedos)):
         return None
-    vistos, modelos = set(), set()
+    vistos, modelos, testigos_tipo = set(), set(), set()
     for v in veredictos:
         tipos = {c['key'] for c in v.get('categorias') or []} & (humedos | {'contenedor_secos'})
-        if not v.get('ok') or len(tipos) != 1 or not tipos <= humedos:
+        if not v.get('ok') or len(tipos) > 1 or not tipos <= humedos:
             return None
         vistos.update(tipos)
         modelos.add(v.get('modelo'))
-    return next(iter(vistos)) if len(modelos - {None}) >= 3 and len(vistos) == 1 else None
+        if tipos:
+            testigos_tipo.add(v.get('modelo'))
+    return (next(iter(vistos)) if len(modelos - {None}) >= 3
+            and len(testigos_tipo - {None}) >= 2 and len(vistos) == 1 else None)
 
 
 def _verdes_explicitos(presentes):
