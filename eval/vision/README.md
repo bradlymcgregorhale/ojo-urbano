@@ -57,12 +57,16 @@ La colección reúne 834 combinaciones de foto y contexto, con 828 fotos: 785 re
 
 Para entrenar sólo los tres tipos de contenedor, `local_training.refine_container_heads()` parte del paquete actual y conserva sus puntuaciones sobre fotos de referencia. Recibe las características de referencia, las características revisadas y un diccionario por foto con los tres tipos y valores booleanos explícitos. Devuelve un candidato separado y los datos del ajuste. No reemplaza `model.joblib`. Mantiene el scaler, los otros 31 cabezales, los modelos auxiliares y las correcciones anteriores como punto de partida. La conservación de puntuaciones limita los cambios, pero no garantiza que las decisiones de contenedores permanezcan iguales.
 
+Para probar fotos completas junto con recortes, uso `view_training.view_features()` con embeddings y puntuaciones del modelo de origen congelados. `fit_view_classifier()` aprende una categoría por vez desde la etiqueta de la foto, sin asignar automáticamente esa etiqueta al primer recorte. Puedo agregar etiquetas de recortes comprobados y dejar los demás como desconocidos (`NaN`). `predict_view_classifiers()` combina las vistas válidas y devuelve las probabilidades por foto. El candidato es separado: este módulo no modifica los pesos ni la API.
+
+En cada partición excluyo todas las vistas y etiquetas de recortes de las fotos que se van a evaluar. Agrupo escenas relacionadas cuando tengo evidencia, pero un hash distinto o la falta de coordenadas no prueban que sean escenas independientes. Los ejemplos revisados durante el desarrollo no sustituyen una nueva validación ciega.
+
 Antes de ajustar, excluir fotos de validación y duplicados de la referencia y del entrenamiento. Seleccionar configuraciones con las fotos de desarrollo; usar las fotos protegidas para detectar regresiones. Medir el conjunto completo de tipos por foto: omitir un contenedor o agregar uno inexistente cuenta como error. El objetivo es al menos 90% en fotos independientes, además de conservar los casos protegidos. Una exactitud por etiqueta, un resultado sobre fotos de entrenamiento o una selección repetida sobre el mismo benchmark no demuestra ese objetivo.
 
 Las pruebas del ajuste y de la suite se ejecutan sin llamadas pagas:
 
 ```sh
-.venv/bin/python -m unittest eval.vision.test_runner
+.venv/bin/python -m unittest eval.vision.test_runner eval.vision.test_view_training
 ```
 
 Los experimentos de contenedores, sus características reutilizables y sus resultados quedan en `private/container-training/`. Conservar los pesos de origen, las etiquetas, los hashes de las fotos y la configuración junto a cada candidato para poder reproducirlo. Un candidato con regresiones queda fuera de producción aunque mejore el promedio.
