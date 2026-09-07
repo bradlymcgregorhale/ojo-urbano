@@ -55,6 +55,18 @@ La colección reúne 834 combinaciones de foto y contexto, con 828 fotos: 785 re
 
 ## Qué ejecutar cuando cambia algo
 
+Para entrenar sólo los tres tipos de contenedor, `local_training.refine_container_heads()` parte del paquete actual y conserva sus puntuaciones sobre fotos de referencia. Recibe las características de referencia, las características revisadas y un diccionario por foto con los tres tipos y valores booleanos explícitos. Devuelve un candidato separado y los datos del ajuste. No reemplaza `model.joblib`. Mantiene el scaler, los otros 31 cabezales, los modelos auxiliares y las correcciones anteriores como punto de partida. La conservación de puntuaciones limita los cambios, pero no garantiza que las decisiones de contenedores permanezcan iguales.
+
+Antes de ajustar, excluir fotos de validación y duplicados de la referencia y del entrenamiento. Seleccionar configuraciones con las fotos de desarrollo; usar las fotos protegidas para detectar regresiones. Medir el conjunto completo de tipos por foto: omitir un contenedor o agregar uno inexistente cuenta como error. El objetivo es al menos 90% en fotos independientes, además de conservar los casos protegidos. Una exactitud por etiqueta, un resultado sobre fotos de entrenamiento o una selección repetida sobre el mismo benchmark no demuestra ese objetivo.
+
+Las pruebas del ajuste y de la suite se ejecutan sin llamadas pagas:
+
+```sh
+.venv/bin/python -m unittest eval.vision.test_runner
+```
+
+Los experimentos de contenedores, sus características reutilizables y sus resultados quedan en `private/container-training/`. Conservar los pesos de origen, las etiquetas, los hashes de las fotos y la configuración junto a cada candidato para poder reproducirlo. Un candidato con regresiones queda fuera de producción aunque mejore el promedio.
+
 | Cambio | Comprobación |
 | --- | --- |
 | Lógica de consenso, filtros o presentación | `pruebas.py`, sin API. Los tests de esta carpeta comprueban también caché, presupuesto y puntuación sin API. |

@@ -51,6 +51,40 @@ class RunnerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             refine_head(head, x, np.array([2., 0., 0.]), np.ones(3))
 
+    def test_container_training_keeps_existing_corrections_and_other_heads(self):
+        import pickle
+        import numpy as np
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.multiclass import OneVsRestClassifier
+        from sklearn.pipeline import make_pipeline
+        from sklearn.preprocessing import StandardScaler
+        from eval.vision.local_training import CONTAINER_TYPES, refine_container_heads
+        x = np.array([[-2., -2.], [-1., 1.], [1., -1.], [2., 2.]])
+        y = np.array([[0, 0, 1, 0], [0, 1, 0, 1], [1, 0, 0, 1], [1, 1, 1, 0]])
+        pipeline = make_pipeline(StandardScaler(), OneVsRestClassifier(
+            LogisticRegression(solver='liblinear', random_state=1))).fit(x, y)
+        bundle = {'clf': pipeline, 'classes': list(CONTAINER_TYPES) + ['recoleccion'],
+                  'revision_contenedores': 'existing-correction', 'sev_model': {'kept': True}}
+        before = pickle.dumps(bundle)
+        labels = [dict(zip(CONTAINER_TYPES, [True, False, False]))]
+        candidate, fits = refine_container_heads(bundle, x, x[3:], labels, review_weight=100)
+        self.assertEqual(pickle.dumps(bundle), before)
+        self.assertEqual(set(fits), set(CONTAINER_TYPES))
+        self.assertEqual(candidate['revision_contenedores'], 'existing-correction')
+        self.assertEqual(candidate['sev_model'], bundle['sev_model'])
+        np.testing.assert_array_equal(pipeline.predict_proba(x)[:, 3],
+                                      candidate['clf'].predict_proba(x)[:, 3])
+        self.assertLess(candidate['clf'].predict_proba(x[3:])[0, 1], .1)
+        for invalid in [{}, dict(labels[0], contenedor_secos=None),
+                        dict(labels[0], contenedor_secos=1)]:
+            with self.assertRaises(ValueError):
+                refine_container_heads(bundle, x, x[3:], [invalid])
+        for invalid_x in [np.empty((0, 2)), np.ones((1, 3)), np.array([[np.nan, 1.]])]:
+            with self.assertRaises(ValueError):
+                refine_container_heads(bundle, x, invalid_x, labels)
+        with self.assertRaises(ValueError):
+            refine_container_heads(bundle, x, x[3:], labels, review_weight=0)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)

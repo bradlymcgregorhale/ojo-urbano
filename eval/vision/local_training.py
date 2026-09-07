@@ -8,6 +8,57 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.special import expit
 
+CONTAINER_TYPES = (
+    'contenedor_secos',
+    'contenedor_humedos_lateral',
+    'contenedor_humedos_bilateral',
+)
+
+
+def refine_container_heads(bundle, reference_features, reviewed_features,
+                           reviewed_labels, review_weight=1.0):
+    """Learn explicit container labels while retaining the current model's scores.
+
+    Start from the current bundle, including earlier corrections, rather than
+    rebuilding its heads from historical labels. Reference photos must exclude
+    validation photos. Callers must check photo/scene overlap before fitting and
+    evaluate the returned candidate separately; this function never publishes it.
+    """
+    pipeline = bundle['clf']
+    scaler = pipeline.named_steps['standardscaler']
+    heads = pipeline.named_steps['onevsrestclassifier'].estimators_
+    classes = list(bundle['classes'])
+    indices = [classes.index(key) for key in CONTAINER_TYPES]
+    references = np.asarray(reference_features)
+    reviewed = np.asarray(reviewed_features)
+    width = heads[indices[0]].coef_.shape[1]
+    for matrix in (references, reviewed):
+        if (matrix.ndim != 2 or not len(matrix) or matrix.shape[1] != width
+                or not np.issubdtype(matrix.dtype, np.number)
+                or not np.isfinite(matrix).all()):
+            raise ValueError('Expected nonempty, finite image feature matrices.')
+    labels = list(reviewed_labels)
+    if (len(labels) != len(reviewed)
+            or any(not isinstance(row, dict) or set(row) != set(CONTAINER_TYPES)
+                   or any(type(value) is not bool for value in row.values())
+                   for row in labels)):
+        raise ValueError('Every photo needs explicit booleans for all three container types.')
+    if not np.isfinite(review_weight) or review_weight <= 0:
+        raise ValueError('Review weight must be finite and positive.')
+    reference_x = scaler.transform(references).astype(np.float64)
+    reviewed_x = scaler.transform(reviewed).astype(np.float64)
+    features = np.vstack([reference_x, reviewed_x])
+    weights = np.r_[np.ones(len(references)), np.full(len(reviewed), review_weight)]
+    original_scores = pipeline.predict_proba(references)
+    candidate = copy.deepcopy(bundle)
+    candidate_heads = candidate['clf'].named_steps['onevsrestclassifier'].estimators_
+    fits = {}
+    for key, index in zip(CONTAINER_TYPES, indices):
+        targets = np.r_[original_scores[:, index], [row[key] for row in labels]]
+        candidate_heads[index], fits[key] = refine_head(
+            heads[index], features, targets, weights)
+    return candidate, fits
+
 
 def read_multilabel_tags(database):
     """Use every assigned tag, never the single primary label as an absence."""
