@@ -51,6 +51,7 @@ from sentence_transformers import SentenceTransformer
 
 import verificador
 import politica_escombros
+import especialista_contenedores
 
 AQUI = Path(__file__).resolve().parent
 MODELO = AQUI / "model.joblib"
@@ -74,6 +75,7 @@ GRAV_MAX = 5
 # se devuelve nunca; ?verificar=0 responde degradado en vez de publicar el
 # modelo local. Ver README, "Cambios de contrato".
 VERSION_API = "4"
+CONTENEDORES_ESPECIALISTA = os.environ.get("CONTENEDORES_ESPECIALISTA", "0").lower() in ("1", "true", "si")
 
 # Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y varias
 # llamadas pagas a OpenRouter (una por verificador, tres por defecto, más el
@@ -440,6 +442,8 @@ def _cacheable(respuesta):
     incluso al día siguiente con cuota nueva.
     """
     veri = respuesta.get("detalle", {}).get("verificacion", {})
+    if (veri.get("inventario_contenedores") or {}).get("fallo"):
+        return False
     if veri.get("activa"):
         if any(not v.get("ok") for v in veri.get("verificadores") or []):
             return False
@@ -547,6 +551,8 @@ def procesar(datos, contexto, verificar):
 
     if activar and verificador.disponible():
         veri = verificador.verificar(img, CATEGORIAS, local, contexto)
+        if CONTENEDORES_ESPECIALISTA:
+            veri = dict(veri, inventario_contenedores=verificador.verificar_contenedores(datos))
         categorias = veri["confirmadas"]
         en_duda = veri["en_duda"]
         ctx_cats = veri["categorias_contexto"]
@@ -1013,6 +1019,8 @@ def _publica(r):
         for campo in ("revision_contenedores", "escombros_mixtos"):
             if local.get(campo) is not None:
                 pub["modelo_local"][campo] = local[campo]
+    if veri.get("inventario_contenedores") is not None:
+        pub = especialista_contenedores.aplicar(pub, veri["inventario_contenedores"], CATEGORIAS)
     return pub
 
 
@@ -1063,7 +1071,8 @@ def salud():
     return {"ok": True, "clases": canonicas,
             "verificacion": verificador.disponible(),
             "verificadores": verificador.VERIFICADORES,
-            "arbitro": verificador.ARBITRO or None}
+            "arbitro": verificador.ARBITRO or None,
+            "inventario_contenedores": CONTENEDORES_ESPECIALISTA}
 
 
 def _saturado():
@@ -2138,6 +2147,9 @@ function renderResultado(d){
   if(contenedores.length)h+=`<div class="tarcontenedor">${contenedores.length===1
     ?'Contenedor':'Tipos de contenedor'}: ${esc(contenedores
       .map(k=>tiposContenedor[k]).join('; '))}</div>`;
+  if(d.contenedores?.estado==='revision')h+=`<div class="tarcontenedor">Contenedores: requieren revisión. ${esc(d.contenedores.motivo||'')}</div>`;
+  if(d.contenedores?.estado==='confirmado'&&!d.contenedores.tipos.length)
+    h+='<div class="tarcontenedor">No se detectaron contenedores municipales.</div>';
   if(probs.length)h+='<div class="minicats">'+probs.map(c=>
     `<div class="minicat"><b>${esc(c.nombre)}</b><span>${c.gravedad?c.gravedad+'/5':''}`+
     `${c.fuentes?' · '+c.fuentes+(c.fuentes===1?' fuente':' fuentes'):''}${c.patente?' · patente '+esc(c.patente):''}</span></div>`).join('')+'</div>';
@@ -2234,7 +2246,8 @@ $('#limpiar').onclick=()=>{
 $('#csvbtn').onclick=()=>{
   const cab=['archivo','contexto','estado','hay_problema','gravedad_maxima','predominante','problemas',
     'patente','elementos_detectados','posibles','en_duda','hay_reclamo','foto_valida_estado',
-    'verificacion_activa','verificacion_motivo','descripcion','error','trabajo'];
+    'verificacion_activa','verificacion_motivo','descripcion','error','trabajo',
+    'contenedores_estado','contenedores_motivo'];
   const filas=[cab];
   for(const it of items){
     const d=it.resultado||{};
@@ -2245,7 +2258,8 @@ $('#csvbtn').onclick=()=>{
       probs,pat,(d.elementos_detectados||[]).map(e=>e.key).join(' | '),
       (d.posibles||[]).map(p=>p.key||p.codigo).join(' | '),(d.en_duda||[]).join(' | '),
       d.hay_reclamo??'',d.foto_valida_estado??'',d.verificacion_activa??'',
-      d.verificacion_motivo??'',d.descripcion??'',it.estado==='error'?it.detalle:'',it.trabajo||'']);
+      d.verificacion_motivo??'',d.descripcion??'',it.estado==='error'?it.detalle:'',it.trabajo||'',
+      d.contenedores?.estado??'',d.contenedores?.motivo??'']);
   }
   // comillas para separadores y saltos; el apóstrofo inicial neutraliza
   // fórmulas (=, +, -, @) si el CSV se abre en una planilla

@@ -534,6 +534,26 @@ def _registrar_uso(modelo, etapa, clave, intento, inicio, data=None, error=None)
         pass
 
 
+def verificar_contenedores(datos):
+    """Una llamada con el inventario fijo; fallo o incertidumbre pide revision."""
+    import especialista_contenedores as especialista
+    inicio = time.monotonic()
+    data, error = None, None
+    try:
+        cuerpo = especialista.solicitud(datos)
+        req = urllib.request.Request(OPENROUTER_URL, data=json.dumps(cuerpo).encode(), headers={
+            "Authorization": "Bearer " + api_key(), "Content-Type": "application/json"})
+        vence = inicio + 40
+        data = _pedir_http(req, min(TIMEOUT, 40), vence)
+        _costo_sumar(data.get("usage"))
+        return especialista.interpretar(data)
+    except Exception as exc:
+        error = exc
+        return especialista.revision(fallo=True)
+    finally:
+        _registrar_uso(especialista.MODELO, "inventario_contenedores", None, 1, inicio, data, error)
+
+
 def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa"):
     # reasoning effort bajo: los modelos razonadores (Kimi) pueden gastar todo
     # el presupuesto pensando y devolver el JSON vacío (finish_reason=length)

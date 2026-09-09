@@ -361,3 +361,33 @@ Las descripciones de los modelos forman parte de la respuesta y pueden transcrib
 ## Licencia
 
 [MIT](LICENSE)
+
+### Inventario especializado de contenedores
+
+`CONTENEDORES_ESPECIALISTA=1` activa una pasada fija para identificar secos,
+humedos de carga lateral y humedos de carga bilateral. Usa la misma foto
+original, seis referencias privadas y la configuracion validada. La plantilla
+se instala fuera de git en `eval/vision/private/serving-contenedores-051.json`;
+el modulo verifica su SHA-256 antes de cada solicitud. Sin la bandera, el
+comportamiento anterior se conserva. Las cuotas y la opcion de desactivar la
+verificacion siguen aplicando.
+
+La respuesta publica agrega `contenedores`: `estado` es `confirmado` o
+`revision`; `tipos` es una lista (vacia si no se detectan contenedores) o `null`
+cuando hace falta revision; `motivo` explica la revision. Los tipos confirmados
+sustituyen solamente esos tres tipos en `elementos_detectados`. Recoleccion,
+escombros, danos y los otros reclamos conservan sus reglas. Si una lectura vacia
+contradice un reclamo confirmado sobre un contenedor, el inventario publico
+queda en revision. La presencia visible sigue siendo informativa cuando la foto
+no corresponde al texto del reclamo.
+
+Los fallos de transporte no se cachean. Una respuesta valida pero incierta
+puede cachearse y sigue siendo revision, nunca ausencia. La interfaz muestra
+ese estado y el CSV agrega `contenedores_estado` y `contenedores_motivo`.
+
+La pasada realiza un solo intento, con un plazo de 40 segundos, y suma su costo
+al procesamiento existente. El promedio observado en 100 fotos fue USD0.0038
+adicionales por foto; no representa el costo de las otras categorias. Tras la
+revision humana de cuatro referencias, hubo 98 respuestas automaticas correctas,
+un tipo omitido y una revision. Ese resultado no garantiza la exactitud en otras
+fotos ni evalua el conteo de contenedores.
