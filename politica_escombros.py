@@ -123,6 +123,31 @@ def _basura_publica_visible(salida, revision):
     return _recoleccion_previa(salida) is not None
 
 
+def _material_publico_disputado(salida, revision):
+    """Conserva la duda entre servicios sin confirmar ninguno de ellos."""
+    if (salida.get('foto_valida') is False or revision.get('fallo')
+            or revision.get('afirmacion_explicita') or revision.get('contexto_resuelve')
+            or revision.get('basura_independiente') is True
+            or revision.get('estado') != 'apto'
+            or revision.get('material_contradictorio') is not True
+            or revision.get('material_visible_confirmado') is not True
+            or _recoleccion_previa(salida) is None):
+        return False
+    revisiones = revision.get('revisiones') or []
+    for r in revisiones:
+        if (r.get('ubicacion') != 'publica'
+                or r.get('presentacion') != 'bolsas_chicas_o_suelto'
+                or r.get('hay_bolsas_opacas_o_parciales') != 'no'
+                or r.get('afirmacion_vecinal') != 'no_menciona'
+                or r.get('material') not in {'escombros_visible', 'incompatible_visible'}):
+            return False
+    positivos = {r.get('modelo') for r in revisiones
+                 if r.get('modelo') and r.get('material') == 'escombros_visible'}
+    negativos = {r.get('modelo') for r in revisiones
+                 if r.get('modelo') and r.get('material') == 'incompatible_visible'}
+    return len(positivos) >= 2 and bool(negativos) and positivos.isdisjoint(negativos)
+
+
 def aplicar(salida, revision, categorias):
     """Aplica el veto después de fusión y ruteo textual, sin crear votos visuales."""
     r = copy.deepcopy(salida)
@@ -146,6 +171,11 @@ def aplicar(salida, revision, categorias):
         motivo = "La foto no confirma escombros y el comentario no resuelve el contenido de estas bolsas."
     if contradiccion and apto:
         motivo = "El contenido visible contradice el retiro de escombros. Hace falta aclarar qué contienen las bolsas."
+    revisar_material = retirar and candidato and _material_publico_disputado(salida, revision)
+    if revisar_material:
+        motivo = ("Se observan residuos en la vía pública, pero hay evidencia contradictoria "
+                  "sobre si son residuos comunes o restos de obra. "
+                  "Requiere revisión del tipo de residuos antes de elegir el servicio.")
     retirados = []
     conservar_basura = _basura_publica_visible(salida, revision)
     if retirar and conservar_basura and not any(c.get('key') == 'recoleccion' for c in r['problemas']):
@@ -193,6 +223,15 @@ def aplicar(salida, revision, categorias):
         retirados += [c for c in r["problemas"] if c.get("key") in quitar]
         for campo in ("problemas", "categorias_contexto", "posibles"):
             r[campo] = [c for c in r[campo] if c.get("key") not in quitar]
+    if revisar_material:
+        coleccion = copy.deepcopy(_recoleccion_previa(salida))
+        r['posibles'] = [c for c in r['posibles'] if c.get('key') != 'recoleccion']
+        r['posibles'].append(dict(coleccion, gravedad=None, origen='foto',
+                                 arbitro=None, motivo=motivo))
+        retirados = [c for c in retirados if c.get('key') != 'recoleccion']
+        if 'recoleccion' not in r['en_duda']:
+            r['en_duda'].append('recoleccion')
+        veri.setdefault('fuentes_en_duda', {})['recoleccion'] = list(coleccion['fuentes'])
     if retirar or contextual:
         r["en_duda"] = [k for k in r["en_duda"] if k != KEY]
         if retirar and revision.get("estado") != "excluido" and any(
@@ -215,6 +254,8 @@ def aplicar(salida, revision, categorias):
         "estado": revision.get("estado", "indeterminado"),
         "motivo": motivo, "basado_en_contexto": uso_contexto,
         "requiere_nueva_foto": not apto}
+    if revisar_material:
+        r['verificacion_escombros']['requiere_revision'] = True
     r["hay_problema"] = bool(r["problemas"])
     r["hay_reclamo"] = bool(r["problemas"] or r["categorias_contexto"])
     r["gravedad_maxima"] = max((c.get("gravedad") or 0 for c in r["problemas"]), default=0) or None

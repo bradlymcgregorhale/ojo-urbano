@@ -2090,7 +2090,9 @@ function pintar(it){
     const g=d.gravedad_maxima;
     const insignia=d.hay_problema
       ?`<span class="grav" title="Gravedad ${g||'?'} de 5: ${GRAV[g]||''}">G${g||'?'} ${GRAV[g]||''}</span>`
-      :'<span class="grav g0">sin problema</span>';
+      :d.verificacion_escombros?.requiere_revision
+        ?'<span class="grav">requiere revisión</span>'
+        :'<span class="grav g0">sin problema</span>';
     banda.innerHTML=`${insignia} Listo<span class="der">${it.dur?it.dur+' s':''}</span>`;
   }else{
     banda.className='banda mal';
@@ -2129,11 +2131,14 @@ function renderResultado(d){
   const probs=d.problemas||[];
   const aviso=(d.foto_valida===false&&d.hay_problema)
     ?' La foto no muestra lo que contaste: el reclamo salió de tu texto.':'';
-  const concl=d.hay_problema
+  const revisionMaterial=d.verificacion_escombros?.requiere_revision===true;
+  const concl=(d.hay_problema
     ?(probs.length===1?'1 incidencia confirmada':probs.length+' incidencias confirmadas')
       +(d.gravedad_maxima?` · gravedad ${d.gravedad_maxima}/5 (${GRAV[d.gravedad_maxima]||''})`:'')
     :d.hay_reclamo?'Reclamo por texto, sin confirmación en la foto'
-    :'Sin problemas confirmados';
+    :revisionMaterial?'Requiere revisión del tipo de residuos'
+    :'Sin problemas confirmados')
+    +(revisionMaterial&&(d.hay_problema||d.hay_reclamo)?' · tipo de residuos pendiente de revisión':'');
   let h=`<div class="tarconcl">${esc(concl+aviso)}</div>`;
   if(typeof d.costo_api==='number'&&d.costo_api>0)
     h+=`<div class="tarcosto">Costo de procesamiento (API): US$${d.costo_api.toFixed(4)}</div>`;
