@@ -50,6 +50,7 @@ from PIL import Image, ImageOps
 from sentence_transformers import SentenceTransformer
 
 import verificador
+import revision_escombros_publica as revision_publica
 import politica_escombros
 import especialista_contenedores
 
@@ -1023,6 +1024,10 @@ def _publica(r):
                 pub["modelo_local"][campo] = local[campo]
     if veri.get("inventario_contenedores") is not None:
         pub = especialista_contenedores.aplicar(pub, veri["inventario_contenedores"], CATEGORIAS)
+    if isinstance(pub.get("verificacion_escombros"), dict):
+        pub["verificacion_escombros"] = dict(pub["verificacion_escombros"], **revision_publica.publicar(
+            veri.get("alcance_escombros"), veri.get("decision_alcance"),
+            sanear=_sanear_motivo, limite=verificador.EVID_MAX))
     return pub
 
 
@@ -1420,7 +1425,7 @@ def _estado_trabajo(tid):
     if t["estado"] == "en_cola":
         r["posicion"] = _posicion_trabajo(t)
     elif t["estado"] == "listo":
-        r["resultado"] = t["resultado"]
+        r["resultado"] = revision_publica.completar_historico(t["resultado"])
     elif t["estado"] in ("error", "cancelado"):
         r["detail"] = t["detalle"]
     return r

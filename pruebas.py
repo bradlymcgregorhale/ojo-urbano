@@ -4664,6 +4664,7 @@ import unittest
 # El servidor conserva su stub; sklearn necesita la biblioteca real.
 sys.modules["joblib"] = _joblib_real
 import test_politica_escombros
+import test_revision_escombros_publica
 import test_contenedores
 import test_especialista_contenedores
 from eval.vision import test_runner as test_vision_runner
@@ -4672,6 +4673,7 @@ _suite_alcance = unittest.defaultTestLoader.loadTestsFromModule(test_politica_es
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_contenedores))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_especialista_contenedores))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_tokens_api))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_revision_escombros_publica))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_vision_runner))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_vision_pipeline))
 _resultado_alcance = unittest.TextTestRunner(verbosity=2).run(_suite_alcance)
