@@ -63,11 +63,14 @@ class IntermediarioTests(unittest.TestCase):
                                     if proc.poll() is not None:
                                         self.fail('El servidor PHP no inició')
                                     time.sleep(.02)
-                            for ruta in ('clasificar', 'trabajos'):
+                            for ruta in ('clasificar', 'trabajos', '%63lasificar', 'trabajos%2F', 'otra'):
                                 for campos in ([('modo', 'bajo')], [('modo', 'medio')], [],
                                                [('modo', 'bajo'), ('modo', 'alto')],
                                                [('modo[]', 'bajo')], [('modo[clave]', 'medio')],
-                                               [('modo', 'alto', 'modo.txt')]):
+                                               [('modo', 'alto', 'modo.txt')],
+                                               [('modo', 'bajo'), ('modo[]', 'alto')],
+                                               [('modo[]', 'alto'), ('modo', 'bajo')],
+                                               [('modo', 'bajo'), ('modo', 'alto', 'modo.txt')]):
                                     partes = [('file', 'foto_de_prueba', 'foto.jpg')] + campos
                                     cuerpo = b''
                                     for parte in partes:
@@ -85,8 +88,8 @@ class IntermediarioTests(unittest.TestCase):
                                     except urllib.error.HTTPError as error:
                                         with error:
                                             estado, data = error.code, json.load(error)
-                                    invalido = bool(campos and ('[' in campos[0][0] or len(campos[0]) == 3))
-                                    if lectura_php and invalido:
+                                    invalido = bool(campos and ('[' in campos[-1][0] or any(len(c) == 3 for c in campos)))
+                                    if lectura_php and invalido and ruta != 'otra':
                                         self.assertEqual(estado, 422, (ruta, campos))
                                         self.assertEqual(len(recibidos), antes)
                                         self.assertIn('único valor', data['detail'])
@@ -98,7 +101,7 @@ class IntermediarioTests(unittest.TestCase):
                                         if not lectura_php:
                                             for campo in campos:
                                                 self.assertIn(list(campo[:2]), recibo)
-                                        elif campos:
+                                        elif campos and not invalido:
                                             self.assertEqual([v for k, v in recibo if k == 'modo'], [campos[-1][1]])
                         finally:
                             proc.terminate()

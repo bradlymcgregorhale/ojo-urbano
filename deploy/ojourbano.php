@@ -49,16 +49,6 @@ curl_setopt_array(
 	)
 );
 if ( 'POST' === $_SERVER['REQUEST_METHOD'] ) {
-	// PHP convierte modo[] y modo[clave] en arrays al leer multipart.
-	// Los rechazo antes de que cURL pueda convertirlos en un valor escalar.
-	if ( in_array( $path, array( '/clasificar', '/trabajos' ), true )
-		&& ( ( isset( $_POST['modo'] ) && ! is_string( $_POST['modo'] ) )
-			|| isset( $_FILES['modo'] ) ) ) {
-		http_response_code( 422 );
-		header( 'Content-Type: application/json; charset=utf-8' );
-		echo '{"detail":"modo debe ser un único valor: bajo, medio o alto."}';
-		exit;
-	}
 	$body = file_get_contents( 'php://input' );
 	if ( '' !== $body && false !== $body ) {
 		// Cuerpo crudo disponible: reenviarlo tal cual.
@@ -76,6 +66,18 @@ if ( 'POST' === $_SERVER['REQUEST_METHOD'] ) {
 		);
 	} else {
 		// PHP ya consumió el multipart: reconstruirlo desde $_FILES/$_POST.
+
+		// PHP convierte modo[] y modo[clave] en arrays al leer multipart.
+		// Los rechazo antes de que cURL pueda convertirlos en un valor escalar.
+		if ( in_array( rtrim( rawurldecode( $path ), '/' ), array( '/clasificar', '/trabajos' ), true )
+			&& ( ( isset( $_POST['modo'] ) && ! is_string( $_POST['modo'] ) )
+				|| isset( $_FILES['modo'] ) ) ) {
+			http_response_code( 422 );
+			header( 'Content-Type: application/json; charset=utf-8' );
+			echo '{"detail":"modo debe ser un único valor: bajo, medio o alto."}';
+			exit;
+		}
+
 		$campos = array();
 		foreach ( $_POST as $k => $v ) {
 			$campos[ $k ] = $v;
