@@ -103,7 +103,8 @@ class RevisionPublica(unittest.TestCase):
     def test_fragmentos_de_contexto_no_se_publican(self):
         for contexto, observacion in [('Frente a Av. Rivadavia 1234', 'Bolsas en Rivadavia 1234'),
                                      ('Lo dejó Juan Pérez junto al contenedor', 'Cartón de Juan Pérez'),
-                                     ('El vecino se llama Juan', 'Juan dejó cajas')]:
+                                     ('El vecino se llama Juan', 'Juan dejó cajas'),
+                                     ('Hay olor', 'Bolsas cerradas')]:
             rev, _ = revisar([respuesta(evidencia_material=observacion)], contexto)
             fila = D.publicar(rev)['revisiones'][0]
             self.assertEqual(fila['estado'], 'ok')
@@ -190,6 +191,12 @@ class RevisionPublica(unittest.TestCase):
         rev = conflicto()
         rev['registro_publico']['participantes'][0]['ajustes'] = [{'motivo': 'desconocido'}]
         self.assertEqual(D.publicar(rev)['detalle_estado'], 'no_disponible')
+        for modelo in ['https://privado.invalid/revisor', 'sk-SECRETO']:
+            rev = conflicto()
+            rev['registro_publico']['participantes'][0]['modelo'] = modelo
+            d = D.publicar(rev)
+            self.assertEqual(d['detalle_estado'], 'no_disponible')
+            self.assertNotIn(modelo, json.dumps(d))
 
     def test_serializar_no_muta_y_no_llama_modelos(self):
         rev = conflicto()

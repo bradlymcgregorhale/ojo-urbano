@@ -244,6 +244,9 @@ puede cambiar la categoría; para consumir la clasificación usá siempre
 las colecciones finales del resultado. El diagnóstico no atribuye a esta
 revisión decisiones previas del local o del árbitro.
 
+Un identificador de modelo que contiene una URL o parece una credencial se
+omite y el detalle se marca `no_disponible`.
+
 Un resultado histórico conserva únicamente las respuestas identificables,
 con `ajustes: null` si no se guardaron las normalizaciones. Sus evidencias
 de texto se omiten si no se puede verificar el saneamiento del contexto.
