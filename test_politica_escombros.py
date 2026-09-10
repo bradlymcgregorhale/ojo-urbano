@@ -131,6 +131,23 @@ class PoliticaTest(unittest.TestCase):
         efecto = next(e for e in efectos if e['key'] == 'recoleccion_restos_obra')
         self.assertEqual(efecto['reglas'], ['escombros_visibles_sin_corroborar'])
 
+    def test_revision_posterior_recupera_sospecha_local_rechazada_sin_respaldo_visual(self):
+        r, revision = self.bolsas_con_un_lector()
+        r['posibles'] = [dict(categoria(fuentes=['modelo_local']), arbitro='rechazar',
+                             motivo='La primera pasada no identifica material de obra.')]
+        r['detalle']['verificacion']['arbitro'] = {'decisiones': [
+            {'key': P.KEY, 'veredicto': 'rechazar'}]}
+        anterior = copy.deepcopy(r)
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertFalse(nuevo['problemas'])
+        candidato = next(c for c in nuevo['posibles'] if c['key'] == P.KEY)
+        self.assertEqual(candidato['fuentes'], ['m1'])
+        self.assertIsNone(candidato['arbitro'])
+        self.assertTrue(nuevo['verificacion_escombros']['requiere_revision'])
+        self.assertEqual(nuevo['detalle']['verificacion']['arbitro'],
+                         anterior['detalle']['verificacion']['arbitro'])
+        self.assertEqual(r, anterior)
+
     def test_un_lector_respeta_vetos_y_exige_respaldo_local_y_visual(self):
         variantes = [({'fallo': True}, None), ({'estado': 'excluido'}, None),
             ({'material_contradictorio': True}, None), ({'afirmacion_explicita': True}, None),

@@ -159,6 +159,7 @@ def _escombros_visibles_sin_corroborar(salida, revision):
             or any(es_escombros(c) for c in salida.get('problemas') or [])
             or any(es_escombros(c) for c in salida.get('descartados_por_foto') or [])
             or any(es_escombros(c) and c.get('arbitro') == 'rechazar'
+                   and set(c.get('fuentes') or []) - {'modelo_local'}
                    for c in salida.get('posibles') or [])):
         return None
     local = (salida.get('detalle') or {}).get('modelo_local') or {}
