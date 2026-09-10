@@ -148,6 +148,22 @@ class PoliticaTest(unittest.TestCase):
                          anterior['detalle']['verificacion']['arbitro'])
         self.assertEqual(r, anterior)
 
+    def test_revision_posterior_no_ignora_negativas_dirigidas_ni_fuentes_desconocidas(self):
+        for variante in ('sin_fuentes', 'negativa', 'fallo', 'adjudicada'):
+            r, revision = self.bolsas_con_un_lector()
+            r['posibles'] = [dict(categoria(fuentes=['modelo_local']), arbitro='rechazar')]
+            veri = r['detalle']['verificacion']
+            if variante == 'sin_fuentes':
+                r['posibles'][0]['fuentes'] = []
+            elif variante == 'negativa':
+                veri['segunda_mirada'] = {'negaron': [{'modelo': 'm2', 'evidencia': 'Cartón visible.'}]}
+            elif variante == 'fallo':
+                veri['segunda_mirada'] = {'fallo': True}
+            else:
+                veri['adjudicadas_dirigidas'] = [P.KEY]
+            with self.subTest(variante=variante):
+                self.assertIsNone(P._escombros_visibles_sin_corroborar(r, revision))
+
     def test_un_lector_respeta_vetos_y_exige_respaldo_local_y_visual(self):
         variantes = [({'fallo': True}, None), ({'estado': 'excluido'}, None),
             ({'material_contradictorio': True}, None), ({'afirmacion_explicita': True}, None),

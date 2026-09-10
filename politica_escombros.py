@@ -152,14 +152,18 @@ def _material_publico_disputado(salida, revision):
 
 def _escombros_visibles_sin_corroborar(salida, revision):
     """Un lector ve material y los demás no pueden distinguir las bolsas."""
+    verificacion = (salida.get('detalle') or {}).get('verificacion') or {}
+    dirigida = verificacion.get('segunda_mirada') or {}
     if (salida.get('foto_valida') is False or revision.get('fallo')
+            or dirigida.get('negaron') or dirigida.get('fallo')
+            or KEY in (verificacion.get('adjudicadas_dirigidas') or [])
             or revision.get('estado') != 'apto'
             or revision.get('material_contradictorio')
             or revision.get('afirmacion_explicita') or revision.get('contexto_resuelve')
             or any(es_escombros(c) for c in salida.get('problemas') or [])
             or any(es_escombros(c) for c in salida.get('descartados_por_foto') or [])
             or any(es_escombros(c) and c.get('arbitro') == 'rechazar'
-                   and set(c.get('fuentes') or []) - {'modelo_local'}
+                   and set(c.get('fuentes') or []) != {'modelo_local'}
                    for c in salida.get('posibles') or [])):
         return None
     local = (salida.get('detalle') or {}).get('modelo_local') or {}
