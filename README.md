@@ -364,6 +364,25 @@ Las descripciones de los modelos forman parte de la respuesta y pueden transcrib
 
 [MIT](LICENSE)
 
+### Consumo de tokens por foto
+
+La respuesta de análisis incluye `tokens_api`, la suma de `usage.total_tokens`
+informada por OpenRouter en todos los intentos usados para procesar esa foto.
+Incluye verificadores, árbitro, revisiones dirigidas y el especialista de
+contenedores. Si falta el total y están ambos conteos, suma `prompt_tokens` y
+`completion_tokens`. Los detalles de razonamiento y caché no se suman otra vez.
+
+`tokens_api_completos` indica si todos los intentos informaron un conteo válido.
+Si vale `false`, `tokens_api` contiene solamente la suma conocida: el consumo de
+los intentos sin datos no se puede determinar. Sin llamadas, el total es cero y
+el conteo está completo. Cada foto tiene su propio acumulador, incluso cuando
+se procesan varias en paralelo.
+
+Una respuesta recuperada de la caché local conserva los tokens del análisis
+original; ese valor no representa consumo adicional por consultar la caché.
+Estos campos no generan llamadas extra ni modifican las clasificaciones o el
+campo `costo_api`. La página sigue sin mostrar importes.
+
 ### Inventario especializado de contenedores
 
 `CONTENEDORES_ESPECIALISTA=1` activa una pasada fija para identificar secos,
