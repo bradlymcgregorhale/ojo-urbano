@@ -207,14 +207,17 @@ def completar(salida):
     datos_fallos = {k: v for k, v in veri.items() if k not in r.omitidas}
     import verificador
     arbitraje_pendiente = p.arbitro and any(k not in verificador.PRESENCIA for k in salida.get('en_duda') or [])
-    incompleto = bool(r.fallos or _fallos_en(datos_fallos) or veri.get('ruteo_contexto_fallo') or arbitraje_pendiente)
+    fallo_tecnico = bool(r.fallos or _fallos_en(datos_fallos))
+    incompleto = bool(fallo_tecnico or veri.get('ruteo_contexto_fallo') or arbitraje_pendiente)
     if not veri.get('activa') and not r.llamadas:
         estado = 'sin_verificacion'
         limites.append('sin_verificacion')
     else:
         estado = 'parcial' if incompleto else 'completo'
-    if estado == 'parcial':
+    if fallo_tecnico:
         limites.append('etapa_fallida')
+    if arbitraje_pendiente:
+        limites.append('revision_pendiente')
     if veri.get('ruteo_contexto_fallo'):
         limites.append('contexto_sin_encaminar')
     if (salida.get('posibles') or salida.get('en_duda')) and 'corroboracion_insuficiente' not in limites:

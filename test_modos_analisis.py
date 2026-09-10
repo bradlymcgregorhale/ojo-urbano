@@ -114,6 +114,14 @@ class Configuracion(unittest.TestCase):
                     'activa': True, 'contexto_obra_servicios': {'ok': False}}}})
             self.assertEqual(r['analisis_estado'], estado)
 
+    def test_revision_pendiente_no_se_presenta_como_falla_tecnica(self):
+        with M.usar(perfiles()['medio']):
+            r = M.completar({'en_duda': ['retiro_escombros'],
+                'detalle': {'verificacion': {'activa': True}}})
+        self.assertEqual(r['analisis_estado'], 'parcial')
+        self.assertIn('revision_pendiente', r['analisis_limitaciones'])
+        self.assertNotIn('etapa_fallida', r['analisis_limitaciones'])
+
 
 @unittest.skipUnless('servidor' in sys.modules, 'Ejecutar con pruebas.py, sin cargar pesos')
 class ApiModos(unittest.TestCase):
@@ -245,3 +253,19 @@ class ApiModos(unittest.TestCase):
                 self.assertEqual(final['modo'], 'medio')
                 self.assertEqual(final['modo_version'], d['modo_version'])
         self.assertEqual(self.llamadas, [])
+
+    def test_serializacion_recalcula_agregados_despues_de_dejar_pendiente(self):
+        with M.usar(self.ps['bajo']):
+            M.omitir('alcance_escombros', ('retiro_escombros',))
+            r = M.completar({'hay_problema': True, 'hay_reclamo': True,
+                'gravedad_maxima': 4, 'predominante': 'retiro_escombros',
+                'problemas': [{'key': 'retiro_escombros', 'nombre': 'Retiro de escombros',
+                    'fuentes': ['modelo_local', 't/a'], 'gravedad': 4}],
+                'posibles': [], 'elementos_detectados': [], 'categorias_contexto': [],
+                'en_duda': [], 'detalle': {'verificacion': {'activa': True}}})
+            d = self.S._publica(r)
+        self.assertFalse(d['hay_problema'])
+        self.assertFalse(d['hay_reclamo'])
+        self.assertIsNone(d['gravedad_maxima'])
+        self.assertIsNone(d['predominante'])
+        self.assertEqual(d['posibles'][0]['key'], 'retiro_escombros')

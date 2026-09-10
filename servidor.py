@@ -1850,9 +1850,10 @@ const GRAV={1:'registro',2:'leve',3:'típico',4:'grave',5:'crítico'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const nombresModos={bajo:'Económico',medio:'Equilibrado',alto:'Completo'};
 let perfilesModos={};
+const modoBloqueado=modo=>perfilesModos[modo]?.disponible===false;
 function opcionesModos(valor){
   return Object.entries(nombresModos).map(([k,n])=>
-    `<option value="${k}" ${k===valor?'selected':''} ${perfilesModos[k]?.disponible?'':'disabled'}>${n}${perfilesModos[k]?.disponible?'':' (no disponible)'}</option>`).join('');
+    `<option value="${k}" ${k===valor?'selected':''} ${modoBloqueado(k)?'disabled':''}>${n}${modoBloqueado(k)?' (no disponible)':!perfilesModos[k]?' (sin verificar)':''}</option>`).join('');
 }
 async function actualizarModos(){
   try{
@@ -1863,22 +1864,21 @@ async function actualizarModos(){
     perfilesModos=Object.fromEntries(d.modos_analisis.map(p=>[p.modo,p]));
     $('#modo-estado').textContent='';
   }catch(e){
-    perfilesModos={};
-    $('#modo-estado').textContent='No pude consultar los modos disponibles. Reintentá en un momento.';
+    $('#modo-estado').textContent='No pude actualizar los modos disponibles. El servidor comprobará el modo al enviar la foto.';
   }
   const general=$('#modo-general'), seleccionado=general.value||'alto';
   general.innerHTML=opcionesModos(seleccionado);general.value=seleccionado;
   document.querySelectorAll('select[data-modo]').forEach(el=>{
     const valor=el.value;el.innerHTML=opcionesModos(valor);el.value=valor;
   });
-  if(!perfilesModos[general.value]?.disponible&&Object.keys(perfilesModos).length)
+  if(modoBloqueado(general.value))
     $('#modo-estado').textContent='El modo elegido no está disponible. Elegí otro o revisá la configuración del servidor.';
   return perfilesModos;
 }
 actualizarModos();
 window.addEventListener('focus',actualizarModos);
 $('#modo-general').onchange=()=>{
-  $('#modo-estado').textContent=perfilesModos[$('#modo-general').value]?.disponible?'':'El modo elegido no está disponible.';
+  $('#modo-estado').textContent=modoBloqueado($('#modo-general').value)?'El modo elegido no está disponible.':'';
 };
 
 const SNIP={
@@ -2019,7 +2019,7 @@ async function enviar(it){
   it.modoFijo=it.modoFijo||it.modo;
   it.estado='enviando';it.nota='';pintar(it);
   await actualizarModos();
-  if(!perfilesModos[it.modoFijo]?.disponible){
+  if(modoBloqueado(it.modoFijo)){
     fallar(it,'El modo elegido no está disponible. No se cambió a otro modo.');bombear();return;
   }
   const fd=new FormData();fd.append('file',it.file);fd.append('modo',it.modoFijo);
@@ -2159,7 +2159,7 @@ function etaTexto(puesto){
 function pintar(it){
   const selectorModo=it.card.querySelector('.modofoto select');
   selectorModo.value=it.modoFijo||it.modo;selectorModo.disabled=!!it.modoFijo||it.estado!=='espera';
-  it.card.querySelector('.modo-nota').textContent=perfilesModos[selectorModo.value]?.disponible?'':'No disponible';
+  it.card.querySelector('.modo-nota').textContent=modoBloqueado(selectorModo.value)?'No disponible':'';
   const banda=it.card.querySelector('.banda');
   const mini=it.card.querySelector('.miniatura');
   const res=it.card.querySelector('.tarres');
@@ -2232,7 +2232,7 @@ function pintar(it){
     nuevo.innerHTML=`<label>Modo del nuevo análisis <select data-modo>${opcionesModos(it.modoFijo||it.modo)}</select></label><p>Un nuevo análisis puede volver a consumir la API. El resultado anterior se conserva.</p><button class="btn">Volver a analizar</button>`;
     nuevo.querySelector('button').onclick=()=>{
       const elegido=nuevo.querySelector('select').value;
-      if(!perfilesModos[elegido]?.disponible)return;
+      if(modoBloqueado(elegido))return;
       agregar([it.file],elegido,it.ctx);items[items.length-1].armada=true;
       iniciado=true;bombear();arrancarPoll();
     };
