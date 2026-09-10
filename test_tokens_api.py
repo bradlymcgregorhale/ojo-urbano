@@ -220,6 +220,7 @@ class TokensApi(unittest.TestCase):
                 pila.enter_context(patch.object(obj, nombre, valor))
             pila.enter_context(patch.object(S, '_cache', __import__('collections').OrderedDict()))
             pila.enter_context(patch.object(S, 'CACHE_MAX', 10))
+            pila.enter_context(patch.object(S, "PERFILES", S.modos.cargar(V, vars(S))))
             with TestClient(S.app) as cliente:
                 r = cliente.post('/clasificar', files={'file': ('prueba.jpg', b.getvalue(), 'image/jpeg')})
                 self.assertEqual(r.status_code, 200, r.text)
