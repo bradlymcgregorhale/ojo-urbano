@@ -106,6 +106,31 @@ class PoliticaTest(unittest.TestCase):
         self.assertNotIn('escombros_visibles_sin_corroborar',
                          nuevo['detalle']['verificacion']['decision_alcance']['reglas'])
 
+    def test_un_lector_respeta_rechazos_previos_y_exige_un_solo_positivo(self):
+        for variante in ('descartado', 'arbitro', 'dos_positivos', 'bolsas_indeterminadas',
+                         'material_indeterminado'):
+            r, revision = self.bolsas_con_un_lector()
+            if variante == 'descartado':
+                r['descartados_por_foto'] = [categoria()]
+            elif variante == 'arbitro':
+                r['posibles'] = [dict(categoria(), arbitro='rechazar')]
+            elif variante == 'dos_positivos':
+                revision['revisiones'][1]['material'] = 'escombros_visible'
+            elif variante == 'bolsas_indeterminadas':
+                revision['revisiones'][1]['hay_bolsas_opacas_o_parciales'] = 'indeterminado'
+            else:
+                revision['revisiones'][1]['material'] = 'indeterminado'
+            with self.subTest(variante=variante):
+                self.assertIsNone(P._escombros_visibles_sin_corroborar(r, revision))
+
+    def test_un_lector_explica_movimiento_de_alias(self):
+        r, revision = self.bolsas_con_un_lector()
+        r['posibles'] = [dict(categoria('recoleccion_restos_obra'), codigo=P.CODIGO)]
+        nuevo = P.aplicar(r, revision, self.cats)
+        efectos = nuevo['detalle']['verificacion']['decision_alcance']['efectos']
+        efecto = next(e for e in efectos if e['key'] == 'recoleccion_restos_obra')
+        self.assertEqual(efecto['reglas'], ['escombros_visibles_sin_corroborar'])
+
     def test_un_lector_respeta_vetos_y_exige_respaldo_local_y_visual(self):
         variantes = [({'fallo': True}, None), ({'estado': 'excluido'}, None),
             ({'material_contradictorio': True}, None), ({'afirmacion_explicita': True}, None),

@@ -156,7 +156,10 @@ def _escombros_visibles_sin_corroborar(salida, revision):
             or revision.get('estado') != 'apto'
             or revision.get('material_contradictorio')
             or revision.get('afirmacion_explicita') or revision.get('contexto_resuelve')
-            or any(es_escombros(c) for c in salida.get('problemas') or [])):
+            or any(es_escombros(c) for c in salida.get('problemas') or [])
+            or any(es_escombros(c) for c in salida.get('descartados_por_foto') or [])
+            or any(es_escombros(c) and c.get('arbitro') == 'rechazar'
+                   for c in salida.get('posibles') or [])):
         return None
     local = (salida.get('detalle') or {}).get('modelo_local') or {}
     if not any(p.get('key') == KEY and p.get('score', 0) >= .95
@@ -298,7 +301,7 @@ def aplicar(salida, revision, categorias):
     if lector_pendiente:
         motivo = ("Hay indicios de restos de obra en bolsas parcialmente cerradas. "
                   "Falta corroborar el material para elegir el servicio de retiro.")
-        diagnostico.anotar('escombros_visibles_sin_corroborar', [KEY])
+        diagnostico.anotar('escombros_visibles_sin_corroborar', claves_escombros)
         r['posibles'] = [c for c in r['posibles'] if not es_escombros(c)]
         r['posibles'].append({'key': KEY, 'nombre': categorias[KEY]['nombre'],
             'gravedad': None, 'fuentes': [lector_pendiente], 'origen': 'foto',
