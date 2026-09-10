@@ -50,6 +50,8 @@ from PIL import Image, ImageOps
 from sentence_transformers import SentenceTransformer
 
 import verificador
+import modos_analisis as modos
+from typing import Any
 import revision_escombros_publica as revision_publica
 import politica_escombros
 import especialista_contenedores
@@ -442,6 +444,8 @@ def _cacheable(respuesta):
     verificadores caídos), esa foto queda devuelta sin verificar para siempre,
     incluso al día siguiente con cuota nueva.
     """
+    if respuesta.get("modo") in ("bajo", "medio") and respuesta.get("analisis_estado") == "parcial":
+        return False
     veri = respuesta.get("detalle", {}).get("verificacion", {})
     if (veri.get("inventario_contenedores") or {}).get("fallo"):
         return False
@@ -501,7 +505,7 @@ def _cacheable(respuesta):
         # contenedor visto por una sola fuente queda en duda POR DISEÑO, es
         # su estado final) y no deben volver incacheable cada foto donde un
         # solo modelo vio un contenedor.
-        if verificador.ARBITRO and [k for k in respuesta.get("en_duda") or []
+        if verificador.arbitro_activo() and [k for k in respuesta.get("en_duda") or []
                                     if k not in verificador.PRESENCIA]:
             return False
         # El encaminamiento del reclamo por texto falló: la respuesta puede
@@ -553,7 +557,8 @@ def procesar(datos, contexto, verificar):
 
     if activar and verificador.disponible():
         veri = verificador.verificar(img, CATEGORIAS, local, contexto)
-        if CONTENEDORES_ESPECIALISTA:
+        perfil = modos.perfil_actual()
+        if perfil.especialista if perfil else CONTENEDORES_ESPECIALISTA:
             veri = dict(veri, inventario_contenedores=verificador.verificar_contenedores(datos))
         categorias = veri["confirmadas"]
         en_duda = veri["en_duda"]
@@ -868,19 +873,24 @@ def procesar(datos, contexto, verificar):
     if veri.get("patente"):
         salida["patente"] = veri["patente"]
     if politica_escombros.requiere_revision(salida, contexto):
-        revision = verificador.validar_alcance_escombros(img, contexto)
-        salida = politica_escombros.aplicar(salida, revision, CATEGORIAS)
+        perfil = modos.perfil_actual()
+        if perfil and perfil.modo != "alto" and len(set(perfil.verificadores)) < 2:
+            modos.omitir("alcance_escombros", ("retiro_escombros", "recoleccion"))
+        else:
+            revision = verificador.validar_alcance_escombros(img, contexto)
+            salida = politica_escombros.aplicar(salida, revision, CATEGORIAS)
     if politica_escombros.requiere_obra_servicios(salida):
         revision_obra = verificador.validar_contexto_obra_servicios(contexto)
         salida = politica_escombros.aplicar_obra_servicios(salida, revision_obra)
     salida["costo_api"] = verificador.costo_total()
     salida.update(verificador.tokens_total())
-    return salida
+    return modos.completar(salida)
 
 
 def _terminos_prohibidos():
     """Nombres internos que un texto público jamás debe contener."""
     modelos = [m for m in (list(verificador.VERIFICADORES) + [verificador.ARBITRO]) if m]
+    modelos += [m for p in PERFILES.values() for m in (*p.verificadores, p.arbitro) if m]
     partes = [re.escape(m) for m in modelos]
     # también el nombre pelado, sin el proveedor: "gpt-5-mini" a secas
     partes += [re.escape(m.split("/", 1)[1]) for m in modelos if "/" in m]
@@ -1069,7 +1079,10 @@ async def guardias(request, call_next):
             return JSONResponse(
                 {"detail": "demasiados pedidos; probá de nuevo más tarde"},
                 status_code=429, headers={"Retry-After": str(espera)})
-    return await call_next(request)
+    respuesta = await call_next(request)
+    if request.url.path.rstrip("/") == "/salud":
+        respuesta.headers["Cache-Control"] = "no-store"
+    return respuesta
 
 
 @app.get("/salud")
@@ -1079,7 +1092,8 @@ def salud():
             "verificacion": verificador.disponible(),
             "verificadores": verificador.VERIFICADORES,
             "arbitro": verificador.ARBITRO or None,
-            "inventario_contenedores": CONTENEDORES_ESPECIALISTA}
+            "inventario_contenedores": CONTENEDORES_ESPECIALISTA,
+            "modos_analisis": [p.publico() for p in PERFILES.values()]}
 
 
 def _saturado():
@@ -1151,15 +1165,31 @@ async def _esperar_cupo(huella, tipo="sync"):
             pass
 
 
+async def _perfil_formulario(request):
+    if any(k == "modo" or k.startswith("modo[") for k in request.query_params):
+        raise HTTPException(422, "Enviá modo como un campo del formulario, no en la consulta de la URL.")
+    formulario = await request.form()
+    if any(k.startswith("modo[") for k in formulario):
+        raise HTTPException(422, "modo debe ser un único valor: bajo, medio o alto.")
+    valor = formulario.get("modo", "alto")
+    if not isinstance(valor, str) or valor not in modos.NOMBRES:
+        raise HTTPException(422, "modo debe ser bajo, medio o alto; si lo omitís se usa alto.")
+    perfil = PERFILES[valor]
+    if perfil.motivo:
+        raise HTTPException(503, "El modo elegido no está disponible: " + perfil.motivo + ".")
+    return perfil
+
+
 @app.post("/clasificar")
 async def clasificar(request: Request, file: UploadFile = File(...),
-                     verificar: str = "auto", contexto: str = Form("")):
+                     verificar: str = "auto", contexto: str = Form(""),
+                     modo: Any = Form("alto", description="Modo de análisis: bajo, medio o alto.")):
+    perfil = await _perfil_formulario(request)
     datos = await _leer_acotado(file)
     contexto = (contexto or "").strip()[:500]
 
     # La misma foto con el mismo contexto no se vuelve a pagar.
-    huella = hashlib.sha256(
-        datos + b"\x00" + contexto.encode() + b"\x00" + verificar.encode()).hexdigest()
+    huella = modos.identidad(datos, contexto, verificar, perfil)
     # La caché guarda el objeto INTERNO completo; la respuesta SIEMPRE pasa
     # por el serializador v4. No hay escotilla que devuelva los internals.
     respuesta = _cache_leer(huella)
@@ -1192,11 +1222,11 @@ async def clasificar(request: Request, file: UploadFile = File(...),
         _cupos.release()
         raise _503("el servidor está degradado; reintentá más tarde", 30)
 
-    respuesta = await _correr_con_cupo(datos, contexto, verificar, huella)
+    respuesta = await _correr_con_cupo(datos, contexto, verificar, huella, perfil)
     return JSONResponse(_publica(respuesta))
 
 
-async def _correr_con_cupo(datos, contexto, verificar, huella):
+async def _correr_con_cupo(datos, contexto, verificar, huella, perfil=None):
     """Corre el pipeline con el cupo YA tomado, fuera del event loop."""
     # El cupo lo suelta EL PRIMERO que llegue: el hilo al terminar, o el techo
     # si el trabajo se colgó. Nunca los dos (BoundedSemaphore explotaría).
@@ -1267,8 +1297,12 @@ async def _correr_con_cupo(datos, contexto, verificar, huella):
     # future si el trabajo llegó a arrancar: si se cancela mientras todavía
     # estaba encolado, el finally de trabajo() nunca corre y el cupo se
     # perdería para siempre.
+    def ejecutar():
+        with modos.usar(perfil):
+            return trabajo()
+
     try:
-        tarea = _pool.submit(trabajo)
+        tarea = _pool.submit(ejecutar)
     except RuntimeError:
         techo.cancel()
         soltar_cupo()
@@ -1349,7 +1383,7 @@ async def _correr_trabajo(t):
             # el trabajo muere con error aunque el hilo siga por ahí.
             respuesta = await asyncio.wait_for(
                 _correr_con_cupo(datos, t["contexto"], t["verificar"],
-                                 t["huella"]),
+                                 t["huella"], t.get("perfil")),
                 TECHO_TRABAJO + 30)
         else:
             # "cache": un pedido idéntico terminó mientras esperábamos.
@@ -1381,17 +1415,18 @@ async def _correr_trabajo(t):
 @app.post("/trabajos")
 @app.post("/trabajos/")
 async def crear_trabajo(request: Request, file: UploadFile = File(...),
-                        verificar: str = "auto", contexto: str = Form("")):
+                        verificar: str = "auto", contexto: str = Form(""),
+                     modo: Any = Form("alto", description="Modo de análisis: bajo, medio o alto.")):
+    perfil = await _perfil_formulario(request)
     datos = await _leer_acotado(file)
     contexto = (contexto or "").strip()[:500]
-    huella = hashlib.sha256(
-        datos + b"\x00" + contexto.encode() + b"\x00" + verificar.encode()).hexdigest()
+    huella = modos.identidad(datos, contexto, verificar, perfil)
     # Foto ya resuelta: el resultado va en la misma respuesta, sin crear ni
     # retener registro (repetir una foto cacheada no debe ocupar memoria).
     respuesta = _cache_leer(huella)
     if respuesta is not None:
         return JSONResponse({"trabajo": None, "estado": "listo",
-                             "resultado": _publica(respuesta)})
+                             **perfil.metadatos(), "resultado": _publica(respuesta)})
     if _saturado():
         raise _503("el servidor está degradado; reintentá más tarde", 30)
     _podar_trabajos()
@@ -1407,12 +1442,12 @@ async def crear_trabajo(request: Request, file: UploadFile = File(...),
     tid = secrets.token_urlsafe(16)
     t = {"id": tid, "ip": ip, "estado": "en_cola", "creado": time.monotonic(),
          "fin": None, "resultado": None, "detalle": None, "datos": datos,
-         "contexto": contexto, "verificar": verificar, "huella": huella}
+         "contexto": contexto, "verificar": verificar, "huella": huella, "perfil": perfil}
     _trabajos[tid] = t
     # La referencia a la tarea vive en el registro: sin ella, una excepción
     # en una tarea ya recolectada se loguea como "never retrieved".
     t["tarea"] = asyncio.create_task(_correr_trabajo(t))
-    return JSONResponse({"trabajo": tid, "estado": "en_cola",
+    return JSONResponse({"trabajo": tid, "estado": "en_cola", **perfil.metadatos(),
                          "posicion": _posicion_trabajo(t)}, status_code=202)
 
 
@@ -1422,6 +1457,8 @@ def _estado_trabajo(tid):
     if t is None:
         raise HTTPException(404, "trabajo desconocido o vencido; reenviá la foto")
     r = {"trabajo": tid, "estado": t["estado"]}
+    if t.get("perfil"):
+        r.update(t["perfil"].metadatos())
     if t["estado"] == "en_cola":
         r["posicion"] = _posicion_trabajo(t)
     elif t["estado"] == "listo":
@@ -1672,6 +1709,7 @@ PAGINA = r"""<!DOCTYPE html>
     .spin,.spinmini{animation-duration:2.4s}
     .pfill{transition:none}
   }
+select{max-width:100%;padding:8px;font:inherit;border:1px solid #aaa;border-radius:5px;background:white;color:#17212b}.modofoto,.reanalisar{margin:8px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center}#modo-ayuda,#modo-estado,.modo-nota{font-size:.85rem;color:#52616b}.reanalisar p{flex-basis:100%;margin:0}
 </style></head>
 <body><div class="wrap">
   <header class="masthead">
@@ -1686,6 +1724,15 @@ PAGINA = r"""<!DOCTYPE html>
       para la verificación cruzada.</div>
   </header>
   <div id="aviso" class="err" role="status"></div>
+
+  <label for="modo-general">Modo de análisis</label>
+  <select id="modo-general" aria-describedby="modo-ayuda">
+    <option value="bajo" disabled>Económico (no disponible)</option>
+    <option value="medio" disabled>Equilibrado (no disponible)</option>
+    <option value="alto" selected>Completo</option>
+  </select>
+  <p id="modo-ayuda">Completo mantiene todas las verificaciones. Económico y Equilibrado usan menos y pueden dejar más casos pendientes. La elección se aplica a las fotos que agregues después.</p>
+  <p id="modo-estado" role="status" aria-live="polite"></p>
 
   <div id="drop" role="button" tabindex="0" aria-label="Elegir fotos para analizar">
     <p><strong>Arrastrá una o varias fotos acá</strong> o hacé clic para elegir</p>
@@ -1728,7 +1775,7 @@ PAGINA = r"""<!DOCTYPE html>
         <div class="ep1"><span class="met met-post">POST</span>
           <code class="ruta" data-ep="clasificar"></code>
           <div class="epdesc">Una foto, esperando el resultado en la misma conexión (25-60 s).
-            multipart/form-data con <b>file</b> (JPG/PNG/WEBP, máx. 10 MB) y <b>contexto</b> opcional
+            multipart/form-data con <b>file</b> (JPG/PNG/WEBP, máx. 10 MB) y <b>contexto</b> opcional; <b>modo</b>: bajo, medio o alto (predeterminado)
             (máx. 500 caracteres). Ocupado: <code>503</code> con <b>Retry-After</b>.</div></div>
         <div class="ep1"><span class="met met-post">POST</span>
           <code class="ruta" data-ep="trabajos"></code>
@@ -1801,12 +1848,45 @@ const RUTAS={clasificar:O+'/clasificar'+SUF, trabajos:T, consulta:T+'?id=ID',
 document.querySelectorAll('.ruta').forEach(el=>{el.textContent=RUTAS[el.dataset.ep]||'';});
 const GRAV={1:'registro',2:'leve',3:'típico',4:'grave',5:'crítico'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const nombresModos={bajo:'Económico',medio:'Equilibrado',alto:'Completo'};
+let perfilesModos={};
+function opcionesModos(valor){
+  return Object.entries(nombresModos).map(([k,n])=>
+    `<option value="${k}" ${k===valor?'selected':''} ${perfilesModos[k]?.disponible?'':'disabled'}>${n}${perfilesModos[k]?.disponible?'':' (no disponible)'}</option>`).join('');
+}
+async function actualizarModos(){
+  try{
+    const r=await fetch(RUTAS.salud,{cache:'no-store',signal:AbortSignal.timeout(10000)});
+    if(!r.ok)throw new Error('salud');
+    const d=await r.json();
+    if(!Array.isArray(d.modos_analisis))throw new Error('perfiles');
+    perfilesModos=Object.fromEntries(d.modos_analisis.map(p=>[p.modo,p]));
+    $('#modo-estado').textContent='';
+  }catch(e){
+    perfilesModos={};
+    $('#modo-estado').textContent='No pude consultar los modos disponibles. Reintentá en un momento.';
+  }
+  const general=$('#modo-general'), seleccionado=general.value||'alto';
+  general.innerHTML=opcionesModos(seleccionado);general.value=seleccionado;
+  document.querySelectorAll('select[data-modo]').forEach(el=>{
+    const valor=el.value;el.innerHTML=opcionesModos(valor);el.value=valor;
+  });
+  if(!perfilesModos[general.value]?.disponible&&Object.keys(perfilesModos).length)
+    $('#modo-estado').textContent='El modo elegido no está disponible. Elegí otro o revisá la configuración del servidor.';
+  return perfilesModos;
+}
+actualizarModos();
+window.addEventListener('focus',actualizarModos);
+$('#modo-general').onchange=()=>{
+  $('#modo-estado').textContent=perfilesModos[$('#modo-general').value]?.disponible?'':'El modo elegido no está disponible.';
+};
+
 const SNIP={
  curl:`# una foto, esperando el resultado en la conexión (25-60 s)
-curl -s -F "file=@foto.jpg" -F "contexto=vidrios rotos en la vereda" ${RUTAS.clasificar}
+curl -s -F "file=@foto.jpg" -F "modo=alto" -F "contexto=vidrios rotos en la vereda" ${RUTAS.clasificar}
 
 # lote: encolar (respuesta inmediata con id)...
-curl -s -F "file=@foto.jpg" -F "contexto=hay ratas" ${T}
+curl -s -F "file=@foto.jpg" -F "modo=alto" -F "contexto=hay ratas" ${T}
 # ...consultar hasta que esté listo o dé error...
 curl -s "${T}?id=ID"
 # ...y cancelar una que siga en cola
@@ -1816,13 +1896,14 @@ curl -s -X POST "${O}/trabajos/cancelar${SUF}?id=ID"`,
 TRABAJOS = "${T}"
 with open("foto.jpg", "rb") as f:
     t = requests.post(TRABAJOS, files={"file": f},
-                      data={"contexto": "vidrios rotos en la vereda"}).json()
+                      data={"modo": "alto", "contexto": "vidrios rotos en la vereda"}).json()
 while t["estado"] not in ("listo", "error"):
     time.sleep(4)
     t = requests.get(TRABAJOS, params={"id": t["trabajo"]}).json()
 print(t.get("resultado") or t)`,
  js:`const fd = new FormData();
 fd.append("file", fileInput.files[0]);
+fd.append("modo", "alto"); // bajo, medio o alto
 fd.append("contexto", "vidrios rotos en la vereda"); // opcional, por foto
 let t = await (await fetch("${T}", { method: "POST", body: fd })).json();
 while (t.estado !== "listo" && t.estado !== "error") {
@@ -1874,13 +1955,14 @@ window.addEventListener('beforeunload',e=>{
   if(pendientes){e.preventDefault();e.returnValue='';}
 });
 
-function agregar(lista){
+function agregar(lista,modoElegido=null,contextoInicial=''){
   let rechazadas=0;
   for(const f of lista){
     if(!f.type.startsWith('image/')){rechazadas++;continue;}
     const it={n:++seq,file:f,estado:'espera',trabajo:null,resultado:null,detalle:'',
               posicion:null,reenvios:0,reenvios404:0,card:null,nota:'',noAntes:null,ctx:'',armada:false,
-              tProc:null,tFin:null,dur:null};
+              tProc:null,tFin:null,dur:null,modo:modoElegido||$('#modo-general').value||'alto',modoFijo:null};
+    it.ctx=contextoInicial;
     items.push(it);crearTarjeta(it);pintar(it);
   }
   const err=$('#err');
@@ -1904,7 +1986,11 @@ function crearTarjeta(it){
   const ctxi=document.createElement('input');
   ctxi.className='ctxfoto';ctxi.type='text';ctxi.maxLength=500;
   ctxi.placeholder='Contexto de esta foto (opcional): lo que no se ve';
-  ctxi.oninput=()=>{it.ctx=ctxi.value;};
+  ctxi.value=it.ctx;ctxi.oninput=()=>{it.ctx=ctxi.value;};
+  const modo=document.createElement('label');modo.className='modofoto';
+  modo.innerHTML=`Modo de esta foto <select data-modo aria-label="Modo de análisis de ${esc(it.file.name)}">${opcionesModos(it.modo)}</select><span class="modo-nota"></span>`;
+  modo.querySelector('select').onchange=e=>{if(!it.modoFijo&&it.estado==='espera'){it.modo=e.target.value;pintar(it);}};
+  cuerpo.insertBefore(modo,cuerpo.querySelector('.tarres'));
   cuerpo.insertBefore(ctxi,cuerpo.querySelector('.tarres'));
   el.appendChild(mini);el.appendChild(banda);el.appendChild(cuerpo);
   it.card=el;$('#tarjetas').appendChild(el);
@@ -1930,8 +2016,13 @@ function bombear(){
 }
 
 async function enviar(it){
+  it.modoFijo=it.modoFijo||it.modo;
   it.estado='enviando';it.nota='';pintar(it);
-  const fd=new FormData();fd.append('file',it.file);
+  await actualizarModos();
+  if(!perfilesModos[it.modoFijo]?.disponible){
+    fallar(it,'El modo elegido no está disponible. No se cambió a otro modo.');bombear();return;
+  }
+  const fd=new FormData();fd.append('file',it.file);fd.append('modo',it.modoFijo);
   const ctx=(it.ctx||'').trim();if(ctx)fd.append('contexto',ctx.slice(0,500));
   try{
     // techo de subida: con la bomba serializada, una subida colgada
@@ -1944,6 +2035,12 @@ async function enviar(it){
       r=await fetch(T,{method:'POST',body:fd,signal:corte.signal});
     }finally{
       clearTimeout(corteT);
+    }
+    if(r.status===503){
+      const errorModo=await r.clone().json().catch(()=>null);
+      if(typeof errorModo?.detail==='string'&&errorModo.detail.startsWith('El modo elegido')){
+        await actualizarModos();fallar(it,errorModo.detail);bombear();return;
+      }
     }
     if(r.status===429||r.status===503){
       // servidor lleno: la tarjeta vuelve a la espera y se reintenta sola
@@ -2060,6 +2157,9 @@ function etaTexto(puesto){
 }
 
 function pintar(it){
+  const selectorModo=it.card.querySelector('.modofoto select');
+  selectorModo.value=it.modoFijo||it.modo;selectorModo.disabled=!!it.modoFijo||it.estado!=='espera';
+  it.card.querySelector('.modo-nota').textContent=perfilesModos[selectorModo.value]?.disponible?'':'No disponible';
   const banda=it.card.querySelector('.banda');
   const mini=it.card.querySelector('.miniatura');
   const res=it.card.querySelector('.tarres');
@@ -2099,7 +2199,7 @@ function pintar(it){
       ?`<span class="grav" title="Gravedad ${g||'?'} de 5: ${GRAV[g]||''}">G${g||'?'} ${GRAV[g]||''}</span>`
       :d.verificacion_escombros?.requiere_revision
         ?'<span class="grav">requiere revisión</span>'
-        :'<span class="grav g0">sin problema</span>';
+        :'<span class="grav g0">no se confirmaron problemas</span>';
     banda.innerHTML=`${insignia} Listo<span class="der">${it.dur?it.dur+' s':''}</span>`;
   }else{
     banda.className='banda mal';
@@ -2128,6 +2228,15 @@ function pintar(it){
       reintentar(it);iniciado=true;bombear();arrancarPoll();};
   }else if(it.estado==='listo'){
     res.innerHTML=renderResultado(it.resultado);
+    const nuevo=document.createElement('div');nuevo.className='reanalisar';
+    nuevo.innerHTML=`<label>Modo del nuevo análisis <select data-modo>${opcionesModos(it.modoFijo||it.modo)}</select></label><p>Un nuevo análisis puede volver a consumir la API. El resultado anterior se conserva.</p><button class="btn">Volver a analizar</button>`;
+    nuevo.querySelector('button').onclick=()=>{
+      const elegido=nuevo.querySelector('select').value;
+      if(!perfilesModos[elegido]?.disponible)return;
+      agregar([it.file],elegido,it.ctx);items[items.length-1].armada=true;
+      iniciado=true;bombear();arrancarPoll();
+    };
+    res.appendChild(nuevo);
   }else if(res.innerHTML){
     res.innerHTML='';
   }
@@ -2144,9 +2253,13 @@ function renderResultado(d){
       +(d.gravedad_maxima?` · gravedad ${d.gravedad_maxima}/5 (${GRAV[d.gravedad_maxima]||''})`:'')
     :d.hay_reclamo?'Reclamo por texto, sin confirmación en la foto'
     :revisionMaterial?'Requiere revisión del tipo de residuos'
-    :'Sin problemas confirmados')
+    :'No se confirmaron problemas')
     +(revisionMaterial&&(d.hay_problema||d.hay_reclamo)?' · tipo de residuos pendiente de revisión':'');
   let h=`<div class="tarconcl">${esc(concl+aviso)}</div>`;
+  if(d.modo)h+=`<div class="modo-nota">Modo de análisis: ${esc(nombresModos[d.modo]||d.modo)}</div>`;
+  if(d.analisis_estado==='sin_verificacion')h+='<div class="tardesc">Sin verificación externa. Este resultado no confirma que la foto esté libre de problemas.</div>';
+  else if(d.analisis_estado==='parcial')h+='<div class="tardesc">Análisis parcial: no se pudieron completar algunas verificaciones.</div>';
+  if((d.analisis_limitaciones||[]).includes('corroboracion_insuficiente'))h+='<div class="tardesc">Quedan hallazgos pendientes de corroboración.</div>';
   const tiposContenedor={
     contenedor_secos:'reciclables / secos (verde)',
     contenedor_humedos_lateral:'húmedos, carga lateral',
@@ -2257,7 +2370,7 @@ $('#csvbtn').onclick=()=>{
   const cab=['archivo','contexto','estado','hay_problema','gravedad_maxima','predominante','problemas',
     'patente','elementos_detectados','posibles','en_duda','hay_reclamo','foto_valida_estado',
     'verificacion_activa','verificacion_motivo','descripcion','error','trabajo',
-    'contenedores_estado','contenedores_motivo'];
+    'contenedores_estado','contenedores_motivo','modo','modo_version','analisis_estado','analisis_limitaciones'];
   const filas=[cab];
   for(const it of items){
     const d=it.resultado||{};
@@ -2269,7 +2382,8 @@ $('#csvbtn').onclick=()=>{
       (d.posibles||[]).map(p=>p.key||p.codigo).join(' | '),(d.en_duda||[]).join(' | '),
       d.hay_reclamo??'',d.foto_valida_estado??'',d.verificacion_activa??'',
       d.verificacion_motivo??'',d.descripcion??'',it.estado==='error'?it.detalle:'',it.trabajo||'',
-      d.contenedores?.estado??'',d.contenedores?.motivo??'']);
+      d.contenedores?.estado??'',d.contenedores?.motivo??'',d.modo||it.modoFijo||it.modo,
+      d.modo_version||'',d.analisis_estado||'',(d.analisis_limitaciones||[]).join(' | ')]);
   }
   // comillas para separadores y saltos; el apóstrofo inicial neutraliza
   // fórmulas (=, +, -, @) si el CSV se abre en una planilla
@@ -2288,6 +2402,9 @@ $('#csvbtn').onclick=()=>{
   setTimeout(()=>URL.revokeObjectURL(a.href),5000);
 };
 </script></body></html>"""
+
+
+PERFILES = modos.cargar(verificador, globals())
 
 
 if __name__ == "__main__":

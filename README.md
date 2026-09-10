@@ -102,9 +102,28 @@ Recibe `multipart/form-data` con estos campos:
 
 - `file`: la foto.
 - `contexto`: texto opcional de hasta 500 caracteres.
+- `modo`: `bajo` (Económico), `medio` (Equilibrado) o `alto` (Completo). Se envía como campo del formulario; si lo omitís, se usa `alto`.
 - `verificar`: `auto`, `1` o `0`. El valor por default es `auto`, que verifica cuando hay una clave configurada. `1` fuerza la verificación y `0` devuelve una respuesta degradada, sin clasificación.
 
 Los modelos usan `contexto` para interpretar la imagen y decidir si respalda lo que se describió. La API nunca devuelve ese texto porque puede contener nombres o patentes.
+
+Un `modo` vacío, desconocido o enviado en la URL devuelve `422`. Un modo conocido
+pero no configurado devuelve `503`, incluso con `verificar=0`. No se sustituye
+por otro modo. Si el formulario repite el campo escalar, se toma el último;
+`modo[]` y los archivos enviados como `modo` se rechazan.
+
+Cada resultado incluye `modo`, `modo_version`, `analisis_estado` y
+`analisis_limitaciones`. `completo` indica que terminaron las etapas previstas
+para ese modo; no garantiza que todas las categorías estén confirmadas.
+`parcial` indica una etapa fallida o una revisión pendiente, y
+`sin_verificacion` indica que no hubo verificación externa. Las limitaciones
+explican las omisiones o la falta de corroboración. Los trabajos conservan
+su modo y versión desde la creación, también al consultar un error.
+
+La caché distingue foto, contexto normalizado, `verificar`, modo y versión de
+la configuración. Los resultados parciales de Bajo y Medio no se guardan.
+Alto conserva su política de caché. Un resultado reutilizado conserva los
+tokens y el costo del análisis original.
 
 ```bash
 curl -s -F "file=@foto.jpg" -F "contexto=vidrios rotos en la vereda" http://127.0.0.1:8080/clasificar
@@ -352,6 +371,15 @@ La portada disponible en `GET /` usa esta vía.
 
 Devuelve el estado del servicio: las clases del modelo, si la verificación está activa y qué modelos usa.
 
+`modos_analisis` informa la disponibilidad de cada modo y el motivo cuando no
+está habilitado. Esta respuesta no se guarda en caché.
+
+En la portada, "Modo de análisis" empieza en Completo y se aplica a las fotos
+que agregues después. Cada tarjeta permite elegir otro modo antes de enviarla.
+Una vez enviado el análisis, sus reintentos conservan esa elección. "Volver a
+analizar" crea un intento nuevo y conserva el resultado anterior; puede generar
+otro consumo. El modo también aparece en las descargas JSON y CSV.
+
 ## Configuración
 
 La configuración se lee desde variables de entorno o `.env`. La lista completa está en [`.env.example`](.env.example).
@@ -360,6 +388,9 @@ La configuración se lee desde variables de entorno o `.env`. La lista completa 
 |---|---|---|
 | `OPENROUTER_API_KEY` | vacía | Habilita la verificación cruzada. Nunca la commitees. |
 | `VERIFICADORES` | tres modelos (ver `.env.example`) | Modelos de visión separados por coma. Podés configurar uno, dos, tres o más. Una categoría necesita al menos 2 fuentes y el modelo local cuenta como una. Las pasadas dirigidas agregan llamadas solo cuando se activan. La repregunta entre modelos corre con 3 o más verificadores. |
+| `VERIFICADORES_BAJO` | sin configurar | Un modelo para Económico. No usa árbitro ni especialista. Las comprobaciones que necesitan dos lectores externos quedan pendientes, sin bajar el requisito de evidencia. |
+| `VERIFICADORES_MEDIO` | sin configurar | Dos modelos distintos para Equilibrado. El árbitro recibe solo texto y no puede confirmar una categoría de una fuente única. No usa el especialista. |
+| `VERIFICADORES_ALTO` | hereda `VERIFICADORES` | Tres modelos distintos si se define explícitamente. Conserva el recorrido completo, incluido el especialista cuando está habilitado. |
 | `ARBITRO` | `deepseek/deepseek-v4-flash` | Modelo que resuelve desacuerdos. Vacío desactiva el árbitro. Puede ser de texto o tener visión. |
 | `ARBITRO_VE_FOTO` | apagado | Envía la foto al árbitro si este tiene visión. |
 | `ARBITRO_CONFIRMA` | apagado | Permite que el árbitro confirme una categoría informada por una sola fuente. Está apagado por los resultados de la medición. |
@@ -369,6 +400,13 @@ La configuración se lee desde variables de entorno o `.env`. La lista completa 
 | `VERIFICADOR_DEADLINE` | `180` | Tiempo máximo total de reintentos por modelo. |
 | `OPENROUTER_CACHE_PROMPTS` | `0` | Prueba opt-in de afinidad por modelo y prefijo de sistema. Apagada hasta demostrar ahorro consistente. |
 | `OPENROUTER_LOG_USO` | `1` | Registra tokens, caché y costo por intento en stderr. `0` lo apaga. |
+
+Las listas nuevas se validan al iniciar. Definirlas vacías, repetir modelos o
+usar una cantidad incorrecta deshabilita solo ese modo. Los ejemplos de
+`.env.example` son candidatos para evaluar; no certifican una precisión ni un
+ahorro. El modelo local sigue participando en los tres modos. Una misma fuente
+puede recibir varias consultas, que cuentan en el consumo pero no como votos
+independientes.
 
 Los modelos de DeepSeek disponibles en OpenRouter no aceptan imágenes. Por eso el valor configurado por default interviene como árbitro de texto.
 

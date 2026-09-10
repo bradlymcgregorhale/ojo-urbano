@@ -51,6 +51,7 @@ import urllib.request
 from pathlib import Path
 
 import revision_escombros_publica as revision_publica
+import modos_analisis as modos
 
 from prompts import (
     REGLA_SUBTIPO_HUMEDOS,
@@ -389,8 +390,28 @@ def api_key():
     return os.environ.get("OPENROUTER_API_KEY", "").strip()
 
 
+def modelos_activos():
+    perfil = modos.perfil_actual()
+    return perfil.verificadores if perfil else VERIFICADORES
+
+
+def arbitro_activo():
+    perfil = modos.perfil_actual()
+    return perfil.arbitro if perfil else ARBITRO
+
+
+def arbitro_ve_foto():
+    perfil = modos.perfil_actual()
+    return perfil.arbitro_ve_foto if perfil else ARBITRO_VE_FOTO
+
+
+def arbitro_confirma():
+    perfil = modos.perfil_actual()
+    return perfil.arbitro_confirma if perfil else ARBITRO_CONFIRMA
+
+
 def disponible():
-    return bool(api_key()) and bool(VERIFICADORES)
+    return bool(api_key()) and bool(modelos_activos())
 
 
 def _imagen_data_url(img, lado=None):
@@ -592,6 +613,9 @@ def _registrar_uso(modelo, etapa, clave, intento, inicio, data=None, error=None)
 
 def verificar_contenedores(datos):
     """Una llamada con el inventario fijo; fallo o incertidumbre pide revision."""
+    perfil = modos.perfil_actual()
+    if perfil and not perfil.especialista:
+        raise ValueError("El modo no usa especialista de contenedores")
     import especialista_contenedores as especialista
     inicio = time.monotonic()
     data, error = None, None
@@ -602,6 +626,7 @@ def verificar_contenedores(datos):
             "Authorization": "Bearer " + api_key(), "Content-Type": "application/json"})
         vence = inicio + 40
         enviado = True
+        modos.llamada()
         data = _pedir_http(req, min(TIMEOUT, 40), vence)
         _costo_sumar(data.get("usage"))
         return especialista.interpretar(data)
@@ -617,6 +642,13 @@ def verificar_contenedores(datos):
 def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa"):
     # reasoning effort bajo: los modelos razonadores (Kimi) pueden gastar todo
     # el presupuesto pensando y devolver el JSON vacío (finish_reason=length)
+    perfil = modos.perfil_actual()
+    if perfil and perfil.modo != "alto":
+        permitidos = set(perfil.verificadores) | ({perfil.arbitro} if perfil.arbitro else set())
+        if modelo not in permitidos:
+            raise ValueError("Modelo fuera del modo elegido")
+        if etapa == "arbitrar" and perfil.modo == "bajo":
+            raise ValueError("Económico no usa árbitro")
     cuerpo = {"model": modelo, "max_tokens": max_tokens,
               # Pide a OpenRouter el costo real de la llamada (usage.cost, USD).
               "usage": {"include": True},
@@ -651,6 +683,7 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa")
         inicio = time.monotonic()
         data, error = None, None
         try:
+            modos.llamada()
             data = _pedir_http(req, min(TIMEOUT, resto), vence)
             _costo_sumar(data.get("usage"))
             msg = data["choices"][0]["message"]
@@ -667,6 +700,7 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa")
         finally:
             _tokens_sumar(data)
             _registrar_uso(modelo, etapa, clave, intento, inicio, data, error)
+    modos.fallo(etapa)
     raise ultimo
 
 
@@ -692,6 +726,7 @@ def _map_modelos(modelos, fn):
         try:
             return fn(modelo)
         except Exception:
+            modos.fallo("respuesta_dirigida")
             return _FALLO_MODELO
 
     if len(modelos) == 1:
@@ -936,6 +971,7 @@ def _patente_normalizada(texto):
     return None
 
 
+@modos.minimo_fuentes(2, None, ())
 def _leer_patente(img):
     """Segunda pasada, solo para la patente: la foto a mayor resolución
     (LADO_PATENTE) a hasta tres verificadores EN PARALELO, con un prompt
@@ -946,7 +982,7 @@ def _leer_patente(img):
     nada: la duda no se vota."""
     # Únicos, por si la config repite un modelo: el mismo lector dos veces
     # no son dos lecturas independientes.
-    lectores = list(dict.fromkeys(VERIFICADORES))[:3]
+    lectores = list(dict.fromkeys(modelos_activos()))[:3]
     if len(lectores) < 2:
         return None
     data_url = _imagen_data_url(img, lado=LADO_PATENTE)
@@ -962,6 +998,7 @@ def _leer_patente(img):
             return _patente_normalizada(_extraer_json(contenido).get("patente"))
         except (urllib.error.URLError, ValueError, KeyError,
                 json.JSONDecodeError, OSError):
+            modos.fallo("leer_patente")
             return None
 
     with concurrent.futures.ThreadPoolExecutor(len(lectores)) as pool:
@@ -978,9 +1015,10 @@ def _leer_patente(img):
     return None
 
 
+@modos.minimo_fuentes(2, {'aceptado': False, 'estado': 'indeterminado', 'fallo': False, 'revisiones': []}, ())
 def validar_contexto_obra_servicios(contexto):
     """El código 154014 exige un reclamo distinto del retiro de bolsas."""
-    modelos = list(dict.fromkeys(VERIFICADORES))
+    modelos = list(dict.fromkeys(modelos_activos()))
 
     def uno(modelo):
         v = _extraer_json(_llamar(modelo, [
@@ -1010,7 +1048,7 @@ def validar_contexto_obra_servicios(contexto):
 def validar_alcance_escombros(img, contexto=""):
     """Revisa ubicación y presentación sin recibir votos ni scores previos."""
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
-    modelos = list(dict.fromkeys(VERIFICADORES))
+    modelos = list(dict.fromkeys(modelos_activos()))
     permitidos = {
         "ubicacion": {"publica", "privada", "indeterminada"},
         "presentacion": {"bolsas_chicas_o_suelto", "solo_bolson", "sin_pila", "indeterminada"},
@@ -1134,7 +1172,7 @@ def _segunda_mirada_escombros(img, ya_reportaron):
     "indeterminado"; el listón para confirmar no se movió (sigue haciendo
     falta que alguien diga "escombros")."""
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
-    pendientes = [m for m in VERIFICADORES if m not in ya_reportaron]
+    pendientes = [m for m in modelos_activos() if m not in ya_reportaron]
 
     def _uno(modelo):
         contenido = _llamar(modelo, [
@@ -1215,6 +1253,7 @@ def _evidencia_metalica(texto):
     return bool(_PATRON_ESTRUCTURA.search(t)) and not _PATRON_NO_METAL.search(t)
 
 
+@modos.minimo_fuentes(2, ([], False), ('reparacion_contenedor', 'retiro_muebles'))
 def _segunda_mirada_relacion(img):
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
     def uno(modelo):
@@ -1227,7 +1266,7 @@ def _segunda_mirada_relacion(img):
                 or raw.get('otro_dano_contenedor') not in {'si', 'no', 'indeterminado'}):
             raise ValueError('Respuesta de relación incompleta')
         return dict(raw, modelo=modelo)
-    resultados = _map_modelos(VERIFICADORES, uno)
+    resultados = _map_modelos(modelos_activos(), uno)
     return [r for r in resultados if r is not _FALLO_MODELO], any(r is _FALLO_MODELO for r in resultados)
 
 
@@ -1249,6 +1288,7 @@ def _reparacion_solo_base(voto):
             and not _PATRON_BARRA_IZADO.search(texto))
 
 
+@modos.minimo_fuentes(2, ([], [], False), ('reparacion_contenedor', 'retiro_muebles'))
 def _segunda_mirada_base(img):
     """Re-consulta dirigida por la base del contenedor. A diferencia de la de
     escombros, pregunta a TODOS los verificadores (acá hay que poder
@@ -1267,7 +1307,7 @@ def _segunda_mirada_base(img):
         return _extraer_json(contenido)
 
     base, descartado, fallo = [], [], False
-    for modelo, v in zip(VERIFICADORES, _map_modelos(VERIFICADORES, _uno)):
+    for modelo, v in zip(modelos_activos(), _map_modelos(modelos_activos(), _uno)):
         if v is _FALLO_MODELO:
             fallo = True
             continue
@@ -1296,6 +1336,7 @@ def _segunda_mirada_base(img):
     return base, descartado, fallo
 
 
+@modos.minimo_fuentes(2, ([], [], False), ('contenedor_humedos_lateral', 'contenedor_humedos_bilateral', 'contenedor_secos'))
 def _segunda_mirada_postes(img):
     """¿Los postes que citó un testigo existen? Devuelve (con, sin, fallo)."""
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
@@ -1313,7 +1354,7 @@ def _segunda_mirada_postes(img):
                 _texto_limpio(v.get("evidencia"), EVID_MAX))
 
     con, sin, fallo = [], [], False
-    for modelo, r in zip(VERIFICADORES, _map_modelos(VERIFICADORES, _uno)):
+    for modelo, r in zip(modelos_activos(), _map_modelos(modelos_activos(), _uno)):
         if r is _FALLO_MODELO:
             fallo = True
             continue
@@ -1347,7 +1388,7 @@ def _segunda_mirada_volcado(img):
                 _texto_limpio(v.get("evidencia"), EVID_MAX))
 
     volcado, parado, fallo = [], [], False
-    for modelo, r in zip(VERIFICADORES, _map_modelos(VERIFICADORES, _uno)):
+    for modelo, r in zip(modelos_activos(), _map_modelos(modelos_activos(), _uno)):
         if r is _FALLO_MODELO:
             fallo = True
             continue
@@ -1359,6 +1400,7 @@ def _segunda_mirada_volcado(img):
     return volcado, parado, fallo
 
 
+@modos.minimo_fuentes(2, ([], [], False), ('contenedor_humedos_lateral', 'contenedor_humedos_bilateral', 'contenedor_secos'))
 def _segunda_mirada_subtipo(img):
     """Mirada dirigida SOLO al subtipo del contenedor de húmedos. Corre
     cuando el modelo local (entrenado con estos contenedores) contradice
@@ -1380,7 +1422,7 @@ def _segunda_mirada_subtipo(img):
                 _texto_limpio(v.get("evidencia"), EVID_MAX))
 
     lateral, bilateral, fallo = [], [], False
-    for modelo, r in zip(VERIFICADORES, _map_modelos(VERIFICADORES, _uno)):
+    for modelo, r in zip(modelos_activos(), _map_modelos(modelos_activos(), _uno)):
         if r is _FALLO_MODELO:
             fallo = True
             continue
@@ -1411,7 +1453,7 @@ def _segunda_mirada_dano(img):
                 _texto_limpio(v.get("evidencia"), EVID_MAX))
 
     dano, sin_dano, fallo = [], [], False
-    for modelo, r in zip(VERIFICADORES, _map_modelos(VERIFICADORES, _uno)):
+    for modelo, r in zip(modelos_activos(), _map_modelos(modelos_activos(), _uno)):
         if r is _FALLO_MODELO:
             fallo = True
             continue
@@ -1815,7 +1857,7 @@ def _segunda_mirada_presencia(img, descripcion=None):
         return (veredicto, _texto_limpio(v.get("evidencia"), EVID_MAX))
 
     presentes, ausentes, fallo = [], [], False
-    for modelo, r in zip(VERIFICADORES, _map_modelos(VERIFICADORES, _uno)):
+    for modelo, r in zip(modelos_activos(), _map_modelos(modelos_activos(), _uno)):
         if r is _FALLO_MODELO:
             fallo = True
             continue
@@ -1869,7 +1911,7 @@ def _segunda_mirada_desborde(img, cuerpo_destruido=False):
                 _texto_limpio(v.get("evidencia"), EVID_MAX))
 
     rebalsa, no_lleno, fallo = [], [], False
-    for modelo, r in zip(VERIFICADORES, _map_modelos(VERIFICADORES, _uno)):
+    for modelo, r in zip(modelos_activos(), _map_modelos(modelos_activos(), _uno)):
         if r is _FALLO_MODELO:
             fallo = True
             continue
@@ -1959,7 +2001,7 @@ def _segunda_mirada_voluminoso(img):
                 _texto_limpio(v.get("evidencia"), EVID_MAX))
 
     identificados, negativos, descartados, fallo = [], [], [], False
-    for modelo, r in zip(VERIFICADORES, _map_modelos(VERIFICADORES, _uno)):
+    for modelo, r in zip(modelos_activos(), _map_modelos(modelos_activos(), _uno)):
         if r is _FALLO_MODELO:
             fallo = True
             continue
@@ -2067,7 +2109,7 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
     solo redacta la descripción. firmes: subtipos ya resueltos por el sistema
     (contenedor de húmedos, tapa) que la descripción no debe contradecir.
     """
-    if not ARBITRO:
+    if not arbitro_activo():
         return None
     fuentes = fuentes or {}
     probas = {p["key"]: p["score"] for p in probabilidades[:12]}
@@ -2119,7 +2161,7 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
         # una compresión con pérdida de lo que hay que juzgar: si un modelo vio
         # algo y el otro no lo nombró, sin la foto no hay forma de saber quién
         # tiene razón. Requiere que ARBITRO sea un modelo con visión.
-        con_foto = bool(ARBITRO_VE_FOTO and data_url)
+        con_foto = bool(arbitro_ve_foto() and data_url)
         if con_foto:
             contenido = [{"type": "text", "text": "".join(partes)},
                          {"type": "image_url", "image_url": {"url": data_url}}]
@@ -2129,7 +2171,7 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
                     {"role": "user", "content": contenido}]
 
         def _una_vuelta(_):
-            return _extraer_json(_llamar(ARBITRO, mensajes, etapa="arbitrar"))
+            return _extraer_json(_llamar(arbitro_activo(), mensajes, etapa="arbitrar"))
 
         if ARBITRO_VOTOS == 1:
             datos = [_una_vuelta(0)]
@@ -2202,12 +2244,12 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
         pares = [(b, _texto_limpio(d.get("descripcion"), DESC_MAX))
                  for b, d in validas if _texto_limpio(d.get("descripcion"), 1)]
         descripcion = max(pares, key=_puntaje)[1] if pares else ""
-        return {"modelo": ARBITRO, "ok": True, "decisiones": decisiones,
+        return {"modelo": arbitro_activo(), "ok": True, "decisiones": decisiones,
                 "vueltas_pedidas": ARBITRO_VOTOS, "vueltas_validas": len(boletas),
                 "degradado": len(boletas) < ARBITRO_VOTOS,
                 "descripcion": descripcion}
     except (urllib.error.URLError, ValueError, KeyError, json.JSONDecodeError, OSError) as e:
-        return {"modelo": ARBITRO, "ok": False, "error": str(e)[:200]}
+        return {"modelo": arbitro_activo(), "ok": False, "error": str(e)[:200]}
 
 
 def _intentar(fn, arg):
@@ -2227,7 +2269,10 @@ def _clasificar_contexto(contexto, categorias):
     "mi cuadra está llena de basura" no sabemos si es diseminado o voluminoso,
     así que es recoleccion, no retiro_muebles.
     """
-    if not contexto or not ARBITRO:
+    perfil = modos.perfil_actual()
+    modelo_contexto = (perfil.verificadores[0] if perfil and perfil.modo == "bajo"
+                       else arbitro_activo())
+    if not contexto or not modelo_contexto:
         return []
     listado = "\n".join(f"- {k}: {v['nombre']}" for k, v in categorias.items()
                         if k != "sin_problema" and k not in FOLD)
@@ -2235,7 +2280,7 @@ def _clasificar_contexto(contexto, categorias):
         contexto=json.dumps(contexto, ensure_ascii=False),
         categorias=listado)
     try:
-        data = _extraer_json(_llamar(ARBITRO, [
+        data = _extraer_json(_llamar(modelo_contexto, [
             {"role": "system", "content": _CONTEXTO_SISTEMA},
             {"role": "user", "content": prompt}], etapa="clasificar_contexto"))
     except (urllib.error.URLError, ValueError, KeyError,
@@ -2274,9 +2319,9 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     sostener el reclamo solo cuando la foto no corresponde (foto_valida False).
     """
     data_url = _imagen_data_url(img)
-    with concurrent.futures.ThreadPoolExecutor(len(VERIFICADORES)) as pool:
+    with concurrent.futures.ThreadPoolExecutor(len(modelos_activos())) as pool:
         veredictos = _map_con_contexto(
-            pool, lambda m: _verificar_uno(m, data_url, categorias, contexto), VERIFICADORES)
+            pool, lambda m: _verificar_uno(m, data_url, categorias, contexto), modelos_activos())
 
     grav_votos = {}  # key -> [gravedad de cada verificador que la reportó]
     fuentes = {}   # key -> lista de fuentes que la reportan
@@ -2561,7 +2606,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         return objeto, vlm[0]
 
     _hay_cruzada = bool(REPREGUNTA_OBJETOS and activos
-                        and len(VERIFICADORES) >= 3)
+                        and len(modelos_activos()) >= 3)
 
     segunda_mirada = None
     _obj_escombros, _ = (_objeto_de_un_solo_vlm("retiro_escombros")
@@ -3444,7 +3489,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                 # sobre 21 confirmaciones, y los cuatro peores que rechazar
                 # todas las disputas. Lo que vio una sola fuente no es un
                 # hecho: sale como POSIBLE, no como problema confirmado.
-                if (ARBITRO_CONFIRMA and d.get("veredicto") == "confirmar"
+                if (arbitro_confirma() and d.get("veredicto") == "confirmar"
                         and d["key"] not in adjudicadas_dirigidas):
                     confirmadas.add(d["key"])
             en_duda = sorted(disputadas - decididas - confirmadas)
@@ -3583,7 +3628,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
 
     if (arbitro and arbitro.get("ok") and arbitro.get("descripcion")
             and not _contradice_material(arbitro["descripcion"])):
-        descripcion, descripcion_fuente = arbitro["descripcion"], ARBITRO
+        descripcion, descripcion_fuente = arbitro["descripcion"], arbitro_activo()
     else:
         mejor = None
         # Si la segunda mirada de la base desautorizó votos, la descripción de
@@ -3599,13 +3644,13 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                      len(claves_v & confirmadas), len(v["descripcion"]))
             if mejor is None or clave > mejor[0]:
                 mejor = (clave, v)
-        if mejor and not mejor[0][0] and ARBITRO:
+        if mejor and not mejor[0][0] and arbitro_activo():
             arbitro = _arbitrar(set(), activos, prediccion_local["probabilidades"],
                                 categorias, confirmadas, sorted(subtipos_firmes),
                                 contexto, data_url=data_url)
         if (arbitro and arbitro.get("ok") and arbitro.get("descripcion")
                 and not _contradice_material(arbitro["descripcion"])):
-            descripcion, descripcion_fuente = arbitro["descripcion"], ARBITRO
+            descripcion, descripcion_fuente = arbitro["descripcion"], arbitro_activo()
         elif mejor:
             descripcion, descripcion_fuente = mejor[1]["descripcion"], mejor[1]["modelo"]
     # EL OBJETO QUE VIO UNO SOLO NO SE AFIRMA. La regla existía únicamente en
