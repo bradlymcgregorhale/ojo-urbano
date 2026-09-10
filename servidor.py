@@ -541,6 +541,7 @@ def _calidad_segura(img):
 def procesar(datos, contexto, verificar):
     """Pipeline completo y sincrónico. Corre fuera del event loop."""
     verificador.costo_reset()
+    verificador.tokens_reset()
     img = _abrir_imagen(datos)
     local = clasificar_local(img)
     activar = (verificador.disponible() if verificar == "auto"
@@ -872,6 +873,7 @@ def procesar(datos, contexto, verificar):
         revision_obra = verificador.validar_contexto_obra_servicios(contexto)
         salida = politica_escombros.aplicar_obra_servicios(salida, revision_obra)
     salida["costo_api"] = verificador.costo_total()
+    salida.update(verificador.tokens_total())
     return salida
 
 

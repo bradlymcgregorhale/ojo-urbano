@@ -34,6 +34,7 @@ Config por variables de entorno (ver .env.example):
 """
 import base64
 import concurrent.futures
+import contextvars
 import hashlib
 import io
 import json
@@ -473,6 +474,50 @@ def _costo_sumar(usage):
             _costo["llamadas"] += 1
 
 
+_tokens_foto = contextvars.ContextVar("tokens_foto", default=None)
+
+
+def tokens_reset():
+    """Abre un conteo propio de la foto, compartido por sus llamadas paralelas."""
+    _tokens_foto.set({"total": 0, "completos": True, "lock": threading.Lock()})
+
+
+def tokens_total():
+    """Devuelve el uso conocido y señala si algún intento no informó tokens."""
+    estado = _tokens_foto.get()
+    _tokens_foto.set(None)
+    if estado is None:
+        return {"tokens_api": 0, "tokens_api_completos": True}
+    with estado["lock"]:
+        return {"tokens_api": estado["total"],
+                "tokens_api_completos": estado["completos"]}
+
+
+def _tokens_sumar(data):
+    estado = _tokens_foto.get()
+    if estado is None:
+        return
+    uso = data.get("usage") if isinstance(data, dict) else None
+    uso = uso if isinstance(uso, dict) else {}
+    total = uso.get("total_tokens")
+    if type(total) is not int or total < 0:
+        entrada, salida = uso.get("prompt_tokens"), uso.get("completion_tokens")
+        total = (entrada + salida if type(entrada) is int and entrada >= 0
+                 and type(salida) is int and salida >= 0 else None)
+    # Razonamiento y caché son detalles del total, no consumos adicionales.
+    with estado["lock"]:
+        if total is None:
+            estado["completos"] = False
+        else:
+            estado["total"] += total
+
+
+def _map_con_contexto(pool, fn, valores):
+    """Cada hilo hereda el conteo de su foto sin compartir el de otras fotos."""
+    pendientes = [pool.submit(contextvars.copy_context().run, fn, v) for v in valores]
+    return [p.result() for p in pendientes]
+
+
 def _clave_cache_prompt(modelo, mensajes):
     """Identifica el prefijo de sistema, nunca la foto ni el texto del vecino.
 
@@ -539,11 +584,13 @@ def verificar_contenedores(datos):
     import especialista_contenedores as especialista
     inicio = time.monotonic()
     data, error = None, None
+    enviado = False
     try:
         cuerpo = especialista.solicitud(datos)
         req = urllib.request.Request(OPENROUTER_URL, data=json.dumps(cuerpo).encode(), headers={
             "Authorization": "Bearer " + api_key(), "Content-Type": "application/json"})
         vence = inicio + 40
+        enviado = True
         data = _pedir_http(req, min(TIMEOUT, 40), vence)
         _costo_sumar(data.get("usage"))
         return especialista.interpretar(data)
@@ -551,6 +598,8 @@ def verificar_contenedores(datos):
         error = exc
         return especialista.revision(fallo=True)
     finally:
+        if enviado:
+            _tokens_sumar(data)
         _registrar_uso(especialista.MODELO, "inventario_contenedores", None, 1, inicio, data, error)
 
 
@@ -605,6 +654,7 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa")
             ultimo = e
             error = e
         finally:
+            _tokens_sumar(data)
             _registrar_uso(modelo, etapa, clave, intento, inicio, data, error)
     raise ultimo
 
@@ -636,7 +686,7 @@ def _map_modelos(modelos, fn):
     if len(modelos) == 1:
         return [_uno(modelos[0])]
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(modelos)) as pool:
-        return list(pool.map(_uno, modelos))
+        return _map_con_contexto(pool, _uno, modelos)
 
 
 def _cortar_conexion(resp):
@@ -904,7 +954,7 @@ def _leer_patente(img):
             return None
 
     with concurrent.futures.ThreadPoolExecutor(len(lectores)) as pool:
-        lecturas = list(pool.map(_uno, lectores))
+        lecturas = _map_con_contexto(pool, _uno, lectores)
     validas = [p for p in lecturas if p]
     # Publica con al menos DOS lectores leyendo la misma cadena y NINGUNO
     # leyendo una distinta: la nula no es discrepancia (chapa chica,
@@ -2062,8 +2112,8 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
         else:
             # En paralelo: son la misma pregunta, no dependen entre sí.
             with concurrent.futures.ThreadPoolExecutor(ARBITRO_VOTOS) as pool:
-                crudos = list(pool.map(
-                    lambda i: _intentar(_una_vuelta, i), range(ARBITRO_VOTOS)))
+                crudos = _map_con_contexto(
+                    pool, lambda i: _intentar(_una_vuelta, i), range(ARBITRO_VOTOS))
             datos = [d for d in crudos if d is not None]
             if not datos:
                 raise ValueError("ninguna vuelta del árbitro devolvió JSON")
@@ -2201,8 +2251,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     """
     data_url = _imagen_data_url(img)
     with concurrent.futures.ThreadPoolExecutor(len(VERIFICADORES)) as pool:
-        veredictos = list(pool.map(
-            lambda m: _verificar_uno(m, data_url, categorias, contexto), VERIFICADORES))
+        veredictos = _map_con_contexto(
+            pool, lambda m: _verificar_uno(m, data_url, categorias, contexto), VERIFICADORES)
 
     grav_votos = {}  # key -> [gravedad de cada verificador que la reportó]
     fuentes = {}   # key -> lista de fuentes que la reportan

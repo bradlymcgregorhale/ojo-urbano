@@ -86,6 +86,7 @@ import servidor
 guard_modelo.adquirir_singleton = _adquirir_real
 S_ROOT = AQUI
 import verificador as V  # noqa: E402
+import test_tokens_api  # Conserva _llamar antes de los reemplazos de estas pruebas.
 from fastapi import HTTPException  # noqa: E402
 from PIL import Image  # noqa: E402
 
@@ -4670,6 +4671,7 @@ from eval.vision import test_pipeline as test_vision_pipeline
 _suite_alcance = unittest.defaultTestLoader.loadTestsFromModule(test_politica_escombros)
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_contenedores))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_especialista_contenedores))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_tokens_api))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_vision_runner))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_vision_pipeline))
 _resultado_alcance = unittest.TextTestRunner(verbosity=2).run(_suite_alcance)
