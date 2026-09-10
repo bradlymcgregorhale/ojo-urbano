@@ -43,6 +43,23 @@ def aplicar(revision):
 
 
 class RevisionPublica(unittest.TestCase):
+    def test_un_lector_publica_posibles_y_movimientos_sin_cambiar_observaciones(self):
+        respuestas = [respuesta(material=m, afirmacion_vecinal='no_menciona', cita_vecinal='')
+                      for m in ('escombros_visible', 'oculto_o_ambiguo', 'oculto_o_ambiguo')]
+        revision, llamadas = revisar(respuestas)
+        antes = D.publicar(revision)['revisiones']
+        r = salida([categoria('recoleccion')])
+        r['detalle']['modelo_local']['probabilidades'] = [{'key': P.KEY, 'score': .9991}]
+        nuevo = P.aplicar(r, revision, {P.KEY: {'nombre': 'Retiro de escombros'}})
+        d = D.publicar(revision, nuevo['detalle']['verificacion']['decision_alcance'])
+        self.assertEqual(len(llamadas), 3)
+        self.assertEqual(d['detalle_estado'], 'completo')
+        self.assertEqual(d['revisiones'], antes)
+        self.assertEqual(d['decision']['reglas'], ['escombros_visibles_sin_corroborar',
+                                                 'recoleccion_pendiente_por_material'])
+        for efecto in d['decision']['efectos']:
+            self.assertEqual(efecto['despues'], ['posibles', 'en_duda'])
+
     def test_conflicto_completo_no_es_consenso(self):
         revision = conflicto()
         r = aplicar(revision)

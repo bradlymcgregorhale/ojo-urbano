@@ -15,6 +15,8 @@ EVIDENCIAS = ('evidencia_ubicacion', 'evidencia_presentacion', 'evidencia_materi
 COLECCIONES = ('problemas', 'posibles', 'categorias_contexto', 'descartados_por_foto',
                'elementos_detectados', 'en_duda')
 REGLAS = {
+    'escombros_visibles_sin_corroborar': 'Una observación de restos de obra conserva esa alternativa pendiente; falta corroboración del material.',
+    'recoleccion_pendiente_por_material': 'La recolección de esas bolsas queda pendiente al no haber residuos comunes independientes corroborados.',
     'conservar_basura_publica': 'Se conserva la recolección de residuos comunes corroborados.',
     'material_contradictorio': 'Las observaciones del material se contradicen; no se confirma escombros.',
     'alcance_excluido': 'La ubicación o presentación queda fuera del alcance del retiro.',
