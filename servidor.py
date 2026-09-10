@@ -2140,8 +2140,6 @@ function renderResultado(d){
     :'Sin problemas confirmados')
     +(revisionMaterial&&(d.hay_problema||d.hay_reclamo)?' · tipo de residuos pendiente de revisión':'');
   let h=`<div class="tarconcl">${esc(concl+aviso)}</div>`;
-  if(typeof d.costo_api==='number'&&d.costo_api>0)
-    h+=`<div class="tarcosto">Costo de procesamiento (API): US$${d.costo_api.toFixed(4)}</div>`;
   const tiposContenedor={
     contenedor_secos:'reciclables / secos (verde)',
     contenedor_humedos_lateral:'húmedos, carga lateral',

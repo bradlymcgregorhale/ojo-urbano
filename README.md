@@ -388,7 +388,8 @@ puede cachearse y sigue siendo revision, nunca ausencia. La interfaz muestra
 ese estado y el CSV agrega `contenedores_estado` y `contenedores_motivo`.
 
 La pasada realiza un solo intento, con un plazo de 40 segundos, y suma su costo
-al procesamiento existente. El promedio observado en 100 fotos fue USD0.0038
+al procesamiento existente. La API conserva `costo_api` para contabilizar el
+consumo, pero la pagina no muestra ese importe. El promedio observado en 100 fotos fue USD0.0038
 adicionales por foto; no representa el costo de las otras categorias. Tras la
 revision humana de cuatro referencias, hubo 98 respuestas automaticas correctas,
 un tipo omitido y una revision. Ese resultado no garantiza la exactitud en otras
