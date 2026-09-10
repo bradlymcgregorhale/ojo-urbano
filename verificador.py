@@ -34,6 +34,7 @@ Config por variables de entorno (ver .env.example):
 """
 import base64
 import concurrent.futures
+import revision_escombros_publica as revision_publica
 import contextvars
 import hashlib
 import io
@@ -1022,10 +1023,14 @@ def validar_alcance_escombros(img, contexto=""):
                 for k, valores in permitidos.items()):
             raise ValueError("Respuesta de alcance incompleta")
         r = {k: v[k] for k in permitidos}
+        ajustes = []
         # "Sin bolsas" y "hay una bolsa opaca" no pueden ser ciertos a la
         # vez. Abstenerse sobre presentación conserva los otros campos;
         # nunca inventa un voto de pila pública ni anula una ubicación privada.
         if r['presentacion'] == 'sin_pila' and r['hay_bolsas_opacas_o_parciales'] == 'si':
+            ajustes.append(dict(campo='presentacion', valor_original='sin_pila',
+                                valor_aplicado='indeterminada',
+                                motivo='presentacion_incompatible_con_bolsas_opacas'))
             r['presentacion_original'] = 'sin_pila'
             r['presentacion'] = 'indeterminada'
         # Ver cartón en una bolsa no revela el contenido de las otras.
@@ -1033,6 +1038,9 @@ def validar_alcance_escombros(img, contexto=""):
         if r["material"] == "incompatible_visible" and r["hay_bolsas_opacas_o_parciales"] != "no":
             r["material"] = ("oculto_o_ambiguo" if r["hay_bolsas_opacas_o_parciales"] == "si"
                              else "indeterminado")
+            ajustes.append(dict(campo="material", valor_original="incompatible_visible",
+                                valor_aplicado=r["material"],
+                                motivo="material_incompatible_sin_descartar_bolsas_opacas"))
         otros = v.get("otros_retiros_independientes")
         if not isinstance(otros, list) or any(
                 not isinstance(k, str) or k not in {"retiro_muebles", "retiro_poda"}
@@ -1049,14 +1057,19 @@ def validar_alcance_escombros(img, contexto=""):
         r["afirma_validada"] = bool(
             r["afirmacion_vecinal"] == "afirma" and isinstance(cita, str)
             and cita.strip() and cita.strip().casefold() in contexto.casefold())
-        return r
+        return r, ajustes
 
-    revisiones, fallo = [], False
-    for modelo, r in zip(modelos, _map_modelos(modelos, uno)):
-        if r is _FALLO_MODELO:
+    revisiones, fallo, participantes = [], False, []
+    for modelo, resultado in zip(modelos, _map_modelos(modelos, uno)):
+        if resultado is _FALLO_MODELO:
             fallo = True
+            participantes.append(dict(modelo=modelo, estado="sin_respuesta_valida",
+                                      respuesta=None, ajustes=[]))
         else:
+            r, ajustes = resultado
             revisiones.append(dict(r, modelo=modelo))
+            participantes.append(dict(modelo=modelo, estado="ok", ajustes=ajustes,
+                                      respuesta=revision_publica.capturar_respuesta(r, contexto, EVID_MAX)))
     publicas = [r for r in revisiones if r["ubicacion"] == "publica"
                 and r["presentacion"] == "bolsas_chicas_o_suelto"]
     negativas = [r for r in revisiones if r["ubicacion"] == "privada"
@@ -1091,7 +1104,8 @@ def validar_alcance_escombros(img, contexto=""):
                                         for r in revisiones) >= 2,
             "otros_retiros_independientes": [k for k in ("retiro_muebles", "retiro_poda")
                 if sum(k in r["otros_retiros_independientes"] for r in revisiones) >= 2],
-            "revisiones": revisiones}
+            "revisiones": revisiones,
+            "registro_publico": {"version": 1, "participantes": participantes}}
 
 
 def _segunda_mirada_escombros(img, ya_reportaron):

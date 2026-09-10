@@ -2,6 +2,8 @@
 import copy
 import re
 
+import revision_escombros_publica as revision_publica
+
 KEY = "retiro_escombros"
 CODIGO = "1462821340520"
 CODIGO_OBRA_SERVICIOS = "154014"
@@ -151,6 +153,9 @@ def _material_publico_disputado(salida, revision):
 def aplicar(salida, revision, categorias):
     """Aplica el veto después de fusión y ruteo textual, sin crear votos visuales."""
     r = copy.deepcopy(salida)
+    diagnostico = revision_publica.Decision(salida)
+    claves_escombros = {KEY} | {c.get("key") for campo in revision_publica.COLECCIONES[:-1]
+                                for c in salida.get(campo) or [] if es_escombros(c)}
     veri = r["detalle"]["verificacion"]
     veri["alcance_escombros"] = revision
     apto = revision.get("estado") == "apto"
@@ -178,10 +183,16 @@ def aplicar(salida, revision, categorias):
                   "Requiere revisión del tipo de residuos antes de elegir el servicio.")
     retirados = []
     conservar_basura = _basura_publica_visible(salida, revision)
+    if retirar and conservar_basura:
+        diagnostico.anotar('conservar_basura_publica', ['recoleccion'])
     if retirar and conservar_basura and not any(c.get('key') == 'recoleccion' for c in r['problemas']):
         r['problemas'].append(copy.deepcopy(_recoleccion_previa(salida)))
         r['posibles'] = [c for c in r['posibles'] if c.get('key') != 'recoleccion']
     if retirar:
+        regla = ("alcance_excluido" if revision.get("estado") == "excluido" else
+                 "alcance_indeterminado" if not apto else
+                 "material_contradictorio" if contradiccion else "contexto_sin_respaldo")
+        diagnostico.anotar(regla, claves_escombros)
         retirados = existentes
         r["problemas"] = [c for c in r["problemas"] if not es_escombros(c)]
         r["categorias_contexto"] = [c for c in r["categorias_contexto"] if not es_escombros(c)]
@@ -193,6 +204,7 @@ def aplicar(salida, revision, categorias):
                 "arbitro": "rechazar" if revision.get("estado") == "excluido" else None,
                 "motivo": motivo})
     elif contextual:
+        diagnostico.anotar("escombros_por_contexto", claves_escombros)
         if uso_contexto:
             # El contenido lo informó una persona. Los revisores de alcance
             # no se cuentan como testigos visuales del material oculto.
@@ -220,10 +232,13 @@ def aplicar(salida, revision, categorias):
                                      and not conservar_basura) else set()
         quitar.update({"retiro_muebles", "retiro_poda"} - set(
             revision.get("otros_retiros_independientes") or []))
+        if quitar:
+            diagnostico.anotar("retirar_servicios_sin_residuos_independientes", quitar)
         retirados += [c for c in r["problemas"] if c.get("key") in quitar]
         for campo in ("problemas", "categorias_contexto", "posibles"):
             r[campo] = [c for c in r[campo] if c.get("key") not in quitar]
     if revisar_material:
+        diagnostico.anotar("material_publico_disputado", [KEY, "recoleccion"])
         coleccion = copy.deepcopy(_recoleccion_previa(salida))
         r['posibles'] = [c for c in r['posibles'] if c.get('key') != 'recoleccion']
         r['posibles'].append(dict(coleccion, gravedad=None, origen='foto',
@@ -259,4 +274,5 @@ def aplicar(salida, revision, categorias):
     r["hay_problema"] = bool(r["problemas"])
     r["hay_reclamo"] = bool(r["problemas"] or r["categorias_contexto"])
     r["gravedad_maxima"] = max((c.get("gravedad") or 0 for c in r["problemas"]), default=0) or None
+    veri["decision_alcance"] = diagnostico.terminar(r)
     return r

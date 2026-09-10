@@ -169,6 +169,95 @@ Ejemplo de respuesta:
 - `modelos` contiene la salida de cada modelo de visión. El clasificador local no aparece ahí.
 - `modelo_local`, cuando se ejecutó, contiene `probabilidades` con clave, nombre y `score`, además de `umbral` y `revision_material`. El nombre histórico del campo no implica probabilidades calibradas: son puntuaciones del clasificador, separadas del veredicto. La interfaz las muestra en "Más detalle". No se publican el contexto ni los demás datos internos.
 
+### Respuestas de revisión de materiales
+
+Cuando se ejecuta `alcance_escombros`, `verificacion_escombros` incluye el
+diagnóstico con `detalle_version: 1`. Está disponible en `/clasificar` y en
+los resultados de `/trabajos`, también al recuperar un análisis de caché.
+No agrega consultas a los modelos ni cambia el veredicto.
+
+| Campo | Contenido |
+| --- | --- |
+| `detalle_estado` | `completo` si todos los participantes respondieron válidamente; `parcial` si algunos fallaron; `sin_respuestas` si todos fallaron; `no_disponible` si faltan datos verificables de un resultado histórico. |
+| `revisiones` | Una entrada por modelo participante, en el orden configurado durante ese análisis. Los reintentos no son fuentes adicionales. |
+| `decision` | Etapa, reglas aplicadas, explicación determinística y movimientos de categorías. Puede ser `null` en resultados históricos. |
+
+Un diagnóstico `completo` puede tener opiniones contradictorias y
+`requiere_revision: true`. Tampoco garantiza que haya suficientes fuentes
+para confirmar: describe las respuestas obtenidas, no su certeza.
+
+Cada revisor incluye `modelo`, `estado` (`ok` o `sin_respuesta_valida`),
+`respuesta` y `ajustes`. `respuesta` contiene los valores efectivos de
+`ubicacion`, `presentacion`, `material`, `hay_bolsas_opacas_o_parciales`,
+`afirmacion_vecinal`, `afirma_validada`, `residuos_comunes_independientes` y
+`otros_retiros_independientes`, junto con `evidencia_ubicacion`,
+`evidencia_presentacion` y `evidencia_material`.
+
+Las evidencias son observaciones del modelo, no hechos confirmados. Se
+limitan a 160 caracteres y pueden ser `null` por saneamiento. Eso no
+convierte una respuesta válida en fallida. No se publican citas del vecino,
+prompts, respuestas crudas, errores del proveedor ni el contexto. Cuando
+falla un revisor, `respuesta` es `null` y `ajustes` es `[]`.
+
+Los ajustes distinguen el valor original del valor aplicado. Por ejemplo,
+un modelo puede responder `incompatible_visible` y también indicar bolsas
+opacas; el voto efectivo pasa a `oculto_o_ambiguo`. El registro conserva
+`campo`, `valor_original`, `valor_aplicado` y uno de estos códigos en `motivo`:
+
+- `presentacion_incompatible_con_bolsas_opacas`.
+- `material_incompatible_sin_descartar_bolsas_opacas`.
+
+`decision.reglas` enumera las ramas aplicadas. El catálogo es
+`conservar_basura_publica`, `material_contradictorio`, `alcance_excluido`,
+`alcance_indeterminado`, `contexto_sin_respaldo`, `escombros_por_contexto`,
+`retirar_servicios_sin_residuos_independientes`, `material_publico_disputado`
+y `sin_cambios`. Este último aparece solo si no se aplicó otra regla.
+
+Cada entrada de `decision.efectos` contiene una `key`, sus ubicaciones
+`antes` y `despues` de esa etapa, y las `reglas` que explican el movimiento.
+Las ubicaciones posibles son `problemas`, `posibles`, `categorias_contexto`,
+`descartados_por_foto`, `elementos_detectados` y `en_duda`. Las listas vacías
+indican ausencia pública. Los hallazgos exclusivos del local se filtran
+antes de comparar; no se exponen a través de `antes`.
+
+Ejemplo sintético de un efecto dentro de una decisión de conflicto:
+
+```json
+{
+  "key": "recoleccion",
+  "antes": ["problemas"],
+  "despues": ["posibles", "en_duda"],
+  "reglas": [
+    "retirar_servicios_sin_residuos_independientes",
+    "material_publico_disputado"
+  ]
+}
+```
+
+`despues` describe el cierre de `alcance_escombros`. Una etapa posterior
+puede cambiar la categoría; para consumir la clasificación usá siempre
+las colecciones finales del resultado. El diagnóstico no atribuye a esta
+revisión decisiones previas del local o del árbitro.
+
+Un resultado histórico conserva únicamente las respuestas identificables,
+con `ajustes: null` si no se guardaron las normalizaciones. Sus evidencias
+de texto se omiten si no se puede verificar el saneamiento del contexto.
+Si solo quedó el JSON público anterior, el diagnóstico es:
+
+```json
+{
+  "detalle_version": 1,
+  "detalle_estado": "no_disponible",
+  "revisiones": [],
+  "decision": null
+}
+```
+
+No se vuelve a analizar la foto para completar ese detalle. Si la etapa
+no se ejecutó, se conserva la ausencia de `verificacion_escombros`.
+`tokens_api`, `tokens_api_completos` y `costo_api` siguen describiendo el
+análisis original; esta lista de revisores no desglosa todas sus llamadas.
+
 ## Reglas de clasificación
 
 ### Contexto y foto
