@@ -97,6 +97,81 @@ class TokensApi(unittest.TestCase):
                                       {'tokens_api': 201, 'tokens_api_completos': True}])
         self.assertEqual(V.tokens_total(), {'tokens_api': 0, 'tokens_api_completos': True})
 
+    def test_costos_superpuestos_y_aporte_tardio(self):
+        import contextvars
+        a, b = contextvars.Context(), contextvars.Context()
+        a.run(V.costo_reset)
+        a.run(V._costo_sumar, {'cost': .001})
+        b.run(V.costo_reset)
+        b.run(V._costo_sumar, {'cost': .002})
+        a.run(V._costo_sumar, {'cost': .003})
+        self.assertEqual(b.run(V.costo_total), .002)
+        self.assertEqual(a.run(V.costo_total), .004)
+        original = a.run(V._costo_foto.get)['id']
+        salida = io.StringIO()
+        with patch.object(sys, 'stderr', salida):
+            a.run(V._costo_sumar, {'cost': .005})
+        self.assertEqual(a.run(V.costo_total), .004)
+        self.assertEqual(b.run(V.costo_total), .002)
+        registro = json.loads(salida.getvalue())
+        self.assertEqual(registro, {'evento': 'costo_tardio', 'pedido': original, 'cost': .005})
+
+    def test_costos_en_pools_de_fotos_simultaneas(self):
+        barrera = threading.Barrier(2)
+        def foto(base):
+            V.costo_reset()
+            barrera.wait(timeout=5)
+            V._map_modelos([base, base * 2], lambda costo: V._costo_sumar({'cost': costo}))
+            return V.costo_total()
+        with concurrent.futures.ThreadPoolExecutor(2) as pool:
+            self.assertEqual(list(pool.map(foto, [.001, .01])), [.003, .03])
+
+    def test_costo_faltante_no_inventa_valores(self):
+        V.costo_reset()
+        for uso in (None, {}, {'cost': None}, {'cost': True}, {'cost': '2'},
+                    {'cost': float('nan')}, {'cost': float('inf')}, {'cost': -.1}):
+            V._costo_sumar(uso)
+        self.assertEqual(V.costo_total(), 0)
+
+    @unittest.skipUnless('servidor' in sys.modules, 'Ejecutar con pruebas.py, sin cargar los pesos')
+    def test_techo_libera_cupo_sin_mezclar_costos(self):
+        import asyncio
+        import servidor as S
+        inicio, terminar = threading.Event(), threading.Event()
+        def proceso(datos, *_):
+            V.costo_reset()
+            V._costo_sumar({'cost': .001 if datos == b'a' else .002})
+            if datos == b'a':
+                inicio.set()
+                if not terminar.wait(4):
+                    raise AssertionError('La prueba no liberó el hilo')
+                V._costo_sumar({'cost': .003})
+            return {'costo_api': V.costo_total()}
+        async def ejecutar():
+            S._cupos.acquire()
+            a = asyncio.create_task(S._correr_con_cupo(b'a', '', 'auto', 'a'))
+            try:
+                for _ in range(100):
+                    if inicio.is_set() and S._cupos.acquire(blocking=False):
+                        break
+                    await asyncio.sleep(.01)
+                else:
+                    self.fail('El techo no devolvió el cupo')
+                self.assertEqual(S._perdidos['vivos'], 1)
+                b = await S._correr_con_cupo(b'b', '', 'auto', 'b')
+                self.assertEqual(b['costo_api'], .002)
+            finally:
+                terminar.set()
+                resultado = await a
+            self.assertEqual(resultado['costo_api'], .004)
+            self.assertEqual(S._perdidos['vivos'], 0)
+        with concurrent.futures.ThreadPoolExecutor(2) as pool, patch.multiple(
+                S, procesar=proceso, TECHO_TRABAJO=.04, _pool=pool,
+                _cupos=threading.BoundedSemaphore(1),
+                _perdidos={'lock': threading.Lock(), 'vivos': 0, 'total': 0}), patch.object(
+                S, '_cache_guardar'):
+            asyncio.run(ejecutar())
+
     @unittest.skipUnless('servidor' in sys.modules, 'Ejecutar con pruebas.py, sin cargar los pesos')
     def test_respuesta_publica_incluye_todas_las_etapas_y_cache(self):
         import servidor as S
