@@ -196,7 +196,10 @@ Cada revisor incluye `modelo`, `estado` (`ok` o `sin_respuesta_valida`),
 Las evidencias son observaciones del modelo, no hechos confirmados. Se
 limitan a 160 caracteres y pueden ser `null` por saneamiento. Eso no
 convierte una respuesta válida en fallida. No se publican citas del vecino,
-prompts, respuestas crudas, errores del proveedor ni el contexto. Cuando
+prompts, respuestas crudas, errores del proveedor ni el contexto. Si el pedido
+contiene contexto vecinal, las tres evidencias de texto son `null`: no se
+puede garantizar que una frase libre no copie o parafrasee un dato del vecino.
+Los valores estructurados y los ajustes siguen disponibles. Cuando
 falla un revisor, `respuesta` es `null` y `ajustes` es `[]`.
 
 Los ajustes distinguen el valor original del valor aplicado. Por ejemplo,
@@ -211,7 +214,9 @@ opacas; el voto efectivo pasa a `oculto_o_ambiguo`. El registro conserva
 `conservar_basura_publica`, `material_contradictorio`, `alcance_excluido`,
 `alcance_indeterminado`, `contexto_sin_respaldo`, `escombros_por_contexto`,
 `retirar_servicios_sin_residuos_independientes`, `material_publico_disputado`
-y `sin_cambios`. Este último aparece solo si no se aplicó otra regla.
+y `sin_cambios`. Este último aparece solo si no se aplicó otra regla. Una
+regla puede haberse aplicado sin mover categorías, por ejemplo al conservar
+una recolección que ya estaba confirmada; por eso `efectos` puede ser `[]`.
 
 Cada entrada de `decision.efectos` contiene una `key`, sus ubicaciones
 `antes` y `despues` de esa etapa, y las `reglas` que explican el movimiento.

@@ -34,7 +34,6 @@ Config por variables de entorno (ver .env.example):
 """
 import base64
 import concurrent.futures
-import revision_escombros_publica as revision_publica
 import contextvars
 import hashlib
 import io
@@ -49,6 +48,8 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+import revision_escombros_publica as revision_publica
 
 from prompts import (
     REGLA_SUBTIPO_HUMEDOS,

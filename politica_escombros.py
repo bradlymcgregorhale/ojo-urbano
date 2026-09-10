@@ -155,7 +155,7 @@ def aplicar(salida, revision, categorias):
     r = copy.deepcopy(salida)
     diagnostico = revision_publica.Decision(salida)
     claves_escombros = {KEY} | {c.get("key") for campo in revision_publica.COLECCIONES[:-1]
-                                for c in salida.get(campo) or [] if es_escombros(c)}
+                                for c in salida.get(campo) or [] if es_escombros(c) and c.get("key")}
     veri = r["detalle"]["verificacion"]
     veri["alcance_escombros"] = revision
     apto = revision.get("estado") == "apto"

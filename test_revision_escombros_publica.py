@@ -14,7 +14,7 @@ import verificador as V
 from test_politica_escombros import categoria, respuesta, salida
 
 
-def revisar(respuestas, contexto=''):
+def revisar(respuestas, contexto='', modelos=None):
     llamadas = []
 
     def llamar(modelo, mensajes, **opciones):
@@ -24,7 +24,7 @@ def revisar(respuestas, contexto=''):
             raise r
         return json.dumps(r)
 
-    modelos = ['m' + str(i + 1) for i in range(len(respuestas))]
+    modelos = modelos if modelos is not None else ['m' + str(i + 1) for i in range(len(respuestas))]
     with patch.object(V, 'VERIFICADORES', modelos), patch.object(V, '_llamar', llamar):
         return V.validar_alcance_escombros(Image.new('RGB', (64, 64)), contexto), llamadas
 
@@ -92,6 +92,23 @@ class RevisionPublica(unittest.TestCase):
         rev = conflicto()
         with patch.object(V, 'VERIFICADORES', ['otro-modelo']):
             self.assertEqual([x['modelo'] for x in D.publicar(rev)['revisiones']], ['m1', 'm2', 'm3'])
+
+    def test_configuracion_duplicada_consulta_cada_modelo_una_vez(self):
+        rev, llamadas = revisar([respuesta(), respuesta()], modelos=['m1', 'm1', 'm2'])
+        d = D.publicar(rev)
+        self.assertEqual(d['detalle_estado'], 'completo')
+        self.assertEqual([r['modelo'] for r in d['revisiones']], ['m1', 'm2'])
+        self.assertEqual(len(llamadas), 2)
+
+    def test_fragmentos_de_contexto_no_se_publican(self):
+        for contexto, observacion in [('Frente a Av. Rivadavia 1234', 'Bolsas en Rivadavia 1234'),
+                                     ('Lo dejó Juan Pérez junto al contenedor', 'Cartón de Juan Pérez'),
+                                     ('El vecino se llama Juan', 'Juan dejó cajas')]:
+            rev, _ = revisar([respuesta(evidencia_material=observacion)], contexto)
+            fila = D.publicar(rev)['revisiones'][0]
+            self.assertEqual(fila['estado'], 'ok')
+            self.assertIsNone(fila['respuesta']['evidencia_material'])
+            self.assertEqual(fila['respuesta']['material'], 'oculto_o_ambiguo')
 
     def test_historicos_sin_inventar_ajustes_ni_participantes(self):
         rev = conflicto()
@@ -204,6 +221,8 @@ class RevisionHttp(unittest.TestCase):
             self.assertEqual(r, antes)
             self.assertNotIn('detalle', a)
             self.assertEqual(a['verificacion_escombros']['detalle_estado'], 'completo')
+            self.assertEqual(a['verificacion_escombros']['revisiones'][0]['respuesta']['evidencia_material'],
+                             'Contenido de las bolsas opaco')
             self.assertEqual(a['tokens_api'], 123)
             self.assertEqual(a['costo_api'], .018)
         finally:

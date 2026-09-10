@@ -46,15 +46,11 @@ def evidencia_publica(texto, contexto='', limite=160, sanear=None):
     limpio = re.sub(r'\s+', ' ', ''.join(c for c in texto if c >= ' ')).strip()
     if not limpio or (sanear is not None and sanear(limpio) != limpio):
         return None
-    # El contexto nunca se almacena en el diagnóstico. Se evita copiarlo,
-    # incluso cuando la evidencia solo repite un fragmento identificable.
-    palabras = re.findall(r'\w+', (contexto or '').casefold())
-    observacion = ' '.join(re.findall(r'\w+', limpio.casefold()))
-    if palabras:
-        n = min(3, len(palabras))
-        if any(' '.join(palabras[i:i + n]) in observacion
-               for i in range(len(palabras) - n + 1)):
-            return None
+    # Una comparación de palabras no permite separar con certeza una
+    # observación visual de una cita parcial o paráfrasis del vecino.
+    # Con contexto libre solo se publican los valores estructurados.
+    if contexto and contexto.strip():
+        return None
     return limpio[:limite]
 
 
@@ -183,6 +179,9 @@ def _publicar(revision=None, decision=None, sanear=None, limite=160):
     for fila in filas:
         modelo = fila.get('modelo') if isinstance(fila, dict) else None
         if not isinstance(modelo, str) or not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_./:-]{0,159}', modelo):
+            completo = False
+            continue
+        if '://' in modelo or modelo.lower().startswith('sk-'):
             completo = False
             continue
         if modelo in vistos:
