@@ -131,6 +131,39 @@ class PoliticaTest(unittest.TestCase):
         efecto = next(e for e in efectos if e['key'] == 'recoleccion_restos_obra')
         self.assertEqual(efecto['reglas'], ['escombros_visibles_sin_corroborar'])
 
+    def test_revision_posterior_recupera_sospecha_local_rechazada_sin_respaldo_visual(self):
+        r, revision = self.bolsas_con_un_lector()
+        r['posibles'] = [dict(categoria(fuentes=['modelo_local']), arbitro='rechazar',
+                             motivo='La primera pasada no identifica material de obra.')]
+        r['detalle']['verificacion']['arbitro'] = {'decisiones': [
+            {'key': P.KEY, 'veredicto': 'rechazar'}]}
+        anterior = copy.deepcopy(r)
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertFalse(nuevo['problemas'])
+        candidato = next(c for c in nuevo['posibles'] if c['key'] == P.KEY)
+        self.assertEqual(candidato['fuentes'], ['m1'])
+        self.assertIsNone(candidato['arbitro'])
+        self.assertTrue(nuevo['verificacion_escombros']['requiere_revision'])
+        self.assertEqual(nuevo['detalle']['verificacion']['arbitro'],
+                         anterior['detalle']['verificacion']['arbitro'])
+        self.assertEqual(r, anterior)
+
+    def test_revision_posterior_no_ignora_negativas_dirigidas_ni_fuentes_desconocidas(self):
+        for variante in ('sin_fuentes', 'negativa', 'fallo', 'adjudicada'):
+            r, revision = self.bolsas_con_un_lector()
+            r['posibles'] = [dict(categoria(fuentes=['modelo_local']), arbitro='rechazar')]
+            veri = r['detalle']['verificacion']
+            if variante == 'sin_fuentes':
+                r['posibles'][0]['fuentes'] = []
+            elif variante == 'negativa':
+                veri['segunda_mirada'] = {'negaron': [{'modelo': 'm2', 'evidencia': 'Cartón visible.'}]}
+            elif variante == 'fallo':
+                veri['segunda_mirada'] = {'fallo': True}
+            else:
+                veri['adjudicadas_dirigidas'] = [P.KEY]
+            with self.subTest(variante=variante):
+                self.assertIsNone(P._escombros_visibles_sin_corroborar(r, revision))
+
     def test_un_lector_respeta_vetos_y_exige_respaldo_local_y_visual(self):
         variantes = [({'fallo': True}, None), ({'estado': 'excluido'}, None),
             ({'material_contradictorio': True}, None), ({'afirmacion_explicita': True}, None),
