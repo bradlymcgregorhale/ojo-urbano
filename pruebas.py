@@ -802,7 +802,7 @@ check("registra cada intento, incluso fallos y respuestas truncadas pagas",
       and [r["error"] for r in _cache_registros] == ["URLError", "ValueError", None]
       and _cache_registros[1]["finish_reason"] == "length")
 check("el costo incluye las dos respuestas pagas sin duplicarlas",
-      _total_cache == 0.004 and V._costo["llamadas"] == 2)
+      _total_cache == 0.004 and V._costo_foto.get()["llamadas"] == 2)
 check("un fallo sin usage es desconocido, no costo ni tokens cero",
       _cache_registros[0]["cost"] is None and _cache_registros[0]["cached_tokens"] is None
       and "ERROR_PRIVADO" not in _cache_log.getvalue())

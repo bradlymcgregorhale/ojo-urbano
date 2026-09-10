@@ -43,6 +43,7 @@ import re
 import http.client
 import socket
 import sys
+import math
 import threading
 import time
 import urllib.error
@@ -443,37 +444,43 @@ def calidad_foto(img):
     }
 
 
-# --- Costo de las llamadas a OpenRouter, por foto -------------------------
-# _llamar es el ÚNICO punto por donde salen los pedidos a OpenRouter, así que
-# sumamos acá el costo que devuelve (usage.cost, en USD) cuando pedimos
-# usage.include. El acumulador es global y asume UNA foto a la vez
-# (CONCURRENCIA=1, el default de prod): reset al empezar la foto, total al
-# cerrarla. Con más concurrencia se mezclarían los costos de fotos distintas.
-_costo_lock = threading.Lock()
-_costo = {"usd": 0.0, "llamadas": 0, "activo": False}
+# Cada foto tiene un acumulador compartido solo por sus propios hilos.
+_costo_foto = contextvars.ContextVar("costo_foto", default=None)
 
 
 def costo_reset():
-    """Arranca el acumulador de costo de OpenRouter para una foto."""
-    with _costo_lock:
-        _costo.update(usd=0.0, llamadas=0, activo=True)
+    """Abre un costo independiente; el identificador solo se registra localmente."""
+    import secrets
+    _costo_foto.set({"usd": 0.0, "llamadas": 0, "entregado": None,
+                     "id": secrets.token_hex(12), "lock": threading.Lock()})
 
 
 def costo_total():
-    """Cierra el acumulador y devuelve el costo en USD de la foto."""
-    with _costo_lock:
-        _costo["activo"] = False
-        return round(_costo["usd"], 6)
+    """Congela el total entregado; el uso tardío no modifica esa respuesta."""
+    estado = _costo_foto.get()
+    if estado is None:
+        return 0.0
+    with estado["lock"]:
+        if estado["entregado"] is None:
+            estado["entregado"] = round(estado["usd"], 6)
+        return estado["entregado"]
 
 
 def _costo_sumar(usage):
-    if not isinstance(usage, dict):
+    estado = _costo_foto.get()
+    c = usage.get("cost") if isinstance(usage, dict) else None
+    if estado is None or type(c) not in (int, float) or not math.isfinite(c) or c < 0:
         return
-    c = usage.get("cost")
-    with _costo_lock:
-        if _costo["activo"] and isinstance(c, (int, float)):
-            _costo["usd"] += float(c)
-            _costo["llamadas"] += 1
+    with estado["lock"]:
+        estado["usd"] += float(c)
+        estado["llamadas"] += 1
+        tardio = estado["entregado"] is not None
+    if tardio:
+        try:
+            print(json.dumps({"evento": "costo_tardio", "pedido": estado["id"],
+                              "cost": c}), file=sys.stderr, flush=True)
+        except Exception:
+            pass
 
 
 _tokens_foto = contextvars.ContextVar("tokens_foto", default=None)
@@ -550,7 +557,9 @@ def _registrar_uso(modelo, etapa, clave, intento, inicio, data=None, error=None)
         data = data if isinstance(data, dict) else {}
         usage = data.get("usage")
         usage = usage if isinstance(usage, dict) else {}
-        registro = {"evento": "openrouter_uso", "modelo": modelo,
+        estado_costo = _costo_foto.get()
+        registro = {"evento": "openrouter_uso",
+                    "pedido": estado_costo["id"] if estado_costo else None, "modelo": modelo,
                     "etapa": etapa, "cache_key": clave, "intento": intento,
                     "segundos": round(time.monotonic() - inicio, 3),
                     "error": type(error).__name__ if error else None}
