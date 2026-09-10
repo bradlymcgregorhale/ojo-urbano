@@ -74,6 +74,8 @@ Cuando el modelo local tiene suficiente confianza y los verificadores ya confirm
 
 Después de la fusión y del ruteo textual, `politica_escombros.py` aplica una revisión de alcance. Se activa cuando ya hay una categoría candidata, el puntaje local de escombros llega a 0,70 o el texto menciona escombros, cascotes o restos de obra. Consulta a los verificadores con un prompt corto, sin votos anteriores ni puntajes locales. Hace falta que al menos dos modelos distintos vean una presentación y ubicación elegibles, sin una respuesta que las contradiga. Las bolsas chicas al lado de un bolsón se evalúan por separado.
 
+Si una revisión completa discrepa sobre el material visible de una pila pública y la recolección ya tenía dos fuentes visuales, esa recolección puede conservarse en `posibles`, sin confirmar ninguno de los servicios. `verificacion_escombros.requiere_revision: true` identifica este conflicto y la página pide revisar el tipo de residuos. No habilita retiros automáticos ni evita las exclusiones por bolsas opacas, ubicación privada o bolsones de obra.
+
 Si el vecino afirma que las bolsas contienen escombros y la foto es compatible, puede aceptarse ese dato. No alcanza una pregunta, una suposición, una negación ni una orden de clasificación. Ver cartón en una bolsa tampoco revela el contenido de las demás. Cuando el material sigue oculto, el resultado lleva `origen: "contexto_vecinal"`, una fuente y `confianza: "baja"`; los votos originales siguen disponibles en `modelos`. Una afirmación falsa sobre bolsas opacas puede pasar este control. El sistema no puede comprobar su contenido desde la foto.
 
 Un alcance privado, limitado a bolsones grandes o indeterminado no puede volver a aceptarse por la fusión local ni por el texto. La misma pila tampoco se reasigna a recolección común, muebles o poda. Se conservan otros residuos públicos sólo si la revisión los identifica aparte. Un fallo de la revisión impide guardar la respuesta en caché.
@@ -361,3 +363,34 @@ Las descripciones de los modelos forman parte de la respuesta y pueden transcrib
 ## Licencia
 
 [MIT](LICENSE)
+
+### Inventario especializado de contenedores
+
+`CONTENEDORES_ESPECIALISTA=1` activa una pasada fija para identificar secos,
+humedos de carga lateral y humedos de carga bilateral. Usa la misma foto
+original, seis referencias privadas y la configuracion validada. La plantilla
+se instala fuera de git en `eval/vision/private/serving-contenedores-051.json`;
+el modulo verifica su SHA-256 antes de cada solicitud. Sin la bandera, el
+comportamiento anterior se conserva. Las cuotas y la opcion de desactivar la
+verificacion siguen aplicando.
+
+La respuesta publica agrega `contenedores`: `estado` es `confirmado` o
+`revision`; `tipos` es una lista (vacia si no se detectan contenedores) o `null`
+cuando hace falta revision; `motivo` explica la revision. Los tipos confirmados
+sustituyen solamente esos tres tipos en `elementos_detectados`. Recoleccion,
+escombros, danos y los otros reclamos conservan sus reglas. Si una lectura vacia
+contradice un reclamo confirmado sobre un contenedor, el inventario publico
+queda en revision. La presencia visible sigue siendo informativa cuando la foto
+no corresponde al texto del reclamo.
+
+Los fallos de transporte no se cachean. Una respuesta valida pero incierta
+puede cachearse y sigue siendo revision, nunca ausencia. La interfaz muestra
+ese estado y el CSV agrega `contenedores_estado` y `contenedores_motivo`.
+
+La pasada realiza un solo intento, con un plazo de 40 segundos, y suma su costo
+al procesamiento existente. La API conserva `costo_api` para contabilizar el
+consumo, pero la pagina no muestra ese importe. El promedio observado en 100 fotos fue USD0.0038
+adicionales por foto; no representa el costo de las otras categorias. Tras la
+revision humana de cuatro referencias, hubo 98 respuestas automaticas correctas,
+un tipo omitido y una revision. Ese resultado no garantiza la exactitud en otras
+fotos ni evalua el conteo de contenedores.

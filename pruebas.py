@@ -69,6 +69,7 @@ class _Clf:
         return np.array([[0.91, 0.20, 0.02]])
 
 
+import joblib as _joblib_real
 _jl = types.ModuleType("joblib")
 _jl.load = lambda p: {"clf": _Clf(), "classes": _Clf.classes_, "sev_model": None,
                       "embed_model": "clip-ViT-B-32"}
@@ -4659,12 +4660,16 @@ check("el volcado exige evidencia inequívoca y postes horizontales",
       and "postes o montantes metálicos están VERTICALES" in _rub_b)
 
 import unittest
+# El servidor conserva su stub; sklearn necesita la biblioteca real.
+sys.modules["joblib"] = _joblib_real
 import test_politica_escombros
 import test_contenedores
+import test_especialista_contenedores
 from eval.vision import test_runner as test_vision_runner
 from eval.vision import test_pipeline as test_vision_pipeline
 _suite_alcance = unittest.defaultTestLoader.loadTestsFromModule(test_politica_escombros)
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_contenedores))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_especialista_contenedores))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_vision_runner))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_vision_pipeline))
 _resultado_alcance = unittest.TextTestRunner(verbosity=2).run(_suite_alcance)

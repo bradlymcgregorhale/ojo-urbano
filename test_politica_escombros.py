@@ -74,6 +74,78 @@ class PoliticaTest(unittest.TestCase):
         self.assertIn('residuos comunes', r['descripcion'])
         self.assertFalse(any(c['key'] == 'recoleccion' for c in r['descartados_por_foto']))
 
+    def conflicto_cajas(self, **cambios):
+        revisiones = [dict(respuesta(
+            afirmacion_vecinal='no_menciona', hay_bolsas_opacas_o_parciales='no',
+            material=material), modelo=modelo)
+            for modelo, material in [('m1', 'escombros_visible'),
+                                      ('m2', 'escombros_visible'),
+                                      ('m3', 'incompatible_visible')]]
+        revision = alcance(material_contradictorio=True,
+                           material_visible_confirmado=True, revisiones=revisiones)
+        revision.update(cambios)
+        return revision
+
+    def test_cajas_con_material_disputado_requieren_revision_sin_confirmar_servicio(self):
+        r = salida([categoria('recoleccion')])
+        r['posibles'] = [categoria(fuentes=['modelo_local'])]
+        antes = copy.deepcopy(r)
+        nuevo = P.aplicar(r, self.conflicto_cajas(), self.cats)
+        self.assertFalse(nuevo['hay_problema'])
+        self.assertFalse(nuevo['hay_reclamo'])
+        self.assertTrue(nuevo['verificacion_escombros'].get('requiere_revision'))
+        self.assertEqual({c['key'] for c in nuevo['posibles']}, {'recoleccion', P.KEY})
+        rec = next(c for c in nuevo['posibles'] if c['key'] == 'recoleccion')
+        self.assertEqual(rec['fuentes'], ['m1', 'm2'])
+        self.assertIsNone(rec['gravedad'])
+        self.assertNotIn('recoleccion', [c['key'] for c in nuevo['descartados_por_foto']])
+        self.assertEqual(nuevo['en_duda'].count('recoleccion'), 1)
+        self.assertIn('revisión', nuevo['descripcion'])
+        self.assertNotIn('bolsas', nuevo['descripcion'])
+        self.assertEqual(r, antes)
+
+    def test_conflicto_no_confirma_ni_revisa_local_solo_y_respeta_vetos(self):
+        variantes = [({'fallo': True}, None), ({'afirmacion_explicita': True}, None),
+                     ({'estado': 'excluido'}, None), ({'material_visible_confirmado': False}, None)]
+        for campo, valor in [('ubicacion', 'privada'), ('presentacion', 'solo_bolson'),
+                             ('hay_bolsas_opacas_o_parciales', 'si'),
+                             ('hay_bolsas_opacas_o_parciales', 'indeterminado'),
+                             ('afirmacion_vecinal', 'afirma')]:
+            variantes.append(({}, (campo, valor)))
+        for cambios, campo in variantes:
+            revision = self.conflicto_cajas(**cambios)
+            if campo:
+                revision['revisiones'][0][campo[0]] = campo[1]
+            r = salida([categoria('recoleccion')])
+            r['posibles'] = [categoria(fuentes=['modelo_local'])]
+            with self.subTest(cambios=cambios, campo=campo):
+                nuevo = P.aplicar(r, revision, self.cats)
+                self.assertFalse(nuevo['problemas'])
+                self.assertFalse(nuevo['verificacion_escombros'].get('requiere_revision'))
+        r = salida([categoria('recoleccion', fuentes=['modelo_local'])])
+        r['posibles'] = [categoria(fuentes=['modelo_local'])]
+        self.assertFalse(P.aplicar(r, self.conflicto_cajas(), self.cats)
+                         ['verificacion_escombros'].get('requiere_revision'))
+
+    def test_conflicto_preserva_otros_problemas_y_no_restaura_foto_invalida(self):
+        r = salida([categoria('recoleccion'), categoria('barrido')])
+        r['posibles'] = [categoria(fuentes=['modelo_local'])]
+        nuevo = P.aplicar(r, self.conflicto_cajas(), self.cats)
+        self.assertEqual([c['key'] for c in nuevo['problemas']], ['barrido'])
+        self.assertTrue(nuevo['hay_problema'])
+        self.assertTrue(nuevo['verificacion_escombros'].get('requiere_revision'))
+        r['foto_valida'] = False
+        self.assertFalse(P.aplicar(r, self.conflicto_cajas(), self.cats)
+                         ['verificacion_escombros'].get('requiere_revision'))
+
+    def test_conflicto_no_demueve_basura_independiente_ya_confirmada(self):
+        r = salida([categoria('recoleccion')])
+        r['posibles'] = [categoria(fuentes=['modelo_local'])]
+        nuevo = P.aplicar(r, self.conflicto_cajas(basura_independiente=True), self.cats)
+        self.assertEqual([c['key'] for c in nuevo['problemas']], ['recoleccion'])
+        self.assertNotIn('recoleccion', [c['key'] for c in nuevo['posibles']])
+        self.assertFalse(nuevo['verificacion_escombros'].get('requiere_revision'))
+
     def test_no_extiende_excepcion_de_cartones_a_bolsas_privados_o_testimonio(self):
         for field, value in [('ubicacion', 'privada'), ('ubicacion', 'indeterminada'),
                              ('presentacion', 'solo_bolson'), ('material', 'oculto_o_ambiguo'),
