@@ -150,6 +150,38 @@ def _material_publico_disputado(salida, revision):
     return len(positivos) >= 2 and bool(negativos) and positivos.isdisjoint(negativos)
 
 
+def _escombros_visibles_sin_corroborar(salida, revision):
+    """Un lector ve material y los demás no pueden distinguir las bolsas."""
+    if (salida.get('foto_valida') is False or revision.get('fallo')
+            or revision.get('estado') != 'apto'
+            or revision.get('material_contradictorio')
+            or revision.get('afirmacion_explicita') or revision.get('contexto_resuelve')
+            or any(es_escombros(c) for c in salida.get('problemas') or [])
+            or any(es_escombros(c) for c in salida.get('descartados_por_foto') or [])
+            or any(es_escombros(c) and c.get('arbitro') == 'rechazar'
+                   for c in salida.get('posibles') or [])):
+        return None
+    local = (salida.get('detalle') or {}).get('modelo_local') or {}
+    if not any(p.get('key') == KEY and p.get('score', 0) >= .95
+               for p in local.get('probabilidades') or []):
+        return None
+    revisiones = revision.get('revisiones') or []
+    modelos = {v.get('modelo') for v in revisiones if v.get('modelo')}
+    if len(modelos) < 2 or len(modelos) != len(revisiones):
+        return None
+    for v in revisiones:
+        if (v.get('ubicacion') != 'publica'
+                or v.get('presentacion') != 'bolsas_chicas_o_suelto'
+                or v.get('afirmacion_vecinal') != 'no_menciona'
+                or v.get('hay_bolsas_opacas_o_parciales') != 'si'
+                or v.get('material') not in {'escombros_visible', 'oculto_o_ambiguo'}):
+            return None
+    positivos = [v for v in revisiones if v['material'] == 'escombros_visible']
+    if len(positivos) != 1 or not str(positivos[0].get('evidencia_material') or '').strip():
+        return None
+    return positivos[0]['modelo']
+
+
 def aplicar(salida, revision, categorias):
     """Aplica el veto después de fusión y ruteo textual, sin crear votos visuales."""
     r = copy.deepcopy(salida)
@@ -177,6 +209,7 @@ def aplicar(salida, revision, categorias):
     if contradiccion and apto:
         motivo = "El contenido visible contradice el retiro de escombros. Hace falta aclarar qué contienen las bolsas."
     revisar_material = retirar and candidato and _material_publico_disputado(salida, revision)
+    lector_pendiente = _escombros_visibles_sin_corroborar(salida, revision)
     if revisar_material:
         motivo = ("Se observan residuos en la vía pública, pero hay evidencia contradictoria "
                   "sobre si son residuos comunes o restos de obra. "
@@ -265,11 +298,35 @@ def aplicar(salida, revision, categorias):
                 if contextual else motivo)
         if contextual or retirados or any(es_escombros(c) for c in r["posibles"]):
             r["descripcion"] = nota + (" Otros hallazgos: " + "; ".join(otros) + "." if otros else "")
+    if lector_pendiente:
+        motivo = ("Hay indicios de restos de obra en bolsas parcialmente cerradas. "
+                  "Falta corroborar el material para elegir el servicio de retiro.")
+        diagnostico.anotar('escombros_visibles_sin_corroborar', claves_escombros)
+        r['posibles'] = [c for c in r['posibles'] if not es_escombros(c)]
+        r['posibles'].append({'key': KEY, 'nombre': categorias[KEY]['nombre'],
+            'gravedad': None, 'fuentes': [lector_pendiente], 'origen': 'foto',
+            'arbitro': None, 'motivo': motivo})
+        if KEY not in r['en_duda']:
+            r['en_duda'].append(KEY)
+        veri.setdefault('fuentes_en_duda', {})[KEY] = [lector_pendiente]
+        if revision.get('basura_independiente') is not True:
+            reco = [c for c in r['problemas'] if c.get('key') == 'recoleccion']
+            if reco:
+                diagnostico.anotar('recoleccion_pendiente_por_material', ['recoleccion'])
+                r['problemas'] = [c for c in r['problemas'] if c.get('key') != 'recoleccion']
+                r['posibles'] = [c for c in r['posibles'] if c.get('key') != 'recoleccion']
+                r['posibles'].append(dict(reco[0], gravedad=None, origen='foto',
+                                         arbitro=None, motivo=motivo))
+                if 'recoleccion' not in r['en_duda']:
+                    r['en_duda'].append('recoleccion')
+                veri.setdefault('fuentes_en_duda', {})['recoleccion'] = list(reco[0]['fuentes'])
+        otros = [c['nombre'] for c in r['problemas']]
+        r['descripcion'] = motivo + (" Otros hallazgos: " + "; ".join(otros) + "." if otros else "")
     r["verificacion_escombros"] = {
         "estado": revision.get("estado", "indeterminado"),
         "motivo": motivo, "basado_en_contexto": uso_contexto,
         "requiere_nueva_foto": not apto}
-    if revisar_material:
+    if revisar_material or lector_pendiente:
         r['verificacion_escombros']['requiere_revision'] = True
     r["hay_problema"] = bool(r["problemas"])
     r["hay_reclamo"] = bool(r["problemas"] or r["categorias_contexto"])

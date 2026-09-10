@@ -53,6 +53,117 @@ class PoliticaTest(unittest.TestCase):
         self.assertEqual(nuevo["problemas"], r["problemas"])
         self.assertEqual(r, antes)
 
+    def bolsas_con_un_lector(self):
+        r = salida([categoria('recoleccion')])
+        r['detalle']['modelo_local']['probabilidades'] = [
+            {'key': P.KEY, 'score': .9991}, {'key': 'recoleccion', 'score': .4096}]
+        revisiones = [dict(respuesta(afirmacion_vecinal='no_menciona',
+            cita_vecinal='', material=material, evidencia_material=evidencia), modelo=modelo)
+            for modelo, material, evidencia in [
+                ('m1', 'escombros_visible', 'Se ve un cascote en la abertura.'),
+                ('m2', 'oculto_o_ambiguo', 'No se distingue el contenido.'),
+                ('m3', 'oculto_o_ambiguo', 'Las bolsas ocultan el material.')]]
+        return r, alcance(revisiones=revisiones)
+
+    def test_un_lector_conserva_escombros_y_recoleccion_pendientes_sin_inventar_votos(self):
+        r, revision = self.bolsas_con_un_lector()
+        antes, votos = copy.deepcopy(r), copy.deepcopy(revision)
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertFalse(nuevo['hay_problema'])
+        self.assertFalse(nuevo['hay_reclamo'])
+        self.assertIsNone(nuevo['gravedad_maxima'])
+        self.assertTrue(nuevo['verificacion_escombros']['requiere_revision'])
+        posibles = {c['key']: c for c in nuevo['posibles']}
+        self.assertEqual(set(posibles), {P.KEY, 'recoleccion'})
+        self.assertEqual(posibles[P.KEY]['fuentes'], ['m1'])
+        self.assertEqual(posibles['recoleccion']['fuentes'], ['m1', 'm2'])
+        self.assertTrue(all(c['gravedad'] is None for c in posibles.values()))
+        self.assertEqual(set(nuevo['en_duda']), set(posibles))
+        decision = nuevo['detalle']['verificacion']['decision_alcance']
+        self.assertEqual(decision['reglas'], ['escombros_visibles_sin_corroborar',
+                                            'recoleccion_pendiente_por_material'])
+        self.assertEqual({e['key'] for e in decision['efectos']}, set(posibles))
+        self.assertEqual(nuevo['detalle']['verificacion']['alcance_escombros'], votos)
+        self.assertEqual(r, antes)
+        self.assertEqual(revision, votos)
+
+    def test_un_lector_conserva_basura_independiente_y_otros_retiros(self):
+        for basura in (False, True):
+            r, revision = self.bolsas_con_un_lector()
+            revision['basura_independiente'] = basura
+            r['problemas'] += [categoria('retiro_poda'), categoria('retiro_muebles')]
+            nuevo = P.aplicar(r, revision, self.cats)
+            esperados = {'retiro_poda', 'retiro_muebles'} | ({'recoleccion'} if basura else set())
+            self.assertEqual({c['key'] for c in nuevo['problemas']}, esperados)
+            self.assertTrue(nuevo['hay_reclamo'])
+            self.assertIn(P.KEY, nuevo['en_duda'])
+
+    def test_un_lector_no_reabre_escombros_ya_confirmados(self):
+        r, revision = self.bolsas_con_un_lector()
+        r['problemas'].append(categoria())
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertEqual(nuevo['problemas'], r['problemas'])
+        self.assertNotIn('escombros_visibles_sin_corroborar',
+                         nuevo['detalle']['verificacion']['decision_alcance']['reglas'])
+
+    def test_un_lector_respeta_rechazos_previos_y_exige_un_solo_positivo(self):
+        for variante in ('descartado', 'arbitro', 'dos_positivos', 'bolsas_indeterminadas',
+                         'material_indeterminado'):
+            r, revision = self.bolsas_con_un_lector()
+            if variante == 'descartado':
+                r['descartados_por_foto'] = [categoria()]
+            elif variante == 'arbitro':
+                r['posibles'] = [dict(categoria(), arbitro='rechazar')]
+            elif variante == 'dos_positivos':
+                revision['revisiones'][1]['material'] = 'escombros_visible'
+            elif variante == 'bolsas_indeterminadas':
+                revision['revisiones'][1]['hay_bolsas_opacas_o_parciales'] = 'indeterminado'
+            else:
+                revision['revisiones'][1]['material'] = 'indeterminado'
+            with self.subTest(variante=variante):
+                self.assertIsNone(P._escombros_visibles_sin_corroborar(r, revision))
+
+    def test_un_lector_explica_movimiento_de_alias(self):
+        r, revision = self.bolsas_con_un_lector()
+        r['posibles'] = [dict(categoria('recoleccion_restos_obra'), codigo=P.CODIGO)]
+        nuevo = P.aplicar(r, revision, self.cats)
+        efectos = nuevo['detalle']['verificacion']['decision_alcance']['efectos']
+        efecto = next(e for e in efectos if e['key'] == 'recoleccion_restos_obra')
+        self.assertEqual(efecto['reglas'], ['escombros_visibles_sin_corroborar'])
+
+    def test_un_lector_respeta_vetos_y_exige_respaldo_local_y_visual(self):
+        variantes = [({'fallo': True}, None), ({'estado': 'excluido'}, None),
+            ({'material_contradictorio': True}, None), ({'afirmacion_explicita': True}, None),
+            ({'contexto_resuelve': True}, None)]
+        for campo, valor in [('ubicacion', 'privada'), ('presentacion', 'solo_bolson'),
+                ('hay_bolsas_opacas_o_parciales', 'no'), ('afirmacion_vecinal', 'afirma'),
+                ('material', 'incompatible_visible'), ('material', 'oculto_o_ambiguo'),
+                ('evidencia_material', '')]:
+            variantes.append(({}, (campo, valor)))
+        for cambios, campo in variantes:
+            r, revision = self.bolsas_con_un_lector()
+            revision.update(cambios)
+            if campo:
+                revision['revisiones'][0][campo[0]] = campo[1]
+            with self.subTest(cambios=cambios, campo=campo):
+                nuevo = P.aplicar(r, revision, self.cats)
+                self.assertNotIn('escombros_visibles_sin_corroborar',
+                                 nuevo['detalle']['verificacion']['decision_alcance']['reglas'])
+        for variante in ('local_bajo', 'sin_local', 'foto_invalida', 'un_modelo', 'duplicado'):
+            r, revision = self.bolsas_con_un_lector()
+            if variante == 'local_bajo':
+                r['detalle']['modelo_local']['probabilidades'][0]['score'] = .94
+            elif variante == 'sin_local':
+                r['detalle']['modelo_local'] = {}
+            elif variante == 'foto_invalida':
+                r['foto_valida'] = False
+            elif variante == 'un_modelo':
+                revision['revisiones'] = revision['revisiones'][:1]
+            else:
+                revision['revisiones'][1]['modelo'] = 'm1'
+            with self.subTest(variante=variante):
+                self.assertIsNone(P._escombros_visibles_sin_corroborar(r, revision))
+
     def revision_cartones(self):
         return [dict(respuesta(afirmacion_vecinal='no_menciona',
                                material='incompatible_visible', hay_bolsas_opacas_o_parciales='no'), modelo='m1'),
