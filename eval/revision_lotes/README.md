@@ -70,6 +70,54 @@ Por defecto se usa únicamente desarrollo. `--particion evaluacion_reservada` si
 
 Salida 0 significa que una candidata de versión nueva conservó los aciertos previos evaluados sin falta de cobertura ni conflictos. Salida 1 señala regresiones, datos faltantes, conflictos, ausencia de aciertos previos para proteger, comparación solo de referencia, archivos idénticos o versión sin cambios. Los campos `identicas`, `version_sin_cambio` y `versiones_referencia` distinguen estas condiciones. Salida 2 señala archivos inválidos. Ninguna salida aprueba por sí sola un despliegue ni demuestra exactitud general. Un registro compuesto solo por correcciones de errores necesita también aprobaciones humanas de casos correctos para probar preservación.
 
+### Importación de calidad y contexto (#46, #52)
+
+La página separada de revisión técnica exporta `ojo-urbano-calidad-contexto-v1`.
+Para incorporarla, necesitás también el `manifest.json` entregado con esa página:
+
+```sh
+python3 eval/revision_lotes/regresiones.py crear \
+  --base /ruta/al/lote \
+  --registro /ruta/privada/al/banco \
+  --manifest-tecnico /ruta/a/la/revision-tecnica/manifest.json \
+  --revision-tecnica /ruta/a/la/exportacion-tecnica.json \
+  --revision /ruta/a/la/exportacion-v2-anterior.json
+```
+
+Incluí todas las exportaciones anteriores que deban conservarse. Tanto `--revision`
+como `--revision-tecnica` pueden repetirse; crear una instantánea no incorpora
+automáticamente las fuentes de una instantánea anterior. No sobrescribas originales
+ni retires una fuente para ocultar un desacuerdo.
+
+El importador comprueba conjunto, foto, bytes de la imagen de entrada API,
+partición de desarrollo, valores admitidos y constancia de guardado explícito.
+El nombre `sha256_foto` de este formato corresponde a los bytes de `entradas-api`,
+que son los que muestra esa página. Se guardan los bytes originales de la
+exportación y su manifest. No se incorporan fotos reservadas ni borradores.
+Si hay un borrador posterior a una decisión guardada, solo se conserva la decisión
+que efectivamente se exportó.
+
+Con `--revision-tecnica`, el comparador evalúa las marcas suficientes e
+insuficientes contra `evaluacion_foto.calidad_suficiente` y
+`contexto_visual.suficiente`, por separado. También lee las marcas técnicas
+estructuradas anteriores de la conversación para detectar contradicciones.
+Sin esa opción se conserva el alcance anterior de categorías, interior y prioridad.
+Las marcas técnicas no aprueban
+categorías, ámbito ni el JSON original. `sin_revisar` e `indeterminado` no se
+convierten en negativos. Las decisiones contrarias de dos exportaciones o de una
+marca estructurada anterior quedan pendientes de adjudicación, sin elegir por
+fecha. Las descripciones libres anteriores de calidad se conservan sin inferir
+una etiqueta; requieren adjudicación explícita si se quiere puntuarlas.
+
+Para puntuar cada campo, la API debe devolver un booleano y su estado `evaluado`.
+Valores nulos, estados indeterminados, campos ausentes o formatos incompatibles
+son cobertura faltante. Un rechazo nuevo de una foto previamente considerada
+suficiente aparece como regresión del campo de calidad. Esto no valida por sí solo
+el comportamiento de rechazo de la interfaz ni la exactitud del prompt.
+
+Las pruebas de este importador usan datos sintéticos. Nunca las incorpores como
+revisión humana del lote real.
+
 ### Reproducción acotada de poda y voluminosos (#45)
 
 ```sh
