@@ -2369,12 +2369,28 @@ function renderResultado(d){
         ?'No se informaron materiales; eso no confirma que no haya residuos.':'No hay una evaluación de materiales disponible.'}</div>`;
     else detalle+='<div class="modo-nota">La lista puede estar incompleta. Las fuentes no indican un porcentaje de certeza. El material por sí solo no determina el servicio de retiro.</div>';
     if(higiene.normalizacion_parcial===true)detalle+='<div class="modo-nota">Algunas ubicaciones no pudieron precisarse. Los materiales se conservan como pendientes de corroboración.</div>';
+    const contexto=Array.isArray(higiene.materiales_contexto)?higiene.materiales_contexto.filter(m=>
+      m&&typeof m==='object'&&!Array.isArray(m)&&typeof m.material==='string'):[];
+    if(contexto.length){
+      detalle+='<div class="modo-nota">Información del comentario, no corroborada por la foto:</div>';
+      detalle+=contexto.map(m=>{
+        const nombre=Object.hasOwn(materiales,m.material)?materiales[m.material]:'Material sin etiqueta conocida';
+        const fuentes=Number.isInteger(m.fuentes)&&m.fuentes>0?` · ${m.fuentes} ${m.fuentes===1?'fuente':'fuentes'}`:'';
+        return `<div class="voto"><b>${esc(nombre)}</b> · aportado por el texto${esc(fuentes)}</div>`;
+      }).join('');
+    }
     const lecturas=Array.isArray(higiene.detalle_materiales?.lecturas)?higiene.detalle_materiales.lecturas.filter(l=>
       l&&typeof l==='object'&&!Array.isArray(l)&&typeof l.modelo==='string'&&typeof l.evidencia==='string'&&l.evidencia.trim()):[];
     if(lecturas.length){
       detalle+='<details class="lecturas-materiales"><summary>Qué describió cada modelo</summary>';
-      detalle+=lecturas.map(l=>`<div class="voto"><b>${esc(typeof l.material==='string'&&Object.hasOwn(materiales,l.material)?materiales[l.material]:'Material sin etiqueta conocida')}</b> · ${esc(l.modelo)}<br>${esc(l.evidencia)}${l.evidencia_truncada===true?' (texto recortado)':''}${l.normalizacion_parcial===true?'<br>Ubicación pendiente de precisar.':''}</div>`).join('');
-      detalle+='<div class="modo-nota">Son lecturas individuales. La identificación de cada foco y la distinción entre foto y comentario siguen pendientes.</div></details>';
+      detalle+=lecturas.map(l=>{
+        const origen=l.origen==='texto'?' · por el comentario':l.origen==='visual'?' · por la foto':'';
+        return `<div class="voto"><b>${esc(typeof l.material==='string'&&Object.hasOwn(materiales,l.material)?materiales[l.material]:'Material sin etiqueta conocida')}</b> · ${esc(l.modelo)}${origen}<br>${esc(l.evidencia)}${l.evidencia_truncada===true?' (texto recortado)':''}${l.normalizacion_parcial===true?'<br>Ubicación pendiente de precisar.':''}</div>`;
+      }).join('');
+      const hayOrigen=lecturas.some(l=>l.origen==='visual'||l.origen==='texto');
+      detalle+=hayOrigen
+        ?'<div class="modo-nota">Cada lectura indica si el material se describió en la foto o en el comentario. Un comentario no demuestra el contenido de una bolsa opaca.</div></details>'
+        :'<div class="modo-nota">Son lecturas individuales. La identificación de cada foco y la distinción entre foto y comentario siguen pendientes.</div></details>';
     }
     h+=`<details class="tardet materiales"><summary>Materiales informados</summary><div class="detbody">${detalle}</div></details>`;
   }

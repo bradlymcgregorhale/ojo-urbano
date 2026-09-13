@@ -96,6 +96,38 @@ def ajustar_presentacion(publica):
     revision['requiere_cambio_presentacion'] = True
 
 
+def _materiales_de_contexto(valor):
+    """Lee materiales declarados en el comentario. Ausencia de clave no es una lista vacía."""
+    if 'materiales_contexto' not in valor:
+        return None
+    crudo = valor.get('materiales_contexto')
+    if not isinstance(crudo, list) or len(crudo) > 12:
+        return []
+    filas = []
+    vistos = set()
+    for item in crudo:
+        if not isinstance(item, dict):
+            continue
+        material = item.get('material')
+        cita = item.get('cita_contexto')
+        if material not in MATERIALES or not isinstance(cita, str):
+            continue
+        cita = _limpiar_evidencia(cita)
+        if not cita or material in vistos:
+            continue
+        filas.append({'material': material, 'cita_contexto': cita[:EVIDENCIA_MAX],
+                      'cita_truncada': len(cita) > EVIDENCIA_MAX})
+        vistos.add(material)
+    return filas
+
+
+def _sin_citados_en_texto(materiales, lecturas, citados):
+    visibles = [m for m in materiales if m['material'] not in citados]
+    visibles_lecturas = [dict(fila, indice=indice) for indice, fila in enumerate(
+        (l for l in lecturas if l['material'] not in citados), 1)]
+    return visibles, visibles_lecturas
+
+
 def normalizar(valor):
     if not isinstance(valor, dict):
         return None
@@ -124,14 +156,23 @@ def normalizar(valor):
                              evidencia_truncada=len(evidencia) > EVIDENCIA_MAX))
         if r not in resultado:
             resultado.append(r)
+    contexto = _materiales_de_contexto(valor)
+    if contexto:
+        resultado, lecturas = _sin_citados_en_texto(
+            resultado, lecturas, {c['material'] for c in contexto})
     bolson = valor.get('hay_bolson')
     ordinaria = valor.get('solo_limpieza_cotidiana_frente')
     if parcial:
         # Recuperar materiales no habilita decisiones que antes no se podían usar.
-        return {'materiales': resultado, 'lecturas': lecturas, 'hay_bolson': None,
-                'solo_limpieza_cotidiana_frente': None, 'normalizacion_parcial': True}
-    return {'materiales': resultado, 'lecturas': lecturas, 'hay_bolson': bolson if type(bolson) is bool else None,
-            'solo_limpieza_cotidiana_frente': ordinaria if type(ordinaria) is bool else None}
+        r = {'materiales': resultado, 'lecturas': lecturas, 'hay_bolson': None,
+             'solo_limpieza_cotidiana_frente': None, 'normalizacion_parcial': True}
+    else:
+        r = {'materiales': resultado, 'lecturas': lecturas,
+             'hay_bolson': bolson if type(bolson) is bool else None,
+             'solo_limpieza_cotidiana_frente': ordinaria if type(ordinaria) is bool else None}
+    if contexto is not None:
+        r['materiales_contexto'] = contexto
+    return r
 
 
 def _publicar_completas(verificadores, alcance=None, rechazada=False, problemas=()):
@@ -198,6 +239,31 @@ def _publicar_completas(verificadores, alcance=None, rechazada=False, problemas=
             'orientacion_limpieza': orientacion}
 
 
+def _publicar_contexto(verificadores, rechazada=False):
+    if rechazada:
+        return []
+    grupos = {}
+    for v in verificadores:
+        if not isinstance(v, dict) or v.get('ok') is not True or not isinstance(v.get('modelo'), str):
+            continue
+        obs = v.get('observaciones_higiene')
+        if not isinstance(obs, dict):
+            continue
+        for fila in obs.get('materiales_contexto') or []:
+            if not isinstance(fila, dict) or fila.get('material') not in MATERIALES:
+                continue
+            cita = fila.get('cita_contexto')
+            if not isinstance(cita, str) or not cita.strip():
+                continue
+            grupo = grupos.setdefault(fila['material'], {'fuentes': set(), 'citas': []})
+            grupo['fuentes'].add(v['modelo'])
+            if cita not in grupo['citas']:
+                grupo['citas'].append(cita[:EVIDENCIA_MAX])
+    return [{'material': material, 'estado': 'aportado_por_texto',
+             'fuentes': len(grupo['fuentes']), 'citas': grupo['citas']}
+            for material, grupo in sorted(grupos.items())]
+
+
 def _detalle_lecturas(verificadores, rechazada):
     """Conserva descripciones individuales; la referencia no identifica un objeto (#56)."""
     if rechazada:
@@ -210,27 +276,41 @@ def _detalle_lecturas(verificadores, rechazada):
         if v.get('ok') is not True or not isinstance(modelo, str) or not modelo.strip() or not isinstance(obs, dict):
             continue
         filas = obs.get('lecturas')
-        if not isinstance(filas, list) or len(filas) > 12:
-            continue
         materiales = obs.get('materiales')
-        if not isinstance(materiales, list):
-            continue
-        for indice, fila in enumerate(filas, 1):
-            if (not isinstance(fila, dict) or type(fila.get('indice')) is not int
-                    or fila['indice'] != indice or not isinstance(fila.get('evidencia'), str)
-                    or not fila['evidencia'].strip()
-                    or any(not isinstance(fila.get(k), str) for k in campos)
-                    or not any(isinstance(m, dict) and all(m.get(k) == fila.get(k) for k in campos)
-                               for m in materiales)):
+        origen_visual = 'visual' if 'materiales_contexto' in obs else 'no_evaluado'
+        if (isinstance(filas, list) and len(filas) <= 12 and isinstance(materiales, list)):
+            for indice, fila in enumerate(filas, 1):
+                if (not isinstance(fila, dict) or type(fila.get('indice')) is not int
+                        or fila['indice'] != indice or not isinstance(fila.get('evidencia'), str)
+                        or not fila['evidencia'].strip()
+                        or any(not isinstance(fila.get(k), str) for k in campos)
+                        or not any(isinstance(m, dict) and all(m.get(k) == fila.get(k) for k in campos)
+                                   for m in materiales)):
+                    continue
+                evidencia = _limpiar_evidencia(fila['evidencia'])
+                if not evidencia:
+                    continue
+                lecturas.append({**{k: fila[k] for k in campos},
+                                 'referencia': f'v{numero}:m{indice}', 'modelo': modelo,
+                                 'estado': 'lectura_individual', 'origen': origen_visual,
+                                 'evidencia': evidencia[:EVIDENCIA_MAX],
+                                 'evidencia_truncada': fila.get('evidencia_truncada') is True or len(evidencia) > EVIDENCIA_MAX,
+                                 'normalizacion_parcial': obs.get('normalizacion_parcial') is True})
+        for indice, fila in enumerate(obs.get('materiales_contexto') or [], 1):
+            if not isinstance(fila, dict) or fila.get('material') not in MATERIALES:
                 continue
-            evidencia = _limpiar_evidencia(fila['evidencia'])
+            cita = fila.get('cita_contexto')
+            if not isinstance(cita, str) or not cita.strip():
+                continue
+            evidencia = _limpiar_evidencia(cita)
             if not evidencia:
                 continue
-            lecturas.append({**{k: fila[k] for k in campos},
-                             'referencia': f'v{numero}:m{indice}', 'modelo': modelo,
-                             'estado': 'lectura_individual', 'origen': 'no_evaluado',
+            lecturas.append({'material': fila['material'], 'ubicacion': 'indeterminada',
+                             'presentacion': 'indeterminada', 'cantidad_relativa': 'indeterminada',
+                             'referencia': f'v{numero}:t{indice}', 'modelo': modelo,
+                             'estado': 'lectura_individual', 'origen': 'texto',
                              'evidencia': evidencia[:EVIDENCIA_MAX],
-                             'evidencia_truncada': fila.get('evidencia_truncada') is True or len(evidencia) > EVIDENCIA_MAX,
+                             'evidencia_truncada': fila.get('cita_truncada') is True or len(evidencia) > EVIDENCIA_MAX,
                              'normalizacion_parcial': obs.get('normalizacion_parcial') is True})
     return {'estado': 'disponible' if lecturas else 'no_evaluado', 'lecturas': lecturas}
 
@@ -243,6 +323,7 @@ def publicar(verificadores, alcance=None, rechazada=False, problemas=()):
     anteriores = [dict(v, observaciones_higiene=None) if es_parcial(v) else v for v in lectores]
     resultado = _publicar_completas(anteriores, alcance, rechazada, problemas)
     resultado['detalle_materiales'] = _detalle_lecturas(lectores, rechazada)
+    resultado['materiales_contexto'] = _publicar_contexto(lectores, rechazada)
     parciales = [v for v in lectores if es_parcial(v) and v.get('ok') is True and v.get('modelo')]
     if rechazada or not parciales:
         return resultado

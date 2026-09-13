@@ -381,6 +381,66 @@ class ObservacionesHigieneTest(unittest.TestCase):
         candidata.pop('observaciones_higiene')
         self.assertEqual(base, candidata)
 
+    def test_comentario_no_convierte_cascotes_en_evidencia_visual(self):
+        cita = 'Dentro de las bolsas hay cascotes de hormigón.'
+        bolsa = {'material': 'plastico', 'ubicacion': 'calzada', 'presentacion': 'bolsa',
+                 'cantidad_relativa': 'significativa', 'evidencia': 'cuatro bolsas negras cerradas'}
+        fuga = {'material': 'hormigon_cascotes', 'ubicacion': 'calzada', 'presentacion': 'bolsa',
+                'cantidad_relativa': 'significativa', 'evidencia': 'bolsas negras densas en la calle'}
+        mini = voto('gpt-mini', materiales=[bolsa], materiales_contexto=[
+            {'material': 'hormigon_cascotes', 'cita_contexto': cita}])
+        gemini = voto('gemini', materiales=[fuga], materiales_contexto=[
+            {'material': 'hormigon_cascotes', 'cita_contexto': cita}])
+        luna = voto('luna', materiales=[bolsa], materiales_contexto=[
+            {'material': 'hormigon_cascotes', 'cita_contexto': cita}])
+        r = H.publicar([mini, gemini, luna])
+        self.assertEqual([m['material'] for m in r['materiales']], ['plastico'])
+        self.assertTrue(all(m['material'] != 'hormigon_cascotes' for m in r['materiales']))
+        self.assertEqual([m['material'] for m in r['materiales_contexto']], ['hormigon_cascotes'])
+        self.assertEqual(r['materiales_contexto'][0]['estado'], 'aportado_por_texto')
+        self.assertEqual(r['materiales_contexto'][0]['fuentes'], 3)
+        self.assertEqual(r['materiales_contexto'][0]['citas'], [cita])
+        origenes = {(l['material'], l['origen']) for l in r['detalle_materiales']['lecturas']}
+        self.assertIn(('plastico', 'visual'), origenes)
+        self.assertIn(('hormigon_cascotes', 'texto'), origenes)
+        self.assertNotIn(('hormigon_cascotes', 'visual'), origenes)
+        self.assertNotIn(('hormigon_cascotes', 'no_evaluado'), origenes)
+
+    def test_sin_clave_de_contexto_el_origen_sigue_sin_evaluar(self):
+        r = H.publicar([voto('a'), voto('b')])
+        self.assertEqual(r['materiales_contexto'], [])
+        self.assertTrue(all(l['origen'] == 'no_evaluado' for l in r['detalle_materiales']['lecturas']))
+
+    def test_contexto_vacio_marca_visual_sin_inventar_texto(self):
+        r = H.publicar([voto('a', materiales_contexto=[]), voto('b', materiales_contexto=[])])
+        self.assertEqual(r['materiales_contexto'], [])
+        self.assertEqual([m['material'] for m in r['materiales']], ['hojas'])
+        self.assertTrue(all(l['origen'] == 'visual' for l in r['detalle_materiales']['lecturas']))
+
+    def test_contexto_no_cambia_bolsones_ni_orientacion(self):
+        base = [voto('a'), voto('b')]
+        con_texto = [voto('a', materiales_contexto=[
+            {'material': 'hormigon_cascotes', 'cita_contexto': 'Hay cascotes.'}]),
+                     voto('b', materiales_contexto=[])]
+        self.assertEqual(H.publicar(base)['bolsones'], H.publicar(con_texto)['bolsones'])
+        self.assertEqual(H.publicar(base)['orientacion_limpieza'],
+                         H.publicar(con_texto)['orientacion_limpieza'])
+
+    def test_cita_invalida_no_borra_el_material_visible(self):
+        raw = {'materiales': [{'material': 'plastico', 'ubicacion': 'calzada', 'presentacion': 'bolsa',
+                               'cantidad_relativa': 'aislado', 'evidencia': 'Bolsa negra cerrada'}],
+               'materiales_contexto': [{'material': 'hormigon_cascotes', 'cita_contexto': ''}]}
+        n = H.normalizar(raw)
+        self.assertEqual([m['material'] for m in n['materiales']], ['plastico'])
+        self.assertEqual(n['materiales_contexto'], [])
+
+    def test_rechazo_no_publica_materiales_de_comentario(self):
+        v = voto('a', materiales_contexto=[
+            {'material': 'hormigon_cascotes', 'cita_contexto': 'Hay cascotes.'}])
+        r = H.publicar([v], rechazada=True)
+        self.assertEqual(r['materiales_contexto'], [])
+        self.assertEqual(r['detalle_materiales']['lecturas'], [])
+
     def test_bolson_distingue_no_evaluado_duda_desacuerdo_y_ausencia(self):
         self.assertEqual(H.publicar([])['bolsones']['estado'], 'no_evaluado')
         self.assertEqual(H.publicar([voto('a')])['bolsones']['estado'], 'indeterminado')
