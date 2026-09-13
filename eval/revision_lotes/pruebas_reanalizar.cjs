@@ -33,6 +33,9 @@ async function termina(s){for(let i=0;i<100&&s.estado().activo;i++)await wait(10
  const retry=crearServicio(retryBase,config,{version:async()=>version,enviar:async()=>{enviados++;return{estado:'listo',resultado:{...r,descripcion:"$& $` $' $$ <script>"}}}});
  const reqId=crypto.randomUUID();retry.iniciar('H0001',reqId);await termina(retry);version='nueva';const retryId=retry.iniciar('H0001',reqId).id;await termina(retry);assert.equal(enviados,1);
  const retryHtml=retry.pagina(retryId),embedded=JSON.parse(retryHtml.match(/id="datos">(.*?)<\/script>/s)[1]);assert.equal(embedded.resultados.H0001.respuesta.descripcion,"$& $` $' $$ <script>");
+ assert.equal(embedded.procedencia.cache,true);assert(embedded.aviso_reanalisis.includes('caché'));assert.equal(retry.estado().gasto_usd,0);
+ const oldPath=path.join(retryBase,'analisis/H0001-alto.json'),oldWrapper=JSON.parse(fs.readFileSync(oldPath));oldWrapper.resultado.modo_version='nueva';fs.writeFileSync(oldPath,JSON.stringify(oldWrapper));
+ const same=crearServicio(retryBase,config,{version:async()=>'nueva',enviar:async()=>({estado:'listo',resultado:r})});const sameId=same.iniciar('H0001',crypto.randomUUID()).id;await termina(same);assert(same.pagina(sameId).includes('La versión coincide'));
  // Consulta diferida y recuperación de trabajo conocido: jamás repite POST.
  const recoveryBase=preparar(),dir=path.join(recoveryBase,'analisis/reanalisis');fs.mkdirSync(dir);const recoveryId=crypto.randomUUID();
  fs.writeFileSync(path.join(dir,'estado.json'),JSON.stringify({gasto_usd:0,reserva_incierta_usd:0,activo:recoveryId,bloqueo:'Hay un pedido pendiente de conciliación. No se generan más cargos.',intentos:[{id:recoveryId,solicitud:crypto.randomUUID(),foto:'H0001',estado:'pendiente_conciliacion',trabajo:'job',envio_iniciado:true,error:'Consulta fallida',original_huella:sha(fs.readFileSync(path.join(recoveryBase,'analisis/H0001-alto.json')))}]}));

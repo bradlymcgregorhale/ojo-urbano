@@ -116,7 +116,7 @@ async function refrescarReanalisis(){
   $('reanalisar-foto').disabled=enviandoReanalisis||!!v.activo||!!v.reserva_incierta_usd||!!v.bloqueo||!original(id);
   const box=$('reanalisar-intentos');box.replaceChildren();
   for(const a of v.intentos.filter(a=>a.foto===id)){
-   const p=document.createElement('p');p.textContent=a.inicio+' · '+a.estado+(a.error?' · '+a.error:'');
+   const p=document.createElement('p');p.textContent=a.inicio+' · '+a.estado+(a.cache?' · Respuesta de caché':'')+(a.error?' · '+a.error:'');
    if(a.url){const link=document.createElement('a');link.href=new URL(a.url,D.reanalisis.url).href;link.target='_blank';link.rel='noopener';link.textContent=' Comparar y revisar el resultado nuevo';p.append(link);}box.append(p);
   }
   $('reanalisar-estado').textContent=v.bloqueo|| (v.activo?'Hay un pedido en curso. Podés seguir revisando otras fotos.':'Listo para reanalizar.');

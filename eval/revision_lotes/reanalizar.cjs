@@ -67,7 +67,8 @@ function crearServicio(base,config,transporte){
   if(sha(fs.readFileSync(path.join(base,'analisis',a.foto+'-alto.json')))!==a.original_huella)throw Error('Cambió el original.');
   const D={version:2,conjunto:sha(Buffer.from(a.original_huella+id)),fotos:[{...row,archivo:'/'+config.token+'/foto/'+a.foto,entrada_api:'/'+config.token+'/entrada/'+a.foto}],
    resultados:{[a.foto]:{respuesta:wrapper.resultado,huella:a.huella,fecha:a.fecha}},categorias:json(path.join(__dirname,'../../categorias.json')),proceso:{estado:'reanalisis_individual',gasto_observado_usd:ledger.gasto_usd},cantidad:1,
-   procedencia:{tipo:'reanalisis',intento:id,original_huella:a.original_huella,nueva_huella:a.huella,version_original:old.resultado.modo_version,version_nueva:wrapper.resultado.modo_version,foto_sha256:row.sha256,entrada_sha256:row.sha256_api},anterior:old.resultado,aviso_reanalisis:a.aviso||null};
+   procedencia:{tipo:'reanalisis',intento:id,original_huella:a.original_huella,nueva_huella:a.huella,version_original:old.resultado.modo_version,version_nueva:wrapper.resultado.modo_version,foto_sha256:row.sha256,entrada_sha256:row.sha256_api,cache:wrapper.cache},anterior:old.resultado,
+   aviso_reanalisis:[a.aviso,wrapper.cache?'Respuesta recuperada de caché: no se ejecutó otra inferencia.':null,old.resultado.modo_version===wrapper.resultado.modo_version?'La versión coincide con la respuesta anterior. No representa una versión corregida distinta.':null].filter(Boolean).join(' ')||null};
   return fs.readFileSync(path.join(__dirname,'pagina.html'),'utf8').replace('/* ESTILOS */',()=>fs.readFileSync(path.join(__dirname,'pagina.css'),'utf8')).replace('/* APLICACION */',()=>fs.readFileSync(path.join(__dirname,'pagina.js'),'utf8')).replace('DATOS_JSON',()=>JSON.stringify(D).replaceAll('<','\\u003c'));
  }
  const server=http.createServer(async(req,res)=>{
