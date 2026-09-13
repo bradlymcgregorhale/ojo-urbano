@@ -96,6 +96,45 @@ class EvaluacionFotoTest(unittest.TestCase):
             r = E.aplicar(salida(), [voto(m, ambito=ambito) for m in ['a', 'b']])
             self.assertFalse(r['evaluacion_foto']['rechazada'])
 
+    def test_senal_aislada_pide_revision_sin_rechazar_ni_borrar_hallazgos(self):
+        senales = [dict(ambito='interior'),
+                   dict(calidad_suficiente=False, motivos_calidad=['desenfoque']),
+                   dict(contexto_suficiente=False, motivos_contexto=['entorno_no_visible'])]
+        for senal in senales:
+            for otros in [[], [voto('b')], [{'modelo': 'b', 'ok': False}]]:
+                with self.subTest(senal=senal, otros=otros):
+                    original = salida()
+                    votos = [voto('a', **senal)] + otros
+                    antes = copy.deepcopy(votos)
+                    r = E.aplicar(original, votos)
+                    e = r['evaluacion_foto']
+                    self.assertEqual(e['estado'], 'senal_negativa_no_corroborada')
+                    self.assertTrue(e['requiere_revision'])
+                    self.assertIn('requiere revisión', e['indicacion'])
+                    self.assertFalse(e['rechazada'])
+                    self.assertFalse(e['requiere_nueva_foto'])
+                    self.assertFalse(e['requiere_foto_complementaria'])
+                    for k in original:
+                        self.assertEqual(r[k], original[k])
+                    self.assertEqual(votos, antes)
+
+    def test_sin_senal_negativa_no_inventa_revision_por_falta_de_corroboracion(self):
+        for votos in [[], [voto('a')], [voto('a'), voto('b')],
+                      [{'modelo': 'a', 'ok': False}]]:
+            with self.subTest(votos=votos):
+                e = E.aplicar(salida(), votos)['evaluacion_foto']
+                self.assertFalse(e['requiere_revision'])
+                self.assertIsNone(e['indicacion'])
+
+    def test_rechazo_corroborado_no_se_presenta_como_revision_pendiente(self):
+        for cambio in [dict(ambito='interior'),
+                       dict(calidad_suficiente=False, motivos_calidad=['oscuridad'])]:
+            with self.subTest(cambio=cambio):
+                e = E.aplicar(salida(), [voto(m, **cambio) for m in ['a', 'b']])['evaluacion_foto']
+                self.assertTrue(e['rechazada'])
+                self.assertTrue(e['requiere_nueva_foto'])
+                self.assertFalse(e['requiere_revision'])
+
     def test_valores_malformados_y_prosa_no_crean_motivos(self):
         for valor in ['false', 0, 1, [], {}, None]:
             r = E.normalizar({'ambito': 'interior', 'calidad_suficiente': valor,

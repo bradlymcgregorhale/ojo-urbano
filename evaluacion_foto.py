@@ -11,6 +11,8 @@ INDICACION_CALIDAD = ('Sacá otra foto con el objeto o problema enfocado, buena 
                      'y suficiente detalle para evaluarlo.')
 INDICACION_CONTEXTO = ('Sacá una foto complementaria desde más lejos, mostrando el objeto '
                       'o problema y su relación con la vereda o la calle.')
+INDICACION_REVISION = ('Hay una observación sobre la ubicación, calidad o encuadre que requiere '
+                      'revisión. La foto no se rechazó automáticamente.')
 
 
 def normalizar(valor):
@@ -79,10 +81,13 @@ def resumir(verificadores):
                   'estado': estado,
                   'calidad_suficiente': calidad, 'estado_calidad': estado_calidad,
                   'motivos': ['interior'] if interior else motivos_calidad,
-                  'rechazada': rechazada, 'requiere_revision': False, 'requiere_nueva_foto': rechazada,
+                  'rechazada': rechazada,
+                  'requiere_revision': estado == 'senal_negativa_no_corroborada',
+                  'requiere_nueva_foto': rechazada,
                   'requiere_foto_complementaria': contexto is False,
                   'indicacion': INDICACION_INTERIOR if interior else INDICACION_CALIDAD if calidad is False
-                  else INDICACION_CONTEXTO if contexto is False else None}
+                  else INDICACION_CONTEXTO if contexto is False
+                  else INDICACION_REVISION if estado == 'senal_negativa_no_corroborada' else None}
     encuadre = {'suficiente': contexto, 'estado': estado_contexto, 'motivos': motivos_contexto,
                 'indicacion': INDICACION_CONTEXTO if contexto is False else None}
     return evaluacion, encuadre
