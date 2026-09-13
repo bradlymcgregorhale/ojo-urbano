@@ -572,6 +572,13 @@ La API separa la correspondencia con el comentario (`foto_valida`) de la posibil
 - `contexto_visual.suficiente`: `true`, `false` o `null`. Una toma demasiado cerrada puede necesitar una foto complementaria aunque permita reconocer un daño. No borra hallazgos visibles ni demuestra que la escena sea interior.
 - `problema_principal`: selecciona una categoría ya confirmada. Con varios problemas necesita acuerdo entre lectores; ante discrepancia queda indeterminado. Los demás problemas permanecen en la respuesta.
 - `observaciones_higiene.materiales`: observaciones de material, ubicación y presentación, con estado de corroboración. La cantidad es relativa; no estima kilos ni metros cúbicos. El material no determina por sí solo el servicio.
+  La interfaz muestra ese detalle en "Materiales informados", con cantidad relativa,
+  estado y número de fuentes. Una lista vacía no prueba ausencia de residuos. En
+  fotos rechazadas no se muestra esta sección.
+  La agrupación actual usa material, ubicación y presentación; no identifica un
+  objeto único ni distingue dos focos que compartan esos atributos. Tampoco separa
+  el origen visual del dato aportado por texto. Esas ampliaciones siguen pendientes
+  en #56 y no se pueden reconstruir a partir del número de fuentes.
 - `observaciones_higiene.bolsones`: distingue presencia (`true`, `false`, `null`) de exclusión del retiro por presentación. No pide otra foto únicamente porque el material esté en un bolsón excluido.
 
 - `observaciones_higiene.orientacion_limpieza`: orientación informativa, sin anular recolección, otros retiros ni reclamos independientes. La limpieza cotidiana de la vereda requiere un encuadre claro frente a un inmueble, material liviano aislado y acuerdo entre lectores. Bolsas, acumulaciones importantes de basura, poda cortada, muebles y materiales de obra quedan fuera de esa orientación. Las hojas caídas naturalmente pueden ser abundantes; su cantidad no las convierte en residuos domiciliarios.
