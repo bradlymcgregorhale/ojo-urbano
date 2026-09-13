@@ -24,6 +24,9 @@ async function termina(s){for(let i=0;i<100&&s.estado().activo;i++)await wait(10
  // Versión distinta no consume; límite reserva un dólar antes de enviar.
  const wrong=crearServicio(preparar(),config,{version:async()=>'otra',enviar:async()=>{throw Error('No debe enviar')}});wrong.iniciar('H0001',crypto.randomUUID());await termina(wrong);assert.equal(wrong.estado().intentos[0].estado,'no_enviado');
  const low=crearServicio(preparar(),{...config,tope_usd:.5},transport);assert.throws(()=>low.iniciar('H0001',crypto.randomUUID()),/tope/);
+ // Una reserva conciliada conserva su cota dentro del presupuesto, sin fingir costo conocido.
+ const boundBase=preparar(),boundDir=path.join(boundBase,'analisis/reanalisis');fs.mkdirSync(boundDir);fs.writeFileSync(path.join(boundDir,'estado.json'),JSON.stringify({gasto_usd:.1,reserva_incierta_usd:0,reserva_acotada_usd:2,activo:null,intentos:[]}));
+ const bounded=crearServicio(boundBase,config,transport);assert.equal(bounded.estado().reserva_acotada_usd,2);assert.equal(bounded.estado().gasto_usd,.1);assert.throws(()=>bounded.iniciar('H0001',crypto.randomUUID()),/tope/);
 
  // Un preflight fallido se puede reintentar sin quedar bloqueado para siempre.
  const retryBase=preparar();let version='otra',enviados=0;

@@ -112,7 +112,7 @@ async function refrescarReanalisis(){
  const id=state.actual;
  try{
   const response=await fetch(D.reanalisis.url+'/estado',{signal:AbortSignal.timeout(5000)}),v=await response.json();if(!response.ok)throw Error(v.error);
-  $('reanalisar-ayuda').textContent='Modo Completo · Versión '+v.modo_version+'. Consumo: USD '+v.gasto_usd.toFixed(4)+' de un tope de USD '+v.tope_usd+'. Cada clic envía solo esta foto. El lote sigue pausado.';
+  $('reanalisar-ayuda').textContent='Modo Completo · Versión '+v.modo_version+'. Consumo conocido: USD '+v.gasto_usd.toFixed(4)+'. Reservas: USD '+((v.reserva_incierta_usd||0)+(v.reserva_acotada_usd||0)).toFixed(4)+'. Tope: USD '+v.tope_usd+'. Cada clic envía solo esta foto. El lote sigue pausado.';
   $('reanalisar-foto').disabled=enviandoReanalisis||!!v.activo||!!v.reserva_incierta_usd||!!v.bloqueo||!original(id);
   const box=$('reanalisar-intentos');box.replaceChildren();
   for(const a of v.intentos.filter(a=>a.foto===id)){

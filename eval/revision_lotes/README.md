@@ -88,6 +88,8 @@ El botón del informe conserva el original y abre otra página para comparar y r
 
 Antes de enviar, el servicio comprueba las huellas, la versión desplegada, el presupuesto y que no haya otro intento pendiente. Reserva un dólar por pedido, cuenta el costo conocido y detiene nuevos envíos si falta información de consumo. Una respuesta perdida no provoca otro POST. Un trabajo con identificador puede recuperarse con consultas al reiniciar. Si no hay identificador, hay que conciliarlo antes de continuar. El importe reservado no es un cargo observado.
 
+Una conciliación externa puede registrar una cota documentada en `reserva_acotada_usd` cuando se conoce el único pedido fallido, sus límites y las tarifas aplicables. Esa reserva sigue descontándose del presupuesto y se muestra separada del consumo conocido. No se libera por el mero paso del tiempo ni convierte un costo desconocido en cero.
+
 La configuración y los intentos son privados. No publiques el token ni expongas este servicio mediante un túnel. El reanálisis no modifica `analisis/estado.json` ni reanuda la cola de fotos. Después de otro despliegue, actualizá la versión de la configuración y regenerá el HTML. Si se abrió desde otro equipo, el servicio loopback de este equipo no estará disponible.
 
 Pruebas sin llamadas pagas:
