@@ -50,12 +50,18 @@ def normalizar(valor):
     if not isinstance(focos, list) or len(focos) > 12:
         return None
     resultado = []
+    parcial = False
     for foco in focos:
         if not isinstance(foco, dict):
             return None
-        if (foco.get('material') not in MATERIALES or foco.get('ubicacion') not in UBICACIONES
-                or foco.get('presentacion') not in PRESENTACIONES
-                or foco.get('cantidad_relativa') not in {'aislado', 'significativa', 'indeterminada'}
+        if foco.get('ubicacion') == 'vereda':
+            foco = dict(foco, ubicacion='indeterminada')
+            parcial = True
+        if (any(not isinstance(foco.get(k), str) for k in
+                ('material', 'ubicacion', 'presentacion', 'cantidad_relativa'))
+                or foco['material'] not in MATERIALES or foco['ubicacion'] not in UBICACIONES
+                or foco['presentacion'] not in PRESENTACIONES
+                or foco['cantidad_relativa'] not in {'aislado', 'significativa', 'indeterminada'}
                 or not isinstance(foco.get('evidencia'), str) or not foco['evidencia'].strip()):
             return None
         r = {k: foco[k] for k in ('material', 'ubicacion', 'presentacion', 'cantidad_relativa')}
@@ -63,11 +69,15 @@ def normalizar(valor):
             resultado.append(r)
     bolson = valor.get('hay_bolson')
     ordinaria = valor.get('solo_limpieza_cotidiana_frente')
+    if parcial:
+        # Recuperar materiales no habilita decisiones que antes no se podían usar.
+        return {'materiales': resultado, 'hay_bolson': None,
+                'solo_limpieza_cotidiana_frente': None, 'normalizacion_parcial': True}
     return {'materiales': resultado, 'hay_bolson': bolson if type(bolson) is bool else None,
             'solo_limpieza_cotidiana_frente': ordinaria if type(ordinaria) is bool else None}
 
 
-def publicar(verificadores, alcance=None, rechazada=False, problemas=()):
+def _publicar_completas(verificadores, alcance=None, rechazada=False, problemas=()):
     if rechazada:
         return {'estado': 'no_aplica', 'materiales': [],
                 'bolsones': _bolsones(None, 'no_aplica'),
@@ -130,3 +140,29 @@ def publicar(verificadores, alcance=None, rechazada=False, problemas=()):
             'materiales': materiales,
             'bolsones': _bolsones(bolson, estado_bolson, elegibilidad),
             'orientacion_limpieza': orientacion}
+
+
+def publicar(verificadores, alcance=None, rechazada=False, problemas=()):
+    """Recupera detalles parciales sin incorporarlos a las decisiones (#56)."""
+    lectores = [v for v in verificadores if isinstance(v, dict)]
+    es_parcial = lambda v: (isinstance(v.get('observaciones_higiene'), dict)
+                           and v['observaciones_higiene'].get('normalizacion_parcial') is True)
+    anteriores = [dict(v, observaciones_higiene=None) if es_parcial(v) else v for v in lectores]
+    resultado = _publicar_completas(anteriores, alcance, rechazada, problemas)
+    parciales = [v for v in lectores if es_parcial(v) and v.get('ok') is True and v.get('modelo')]
+    if rechazada or not parciales:
+        return resultado
+    # Una lectura parcial mantiene incompleto el consenso. Solo se amplía la
+    # presentación de materiales, con fuentes únicas y cantidades indeterminadas.
+    grupos = {}
+    for v in lectores:
+        if v.get('ok') is not True or not v.get('modelo'):
+            continue
+        for foco in (v.get('observaciones_higiene') or {}).get('materiales', []):
+            clave = tuple(foco[k] for k in ('material', 'ubicacion', 'presentacion'))
+            grupos.setdefault(clave, set()).add(v['modelo'])
+    resultado.update(estado='parcial', normalizacion_parcial=True, materiales=[
+        {'material': m, 'ubicacion': u, 'presentacion': p,
+         'cantidad_relativa': 'indeterminada', 'estado': 'pendiente', 'fuentes': len(fuentes)}
+        for (m, u, p), fuentes in sorted(grupos.items())])
+    return resultado

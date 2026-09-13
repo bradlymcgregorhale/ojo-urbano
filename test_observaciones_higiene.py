@@ -104,6 +104,80 @@ class ObservacionesHigieneTest(unittest.TestCase):
         self.assertIsNone(H.normalizar({'materiales':[{}]}))
         self.assertIsNone(H.normalizar({'materiales':[]} )['hay_bolson'])
 
+    def parcial(self, modelo='a', material='hojas'):
+        return voto(modelo, hay_bolson=True, materiales=[
+            {'material': material, 'ubicacion': 'vereda', 'presentacion': 'disperso',
+             'cantidad_relativa': 'significativa', 'evidencia': 'Materiales sobre la vereda'},
+            {'material': 'plastico', 'ubicacion': 'calzada', 'presentacion': 'bolsa',
+             'cantidad_relativa': 'aislado', 'evidencia': 'Bolsa sobre la calzada'}])
+
+    def test_vereda_general_conserva_materiales_sin_inventar_frente(self):
+        v = self.parcial()
+        obs = v['observaciones_higiene']
+        self.assertIs(obs['normalizacion_parcial'], True)
+        self.assertEqual([m['ubicacion'] for m in obs['materiales']], ['indeterminada', 'calzada'])
+        self.assertIsNone(obs['hay_bolson'])
+        self.assertIsNone(obs['solo_limpieza_cotidiana_frente'])
+
+    def test_recuperacion_no_cambia_bolsones_ni_orientacion(self):
+        alcance = {'estado': 'excluido', 'revisiones': [
+            {'modelo': m, 'ubicacion': 'publica', 'presentacion': 'solo_bolson'} for m in ['a', 'b']]}
+        for material in ['hojas', 'excrementos', 'piedras']:
+            for revision in [None, alcance]:
+                for votos in [[self.parcial(material=material)],
+                              [voto('a'), self.parcial('b', material)],
+                              [self.parcial('a', material), self.parcial('b', material)]]:
+                    antes = [dict(v, observaciones_higiene=None)
+                             if v['observaciones_higiene'].get('normalizacion_parcial') else v for v in votos]
+                    copia = copy.deepcopy(votos)
+                    base, candidata = H.publicar(antes, revision), H.publicar(votos, revision)
+                    self.assertEqual(base['bolsones'], candidata['bolsones'])
+                    self.assertEqual(base['orientacion_limpieza'], candidata['orientacion_limpieza'])
+                    self.assertEqual(votos, copia)
+                    self.assertTrue(candidata['normalizacion_parcial'])
+                    self.assertEqual(candidata['estado'], 'parcial')
+                    self.assertTrue(all(m['estado'] == 'pendiente' and m['cantidad_relativa'] == 'indeterminada'
+                                        for m in candidata['materiales']))
+
+    def test_fuentes_parciales_duplicadas_no_inflan_respaldo(self):
+        v = self.parcial()
+        r = H.publicar([v, v])
+        self.assertTrue(all(m['fuentes'] == 1 for m in r['materiales']))
+        r = H.publicar([v, self.parcial('b')])
+        self.assertTrue(all(m['fuentes'] == 2 and m['estado'] == 'pendiente' for m in r['materiales']))
+
+    def test_rechazo_no_publica_materiales_recuperados(self):
+        self.assertEqual(H.publicar([self.parcial()], rechazada=True),
+                         H.publicar([], rechazada=True))
+
+    def test_otro_error_no_se_rescata_por_contener_vereda(self):
+        foco = {'material': 'hojas', 'ubicacion': 'vereda', 'presentacion': 'disperso',
+                'cantidad_relativa': 'aislado', 'evidencia': 'Hojas'}
+        for campo in ['material', 'ubicacion', 'presentacion', 'cantidad_relativa', 'evidencia']:
+            for invalido in [None, [], {}, 1, 'no_admitido']:
+                if campo == 'evidencia' and isinstance(invalido, str):
+                    invalido = ''
+                raw = {'materiales': [dict(foco, **{campo: invalido})]}
+                self.assertIsNone(H.normalizar(raw))
+
+    def test_lectura_parcial_fallida_no_modifica_presentacion(self):
+        v = self.parcial()
+        v['ok'] = False
+        self.assertEqual(H.publicar([v]), H.publicar([{'modelo': 'a', 'ok': False}]))
+
+    @unittest.skipUnless('servidor' in sys.modules, 'Ejecutar mediante pruebas.py sin cargar pesos')
+    def test_api_recupera_materiales_sin_alterar_resto_de_respuesta(self):
+        import servidor as S
+        r = {'problemas': [{'key': 'retiro_poda', 'nombre': 'Poda', 'gravedad': 3, 'fuentes': ['local']}],
+             'detalle': {'verificacion': {'verificadores': [self.parcial()]}}}
+        anterior = copy.deepcopy(r)
+        anterior['detalle']['verificacion']['verificadores'][0]['observaciones_higiene'] = None
+        base, candidata = S._publica(anterior), S._publica(r)
+        self.assertTrue(candidata['observaciones_higiene']['normalizacion_parcial'])
+        base.pop('observaciones_higiene')
+        candidata.pop('observaciones_higiene')
+        self.assertEqual(base, candidata)
+
     def test_bolson_distingue_no_evaluado_duda_desacuerdo_y_ausencia(self):
         self.assertEqual(H.publicar([])['bolsones']['estado'], 'no_evaluado')
         self.assertEqual(H.publicar([voto('a')])['bolsones']['estado'], 'indeterminado')

@@ -2340,6 +2340,7 @@ function renderResultado(d){
       ?'Los materiales no se evaluaron.':Array.isArray(higiene.materiales)&&['evaluado','parcial'].includes(higiene.estado)
         ?'No se informaron materiales; eso no confirma que no haya residuos.':'No hay una evaluación de materiales disponible.'}</div>`;
     else detalle+='<div class="modo-nota">La lista puede estar incompleta. Las fuentes no indican un porcentaje de certeza. El material por sí solo no determina el servicio de retiro.</div>';
+    if(higiene.normalizacion_parcial===true)detalle+='<div class="modo-nota">Algunas ubicaciones no pudieron precisarse. Los materiales se conservan como pendientes de corroboración.</div>';
     h+=`<details class="tardet materiales"><summary>Materiales informados</summary><div class="detbody">${detalle}</div></details>`;
   }
   const pos=d.posibles||[],pres=d.elementos_detectados||[],duda=d.en_duda||[];
