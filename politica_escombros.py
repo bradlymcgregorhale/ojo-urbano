@@ -187,6 +187,64 @@ def _escombros_visibles_sin_corroborar(salida, revision):
     return positivos[0]['modelo']
 
 
+def _bolsas_opacas_sin_material(revision):
+    """El alcance apto no demuestra qué hay dentro de las bolsas (#47)."""
+    if (revision.get('estado') != 'apto' or revision.get('fallo')
+            or revision.get('afirmacion_explicita') or revision.get('contexto_resuelve')):
+        return False
+    lecturas = revision.get('revisiones') or []
+    modelos = {v.get('modelo') for v in lecturas if v.get('modelo')}
+    return len(modelos) >= 2 and len(modelos) == len(lecturas) and all(
+        v.get('ubicacion') == 'publica'
+        and v.get('material') == 'oculto_o_ambiguo'
+        and v.get('hay_bolsas_opacas_o_parciales') == 'si'
+        and v.get('afirmacion_vecinal') == 'no_menciona'
+        for v in lecturas)
+
+
+def _respaldo_visual(salida, key):
+    lectores = ((salida.get('detalle') or {}).get('verificacion') or {}).get('verificadores') or []
+    return {v['modelo'] for v in lectores if v.get('ok') is True and v.get('modelo')
+            and any(c.get('key') == key and not c.get('anulada_por')
+                    and str(c.get('evidencia') or '').strip()
+                    for c in v.get('categorias') or [])}
+
+
+def _retiros_visibles_publicos(salida, revision):
+    """Preserva consensos propios cuando la duda se limita a escombros (#45)."""
+    if (salida.get('foto_valida') is False or revision.get('fallo')
+            or revision.get('afirmacion_explicita') or revision.get('contexto_resuelve')):
+        return set()
+    lecturas = revision.get('revisiones') or []
+    modelos = {v.get('modelo') for v in lecturas if v.get('modelo')}
+    if len(modelos) < 2 or len(modelos) != len(lecturas):
+        return set()
+    for v in lecturas:
+        if (v.get('ubicacion') != 'publica'
+                or v.get('presentacion') not in {'bolsas_chicas_o_suelto', 'sin_pila'}
+                or v.get('afirmacion_vecinal') != 'no_menciona'
+                or v.get('hay_bolsas_opacas_o_parciales') == 'si'):
+            return set()
+        if (v.get('hay_bolsas_opacas_o_parciales') != 'no'
+                and v.get('presentacion') != 'sin_pila'):
+            return set()
+    verificadores = ((salida.get('detalle') or {}).get('verificacion') or {}).get('verificadores') or []
+    conservados = set()
+    for c in salida.get('problemas') or []:
+        key = c.get('key')
+        if key not in {'retiro_poda', 'retiro_muebles'}:
+            continue
+        fuentes = set(c.get('fuentes') or []) - {'modelo_local', 'contexto_vecinal', 'revision_alcance'}
+        respaldo = {v.get('modelo') for v in verificadores if v.get('ok') is True
+                    and v.get('modelo') in fuentes and any(
+                        voto.get('key') == key and not voto.get('anulada_por')
+                        and str(voto.get('evidencia') or '').strip()
+                        for voto in v.get('categorias') or [])}
+        if len(respaldo) >= 2:
+            conservados.add(key)
+    return conservados
+
+
 def aplicar(salida, revision, categorias):
     """Aplica el veto después de fusión y ruteo textual, sin crear votos visuales."""
     r = copy.deepcopy(salida)
@@ -268,8 +326,11 @@ def aplicar(salida, revision, categorias):
     if contextual or (retirar and candidato) or revision.get("estado") == "excluido":
         quitar = {"recoleccion"} if (revision.get("basura_independiente") is not True
                                      and not conservar_basura) else set()
+        conservar_retiros = _retiros_visibles_publicos(salida, revision)
+        if conservar_retiros:
+            diagnostico.anotar('conservar_retiros_visibles_publicos', conservar_retiros)
         quitar.update({"retiro_muebles", "retiro_poda"} - set(
-            revision.get("otros_retiros_independientes") or []))
+            revision.get("otros_retiros_independientes") or []) - conservar_retiros)
         if quitar:
             diagnostico.anotar("retirar_servicios_sin_residuos_independientes", quitar)
         retirados += [c for c in r["problemas"] if c.get("key") in quitar]
@@ -327,11 +388,45 @@ def aplicar(salida, revision, categorias):
                 veri.setdefault('fuentes_en_duda', {})['recoleccion'] = list(reco[0]['fuentes'])
         otros = [c['nombre'] for c in r['problemas']]
         r['descripcion'] = motivo + (" Otros hallazgos: " + "; ".join(otros) + "." if otros else "")
+    material_oculto = (candidato and _bolsas_opacas_sin_material(revision) and any(
+        es_escombros(c) and c.get('reclasificado_por') == 'modelo_local'
+        for c in r['problemas']))
+    if material_oculto:
+        motivo = ('No se pudo identificar el contenido de las bolsas. Indicá qué contienen '
+                  'para evaluar el servicio; la ubicación pública no confirma el material.')
+        # No tomar como cuatro testigos de escombros a lectores que solo vieron bolsas.
+        candidatos_ocultos = [c for c in r['problemas']
+                               if es_escombros(c) and c.get('reclasificado_por') == 'modelo_local']
+        for c in candidatos_ocultos:
+            key = c['key']
+            diagnostico.anotar('material_oculto_sin_respaldo', [key])
+            r['problemas'] = [x for x in r['problemas'] if x.get('key') != key]
+            r['posibles'] = [x for x in r['posibles'] if x.get('key') != key]
+            fuentes = sorted({v['modelo'] for v in veri.get('verificadores') or []
+                if v.get('ok') is True and v.get('modelo') and any(
+                    x.get('key') == key and not x.get('anulada_por')
+                    for x in v.get('categorias') or [])})
+            pendiente = {k: copy.deepcopy(v) for k, v in c.items()
+                         if k not in {'confianza', 'reclasificado_por', 'parte', 'patente'}}
+            pendiente.update(gravedad=None, fuentes=fuentes or ['revision_alcance'],
+                             origen='foto', arbitro=None, motivo=motivo)
+            r['posibles'].append(pendiente)
+            if key not in r['en_duda']: r['en_duda'].append(key)
+            veri.setdefault('fuentes_en_duda', {})[key] = pendiente['fuentes']
+        previa = _recoleccion_previa(salida)
+        if (candidatos_ocultos and previa and len(_respaldo_visual(salida, 'recoleccion')) >= 2
+                and not any(c.get('key') == 'recoleccion' for c in r['problemas'])):
+            r['problemas'].append(copy.deepcopy(previa))
+            r['posibles'] = [c for c in r['posibles'] if c.get('key') != 'recoleccion']
+            r['en_duda'] = [k for k in r['en_duda'] if k != 'recoleccion']
+            diagnostico.anotar('conservar_basura_publica', ['recoleccion'])
+        otros = [c['nombre'] for c in r['problemas']]
+        r['descripcion'] = motivo + (" Otros hallazgos: " + "; ".join(otros) + "." if otros else "")
     r["verificacion_escombros"] = {
         "estado": revision.get("estado", "indeterminado"),
         "motivo": motivo, "basado_en_contexto": uso_contexto,
         "requiere_nueva_foto": not apto}
-    if revisar_material or lector_pendiente:
+    if revisar_material or lector_pendiente or material_oculto:
         r['verificacion_escombros']['requiere_revision'] = True
     r["hay_problema"] = bool(r["problemas"])
     r["hay_reclamo"] = bool(r["problemas"] or r["categorias_contexto"])

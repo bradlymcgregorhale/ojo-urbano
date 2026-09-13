@@ -1,4 +1,8 @@
 - reparacion_cordon: el CORDÓN de la vereda (el borde de hormigón contra la calzada) roto, partido,\
  hundido o faltante. Si lo roto es la superficie de la vereda es reparacion_vereda; si es el pozo\
  del asfalto es reparacion_bache.
-
+- Distinguí una rotura de un rebaje construido para un acceso vehicular o una transición de nivel.\
+ La baja altura por sí sola no prueba daño ni demuestra que sea una entrada de autos. No reportes\
+ reparación por desgaste superficial o irregularidades menores sin rotura evidente. Si no podés\
+ distinguir diseño de deterioro, no confirmes reparación. Conservá los faltantes, quiebres y\
+ hundimientos accidentales claros. La suciedad puede justificar barrido y no prueba daño del cordón.

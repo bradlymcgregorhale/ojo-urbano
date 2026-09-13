@@ -46,6 +46,40 @@ class PoliticaTest(unittest.TestCase):
     def aplicar(self, r, **cambios):
         return P.aplicar(r, alcance(**cambios), self.cats)
 
+    def opacas(self, problemas):
+        r = salida(problemas)
+        revision = alcance(revisiones=[dict(respuesta(afirmacion_vecinal='no_menciona', cita_vecinal=''), modelo=m) for m in ['m1','m2']])
+        r['detalle']['verificacion']['verificadores'] = [
+            {'modelo': m, 'ok': True, 'categorias': [{'key':'recoleccion','evidencia':'Bolsas de basura en la calle'}]} for m in ['m1','m2']]
+        return r, revision
+
+    def test_bolsas_opacas_no_quitan_recoleccion_corroborada(self):
+        r, revision = self.opacas([categoria('recoleccion')])
+        r['posibles'] = [categoria()]
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertEqual(nuevo['problemas'], r['problemas'])
+
+    def test_material_oculto_no_reescribe_confirmacion_visual_sin_fusion_local(self):
+        r, revision = self.opacas([categoria()])
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertEqual(nuevo['descripcion'], r['descripcion'])
+        self.assertEqual(nuevo['problemas'], r['problemas'])
+        self.assertNotIn('requiere_revision', nuevo['verificacion_escombros'])
+
+    def test_bolsas_opacas_no_confirmadas_por_material_no_conservan_promocion_local(self):
+        r, revision = self.opacas([dict(categoria(), reclasificado_por='modelo_local')])
+        r['posibles'] = [categoria('recoleccion')]
+        r['detalle']['verificacion']['confirmadas'] = [categoria('recoleccion')]
+        revision['revisiones'][0]['residuos_comunes_independientes'] = 'si'
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertEqual([c['key'] for c in nuevo['problemas']], ['recoleccion'])
+        p = next(c for c in nuevo['posibles'] if c['key'] == P.KEY)
+        self.assertEqual(p['fuentes'], ['revision_alcance'])
+        self.assertIsNone(p['gravedad'])
+        self.assertIn(P.KEY, nuevo['en_duda'])
+        self.assertTrue(nuevo['verificacion_escombros']['requiere_revision'])
+        self.assertFalse(nuevo['verificacion_escombros']['requiere_nueva_foto'])
+
     def test_publico_conserva_confirmacion_visual_y_no_muta(self):
         r = salida()
         antes = copy.deepcopy(r)
@@ -430,6 +464,53 @@ class PoliticaTest(unittest.TestCase):
         r = self.aplicar(salida([categoria(), categoria("retiro_muebles")]), estado="excluido",
                          otros_retiros_independientes=["retiro_muebles"])
         self.assertEqual([c["key"] for c in r["problemas"]], ["retiro_muebles"])
+
+    def retiro_con_respaldo(self, key):
+        r = salida([categoria(), categoria(key)])
+        r['detalle']['verificacion']['verificadores'] = [
+            {'modelo': m, 'ok': True, 'categorias': [
+                {'key': key, 'evidencia': 'Ramas cortadas' if key == 'retiro_poda' else 'Puerta grande con herrajes'}]}
+            for m in ['m1', 'm2']]
+        lecturas = [dict(respuesta(ubicacion='publica', material='incompatible_visible',
+            afirmacion_vecinal='no_menciona', hay_bolsas_opacas_o_parciales='no'), modelo=m)
+            for m in ['m1', 'm2']]
+        return r, alcance(estado='indeterminado', revisiones=lecturas)
+
+    def test_preserva_retiro_visible_con_consenso_publico_sin_crear_votos(self):
+        for key in ['retiro_poda', 'retiro_muebles']:
+            with self.subTest(key=key):
+                r, revision = self.retiro_con_respaldo(key)
+                revision['revisiones'][0]['presentacion'] = 'sin_pila'
+                antes = copy.deepcopy(r)
+                nuevo = P.aplicar(r, revision, self.cats)
+                self.assertEqual(nuevo['problemas'], [r['problemas'][1]])
+                self.assertTrue(nuevo['hay_reclamo'])
+                self.assertEqual(r, antes)
+
+    def test_no_preserva_retiro_si_ambito_material_o_respaldo_son_inciertos(self):
+        cambios = [('ubicacion', 'privada'), ('ubicacion', 'indeterminada'),
+                   ('presentacion', 'solo_bolson'), ('presentacion', 'indeterminada'),
+                   ('hay_bolsas_opacas_o_parciales', 'si'),
+                   ('hay_bolsas_opacas_o_parciales', 'indeterminado'),
+                   ('afirmacion_vecinal', 'afirma')]
+        for campo, valor in cambios:
+            with self.subTest(campo=campo, valor=valor):
+                r, revision = self.retiro_con_respaldo('retiro_muebles')
+                revision['revisiones'][0][campo] = valor
+                self.assertFalse(P.aplicar(r, revision, self.cats)['problemas'])
+        for condicion in ['fallo', 'foto_invalida', 'un_modelo', 'duplicado',
+                          'sin_evidencia', 'anulado', 'solo_local']:
+            with self.subTest(condicion=condicion):
+                r, revision = self.retiro_con_respaldo('retiro_poda')
+                votos = r['detalle']['verificacion']['verificadores']
+                if condicion == 'fallo': revision['fallo'] = True
+                if condicion == 'foto_invalida': r['foto_valida'] = False
+                if condicion == 'un_modelo': revision['revisiones'].pop()
+                if condicion == 'duplicado': revision['revisiones'][1]['modelo'] = 'm1'
+                if condicion == 'sin_evidencia': votos[0]['categorias'][0]['evidencia'] = ''
+                if condicion == 'anulado': votos[0]['categorias'][0]['anulada_por'] = 'revision'
+                if condicion == 'solo_local': r['problemas'][1]['fuentes'] = ['m1', 'modelo_local']
+                self.assertFalse(P.aplicar(r, revision, self.cats)['problemas'])
 
     def test_fallback_textual_tambien_tiene_procedencia(self):
         r = self.aplicar(salida([categoria(fuentes=["contexto_vecinal"])]), contexto_resuelve=True)

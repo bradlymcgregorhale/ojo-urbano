@@ -54,6 +54,9 @@ import modos_analisis as modos
 from typing import Any
 import revision_escombros_publica as revision_publica
 import politica_escombros
+import evaluacion_foto
+import observaciones_higiene
+import prioridad
 import especialista_contenedores
 
 AQUI = Path(__file__).resolve().parent
@@ -1038,6 +1041,14 @@ def _publica(r):
         pub["verificacion_escombros"] = dict(pub["verificacion_escombros"], **revision_publica.publicar(
             veri.get("alcance_escombros"), veri.get("decision_alcance"),
             sanear=_sanear_motivo, limite=verificador.EVID_MAX))
+    pub = evaluacion_foto.aplicar(pub, veri.get('verificadores') or [])
+    pub['observaciones_higiene'] = observaciones_higiene.publicar(veri.get('verificadores') or [],
+        veri.get('alcance_escombros'), pub['evaluacion_foto']['rechazada'], pub.get('problemas') or [])
+    if (pub['observaciones_higiene']['bolsones']['retiro_caba'] == 'excluido_por_presentacion'
+            and isinstance(pub.get('verificacion_escombros'), dict)):
+        pub['verificacion_escombros']['requiere_nueva_foto'] = False
+        pub['verificacion_escombros']['requiere_cambio_presentacion'] = True
+    pub['problema_principal'] = prioridad.seleccionar(pub, veri.get('verificadores') or [])
     return pub
 
 
@@ -2244,6 +2255,11 @@ function pintar(it){
 }
 
 function renderResultado(d){
+  if(d.evaluacion_foto?.rechazada){
+    return `<div class="tarconcl">Foto rechazada: ${d.evaluacion_foto.ambito==='interior'?'interior':'calidad insuficiente'}</div>`+
+      `<div class="tardesc">${esc(d.evaluacion_foto.indicacion||'Necesitamos otra foto para evaluar el reclamo.')}</div>`+
+      `<div class="modo-nota">Modo: ${esc(nombresModos[d.modo]||d.modo||'Sin informar')} · Análisis: ${esc(d.analisis_estado||'Sin informar')}</div>`;
+  }
   const probs=d.problemas||[];
   const aviso=(d.foto_valida===false&&d.hay_problema)
     ?' La foto no muestra lo que contaste: el reclamo salió de tu texto.':'';
@@ -2256,6 +2272,14 @@ function renderResultado(d){
     :'No se confirmaron problemas')
     +(revisionMaterial&&(d.hay_problema||d.hay_reclamo)?' · tipo de residuos pendiente de revisión':'');
   let h=`<div class="tarconcl">${esc(concl+aviso)}</div>`;
+  const principal=d.problema_principal;
+  if(principal?.estado==='seleccionado'&&principal.criterio!=='unico_confirmado'){
+    const problema=probs.find(p=>p.key===principal.key);
+    if(problema)h+=`<div class="tardesc"><strong>Intervención principal: ${esc(problema.nombre||problema.key)}</strong>. ${esc(principal.motivo||'')}</div>`;
+  }else if(principal?.estado==='indeterminado')h+='<div class="modo-nota">La intervención principal requiere revisión.</div>';
+  if(d.contexto_visual?.suficiente===false)h+=`<div class="tardesc">${esc(d.contexto_visual.indicacion)}</div>`;
+  if(d.estado_evaluacion==='calidad_contradictoria')h+=`<div class="tardesc">${esc(d.evaluacion_foto.indicacion)}</div>`;
+  if(d.estado_evaluacion==='senal_negativa_no_corroborada')h+='<div class="tardesc">Hay una observación sobre la ubicación, calidad o encuadre que requiere revisión. La foto no se rechazó automáticamente.</div>';
   if(d.modo)h+=`<div class="modo-nota">Modo de análisis: ${esc(nombresModos[d.modo]||d.modo)}</div>`;
   if(d.analisis_estado==='sin_verificacion')h+='<div class="tardesc">Sin verificación externa. Este resultado no confirma que la foto esté libre de problemas.</div>';
   else if(d.analisis_estado==='parcial')h+='<div class="tardesc">Análisis parcial: no se pudieron completar algunas verificaciones.</div>';
@@ -2271,6 +2295,10 @@ function renderResultado(d){
     ?'Contenedor':'Tipos de contenedor'}: ${esc(contenedores
       .map(k=>tiposContenedor[k]).join('; '))}</div>`;
   if(d.contenedores?.estado==='revision')h+=`<div class="tarcontenedor">Contenedores: requieren revisión. ${esc(d.contenedores.motivo||'')}</div>`;
+  if(d.contenedores?.estado==='revision'&&d.contenedores.observaciones_tipos?.length){
+    const observados=d.contenedores.observaciones_tipos.map(x=>tiposContenedor[x.key]).filter(Boolean);
+    if(observados.length)h+=`<div class="modo-nota">Tipos observados, pendientes de confirmar en el inventario: ${esc(observados.join('; '))}. Esta lista puede estar incompleta.</div>`;
+  }
   if(d.contenedores?.estado==='confirmado'&&!d.contenedores.tipos.length)
     h+='<div class="tarcontenedor">No se detectaron contenedores municipales.</div>';
   if(probs.length)h+='<div class="minicats">'+probs.map(c=>

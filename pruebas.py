@@ -4646,13 +4646,13 @@ check("una caja trabando la tapa no es desbordado",
       and "dejan la tapa calzada así todo el tiempo" in _rub_b)
 check("la vara de la reparación es el uso, no la estética",
       "LA VARA ES EL USO, NO LA ESTÉTICA" in _rub_b
-      and "si un vecino puede tirar la bolsa igual" in _rub_b)
+      and "el uso normal incluye que la tapa propia esté presente y pueda cerrar" in _rub_b)
 check("las tapas dadas vuelta para el cirujeo no son daño",
       "tapas DADAS VUELTA por completo hacia atrás" in _rub_b
       and "no tapas abiertas de par en par" in _rub_b)
 check("el metal ajeno no es pieza del contenedor",
-      "son de PLÁSTICO negro o gris" in _rub_b
-      and "NO puede ser una pieza del contenedor" in _rub_b)
+      "Un perfil, viga, caño o caja ajenos no prueban daño" in _rub_b
+      and "forma, tamaño, encastre o herrajes compatibles" in _rub_b)
 check("describir un problema obliga a votarlo",
       "COHERENCIA ENTRE DESCRIPCIÓN Y VOTOS" in _rub_b
       and "Describir un problema sin votarlo es un error" in _rub_b)
@@ -4668,11 +4668,17 @@ import test_politica_escombros
 import test_revision_escombros_publica
 import test_contenedores
 import test_especialista_contenedores
+import test_evaluacion_foto
+import test_prioridad
+import test_observaciones_higiene
 from eval.vision import test_runner as test_vision_runner
 from eval.vision import test_pipeline as test_vision_pipeline
 _suite_alcance = unittest.defaultTestLoader.loadTestsFromModule(test_politica_escombros)
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_contenedores))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_especialista_contenedores))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_evaluacion_foto))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_prioridad))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_observaciones_higiene))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_tokens_api))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_modos_analisis))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_revision_escombros_publica))

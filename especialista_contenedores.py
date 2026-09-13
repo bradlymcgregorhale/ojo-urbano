@@ -4,6 +4,7 @@ import copy
 import hashlib
 import io
 import json
+import math
 import re
 from pathlib import Path
 
@@ -15,18 +16,38 @@ PLANTILLA = Path(__file__).resolve().parent / 'eval/vision/private/serving-conte
 PLANTILLA_SHA256 = '4d420e509f0ae3569cb83b6b88884722a761004e77eb940f6faeec34db2e8f44'
 
 
-def solicitud(datos):
+def _imagen_url(imagen):
+    copia = imagen.copy()
+    copia.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+    buffer = io.BytesIO()
+    copia.save(buffer, format='JPEG', quality=92)
+    return {'type': 'image_url', 'image_url': {'url':
+        'data:image/jpeg;base64,' + base64.b64encode(buffer.getvalue()).decode()}}
+
+
+def solicitud(datos, *, vistas=True):
     raw = PLANTILLA.read_bytes()
     if hashlib.sha256(raw).hexdigest() != PLANTILLA_SHA256:
         raise ValueError('Plantilla de contenedores modificada')
     cuerpo = json.loads(raw)
-    with Image.open(io.BytesIO(datos)) as imagen:
-        imagen = ImageOps.exif_transpose(imagen).convert('RGB')
-        imagen.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
-        buffer = io.BytesIO()
-        imagen.save(buffer, format='JPEG', quality=92)
-    cuerpo['messages'][1]['content'][-1]['image_url']['url'] = (
-        'data:image/jpeg;base64,' + base64.b64encode(buffer.getvalue()).decode())
+    with Image.open(io.BytesIO(datos)) as fuente:
+        imagen = ImageOps.exif_transpose(fuente).convert('RGB')
+    contenido = cuerpo['messages'][1]['content']
+    contenido[-1] = _imagen_url(imagen)
+    if vistas:
+        contenido[-2] = {'type': 'text', 'text': (
+            'FOTO A EVALUAR: la vista completa y los cuatro recortes que siguen '
+            'pertenecen a UNA MISMA FOTO. Inventariá sus tipos una sola vez. '
+            'Los ejemplos anteriores siguen siendo otras escenas.')}
+        ancho, alto = imagen.size
+        for nombre, caja in (
+            ('superior izquierda', (0, 0, math.ceil(ancho*.6), math.ceil(alto*.6))),
+            ('superior derecha', (int(ancho*.4), 0, ancho, math.ceil(alto*.6))),
+            ('inferior izquierda', (0, int(alto*.4), math.ceil(ancho*.6), alto)),
+            ('inferior derecha', (int(ancho*.4), int(alto*.4), ancho, alto)),
+        ):
+            contenido.append({'type': 'text', 'text': 'Recorte de la misma foto: ' + nombre})
+            contenido.append(_imagen_url(imagen.crop(caja)))
     return cuerpo
 
 
@@ -92,6 +113,17 @@ def aplicar(publica, resultado, categorias):
     if confirmado and not tipos and any(c.get('key') in problemas_contenedor for c in salida.get('problemas', [])):
         salida['contenedores'] = dict(estado='revision', tipos=None,
             motivo='La presencia del contenedor requiere revision por resultados contradictorios.')
+    if salida['contenedores']['estado'] == 'revision':
+        observaciones = {}
+        for v in publica.get('modelos') or []:
+            if v.get('ok') is not True or not v.get('modelo'):
+                continue
+            for c in v.get('categorias') or []:
+                if c.get('key') in TIPOS and not c.get('anulada_por'):
+                    observaciones.setdefault(c['key'], set()).add(v['modelo'])
+        salida['contenedores']['observaciones_tipos'] = [
+            dict(key=k, fuentes=len(observaciones[k]), estado='pendiente_de_inventario')
+            for k in TIPOS if k in observaciones]
     # La prosa del consenso anterior no puede contradecir el inventario. Una
     # frase mixta se reconstruye desde los reclamos que siguen confirmados.
     descripcion = salida.get('descripcion')

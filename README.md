@@ -550,3 +550,21 @@ adicionales por foto; no representa el costo de las otras categorias. Tras la
 revision humana de cuatro referencias, hubo 98 respuestas automaticas correctas,
 un tipo omitido y una revision. Ese resultado no garantiza la exactitud en otras
 fotos ni evalua el conteo de contenedores.
+
+### Evaluación de la foto y observaciones de higiene
+
+La API separa la correspondencia con el comentario (`foto_valida`) de la posibilidad de aceptar la imagen. Una foto puede corresponder al objeto mencionado y, aun así, no servir para un reclamo por estar dentro de una vivienda.
+
+- `evaluacion_foto.rechazada`: rechazo por interior o calidad insuficiente corroborada. En ese caso no hay servicios confirmados, posibles ni elementos detectados. La respuesta conserva el consumo y el estado del análisis.
+- `contexto_visual.suficiente`: `true`, `false` o `null`. Una toma demasiado cerrada puede necesitar una foto complementaria aunque permita reconocer un daño. No borra hallazgos visibles ni demuestra que la escena sea interior.
+- `problema_principal`: selecciona una categoría ya confirmada. Con varios problemas necesita acuerdo entre lectores; ante discrepancia queda indeterminado. Los demás problemas permanecen en la respuesta.
+- `observaciones_higiene.materiales`: observaciones de material, ubicación y presentación, con estado de corroboración. La cantidad es relativa; no estima kilos ni metros cúbicos. El material no determina por sí solo el servicio.
+- `observaciones_higiene.bolsones`: distingue presencia (`true`, `false`, `null`) de exclusión del retiro por presentación. No pide otra foto únicamente porque el material esté en un bolsón excluido.
+- `observaciones_higiene.orientacion_limpieza`: orientación informativa, sin anular recolección, otros retiros ni reclamos independientes. La limpieza cotidiana de la vereda requiere un encuadre claro frente a un inmueble, material liviano aislado y acuerdo entre lectores. Bolsas, acumulaciones importantes de basura, poda cortada, muebles y materiales de obra quedan fuera de esa orientación. Las hojas caídas naturalmente pueden ser abundantes; su cantidad no las convierte en residuos domiciliarios.
+
+La guía del Gobierno de la Ciudad indica barrer desde el cordón hacia el frente, juntar los residuos y embolsarlos. No indica barrerlos a la calzada. Las deyecciones de animales tienen una obligación de recolección para quien lleva al animal; una foto no identifica a esa persona. Las fuentes de estas orientaciones se incluyen en el objeto de respuesta cuando corresponde:
+
+- https://buenosaires.gob.ar/gcaba_historico/noticias/buenos-aires-limpia-todo-lo-que-necesitas-saber-para-cuidar-tu-barrio
+- https://boletinoficialpdf.buenosaires.gob.ar/util/imagen.php?idf=1&idn=30564
+
+Un valor `null` o un estado indeterminado no significa ausencia. Las evaluaciones incompletas tampoco cuentan como acuerdo. Si hay evidencia corroborada de un problema y a la vez los lectores dicen que la calidad impide evaluarlo, se conserva el problema y se publica `calidad_contradictoria` para revisión.
