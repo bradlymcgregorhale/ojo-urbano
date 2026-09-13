@@ -594,8 +594,8 @@ La API separa la correspondencia con el comentario (`foto_valida`) de la posibil
   material, ubicación, presentación, cantidad y evidencia, con `estado=lectura_individual`
   y `origen=no_evaluado`. Su `referencia` identifica una fila dentro de esta respuesta;
   no es un identificador de objeto ni se mantiene entre reanálisis. Dos descripciones
-  del mismo material se conservan aunque el resumen las agrupe. La evidencia elimina
-  caracteres de control y unifica espacios antes de limitarse a 500 caracteres;
+  del mismo material se conservan aunque el resumen las agrupe. La evidencia usa
+  el saneado de texto de la API y se limita a 500 caracteres;
   `evidencia_truncada` indica el recorte. `normalizacion_parcial`
   mantiene la limitación de ubicación de la lectura. El detalle tiene estado
   `disponible`, `no_evaluado` si no hay descripciones conservadas (también en respuestas
