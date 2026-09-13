@@ -68,6 +68,10 @@ _RUBRICA = (
     .replace('{{REGLA_SUBTIPO_HUMEDOS}}', REGLA_SUBTIPO_HUMEDOS)
 )
 
+EVALUACION_FOTO = cargar_prompt('compartidos/evaluacion_foto')
+PRIORIDAD = cargar_prompt('compartidos/prioridad')
+OBSERVACIONES_HIGIENE = cargar_prompt('compartidos/observaciones_higiene')
+
 _PROMPT_PATENTE = cargar_prompt('dirigidos/patente')
 
 _PROMPT_ALCANCE_ESCOMBROS = cargar_prompt('dirigidos/alcance_escombros')

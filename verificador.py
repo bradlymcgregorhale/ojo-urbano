@@ -52,6 +52,11 @@ from pathlib import Path
 
 import revision_escombros_publica as revision_publica
 import modos_analisis as modos
+import evaluacion_foto
+import observaciones_higiene
+from prompts import OBSERVACIONES_HIGIENE
+import prioridad
+from prompts import EVALUACION_FOTO, PRIORIDAD
 
 from prompts import (
     REGLA_SUBTIPO_HUMEDOS,
@@ -898,7 +903,7 @@ def _prompt_sistema(categorias):
     restantes = "\n".join(
         f"- {k}: {v['nombre']}" for k, v in categorias.items()
         if k not in _RUBRICA_KEYS and k != "sin_problema" and k not in FOLD)
-    return _RUBRICA.replace("{RESTANTES}", restantes)
+    return _RUBRICA.replace("{RESTANTES}", restantes) + EVALUACION_FOTO + PRIORIDAD + OBSERVACIONES_HIGIENE
 
 
 def _prompt_usuario(contexto=""):
@@ -1136,6 +1141,12 @@ def validar_alcance_escombros(img, contexto=""):
               "No se ve una pila o bolsas que puedan corresponder al retiro solicitado."
               if excluido else
               "No se pudo confirmar la ubicación y presentación de los residuos. Hace falta una foto que las muestre.")
+    if (not apto and not excluido and not fallo
+            and len({r['modelo'] for r in revisiones}) == len(revisiones) >= 2
+            and all(r['ubicacion'] == 'publica' for r in revisiones)):
+        motivo = ("La ubicación pública está corroborada, pero falta acuerdo sobre el material o su presentación "
+                  "para el retiro de escombros. Hace falta aclarar si hay restos de obra "
+                  "sueltos o en bolsas pequeñas fuera de un bolsón grande.")
     afirmado = sum(r["afirma_validada"] for r in revisiones) >= 2
     contexto_resuelve = (apto and sum(
         r["afirma_validada"] and r["material"] in {"escombros_visible", "oculto_o_ambiguo"}
@@ -2085,6 +2096,10 @@ def _verificar_uno(modelo, data_url, categorias, contexto=""):
         # cadena "false" en vez del literal JSON daría True. Cualquier cosa
         # que no sea un sí o un no reconocible se trata como "no se pronunció".
         return {"modelo": modelo, "ok": True, "categorias": vistas,
+                "observaciones_higiene": observaciones_higiene.normalizar(veredicto.get("observaciones_higiene")),
+            "evaluacion_foto": evaluacion_foto.normalizar(veredicto.get('evaluacion_foto')),
+                "prioridad_propuesta": prioridad.normalizar(veredicto.get('prioridad_propuesta'),
+                    categorias, vistas, contexto, ctx_cats),
                 "foto_corresponde": _si_o_no(veredicto.get("foto_corresponde")),
                 "sin_problema": bool(veredicto.get("sin_problema")),
                 "descripcion": _texto_limpio(veredicto.get("descripcion"), DESC_MAX),

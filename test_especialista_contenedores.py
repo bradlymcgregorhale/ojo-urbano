@@ -1,5 +1,6 @@
 """Contrato del inventario, fallos y publicacion con las otras incidencias."""
 import copy
+import base64
 import io
 import json
 import sys
@@ -17,6 +18,37 @@ def respuesta(tipos=None, uncertain=False):
 
 
 class Inventario(unittest.TestCase):
+    def test_vistas_mantienen_foto_completa_y_ejemplos_sin_mutar_original(self):
+        foto = io.BytesIO(); Image.new('RGB', (100, 200), 'red').save(foto, format='JPEG')
+        raw = foto.getvalue()
+        anterior = E.solicitud(raw, vistas=False)
+        nueva = E.solicitud(raw)
+        a, b = anterior['messages'][1]['content'], nueva['messages'][1]['content']
+        self.assertEqual(b[:-10], a[:-2])
+        self.assertEqual(b[-9], a[-1])
+        self.assertEqual(len(b), len(a)+8)
+        self.assertIn('UNA MISMA FOTO', b[-10]['text'])
+        for entrada in b[-8:][1::2]:
+            imagen = Image.open(io.BytesIO(base64.b64decode(entrada['image_url']['url'].split(',')[1])))
+            self.assertEqual(imagen.size, (60, 120))
+        self.assertEqual(foto.getvalue(), raw)
+
+    def test_inventario_incompleto_conserva_observaciones_sin_confirmarlas(self):
+        original = {'problemas': [{'key': 'contenedor_desbordado'}],
+                    'elementos_detectados': [{'key': E.TIPOS[0]}], 'posibles': [], 'en_duda': [],
+                    'modelos': [{'modelo': m, 'ok': True, 'categorias': [
+                        {'key': E.TIPOS[0]}, {'key': E.TIPOS[1], 'anulada_por': 'revision'}]}
+                        for m in ['a', 'a', 'b']]}
+        antes = copy.deepcopy(original)
+        r = E.aplicar(original, E.revision(), {})
+        self.assertEqual(r['contenedores']['estado'], 'revision')
+        self.assertIsNone(r['contenedores']['tipos'])
+        self.assertEqual(r['elementos_detectados'], [])
+        self.assertEqual(r['contenedores']['observaciones_tipos'], [
+            {'key': E.TIPOS[0], 'fuentes': 2, 'estado': 'pendiente_de_inventario'}])
+        self.assertEqual(r['problemas'], original['problemas'])
+        self.assertEqual(original, antes)
+
     def test_inventarios_y_incertidumbre(self):
         for tipos in ([], [E.TIPOS[0]], [E.TIPOS[0], E.TIPOS[2]]):
             self.assertEqual(E.interpretar(respuesta(tipos))['tipos'], tipos)

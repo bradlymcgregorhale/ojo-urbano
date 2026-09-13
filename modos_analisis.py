@@ -31,7 +31,7 @@ class Perfil:
         return {'modo': self.modo, 'modo_version': self.version}
 
     def publico(self):
-        return {'modo': self.modo, 'nombre': NOMBRES[self.modo],
+        return {'modo': self.modo, 'modo_version': self.version, 'nombre': NOMBRES[self.modo],
                 'disponible': self.motivo is None, 'motivo': self.motivo}
 
 
@@ -42,7 +42,7 @@ def cargar(verificador, opciones_servidor, entorno=None):
     archivos = sorted((raiz / 'prompts').rglob('*.txt')) + [
         raiz / n for n in ('verificador.py', 'politica_escombros.py',
                           'revision_escombros_publica.py', 'modos_analisis.py',
-                          'servidor.py', 'categorias.json')]
+                          'servidor.py', 'especialista_contenedores.py', 'categorias.json', 'evaluacion_foto.py', 'prioridad.py', 'observaciones_higiene.py')]
     base = hashlib.sha256()
     for archivo in archivos:
         base.update(archivo.relative_to(raiz).as_posix().encode())
