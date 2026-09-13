@@ -15,6 +15,10 @@ INDICACION_REVISION = ('Hay una observación sobre la ubicación, calidad o encu
                       'revisión. La foto no se rechazó automáticamente.')
 INDICACION_AMBITO = ('La ubicación del objeto o problema requiere revisión. Agregá contexto '
                     'o una foto que muestre si está en la vía pública.')
+RETIROS_HIGIENE = {
+    'recoleccion', 'barrido', 'retiro_escombros', 'retiro_muebles', 'retiro_poda',
+    'acopio_recuperadores', 'residuos_establecimiento',
+}
 
 
 def normalizar(valor):
@@ -99,6 +103,71 @@ def resumir(verificadores):
     return evaluacion, encuadre
 
 
+def _lecturas_ambito(verificadores):
+    """Lecturas usables por modelo. Un duplicado no suma. Un fallo no es un voto."""
+    por_modelo = {}
+    permitidos = ('publica', 'interior', 'mixto', 'indeterminado')
+    for v in verificadores:
+        if not isinstance(v, dict) or not v.get('modelo'):
+            continue
+        if v.get('ok') is not True:
+            por_modelo.setdefault(v['modelo'], None)
+            continue
+        lectura = v.get('evaluacion_foto')
+        if isinstance(lectura, dict) and lectura.get('ambito') in permitidos:
+            por_modelo[v['modelo']] = lectura['ambito']
+        else:
+            por_modelo.setdefault(v['modelo'], None)
+    validos = [ambito for ambito in por_modelo.values() if ambito]
+    return len(por_modelo), validos
+
+
+def _demorar_higiene_sin_via_publica(r, evaluacion, verificadores):
+    """No confirma un retiro de higiene si el ámbito público no está corroborado.
+
+    Hace falta al menos dos lecturas validas y que todas sean publica. Un lector
+    que falló no cuenta ni a favor ni en contra. Con una sola fuente el modo
+    económico no pierde el hallazgo. Tampoco se rechaza la foto: los retiros
+    pasan a posibles y se pide revisión. El encuadre insuficiente conserva el
+    detalle visible.
+    """
+    if evaluacion.get('estado') == 'contexto_insuficiente':
+        return r
+    intentados, validos = _lecturas_ambito(verificadores)
+    if intentados < 2 or not validos:
+        return r
+    if len(validos) >= 2 and all(ambito == 'publica' for ambito in validos):
+        return r
+    problemas = list(r.get('problemas') or [])
+    higiene = [p for p in problemas if isinstance(p, dict) and p.get('key') in RETIROS_HIGIENE]
+    if not higiene:
+        return r
+    resto = [p for p in problemas if not (isinstance(p, dict) and p.get('key') in RETIROS_HIGIENE)]
+    r['problemas'] = resto
+    posibles = list(r.get('posibles') or [])
+    ya = {p.get('key') for p in posibles if isinstance(p, dict)}
+    for p in higiene:
+        if p.get('key') in ya:
+            continue
+        item = dict(p)
+        posibles.append(item)
+        ya.add(p.get('key'))
+    r['posibles'] = posibles
+    r['hay_problema'] = bool(resto)
+    r['hay_reclamo'] = bool(resto)
+    if r.get('predominante') in RETIROS_HIGIENE:
+        r['predominante'] = resto[0]['key'] if resto and isinstance(resto[0], dict) else None
+    principal = r.get('problema_principal')
+    if isinstance(principal, dict) and principal.get('key') in RETIROS_HIGIENE:
+        r['problema_principal'] = None
+    evaluacion['requiere_revision'] = True
+    if not evaluacion.get('indicacion'):
+        evaluacion['indicacion'] = INDICACION_AMBITO
+    if not resto:
+        r['descripcion'] = evaluacion['indicacion']
+    return r
+
+
 def aplicar(publica, verificadores):
     """Se ejecuta al final para que ningún especialista reponga servicios rechazados."""
     r = copy.deepcopy(publica)
@@ -121,6 +190,9 @@ def aplicar(publica, verificadores):
                               indicacion='Hay un problema reconocible y una observación contradictoria de calidad. Revisá la foto.')
     r['evaluacion_foto'], r['contexto_visual'] = evaluacion, contexto
     r['estado_evaluacion'] = evaluacion['estado']
+    if not evaluacion['rechazada']:
+        r = _demorar_higiene_sin_via_publica(r, evaluacion, verificadores)
+        r['evaluacion_foto'], r['estado_evaluacion'] = evaluacion, evaluacion['estado']
     if evaluacion['rechazada']:
         for campo in ('problemas', 'posibles', 'categorias_contexto', 'elementos_detectados',
                       'en_duda', 'descartados_por_foto'):

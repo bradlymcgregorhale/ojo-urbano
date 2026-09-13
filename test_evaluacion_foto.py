@@ -1,6 +1,8 @@
 """Contrato y controles contra rechazos falsos, sin red ni pesos."""
 import copy
+import json
 import unittest
+from pathlib import Path
 
 import evaluacion_foto as E
 
@@ -89,12 +91,27 @@ class EvaluacionFotoTest(unittest.TestCase):
                 r = E.aplicar(salida(), votos)
                 self.assertFalse(r['evaluacion_foto']['rechazada'])
                 self.assertIsNone(r['evaluacion_foto']['ambito'])
-                self.assertEqual(r['problemas'], salida()['problemas'])
+                intentados, validos = E._lecturas_ambito(votos)
+                if intentados >= 2 and not (len(validos) >= 2 and all(a == 'publica' for a in validos)):
+                    self.assertEqual(r['problemas'], [])
+                    self.assertIn('retiro_muebles', {p['key'] for p in r['posibles']})
+                    self.assertFalse(r['hay_problema'])
+                    self.assertTrue(r['evaluacion_foto']['requiere_revision'])
+                else:
+                    self.assertEqual(r['problemas'], salida()['problemas'])
 
     def test_mixto_y_toma_desde_ventana_no_se_convierten_en_interior(self):
         for ambito in ['mixto', 'publica', 'indeterminado']:
             r = E.aplicar(salida(), [voto(m, ambito=ambito) for m in ['a', 'b']])
             self.assertFalse(r['evaluacion_foto']['rechazada'])
+            if ambito == 'publica':
+                self.assertEqual(r['problemas'], salida()['problemas'])
+                self.assertTrue(r['hay_problema'])
+            else:
+                self.assertEqual(r['problemas'], [])
+                self.assertIn('retiro_muebles', {p['key'] for p in r['posibles']})
+                self.assertFalse(r['hay_problema'])
+                self.assertTrue(r['evaluacion_foto']['requiere_revision'])
 
     def test_senal_aislada_pide_revision_sin_rechazar_ni_borrar_hallazgos(self):
         senales = [dict(ambito='interior'),
@@ -114,8 +131,14 @@ class EvaluacionFotoTest(unittest.TestCase):
                     self.assertFalse(e['rechazada'])
                     self.assertFalse(e['requiere_nueva_foto'])
                     self.assertFalse(e['requiere_foto_complementaria'])
-                    for k in original:
-                        self.assertEqual(r[k], original[k])
+                    intentados, validos = E._lecturas_ambito(votos)
+                    if intentados >= 2 and not (len(validos) >= 2 and all(a == 'publica' for a in validos)):
+                        self.assertEqual(r['problemas'], [])
+                        self.assertIn('retiro_muebles', {p['key'] for p in r['posibles']})
+                        self.assertFalse(r['hay_problema'])
+                    else:
+                        for k in original:
+                            self.assertEqual(r[k], original[k])
                     self.assertEqual(votos, antes)
 
     def test_sin_senal_negativa_no_inventa_revision_por_falta_de_corroboracion(self):
@@ -142,8 +165,14 @@ class EvaluacionFotoTest(unittest.TestCase):
                     self.assertFalse(e['rechazada'])
                     self.assertFalse(e['requiere_nueva_foto'])
                     self.assertFalse(e['requiere_foto_complementaria'])
-                    for k in original:
-                        self.assertEqual(r[k], original[k])
+                    intentados, validos = E._lecturas_ambito(votos)
+                    if intentados >= 2 and not (len(validos) >= 2 and all(a == 'publica' for a in validos)):
+                        self.assertEqual(r['problemas'], [])
+                        self.assertIn('retiro_muebles', {p['key'] for p in r['posibles']})
+                        self.assertFalse(r['hay_problema'])
+                    else:
+                        for k in original:
+                            self.assertEqual(r[k], original[k])
                     self.assertEqual(votos, antes)
 
     def test_ambito_sin_lectura_valida_no_inventa_indicacion(self):
@@ -198,6 +227,104 @@ class EvaluacionFotoTest(unittest.TestCase):
         self.assertIsNone(r['contexto_visual']['suficiente'])
         self.assertIsNone(r['evaluacion_foto']['calidad_suficiente'])
         self.assertFalse(r['evaluacion_foto']['rechazada'])
+
+    def test_higiene_sin_publica_corroborada_pasa_a_posibles(self):
+        original = salida()
+        original['problemas'] = [{'key': 'retiro_poda'}, {'key': 'vehiculo_mal_estacionado'}]
+        original['posibles'] = []
+        original['problema_principal'] = {'key': 'retiro_poda', 'estado': 'seleccionado'}
+        original['predominante'] = 'retiro_poda'
+        votos = [voto('a', ambito='publica'), voto('b', ambito='indeterminado'),
+                 voto('c', ambito='interior')]
+        r = E.aplicar(original, votos)
+        self.assertFalse(r['evaluacion_foto']['rechazada'])
+        self.assertTrue(r['evaluacion_foto']['requiere_revision'])
+        self.assertEqual([p['key'] for p in r['problemas']], ['vehiculo_mal_estacionado'])
+        self.assertEqual([p['key'] for p in r['posibles']], ['retiro_poda'])
+        self.assertTrue(r['hay_problema'])
+        self.assertEqual(r['predominante'], 'vehiculo_mal_estacionado')
+        self.assertIsNone(r['problema_principal'])
+        self.assertEqual(r['elementos_detectados'], original['elementos_detectados'])
+
+    def test_publica_evaluada_conserva_retiro(self):
+        r = E.aplicar(salida(), [voto(m) for m in ('a', 'b', 'c')])
+        self.assertEqual(r['evaluacion_foto']['ambito'], 'publica')
+        self.assertEqual(r['evaluacion_foto']['estado_ambito'], 'evaluado')
+        self.assertEqual(r['problemas'], salida()['problemas'])
+        self.assertTrue(r['hay_problema'])
+        self.assertFalse(r['evaluacion_foto']['rechazada'])
+
+    def test_una_fuente_economica_no_demora_un_retiro(self):
+        r = E.aplicar(salida(), [voto('a', ambito='indeterminado')])
+        self.assertEqual(r['problemas'], salida()['problemas'])
+        self.assertTrue(r['hay_problema'])
+        self.assertFalse(r['evaluacion_foto']['rechazada'])
+
+    def test_p100_sin_consenso_publico_no_confirma_poda(self):
+        original = salida()
+        original['problemas'] = [{'key': 'retiro_poda', 'nombre': 'Retiro de restos de poda o jardinería'}]
+        original['posibles'] = []
+        original['predominante'] = 'retiro_poda'
+        original['problema_principal'] = {'key': 'retiro_poda'}
+        votos = [voto('openai/gpt-5-mini', ambito='indeterminado'),
+                 voto('google/gemini-3.5-flash-lite', ambito='interior'),
+                 voto('openai/gpt-5.6-luna', ambito='indeterminado')]
+        r = E.aplicar(original, votos)
+        self.assertFalse(r['evaluacion_foto']['rechazada'])
+        self.assertEqual(r['problemas'], [])
+        self.assertEqual([p['key'] for p in r['posibles']], ['retiro_poda'])
+        self.assertFalse(r['hay_problema'])
+        self.assertFalse(r['hay_reclamo'])
+        self.assertTrue(r['evaluacion_foto']['requiere_revision'])
+
+    def test_p044_publica_conserva_voluminosos(self):
+        original = salida()
+        original['problemas'] = [{'key': 'retiro_muebles'}]
+        original['posibles'] = [{'key': 'vehiculo_mal_estacionado'}]
+        votos = [voto(m, ambito='publica') for m in ('a', 'b', 'c')]
+        r = E.aplicar(original, votos)
+        self.assertEqual([p['key'] for p in r['problemas']], ['retiro_muebles'])
+        self.assertEqual([p['key'] for p in r['posibles']], ['vehiculo_mal_estacionado'])
+        self.assertTrue(r['hay_problema'])
+        self.assertFalse(r['evaluacion_foto']['requiere_revision'])
+
+    def test_p023_dos_publica_y_un_fallo_conserva_el_retiro(self):
+        original = salida()
+        original['problemas'] = [{'key': 'retiro_escombros'}]
+        original['posibles'] = []
+        votos = [voto('a', ambito='publica'), voto('b', ambito='publica'),
+                 {'modelo': 'c', 'ok': False}]
+        r = E.aplicar(original, votos)
+        self.assertEqual([p['key'] for p in r['problemas']], ['retiro_escombros'])
+        self.assertTrue(r['hay_problema'])
+        self.assertFalse(r['evaluacion_foto']['rechazada'])
+
+    def test_sin_lectura_de_ambito_no_inventa_una_demora(self):
+        original = salida()
+        votos = [{'modelo': 'm1', 'ok': True, 'categorias': [{'key': 'retiro_escombros'}]},
+                 {'modelo': 'm2', 'ok': True, 'categorias': [{'key': 'retiro_escombros'}]},
+                 {'modelo': 'm3', 'ok': True, 'categorias': [{'key': 'recoleccion'}]}]
+        r = E.aplicar(original, votos)
+        self.assertEqual(r['problemas'], original['problemas'])
+        self.assertTrue(r['hay_problema'])
+        self.assertFalse(r['evaluacion_foto']['requiere_revision'])
+
+    def test_tres_intentos_con_una_lectura_publica_no_corroboran(self):
+        original = salida()
+        votos = [voto('a', ambito='publica'),
+                 {'modelo': 'b', 'ok': False},
+                 {'modelo': 'c', 'ok': True}]
+        r = E.aplicar(original, votos)
+        self.assertEqual(r['problemas'], [])
+        self.assertIn('retiro_muebles', {p['key'] for p in r['posibles']})
+        self.assertFalse(r['hay_problema'])
+        self.assertEqual(r['descripcion'], r['evaluacion_foto']['indicacion'])
+
+    def test_retiros_higiene_existen_en_el_catalogo(self):
+        cats = json.loads(Path(__file__).with_name('categorias.json').read_text())
+        for key in E.RETIROS_HIGIENE:
+            self.assertIn(key, cats)
+            self.assertEqual(cats[key]['grupo'], 'Residuos')
 
 
 if __name__ == '__main__':
