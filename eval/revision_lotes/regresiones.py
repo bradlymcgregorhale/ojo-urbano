@@ -189,6 +189,9 @@ def etiquetas(c):
 
 
 def observado(r, campo):
+    if (not isinstance(r.get('en_duda', []), list) or
+            any(not isinstance(k, str) for k in r.get('en_duda', []))):
+        return None
     if r.get('analisis_estado') not in ('completo', 'parcial'):
         return None
     if campo == 'interior_rechazado':
@@ -209,6 +212,8 @@ def observado(r, campo):
         return 'confirmado'
     if any(x.get('key') == key for x in r.get('posibles', [])):
         return 'posible'
+    if key in (r.get('en_duda') or []):
+        return None
     return 'no' if r.get('analisis_estado') == 'completo' else None
 
 
