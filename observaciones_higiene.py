@@ -7,6 +7,15 @@ UBICACIONES = {'vereda_frente_inmueble', 'otra_vereda', 'calzada', 'cordon',
 PRESENTACIONES = {'disperso', 'acumulado', 'bolsa', 'bolson', 'objeto', 'indeterminada'}
 FUENTE_LIMPIEZA = 'https://buenosaires.gob.ar/gcaba_historico/noticias/buenos-aires-limpia-todo-lo-que-necesitas-saber-para-cuidar-tu-barrio'
 FUENTE_ANIMALES = 'https://boletinoficialpdf.buenosaires.gob.ar/util/imagen.php?idf=1&idn=30564'
+VERSION_POLITICA_LIMPIEZA = '2026-09-13'
+FECHA_CONSULTA_LIMPIEZA = '2026-09-13'
+
+
+def _orientacion(estado):
+    return {'estado': estado, 'es_informativa': True, 'jurisdiccion': 'CABA',
+            'politica': 'limpieza_veredas_y_deyecciones_caba',
+            'version_politica': VERSION_POLITICA_LIMPIEZA,
+            'fuentes_consultadas_el': FECHA_CONSULTA_LIMPIEZA}
 
 
 def _bolsones(presente, estado, retiro='no_evaluado'):
@@ -62,7 +71,7 @@ def publicar(verificadores, alcance=None, rechazada=False, problemas=()):
     if rechazada:
         return {'estado': 'no_aplica', 'materiales': [],
                 'bolsones': _bolsones(None, 'no_aplica'),
-                'orientacion_limpieza': {'estado': 'no_aplica'}}
+                'orientacion_limpieza': _orientacion('no_aplica')}
     lectores = [v for v in verificadores if isinstance(v, dict)]
     completos = (len(lectores) >= 2 and len({v.get('modelo') for v in lectores if v.get('modelo')}) == len(lectores)
                  and all(v.get('ok') is True and isinstance(v.get('observaciones_higiene'), dict) for v in lectores))
@@ -98,7 +107,7 @@ def publicar(verificadores, alcance=None, rechazada=False, problemas=()):
     estado_bolson = ('contradictorio' if conflicto_bolson or (bolson is None and desacuerdo) else
                      'corroborado' if bolson is not None else
                      'no_evaluado' if not observaciones and not revisiones else 'indeterminado')
-    orientacion = {'estado': 'indeterminada', 'es_informativa': True}
+    orientacion = _orientacion('indeterminada' if observaciones else 'no_evaluado')
     ordinarias = {'hojas', 'tierra_polvo', 'papel_carton', 'plastico'}
     cotidianos = bool(materiales) and all(m['estado'] == 'corroborado'
         and m['ubicacion'] == 'vereda_frente_inmueble'

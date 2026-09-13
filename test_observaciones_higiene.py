@@ -21,10 +21,49 @@ class ObservacionesHigieneTest(unittest.TestCase):
         self.assertEqual(votos, copia)
 
     def test_una_fuente_duplicados_ausencia_y_error_no_producen_consenso(self):
-        for votos in [[voto('a')], [voto('a')]*2, [voto('a'), {'modelo':'b','ok':False}], []]:
+        for votos in [[voto('a')], [voto('a')]*2, [voto('a'), {'modelo':'b','ok':False}]]:
             r = H.publicar(votos)
             self.assertIsNone(r['bolsones']['presente'])
             self.assertEqual(r['orientacion_limpieza']['estado'], 'indeterminada')
+
+    def test_orientacion_sin_lectura_no_asigna_tarea_ni_responsable(self):
+        for votos in [[], [{'modelo': 'a', 'ok': False}],
+                      [{'modelo': 'a', 'ok': True, 'observaciones_higiene': None}],
+                      [{'modelo': 'a', 'ok': False, 'observaciones_higiene': voto('a')['observaciones_higiene']}]]:
+            with self.subTest(votos=votos):
+                r = H.publicar(votos)['orientacion_limpieza']
+                self.assertEqual(r['estado'], 'no_evaluado')
+                for campo in ['tarea', 'responsable_orientativo', 'indicacion', 'fuente']:
+                    self.assertNotIn(campo, r)
+
+    def test_orientacion_lectura_vacia_y_rechazo_no_son_ausencia_de_evaluacion(self):
+        votos = [voto('a', materiales=[]), voto('b', materiales=[])]
+        self.assertEqual(H.publicar(votos)['orientacion_limpieza']['estado'], 'indeterminada')
+        self.assertEqual(H.publicar([], rechazada=True)['orientacion_limpieza']['estado'], 'no_aplica')
+
+    def test_politica_identificable_en_todos_los_estados_sin_compartir_objetos(self):
+        casos = [H.publicar([]), H.publicar([voto('a')]),
+                 H.publicar([voto('a'), voto('b')]), H.publicar([], rechazada=True)]
+        for caso in casos:
+            r = caso['orientacion_limpieza']
+            self.assertEqual(r['jurisdiccion'], 'CABA')
+            self.assertEqual(r['politica'], 'limpieza_veredas_y_deyecciones_caba')
+            self.assertEqual(r['version_politica'], '2026-09-13')
+            self.assertEqual(r['fuentes_consultadas_el'], '2026-09-13')
+            self.assertIs(r['es_informativa'], True)
+        casos[0]['orientacion_limpieza']['jurisdiccion'] = 'modificada'
+        self.assertEqual(H.publicar([])['orientacion_limpieza']['jurisdiccion'], 'CABA')
+
+    @unittest.skipUnless('servidor' in sys.modules, 'Ejecutar mediante pruebas.py sin cargar pesos')
+    def test_api_sin_verificadores_conserva_servicios_y_entrada(self):
+        import servidor as S
+        r = {'problemas': [{'key': 'retiro_poda', 'nombre': 'Poda', 'gravedad': 3, 'fuentes': ['local']}],
+             'detalle': {'verificacion': {'verificadores': []}}}
+        original = copy.deepcopy(r)
+        p = S._publica(r)
+        self.assertEqual(p['observaciones_higiene']['orientacion_limpieza']['estado'], 'no_evaluado')
+        self.assertEqual([x['key'] for x in p['problemas']], ['retiro_poda'])
+        self.assertEqual(r, original)
 
     def test_bolsas_cantidad_y_ubicacion_no_reciben_exclusion_de_barrido(self):
         for campo, valor in [('presentacion','bolsa'), ('cantidad_relativa','significativa'),
