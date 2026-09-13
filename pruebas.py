@@ -4668,6 +4668,7 @@ import test_politica_escombros
 import test_revision_escombros_publica
 import test_contenedores
 import test_especialista_contenedores
+import test_presencia_contenedores
 import test_evaluacion_foto
 import test_prioridad
 import test_observaciones_higiene
@@ -4676,6 +4677,7 @@ from eval.vision import test_pipeline as test_vision_pipeline
 _suite_alcance = unittest.defaultTestLoader.loadTestsFromModule(test_politica_escombros)
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_contenedores))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_especialista_contenedores))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_presencia_contenedores))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_evaluacion_foto))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_prioridad))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_observaciones_higiene))
