@@ -589,6 +589,18 @@ La API separa la correspondencia con el comentario (`foto_valida`) de la posibil
   objeto único ni distingue dos focos que compartan esos atributos. Tampoco separa
   el origen visual del dato aportado por texto. Esas ampliaciones siguen pendientes
   en #56 y no se pueden reconstruir a partir del número de fuentes.
+  `detalle_materiales` conserva las descripciones individuales que devolvieron los
+  modelos, disponibles en "Qué describió cada modelo". Cada lectura incluye modelo,
+  material, ubicación, presentación, cantidad y evidencia, con `estado=lectura_individual`
+  y `origen=no_evaluado`. Su `referencia` identifica una fila dentro de esta respuesta;
+  no es un identificador de objeto ni se mantiene entre reanálisis. Dos descripciones
+  del mismo material se conservan aunque el resumen las agrupe. La evidencia usa
+  el saneado de texto de la API y se limita a 500 caracteres;
+  `evidencia_truncada` indica el recorte. `normalizacion_parcial`
+  mantiene la limitación de ubicación de la lectura. El detalle tiene estado
+  `disponible`, `no_evaluado` si no hay descripciones conservadas (también en respuestas
+  anteriores), o `no_aplica` con lista vacía si la foto fue rechazada. Estas lecturas
+  no suman votos ni cambian servicios, bolsones u orientación; tampoco agregan consultas.
 - `observaciones_higiene.bolsones`: distingue presencia (`true`, `false`, `null`) de exclusión del retiro por presentación. No pide otra foto únicamente porque el material esté en un bolsón excluido.
 
 - `observaciones_higiene.orientacion_limpieza`: orientación informativa, sin anular recolección, otros retiros ni reclamos independientes. La limpieza cotidiana de la vereda requiere un encuadre claro frente a un inmueble, material liviano aislado y acuerdo entre lectores. Bolsas, acumulaciones importantes de basura, poda cortada, muebles y materiales de obra quedan fuera de esa orientación. Las hojas caídas naturalmente pueden ser abundantes; su cantidad no las convierte en residuos domiciliarios.

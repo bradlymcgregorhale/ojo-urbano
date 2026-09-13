@@ -1,4 +1,14 @@
 """Materiales, presentación y orientación informativa, sin vetar servicios (#55-57)."""
+import re
+
+EVIDENCIA_MAX = 500
+
+
+def _limpiar_evidencia(texto):
+    texto = ''.join(c for c in texto if c == '\n' or c >= ' ')
+    return re.sub(r'\s+', ' ', texto).strip()
+
+
 MATERIALES = {'hojas', 'ramas', 'tierra_polvo', 'papel_carton', 'plastico',
               'piedras', 'hormigon_cascotes', 'madera', 'metal', 'vidrio',
               'excrementos', 'residuos_mezclados', 'no_identificable'}
@@ -50,8 +60,9 @@ def normalizar(valor):
     if not isinstance(focos, list) or len(focos) > 12:
         return None
     resultado = []
+    lecturas = []
     parcial = False
-    for foco in focos:
+    for indice, foco in enumerate(focos, 1):
         if not isinstance(foco, dict):
             return None
         if foco.get('ubicacion') == 'vereda':
@@ -65,15 +76,18 @@ def normalizar(valor):
                 or not isinstance(foco.get('evidencia'), str) or not foco['evidencia'].strip()):
             return None
         r = {k: foco[k] for k in ('material', 'ubicacion', 'presentacion', 'cantidad_relativa')}
+        evidencia = _limpiar_evidencia(foco['evidencia'])
+        lecturas.append(dict(r, indice=indice, evidencia=evidencia[:EVIDENCIA_MAX],
+                             evidencia_truncada=len(evidencia) > EVIDENCIA_MAX))
         if r not in resultado:
             resultado.append(r)
     bolson = valor.get('hay_bolson')
     ordinaria = valor.get('solo_limpieza_cotidiana_frente')
     if parcial:
         # Recuperar materiales no habilita decisiones que antes no se podían usar.
-        return {'materiales': resultado, 'hay_bolson': None,
+        return {'materiales': resultado, 'lecturas': lecturas, 'hay_bolson': None,
                 'solo_limpieza_cotidiana_frente': None, 'normalizacion_parcial': True}
-    return {'materiales': resultado, 'hay_bolson': bolson if type(bolson) is bool else None,
+    return {'materiales': resultado, 'lecturas': lecturas, 'hay_bolson': bolson if type(bolson) is bool else None,
             'solo_limpieza_cotidiana_frente': ordinaria if type(ordinaria) is bool else None}
 
 
@@ -142,6 +156,43 @@ def _publicar_completas(verificadores, alcance=None, rechazada=False, problemas=
             'orientacion_limpieza': orientacion}
 
 
+def _detalle_lecturas(verificadores, rechazada):
+    """Conserva descripciones individuales; la referencia no identifica un objeto (#56)."""
+    if rechazada:
+        return {'estado': 'no_aplica', 'lecturas': []}
+    lecturas = []
+    campos = ('material', 'ubicacion', 'presentacion', 'cantidad_relativa')
+    for numero, v in enumerate(verificadores, 1):
+        modelo = v.get('modelo')
+        obs = v.get('observaciones_higiene')
+        if v.get('ok') is not True or not isinstance(modelo, str) or not modelo.strip() or not isinstance(obs, dict):
+            continue
+        filas = obs.get('lecturas')
+        if not isinstance(filas, list) or len(filas) > 12:
+            continue
+        materiales = obs.get('materiales')
+        if not isinstance(materiales, list):
+            continue
+        for indice, fila in enumerate(filas, 1):
+            if (not isinstance(fila, dict) or type(fila.get('indice')) is not int
+                    or fila['indice'] != indice or not isinstance(fila.get('evidencia'), str)
+                    or not fila['evidencia'].strip()
+                    or any(not isinstance(fila.get(k), str) for k in campos)
+                    or not any(isinstance(m, dict) and all(m.get(k) == fila.get(k) for k in campos)
+                               for m in materiales)):
+                continue
+            evidencia = _limpiar_evidencia(fila['evidencia'])
+            if not evidencia:
+                continue
+            lecturas.append({**{k: fila[k] for k in campos},
+                             'referencia': f'v{numero}:m{indice}', 'modelo': modelo,
+                             'estado': 'lectura_individual', 'origen': 'no_evaluado',
+                             'evidencia': evidencia[:EVIDENCIA_MAX],
+                             'evidencia_truncada': fila.get('evidencia_truncada') is True or len(evidencia) > EVIDENCIA_MAX,
+                             'normalizacion_parcial': obs.get('normalizacion_parcial') is True})
+    return {'estado': 'disponible' if lecturas else 'no_evaluado', 'lecturas': lecturas}
+
+
 def publicar(verificadores, alcance=None, rechazada=False, problemas=()):
     """Recupera detalles parciales sin incorporarlos a las decisiones (#56)."""
     lectores = [v for v in verificadores if isinstance(v, dict)]
@@ -149,6 +200,7 @@ def publicar(verificadores, alcance=None, rechazada=False, problemas=()):
                            and v['observaciones_higiene'].get('normalizacion_parcial') is True)
     anteriores = [dict(v, observaciones_higiene=None) if es_parcial(v) else v for v in lectores]
     resultado = _publicar_completas(anteriores, alcance, rechazada, problemas)
+    resultado['detalle_materiales'] = _detalle_lecturas(lectores, rechazada)
     parciales = [v for v in lectores if es_parcial(v) and v.get('ok') is True and v.get('modelo')]
     if rechazada or not parciales:
         return resultado
