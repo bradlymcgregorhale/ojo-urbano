@@ -13,6 +13,8 @@ INDICACION_CONTEXTO = ('Sacá una foto complementaria desde más lejos, mostrand
                       'o problema y su relación con la vereda o la calle.')
 INDICACION_REVISION = ('Hay una observación sobre la ubicación, calidad o encuadre que requiere '
                       'revisión. La foto no se rechazó automáticamente.')
+INDICACION_AMBITO = ('La ubicación del objeto o problema requiere revisión. Agregá contexto '
+                    'o una foto que muestre si está en la vía pública.')
 
 
 def normalizar(valor):
@@ -77,17 +79,21 @@ def resumir(verificadores):
               else 'senal_negativa_no_corroborada' if negativa
               else 'sin_objecion' if sin_objecion
               else 'indeterminada' if alguna else 'no_evaluada')
+    revision_ambito = estado == 'indeterminada' and any(
+        v.get('ok') is True and v.get('modelo') and isinstance(v.get('evaluacion_foto'), dict)
+        and v['evaluacion_foto'].get('ambito') in ('mixto', 'indeterminado') for v in vistos)
     evaluacion = {'ambito': ambito, 'estado_ambito': estado_ambito,
                   'estado': estado,
                   'calidad_suficiente': calidad, 'estado_calidad': estado_calidad,
                   'motivos': ['interior'] if interior else motivos_calidad,
                   'rechazada': rechazada,
-                  'requiere_revision': estado == 'senal_negativa_no_corroborada',
+                  'requiere_revision': estado == 'senal_negativa_no_corroborada' or revision_ambito,
                   'requiere_nueva_foto': rechazada,
                   'requiere_foto_complementaria': contexto is False,
                   'indicacion': INDICACION_INTERIOR if interior else INDICACION_CALIDAD if calidad is False
                   else INDICACION_CONTEXTO if contexto is False
-                  else INDICACION_REVISION if estado == 'senal_negativa_no_corroborada' else None}
+                  else INDICACION_REVISION if estado == 'senal_negativa_no_corroborada'
+                  else INDICACION_AMBITO if revision_ambito else None}
     encuadre = {'suficiente': contexto, 'estado': estado_contexto, 'motivos': motivos_contexto,
                 'indicacion': INDICACION_CONTEXTO if contexto is False else None}
     return evaluacion, encuadre

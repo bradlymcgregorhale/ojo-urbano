@@ -126,6 +126,54 @@ class EvaluacionFotoTest(unittest.TestCase):
                 self.assertFalse(e['requiere_revision'])
                 self.assertIsNone(e['indicacion'])
 
+    def test_ambito_mixto_o_indeterminado_pide_aclaracion_sin_rechazar(self):
+        for ambito in ('mixto', 'indeterminado'):
+            for otros in ([], [voto('b')], [voto('b', ambito=ambito)],
+                          [{'modelo': 'b', 'ok': False}], [{'modelo': 'b', 'ok': True}]):
+                with self.subTest(ambito=ambito, otros=otros):
+                    original = salida()
+                    votos = [voto('a', ambito=ambito)] + otros
+                    antes = copy.deepcopy(votos)
+                    r = E.aplicar(original, votos)
+                    e = r['evaluacion_foto']
+                    self.assertEqual(e['estado'], 'indeterminada')
+                    self.assertTrue(e['requiere_revision'])
+                    self.assertEqual(e['indicacion'], E.INDICACION_AMBITO)
+                    self.assertFalse(e['rechazada'])
+                    self.assertFalse(e['requiere_nueva_foto'])
+                    self.assertFalse(e['requiere_foto_complementaria'])
+                    for k in original:
+                        self.assertEqual(r[k], original[k])
+                    self.assertEqual(votos, antes)
+
+    def test_ambito_sin_lectura_valida_no_inventa_indicacion(self):
+        casos = [dict(voto('a', ambito='mixto'), ok=False),
+                 dict(voto('a', ambito='indeterminado'), modelo=None),
+                 voto('a', ambito='indeterminado', evidencia_ambito='')]
+        for v in casos:
+            with self.subTest(voto=v):
+                e = E.aplicar(salida(), [v])['evaluacion_foto']
+                self.assertFalse(e['requiere_revision'])
+                self.assertIsNone(e['indicacion'])
+
+    def test_ambito_incierto_respeta_precedencia_de_calidad_y_encuadre(self):
+        for campo, motivo, estado in [('calidad', 'desenfoque', 'rechazada_calidad'),
+                                      ('contexto', 'entorno_no_visible', 'contexto_insuficiente')]:
+            with self.subTest(campo=campo):
+                votos = [voto(m, ambito='indeterminado', **{campo+'_suficiente': False,
+                         'motivos_'+campo: [motivo]}) for m in ('a', 'b')]
+                e = E.aplicar(salida(), votos)['evaluacion_foto']
+                self.assertEqual(e['estado'], estado)
+                self.assertFalse(e['requiere_revision'])
+                self.assertNotEqual(e['indicacion'], E.INDICACION_AMBITO)
+        for otro in (voto('b', ambito='interior'),
+                     voto('b', calidad_suficiente=False, motivos_calidad=['oscuridad'])):
+            with self.subTest(senal_previa=otro):
+                e = E.aplicar(salida(), [voto('a', ambito='mixto'), otro])['evaluacion_foto']
+                self.assertEqual(e['estado'], 'senal_negativa_no_corroborada')
+                self.assertTrue(e['requiere_revision'])
+                self.assertEqual(e['indicacion'], E.INDICACION_REVISION)
+
     def test_rechazo_corroborado_no_se_presenta_como_revision_pendiente(self):
         for cambio in [dict(ambito='interior'),
                        dict(calidad_suficiente=False, motivos_calidad=['oscuridad'])]:
