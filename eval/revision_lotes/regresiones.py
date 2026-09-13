@@ -209,6 +209,8 @@ def observado(r, campo):
         return 'confirmado'
     if any(x.get('key') == key for x in r.get('posibles', [])):
         return 'posible'
+    if key in (r.get('en_duda') or []):
+        return None
     return 'no' if r.get('analisis_estado') == 'completo' else None
 
 
