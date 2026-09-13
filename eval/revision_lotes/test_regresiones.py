@@ -208,6 +208,107 @@ class RegistroTest(unittest.TestCase):
         self.assertTrue(r['faltantes'])
         self.assertEqual(r['filas'], [])
 
+    def candidata(self, resultado):
+        nueva = copy.deepcopy(self.original)
+        nueva['resultado'].update(resultado)
+        nueva['resultado']['modo_version'] = 'candidata'
+        destino = self.root / 'candidata'
+        destino.mkdir(exist_ok=True)
+        self.write(destino / 'H0001-alto.json', nueva)
+        return destino
+
+    def test_estados_invalidos_son_cobertura_faltante(self):
+        p = self.crear()
+        for estado in (None, 'error', 'en_cola', ''):
+            with self.subTest(estado=estado):
+                r = R.comparar(p, self.candidata({'analisis_estado': estado}))
+                self.assertTrue(r['faltantes'])
+                self.assertFalse(r['proteccion_de_aciertos_comprobada'])
+
+    def test_parcial_no_inventa_negativos(self):
+        self.original['resultado'].update(problemas=[], hay_reclamo=False)
+        self.write(self.a / 'H0001-alto.json', self.original)
+        self.revision.update(original_huella=R.huella((self.a / 'H0001-alto.json').read_bytes()),
+                             correcciones={'retiro_poda': 'no'})
+        self.write(self.chat / 'H0001.json', self.revision)
+        r = R.comparar(self.crear(), self.candidata({'analisis_estado': 'parcial'}))
+        self.assertEqual(r['filas'], [])
+        self.assertEqual(r['faltantes'][0]['campo'], 'categorias.retiro_poda')
+        self.assertFalse(r['proteccion_de_aciertos_comprobada'])
+
+    def test_parcial_con_hallazgo_explicito_se_puntua(self):
+        r = R.comparar(self.crear(), self.candidata({'analisis_estado': 'parcial'}))
+        self.assertEqual(r['conteos']['acierto_conservado'], 1)
+        self.assertTrue(r['proteccion_de_aciertos_comprobada'])
+
+    def test_ausencia_en_referencia_parcial_no_es_acierto_previo(self):
+        self.original['resultado'].update(analisis_estado='parcial', problemas=[], hay_reclamo=False)
+        self.write(self.a / 'H0001-alto.json', self.original)
+        self.revision.update(original_huella=R.huella((self.a / 'H0001-alto.json').read_bytes()),
+                             correcciones={'retiro_poda': 'no'})
+        self.write(self.chat / 'H0001.json', self.revision)
+        r = R.comparar(self.crear(), self.candidata({'analisis_estado': 'completo'}))
+        self.assertEqual(r['aciertos_previos_evaluados'], 0)
+        self.assertTrue(r['faltantes'])
+
+    def test_interior_exige_motivo_y_salida_vacia(self):
+        vacia = dict(analisis_estado='completo', hay_reclamo=False, problemas=[],
+                     posibles=[], elementos_detectados=[])
+        self.assertIsNone(R.observado(vacia, 'interior_rechazado'))
+        vacia['evaluacion_foto'] = {'ambito': 'publica', 'rechazada': False}
+        self.assertFalse(R.observado(vacia, 'interior_rechazado'))
+        vacia['evaluacion_foto'] = {'ambito': None, 'rechazada': True, 'estado': 'rechazada_calidad'}
+        self.assertFalse(R.observado(vacia, 'interior_rechazado'))
+        vacia['evaluacion_foto'] = {'rechazada': True}
+        self.assertIsNone(R.observado(vacia, 'interior_rechazado'))
+        vacia['evaluacion_foto'] = {'ambito': 'interior', 'rechazada': True}
+        self.assertTrue(R.observado(vacia, 'interior_rechazado'))
+        vacia['elementos_detectados'] = [{'key': 'contenedor_secos'}]
+        self.assertFalse(R.observado(vacia, 'interior_rechazado'))
+
+    def test_referencia_no_aprueba_candidata(self):
+        r = R.comparar(self.crear())
+        self.assertTrue(r['solo_referencia'])
+        self.assertEqual(r['conteos']['acierto_conservado'], 1)
+        self.assertFalse(r['proteccion_de_aciertos_comprobada'])
+
+    def test_archivo_identico_y_version_igual_no_aprueban(self):
+        p = self.crear()
+        r = R.comparar(p, self.a)
+        self.assertEqual(r['identicas'], ['H0001'])
+        self.assertEqual(r['version_sin_cambio'], ['H0001'])
+        self.assertFalse(r['proteccion_de_aciertos_comprobada'])
+        nueva = copy.deepcopy(self.original)
+        nueva['resultado']['descripcion'] = 'Otro texto, misma versión'
+        self.write(self.a / 'H0001-alto.json', nueva)
+        r = R.comparar(p, self.a)
+        self.assertEqual(r['identicas'], [])
+        self.assertEqual(r['version_sin_cambio'], ['H0001'])
+        self.assertFalse(r['proteccion_de_aciertos_comprobada'])
+
+    def test_nueva_version_con_acierto_real_aprueba_comparacion(self):
+        r = R.comparar(self.crear(), self.candidata({}))
+        self.assertTrue(r['proteccion_de_aciertos_comprobada'])
+        self.assertFalse(r['aprobacion_de_despliegue'])
+        self.assertEqual(r['versiones_referencia'], ['estable'])
+
+    def test_categoria_desconocida_se_rechaza_en_ambas_fuentes(self):
+        self.revision['correcciones'] = {'categoria_inexistente': 'no'}
+        self.write(self.chat / 'H0001.json', self.revision)
+        with self.assertRaisesRegex(ValueError, 'Categoría desconocida'):
+            self.crear()
+        (self.chat / 'H0001.json').unlink()
+        with self.assertRaisesRegex(ValueError, 'Categoría desconocida'):
+            self.crear([self.export(categorias={'categoria_inexistente': 'no'})])
+
+    def test_registro_previo_con_clave_desconocida_no_aprueba(self):
+        self.revision['correcciones'] = {'categoria_inexistente': 'no'}
+        self.write(self.chat / 'H0001.json', self.revision)
+        with patch.object(R, 'CATEGORIAS', R.CATEGORIAS | {'categoria_inexistente'}):
+            p = self.crear()
+        with self.assertRaisesRegex(ValueError, 'Categoría desconocida en el registro'):
+            R.comparar(p, self.candidata({}))
+
 
 if __name__ == '__main__':
     unittest.main()
