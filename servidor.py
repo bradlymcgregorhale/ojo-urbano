@@ -2313,6 +2313,35 @@ function renderResultado(d){
   if(cc.length)h+='<div class="minicats">'+cc.map(c=>
     `<div class="minicat ctx"><b>${esc(c.nombre)}</b><span>según tu texto</span></div>`).join('')+'</div>';
   if(d.descripcion)h+=`<div class="tardesc">${esc(d.descripcion)}</div>`;
+  const higiene=d.observaciones_higiene;
+  if(higiene&&typeof higiene==='object'&&!Array.isArray(higiene)&&higiene.estado!=='no_aplica'){
+    const materiales={hojas:'Hojas',ramas:'Ramas',tierra_polvo:'Tierra o polvo',papel_carton:'Papel o cartón',
+      plastico:'Plástico',piedras:'Piedras',hormigon_cascotes:'Hormigón o cascotes',madera:'Madera',
+      metal:'Metal',vidrio:'Vidrio',excrementos:'Excrementos',residuos_mezclados:'Residuos mezclados',
+      no_identificable:'Material no identificable'};
+    const ubicaciones={vereda_frente_inmueble:'vereda frente a un inmueble',otra_vereda:'otra vereda',
+      calzada:'calzada',cordon:'cordón',interior:'interior',espacio_publico_especial:'espacio público especial',
+      indeterminada:'ubicación indeterminada'};
+    const presentaciones={disperso:'disperso',acumulado:'acumulado',bolsa:'en bolsa',bolson:'en bolsón',
+      objeto:'objeto',indeterminada:'presentación indeterminada'};
+    const cantidades={aislado:'cantidad aislada',significativa:'cantidad significativa',indeterminada:'cantidad indeterminada'};
+    const observados=Array.isArray(higiene.materiales)?higiene.materiales.filter(m=>m&&typeof m==='object'&&!Array.isArray(m)):[];
+    let detalle=observados.map(m=>{
+      const nombre=typeof m.material==='string'&&Object.hasOwn(materiales,m.material)?materiales[m.material]:'Material sin etiqueta conocida';
+      const ubicacion=typeof m.ubicacion==='string'&&Object.hasOwn(ubicaciones,m.ubicacion)?ubicaciones[m.ubicacion]:ubicaciones.indeterminada;
+      const presentacion=typeof m.presentacion==='string'&&Object.hasOwn(presentaciones,m.presentacion)?presentaciones[m.presentacion]:presentaciones.indeterminada;
+      const cantidad=typeof m.cantidad_relativa==='string'&&Object.hasOwn(cantidades,m.cantidad_relativa)?cantidades[m.cantidad_relativa]:cantidades.indeterminada;
+      const estado=m.estado==='corroborado'?'Corroborado':m.estado==='pendiente'?'Pendiente de corroboración':'Estado sin informar';
+      const fuentes=Number.isInteger(m.fuentes)&&m.fuentes>0?` · ${m.fuentes} ${m.fuentes===1?'fuente':'fuentes'}`:'';
+      return `<div class="voto"><b>${esc(nombre)}</b> · ${esc(ubicacion)} · ${esc(presentacion)} · ${esc(cantidad)}<br>${esc(estado+fuentes)}</div>`;
+    }).join('');
+    if(!observados.length)detalle=`<div class="voto">${Array.isArray(higiene.materiales)&&higiene.materiales.length>0
+      ?'El formato de los materiales informados no permite mostrarlos.':higiene.estado==='no_evaluado'
+      ?'Los materiales no se evaluaron.':Array.isArray(higiene.materiales)&&['evaluado','parcial'].includes(higiene.estado)
+        ?'No se informaron materiales; eso no confirma que no haya residuos.':'No hay una evaluación de materiales disponible.'}</div>`;
+    else detalle+='<div class="modo-nota">La lista puede estar incompleta. Las fuentes no indican un porcentaje de certeza. El material por sí solo no determina el servicio de retiro.</div>';
+    h+=`<details class="tardet materiales"><summary>Materiales informados</summary><div class="detbody">${detalle}</div></details>`;
+  }
   const pos=d.posibles||[],pres=d.elementos_detectados||[],duda=d.en_duda||[];
   let det='';
   if(pos.length)det+='<h4 class="mini">Posibles (sin confirmar)</h4>'+pos.map(p=>
