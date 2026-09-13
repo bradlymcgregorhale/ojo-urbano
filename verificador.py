@@ -641,31 +641,64 @@ def _registrar_uso(modelo, etapa, clave, intento, inicio, data=None, error=None)
 
 
 def verificar_contenedores(datos):
-    """Una llamada con el inventario fijo; fallo o incertidumbre pide revision."""
+    """Inventario fijo; solo su duda visual puede activar la comprobación de ausencia."""
     perfil = modos.perfil_actual()
     if perfil and not perfil.especialista:
         raise ValueError("El modo no usa especialista de contenedores")
     import especialista_contenedores as especialista
     inicio = time.monotonic()
+    vence = inicio + 40
     data, error = None, None
     enviado = False
     try:
         cuerpo = especialista.solicitud(datos)
         req = urllib.request.Request(OPENROUTER_URL, data=json.dumps(cuerpo).encode(), headers={
             "Authorization": "Bearer " + api_key(), "Content-Type": "application/json"})
-        vence = inicio + 40
         enviado = True
         modos.llamada()
         data = _pedir_http(req, min(TIMEOUT, 40), vence)
         _costo_sumar(data.get("usage"))
-        return especialista.interpretar(data)
+        resultado = especialista.interpretar(data)
     except Exception as exc:
         error = exc
-        return especialista.revision(fallo=True)
+        resultado = especialista.revision(fallo=True)
     finally:
         if enviado:
             _tokens_sumar(data)
         _registrar_uso(especialista.MODELO, "inventario_contenedores", None, 1, inicio, data, error)
+    modelos = list(dict.fromkeys(modelos_activos()))
+    if (not especialista.requiere_presencia(resultado) or len(modelos) != 3
+            or time.monotonic() >= vence):
+        return resultado
+    lecturas = _map_modelos(modelos, lambda modelo: _verificar_presencia_contenedor(datos, modelo, vence))
+    return especialista.resolver_ausencia(resultado, lecturas)
+
+
+def _verificar_presencia_contenedor(datos, modelo, vence):
+    """Un intento por lector, con consumo y fallos separados del especialista."""
+    import especialista_contenedores as especialista
+    inicio = time.monotonic()
+    data, error, enviado = None, None, False
+    try:
+        cuerpo = especialista.solicitud_presencia(datos, modelo)
+        req = urllib.request.Request(OPENROUTER_URL, data=json.dumps(cuerpo).encode(), headers={
+            "Authorization": "Bearer " + api_key(), "Content-Type": "application/json"})
+        resto = vence - time.monotonic()
+        if resto <= 0:
+            return None
+        enviado = True
+        modos.llamada()
+        data = _pedir_http(req, min(TIMEOUT, resto), vence)
+        _costo_sumar(data.get('usage'))
+        return especialista.interpretar_presencia(data, modelo)
+    except Exception as exc:
+        error = exc
+        modos.fallo('presencia_contenedores')
+        return None
+    finally:
+        if enviado:
+            _tokens_sumar(data)
+            _registrar_uso(modelo, 'presencia_contenedores', None, 1, inicio, data, error)
 
 
 class RespuestaNoUtilizableError(ValueError):
