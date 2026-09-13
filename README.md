@@ -555,7 +555,9 @@ lecturas informen ausencia. La interfaz y el CSV conservan ese estado.
 
 El especialista y la comprobación opcional comparten un plazo de 40 segundos.
 Cada lector adicional hace un solo intento y los tres se consultan en paralelo;
-si no queda tiempo, se conserva la revisión. Todas las llamadas suman costos y
+una foto incierta puede sumar hasta tres solicitudes. Si quedan menos de cinco
+segundos, no se inician esos pedidos. La revisión por falta de tiempo o por un
+fallo de esta etapa no se guarda en caché. Todas las llamadas suman costos y
 tokens, incluidos intentos fallidos con el consumo conocido. Un fallo original
 del especialista no activa nuevos envíos. La API conserva `costo_api`, pero la
 página no muestra importes. El promedio anterior, sin esta comprobación opcional,
