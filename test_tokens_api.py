@@ -25,6 +25,7 @@ def respuesta(uso, contenido='{"ok":true}'):
 class TokensApi(unittest.TestCase):
     def setUp(self):
         V.tokens_reset()
+        V.costo_reset()
         self.pila = ExitStack()
         self.pila.enter_context(patch.object(V, 'OPENROUTER_LOG_USO', False))
         self.pila.enter_context(patch.object(V, 'api_key', return_value='prueba'))
@@ -53,16 +54,94 @@ class TokensApi(unittest.TestCase):
                 V._tokens_sumar(respuesta(uso))
                 self.assertEqual(V.tokens_total(), {'tokens_api': 13, 'tokens_api_completos': False})
 
-    def test_cuenta_cada_reintento_aunque_no_haya_json(self):
+    def test_cuenta_cada_reintento_de_transporte(self):
         with patch.object(V, '_pedir_http', side_effect=[
-                respuesta({'total_tokens': 11, 'cost': .001}, 'sin JSON'),
+                urllib.error.URLError('primer fallo simulado'),
                 urllib.error.URLError('fallo simulado'),
                 respuesta({'total_tokens': 23, 'cost': .002})]) as http:
             V.costo_reset()
             self.assertEqual(V._llamar('m', []), '{"ok":true}')
             self.assertEqual(http.call_count, 3)
-            self.assertEqual(V.tokens_total(), {'tokens_api': 34, 'tokens_api_completos': False})
-            self.assertEqual(V.costo_total(), .003)
+            self.assertEqual(V.tokens_total(), {'tokens_api': 23, 'tokens_api_completos': False})
+            self.assertEqual(V.costo_total(), .002)
+
+    def test_respuesta_inutilizable_no_reenvia_y_conserva_consumo(self):
+        for finish, content, reasoning in [
+                ('length', '{"ok":true}', None),
+                ('length', None, '{"ok":true}'),
+                ('stop', None, '{"ok":true}'),
+                ('stop', '   ', '{"ok":true}'),
+                ('stop', 'sin JSON', None),
+                (None, '{"ok":true}', None),
+                ('desconocido', '{"ok":true}', None)]:
+            with self.subTest(finish=finish, content=content):
+                V.tokens_reset(); V.costo_reset()
+                data = respuesta({'total_tokens': 11, 'cost': .001}, content)
+                data['choices'][0]['finish_reason'] = finish
+                data['choices'][0]['message']['reasoning'] = reasoning
+                with patch.object(V, '_pedir_http', return_value=data) as http, patch.object(V, '_registrar_uso') as log:
+                    with self.assertRaises(V.RespuestaNoUtilizableError):
+                        V._llamar('m', [], etapa='repregunta_objeto')
+                self.assertEqual(http.call_count, 1)
+                self.assertEqual(log.call_count, 1)
+                self.assertIsInstance(log.call_args.args[-1], V.RespuestaNoUtilizableError)
+                self.assertEqual(V.tokens_total(), {'tokens_api': 11, 'tokens_api_completos': True})
+                self.assertEqual(V.costo_total(), .001)
+
+    def test_cuerpo_http_ilegible_no_reenvia_ni_inventa_consumo(self):
+        for body, error in [(b'{"choices":', json.JSONDecodeError),
+                            (b'\xff', UnicodeDecodeError)]:
+            with self.subTest(body=body):
+                V.tokens_reset(); V.costo_reset()
+                with patch.object(V, '_opener_con_caja') as opener, patch.object(V, '_registrar_uso') as log:
+                    opener.return_value.open.return_value = io.BytesIO(body)
+                    with self.assertRaises(error):
+                        V._llamar('m', [], etapa='verificar_uno')
+                self.assertEqual(opener.return_value.open.call_count, 1)
+                self.assertEqual(log.call_count, 1)
+                self.assertIsNone(log.call_args.args[-2])
+                self.assertIsInstance(log.call_args.args[-1], error)
+                self.assertEqual(V.tokens_total(), {'tokens_api': 0, 'tokens_api_completos': False})
+                self.assertEqual(V.costo_total(), 0)
+
+    def test_formas_invalidas_y_terminacion_nativa(self):
+        base = respuesta({'total_tokens': 0, 'cost': 0})
+        invalid = [None, [], {}, {'choices': []}, {'choices': [None]},
+                   {'choices': [{}, {}]}, dict(base, error={'message': 'error'})]
+        for native in ['max_tokens', 'MAX_OUTPUT_TOKENS', 'tool_use', 'pause_turn',
+                       'refusal', 'model_context_window_exceeded', {}, False]:
+            data = copy.deepcopy(base); data['choices'][0]['native_finish_reason'] = native
+            invalid.append(data)
+        for message in [None, [], {'content': 4}, {'content': {}},
+                        {'content': '{"ok":true}', 'tool_calls': [{}]},
+                        {'content': '{"ok":true}', 'refusal': 'rechazado'}]:
+            data = copy.deepcopy(base); data['choices'][0]['message'] = message
+            invalid.append(data)
+        data = copy.deepcopy(base); data['choices'][0]['error'] = {'code': 503}
+        invalid.append(data)
+        data = copy.deepcopy(base); data['choices'][0]['finish_reason'] = 'error'
+        invalid.append(data)
+        for data in invalid:
+            with self.subTest(data=data), patch.object(V, '_pedir_http', return_value=data) as http:
+                with self.assertRaises(V.RespuestaNoUtilizableError):
+                    V._llamar('m', [])
+                self.assertEqual(http.call_count, 1)
+        for native in [None, '', 'stop', 'STOP', 'completed', 'end_turn', 'terminacion_proveedor']:
+            data = copy.deepcopy(base); data['choices'][0]['native_finish_reason'] = native
+            with self.subTest(native=native), patch.object(V, '_pedir_http', return_value=data):
+                self.assertEqual(V._llamar('m', []), '{"ok":true}')
+
+    def test_razonamiento_sin_final_no_aporta_voto_dirigido(self):
+        data = respuesta({'total_tokens': 12, 'cost': .002}, None)
+        data['choices'][0].update(finish_reason='length')
+        data['choices'][0]['message']['reasoning'] = json.dumps(
+            {'veredicto': 'presente', 'ubicacion': 'centro', 'evidencia': 'objeto visible'})
+        with patch.object(V, '_pedir_http', return_value=data) as http, patch.object(
+                V, '_imagen_data_url', return_value='sin_imagen'):
+            readings, failed = V._repregunta_objeto(None, 'objeto de prueba', ['m'], False)
+        self.assertEqual(http.call_count, 1)
+        self.assertEqual(readings, [])
+        self.assertTrue(failed)
 
     def test_especialista_cuenta_uso_y_distingue_error_previo_al_envio(self):
         with patch.object(E, 'solicitud', return_value={'messages': []}), patch.object(

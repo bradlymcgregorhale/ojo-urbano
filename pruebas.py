@@ -792,18 +792,23 @@ _sin_json_cache = dict(_cache_respuesta, choices=[
     {"finish_reason": "length", "message": {"content": "sin JSON"}}])
 _cache_log = io.StringIO()
 with patch.object(V, "_pedir_http", side_effect=[
-        urllib.error.URLError("ERROR_PRIVADO"), _sin_json_cache, _cache_respuesta]), \
+        urllib.error.URLError("ERROR_PRIVADO"), _sin_json_cache]), \
         patch.object(V, "OPENROUTER_LOG_USO", True), redirect_stderr(_cache_log):
     V.costo_reset()
-    _r_cache = V._llamar("modelo/x", _cache_ms, etapa="prueba_reintento")
+    try:
+        V._llamar("modelo/x", _cache_ms, etapa="prueba_reintento")
+    except V.RespuestaNoUtilizableError:
+        _truncada_rechazada = True
+    else:
+        _truncada_rechazada = False
     _total_cache = V.costo_total()
 _cache_registros = [json.loads(linea) for linea in _cache_log.getvalue().splitlines()]
-check("registra cada intento, incluso fallos y respuestas truncadas pagas",
-      [r["intento"] for r in _cache_registros] == [1, 2, 3]
-      and [r["error"] for r in _cache_registros] == ["URLError", "ValueError", None]
+check("registra el fallo de transporte y detiene el envío tras recibir la truncada",
+      _truncada_rechazada and [r["intento"] for r in _cache_registros] == [1, 2]
+      and [r["error"] for r in _cache_registros] == ["URLError", "RespuestaNoUtilizableError"]
       and _cache_registros[1]["finish_reason"] == "length")
-check("el costo incluye las dos respuestas pagas sin duplicarlas",
-      _total_cache == 0.004 and V._costo_foto.get()["llamadas"] == 2)
+check("el costo incluye la respuesta paga rechazada sin duplicarla",
+      _total_cache == 0.002 and V._costo_foto.get()["llamadas"] == 1)
 check("un fallo sin usage es desconocido, no costo ni tokens cero",
       _cache_registros[0]["cost"] is None and _cache_registros[0]["cached_tokens"] is None
       and "ERROR_PRIVADO" not in _cache_log.getvalue())

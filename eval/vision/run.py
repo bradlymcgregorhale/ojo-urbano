@@ -51,6 +51,10 @@ class NotAvailable(RuntimeError):
     pass
 
 
+class CacheRejected(NotAvailable):
+    """Hay una respuesta guardada, pero requiere revisión antes de reutilizarse."""
+
+
 class BudgetStop(RuntimeError):
     pass
 
@@ -159,8 +163,21 @@ class Transport:
                     and 0 <= time.time() - candidate.get('created_at', 0) <= self.max_age):
                 cached = candidate
         if cached is not None:
+            try:
+                content = V._contenido_final(cached.get('raw'))
+                if content != cached.get('content'):
+                    raise ValueError('El contenido guardado no coincide con la respuesta original.')
+            except ValueError as exc:
+                self.last.update(source='cache_rejected', cache_path=str(path),
+                                 model_requested=model, reason=str(exc), billed_this_run=0,
+                                 error_type='CacheRejected')
+                self.record_event(dict(self.last, state='cache_rejected'))
+                self.blocked = CacheRejected(
+                    f'La respuesta guardada en {path} no cumple el contrato actual: {exc} '
+                    'Requiere revisión; no se reenvía automáticamente con --live.')
+                raise self.blocked from exc
             self.last = dict(cached, source='cache', billed_this_run=0)
-            return cached['content']
+            return content
         if not self.live:
             self.blocked = NotAvailable('No current response for this exact request. Use --live to call OpenRouter.')
             raise self.blocked
@@ -191,11 +208,7 @@ class Transport:
                   'latency_s': round(time.monotonic() - started, 3), 'raw': raw, 'usable': False}
         self.last = dict(record, source='live', billed_this_run=usage.get('cost'))
         self.record_event(dict(self.last, state='received'))
-        choices = raw.get('choices') or []
-        choice = choices[0] if choices else {}
-        content = (choice.get('message') or {}).get('content')
-        if choice.get('finish_reason') in {'length', 'content_filter', 'error'} or not isinstance(content, str):
-            raise ValueError('Incomplete response; billed but not reusable.')
+        content = V._contenido_final(raw)
         parsed = V._extraer_json(content)
         if not isinstance(parsed, dict):
             raise ValueError('Expected a JSON object; billed but not reusable.')
@@ -333,6 +346,8 @@ def evaluate_case(case, model, private, transport, cats, stage='initial'):
         assessment = assess(case, result)
         row.update(assessment, prediction=result)
         row['status'] = 'fail' if assessment['missing'] or assessment['unexpected'] else 'pass'
+    except CacheRejected as exc:
+        row.update(status='cache_rejected', error=str(exc), response=transport.last)
     except (NotAvailable, BudgetStop) as exc:
         row.update(status='uncached' if isinstance(exc, NotAvailable) else 'budget', error=str(exc))
     except Exception as exc:

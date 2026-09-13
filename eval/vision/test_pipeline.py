@@ -75,6 +75,64 @@ class PipelineTests(unittest.TestCase):
         self.assertFalse(list((self.root / 'cache').glob('*.json')))
         self.assertEqual(row['requests'][0]['error_type'], 'KeyError')
 
+    def test_cache_rechazada_en_pasada_dirigida_se_conserva_y_no_se_puntua(self):
+        raw = {'usage': {'cost': .001}, 'choices': [{'finish_reason': 'stop',
+               'message': {'content': '{"required_field": true}'}}]}
+        first = R.Transport(self.root / 'cache', live=True,
+                            opener=lambda *a, **k: io.BytesIO(json.dumps(raw).encode()))
+        first('model', [], etapa='scope_test')
+        path = next((self.root / 'cache').glob('*.json'))
+        record = json.loads(path.read_text())
+        record['raw']['choices'][0]['finish_reason'] = 'length'
+        path.write_text(json.dumps(record))
+        before = path.read_bytes()
+        def process(*args):
+            def parse(model):
+                return json.loads(R.V._llamar(model, [], etapa='scope_test'))['required_field']
+            R.V._map_modelos(['model'], parse)
+            return self.internal
+        self.server.procesar = process
+        for live in [False, True]:
+            def no_enviar(*args, **kwargs):
+                self.fail('Una caché rechazada no debe provocar un envío.')
+            journal = self.root / f'pipeline-{live}.jsonl'
+            transport = R.Transport(self.root / 'cache', live=live, opener=no_enviar, journal=journal)
+            row = P.evaluate(self.case, self.root, self.identity, self.server, transport, True)
+            self.assertEqual(row['status'], 'cache_rejected')
+            self.assertEqual(row['response']['source'], 'cache_rejected')
+            self.assertIn(str(path), row['error'])
+            self.assertEqual(row['requests'][0]['error_type'], 'CacheRejected')
+            self.assertEqual(row['cost_usd'], 0)
+            self.assertEqual(transport.meter.calls, 0)
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(json.loads(journal.read_text())['state'], 'cache_rejected')
+
+    def test_cache_rechazada_en_prevalidacion_conserva_motivo_y_no_inicia_pipeline(self):
+        raw = {'usage': {'cost': .001}, 'choices': [{'finish_reason': 'stop',
+               'message': {'content': '{"categorias": []}'}}]}
+        first = R.Transport(self.root / 'cache', live=True,
+                            opener=lambda *a, **k: io.BytesIO(json.dumps(raw).encode()))
+        model = R.V.VERIFICADORES[0]
+        R.evaluate_case(self.case, model, self.root, first, {})
+        path = next((self.root / 'cache').glob('*.json'))
+        record = json.loads(path.read_text())
+        record['raw']['choices'][0]['finish_reason'] = 'length'
+        path.write_text(json.dumps(record))
+        before = path.read_bytes()
+        def no_procesar(*args):
+            self.fail('La prevalidación rechazada debe impedir procesar la foto.')
+        self.server.procesar = no_procesar
+        journal = self.root / 'prevalidacion.jsonl'
+        transport = R.Transport(self.root / 'cache', live=True, journal=journal)
+        row = P.evaluate(self.case, self.root, self.identity, self.server, transport)
+        self.assertEqual(row['status'], 'cache_rejected')
+        self.assertIn(str(path), row['error'])
+        self.assertEqual(row['requests'][0]['source'], 'cache_rejected')
+        self.assertEqual(row['cost_usd'], 0)
+        self.assertEqual(transport.meter.calls, 0)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(json.loads(journal.read_text())['state'], 'cache_rejected')
+
     def test_parallel_pipeline_calls_cannot_exceed_sequential_admission(self):
         raw = {'usage': {'cost': .002}, 'choices': [{'finish_reason': 'stop',
                'message': {'content': '{"categorias": []}'}}]}

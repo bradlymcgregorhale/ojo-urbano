@@ -225,6 +225,72 @@ class RunnerTests(unittest.TestCase):
                 self.assertEqual(float(transport.meter.spent), 0.002)
                 self.assertFalse(list((self.root / 'cache').glob('*.json')))
 
+    def test_terminacion_y_razonamiento_respetan_contrato_productivo(self):
+        for finish, content in [(None, '{"categorias": []}'), ('tool_calls', '{"categorias": []}'),
+                                 ('stop', None)]:
+            with self.subTest(finish=finish, content=content):
+                self.raw['choices'][0] = {'finish_reason': finish,
+                    'message': {'content': content, 'reasoning': '{"categorias": []}'}}
+                transport = self.transport(live=True)
+                with self.assertRaises(R.V.RespuestaNoUtilizableError):
+                    self.call(transport)
+                self.assertEqual(float(transport.meter.spent), .002)
+                self.assertFalse(list((self.root / 'cache').glob('*.json')))
+
+    def test_cache_incompatible_se_conserva_y_no_se_reenvia(self):
+        first = self.transport(live=True)
+        self.call(first)
+        path = next((self.root / 'cache').glob('*.json'))
+        record = json.loads(path.read_text())
+        record['raw']['choices'][0]['finish_reason'] = None
+        path.write_text(json.dumps(record))
+        before = path.read_bytes()
+        for live in [False, True]:
+            journal = self.root / f'rechazo-{live}.jsonl'
+            replay = self.transport(live=live, journal=journal)
+            with self.assertRaises(R.CacheRejected):
+                self.call(replay)
+            self.assertIsNotNone(replay.blocked)
+            self.assertEqual(float(replay.meter.spent), 0)
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(replay.events[-1]['source'], 'cache_rejected')
+            event = json.loads(journal.read_text())
+            self.assertEqual(event['state'], 'cache_rejected')
+            self.assertEqual(event['cache_path'], str(path))
+            self.assertTrue(event['reason'])
+        self.assertEqual(len(self.requests), 1)
+
+    def test_fila_de_evaluacion_distingue_cache_rechazada(self):
+        photo = self.root / 'test.jpg'
+        R.Image.new('RGB', (40, 40)).save(photo)
+        case = {'id': 'a', 'aliases': ['a'], 'tags': [], 'status': 'reviewed',
+                'expected': {'recoleccion': True}, 'sha256': R.D.digest(photo.read_bytes()),
+                'photo': photo.name}
+        first = self.transport(live=True)
+        R.evaluate_case(case, 'm', self.root, first, {})
+        path = next((self.root / 'cache').glob('*.json'))
+        record = json.loads(path.read_text())
+        record['raw']['choices'][0]['finish_reason'] = 'length'
+        path.write_text(json.dumps(record))
+        before = path.read_bytes()
+        for live in [False, True]:
+            row = R.evaluate_case(case, 'm', self.root, self.transport(live=live), {})
+            self.assertEqual(row['status'], 'cache_rejected')
+            self.assertEqual(row['response']['source'], 'cache_rejected')
+            self.assertIn(str(path), row['error'])
+            self.assertNotIn('prediction', row)
+            self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(len(self.requests), 1)
+
+    def test_cache_no_usa_texto_distinto_del_original(self):
+        first = self.transport(live=True)
+        self.call(first)
+        entry = next(iter(first.seen.values()))
+        entry['content'] = '{"categorias": [{"key":"retiro_escombros"}]}'
+        with self.assertRaises(R.NotAvailable):
+            self.call(first)
+        self.assertEqual(len(self.requests), 1)
+
     def test_unreviewed_categories_are_neither_passes_nor_false_positives(self):
         result = R.assess({'expected': {'yes': True, 'no': False}},
                           {'categorias': [{'key': 'no'}, {'key': 'unknown'}]})
