@@ -11,7 +11,7 @@ function crearServicio(base,config,transporte){
  if(!(config.tope_usd>0&&config.tope_usd<5)||!config.modo_version||!config.token||!/^[a-f0-9]{48,}$/.test(config.token))throw Error('Configuración de reanálisis inválida.');
  const guardar=()=>atomic(ledgerPath,ledger),byId=id=>ledger.intentos.find(x=>x.id===id);
  const exponer=a=>({...a,url:a.estado==='listo'?'/'+config.token+'/revision/'+a.id:null});
- const estado=()=>({modo_version:config.modo_version,tope_usd:config.tope_usd,gasto_usd:ledger.gasto_usd,reserva_incierta_usd:ledger.reserva_incierta_usd,activo:ledger.activo,bloqueo:ledger.bloqueo||null,intentos:ledger.intentos.map(exponer)});
+ const estado=()=>({modo_version:config.modo_version,tope_usd:config.tope_usd,gasto_usd:ledger.gasto_usd,reserva_incierta_usd:ledger.reserva_incierta_usd,reserva_acotada_usd:ledger.reserva_acotada_usd||0,activo:ledger.activo,bloqueo:ledger.bloqueo||null,intentos:ledger.intentos.map(exponer)});
  const validarFoto=id=>{const row=manifest.fotos.find(x=>x.foto===id);if(!row)throw Error('Foto ajena al lote.');const input=inputs[id];if(!input)throw Error('Falta entrada preparada.');const original=fs.readFileSync(path.join(base,'entrega',row.archivo)),raw=fs.readFileSync(path.join(base,'entrega',input.archivo));if(sha(original)!==row.sha256||sha(raw)!==row.sha256_api||sha(raw)!==input.sha256||input.original_sha256!==row.sha256)throw Error('Cambió la foto original o su entrada.');return{row,raw,input};};
  async function continuar(a){
   try{
@@ -56,7 +56,7 @@ function crearServicio(base,config,transporte){
   const previo=ledger.intentos.findLast(a=>a.solicitud===solicitud);if(previo&&previo.foto!==foto)throw Error('La solicitud pertenece a otra foto.');if(previo&&previo.estado!=='no_enviado')return exponer(previo);
   if(ledger.activo)throw Error('Ya hay un reanálisis en curso. Consultá ese intento.');
   if(ledger.bloqueo||ledger.reserva_incierta_usd)throw Error(ledger.bloqueo||'Consumo incierto pendiente de conciliación.');
-  if(ledger.gasto_usd+1>config.tope_usd)throw Error('Se alcanzó el tope del reanálisis.');
+  if(ledger.gasto_usd+(ledger.reserva_acotada_usd||0)+1>config.tope_usd)throw Error('Se alcanzó el tope del reanálisis.');
   validarFoto(foto);const file=path.join(base,'analisis',foto+'-alto.json');if(!fs.existsSync(file))throw Error('Esta opción requiere una respuesta original.');
   const a={id:crypto.randomUUID(),solicitud,foto,estado:'preparado',inicio:new Date().toISOString(),original_huella:sha(fs.readFileSync(file)),envio_iniciado:false};
   ledger.intentos.push(a);ledger.activo=a.id;guardar();void continuar(a);return exponer(a);
