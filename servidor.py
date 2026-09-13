@@ -1660,6 +1660,7 @@ PAGINA = r"""<!DOCTYPE html>
   details.tardet>.detbody{padding:0 12px 12px;display:flex;flex-direction:column;gap:6px}
   .voto{font-size:12px;color:var(--muted)}
   .voto b{color:var(--ink);font-weight:600}
+  .lecturas-materiales .voto{overflow-wrap:anywhere}
   .copyjson{align-self:flex-start;font:11.5px inherit;font-weight:600;border:1px solid var(--line2);
        border-radius:6px;background:var(--surface);color:var(--muted);padding:4px 10px;cursor:pointer}
   .copyjson:hover{color:var(--ink);border-color:var(--ink)}
@@ -2341,6 +2342,13 @@ function renderResultado(d){
         ?'No se informaron materiales; eso no confirma que no haya residuos.':'No hay una evaluación de materiales disponible.'}</div>`;
     else detalle+='<div class="modo-nota">La lista puede estar incompleta. Las fuentes no indican un porcentaje de certeza. El material por sí solo no determina el servicio de retiro.</div>';
     if(higiene.normalizacion_parcial===true)detalle+='<div class="modo-nota">Algunas ubicaciones no pudieron precisarse. Los materiales se conservan como pendientes de corroboración.</div>';
+    const lecturas=Array.isArray(higiene.detalle_materiales?.lecturas)?higiene.detalle_materiales.lecturas.filter(l=>
+      l&&typeof l==='object'&&!Array.isArray(l)&&typeof l.modelo==='string'&&typeof l.evidencia==='string'&&l.evidencia.trim()):[];
+    if(lecturas.length){
+      detalle+='<details class="lecturas-materiales"><summary>Qué describió cada modelo</summary>';
+      detalle+=lecturas.map(l=>`<div class="voto"><b>${esc(typeof l.material==='string'&&Object.hasOwn(materiales,l.material)?materiales[l.material]:'Material sin etiqueta conocida')}</b> · ${esc(l.modelo)}<br>${esc(l.evidencia)}${l.evidencia_truncada===true?' (texto recortado)':''}${l.normalizacion_parcial===true?'<br>Ubicación pendiente de precisar.':''}</div>`).join('');
+      detalle+='<div class="modo-nota">Son lecturas individuales. La identificación de cada foco y la distinción entre foto y comentario siguen pendientes.</div></details>';
+    }
     h+=`<details class="tardet materiales"><summary>Materiales informados</summary><div class="detbody">${detalle}</div></details>`;
   }
   const pos=d.posibles||[],pres=d.elementos_detectados||[],duda=d.en_duda||[];

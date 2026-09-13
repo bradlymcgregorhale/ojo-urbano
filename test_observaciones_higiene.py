@@ -104,6 +104,114 @@ class ObservacionesHigieneTest(unittest.TestCase):
         self.assertIsNone(H.normalizar({'materiales':[{}]}))
         self.assertIsNone(H.normalizar({'materiales':[]} )['hay_bolson'])
 
+    def test_evidencias_de_focos_distintos_no_se_pierden_al_agrupar(self):
+        raw = {'materiales': [
+            {'material': 'papel_carton', 'ubicacion': 'calzada', 'presentacion': 'objeto',
+             'cantidad_relativa': 'aislado', 'evidencia': texto}
+            for texto in ['Caja junto al árbol', 'Otra caja delante del contenedor']]}
+        original = copy.deepcopy(raw)
+        normalizada = H.normalizar(raw)
+        self.assertEqual(len(normalizada['materiales']), 1)
+        self.assertEqual(len(normalizada['lecturas']), 2)
+        publicada = H.publicar([{'modelo': 'lector', 'ok': True, 'observaciones_higiene': normalizada}])
+        detalle = publicada['detalle_materiales']
+        self.assertEqual(detalle['estado'], 'disponible')
+        self.assertEqual([l['evidencia'] for l in detalle['lecturas']],
+                         ['Caja junto al árbol', 'Otra caja delante del contenedor'])
+        self.assertEqual([l['referencia'] for l in detalle['lecturas']], ['v1:m1', 'v1:m2'])
+        self.assertTrue(all(l['estado'] == 'lectura_individual' and l['origen'] == 'no_evaluado'
+                            for l in detalle['lecturas']))
+        self.assertEqual(raw, original)
+
+    def test_evidencias_no_modifican_respaldo_presentacion_ni_orientacion(self):
+        for votos in [[voto('a')], [voto('a'), voto('b')], [voto('a'), voto('a')],
+                      [self.parcial('a'), voto('b')]]:
+            originales = copy.deepcopy(votos)
+            anteriores = copy.deepcopy(votos)
+            for v in anteriores:
+                v['observaciones_higiene'].pop('lecturas', None)
+            nueva, previa = H.publicar(votos), H.publicar(anteriores)
+            nueva.pop('detalle_materiales')
+            previa.pop('detalle_materiales')
+            self.assertEqual(nueva, previa)
+            self.assertEqual(votos, originales)
+
+    def test_evidencia_recortada_se_identifica_sin_modificar_el_original(self):
+        raw = {'materiales': [{'material': 'hojas', 'ubicacion': 'calzada', 'presentacion': 'disperso',
+                              'cantidad_relativa': 'aislado', 'evidencia': 'a' * 501}]}
+        normalizada = H.normalizar(raw)
+        lectura = H.publicar([{'modelo': 'a', 'ok': True, 'observaciones_higiene': normalizada}])['detalle_materiales']['lecturas'][0]
+        self.assertEqual(lectura['evidencia'], 'a' * 500)
+        self.assertIs(lectura['evidencia_truncada'], True)
+        self.assertEqual(raw['materiales'][0]['evidencia'], 'a' * 501)
+
+    def test_rechazo_y_lector_fallido_no_publican_evidencia(self):
+        v = voto('a')
+        self.assertEqual(H.publicar([v], rechazada=True)['detalle_materiales'],
+                         {'estado': 'no_aplica', 'lecturas': []})
+        v['ok'] = False
+        self.assertEqual(H.publicar([v])['detalle_materiales'],
+                         {'estado': 'no_evaluado', 'lecturas': []})
+
+    def test_respuesta_anterior_no_inventa_evidencia(self):
+        v = voto('a')
+        v['observaciones_higiene'].pop('lecturas')
+        self.assertEqual(H.publicar([v])['detalle_materiales'],
+                         {'estado': 'no_evaluado', 'lecturas': []})
+
+    def test_evidencia_parcial_conserva_ubicacion_indeterminada(self):
+        d = H.publicar([self.parcial()])['detalle_materiales']
+        self.assertEqual(d['lecturas'][0]['ubicacion'], 'indeterminada')
+        self.assertTrue(all(l['normalizacion_parcial'] for l in d['lecturas']))
+
+    def test_fuentes_duplicadas_tienen_referencias_de_lectura_distintas(self):
+        v = voto('a')
+        d = H.publicar([v, v])['detalle_materiales']
+        self.assertEqual([l['referencia'] for l in d['lecturas']], ['v1:m1', 'v2:m1'])
+        self.assertTrue(all(l['estado'] == 'lectura_individual' for l in d['lecturas']))
+
+    def test_evidencia_limpia_no_cambia_el_material_ni_la_entrada(self):
+        raw = {'materiales': [{'material': 'hojas', 'ubicacion': 'calzada', 'presentacion': 'disperso',
+                              'cantidad_relativa': 'aislado', 'evidencia': '  Hojas\x00\n  junto  al árbol\t  '}]}
+        copia = copy.deepcopy(raw)
+        normalizada = H.normalizar(raw)
+        self.assertEqual(normalizada['lecturas'][0]['evidencia'], 'Hojas junto al árbol')
+        self.assertEqual(raw, copia)
+        normalizada['lecturas'][0]['evidencia'] = '\x00'
+        self.assertEqual(H.publicar([{'modelo': 'a', 'ok': True, 'observaciones_higiene': normalizada}])
+                         ['detalle_materiales']['lecturas'], [])
+
+    def test_filas_malformadas_no_alteran_el_resumen(self):
+        original = voto('a')
+        fila = original['observaciones_higiene']['lecturas'][0]
+        variantes = [None, {}, 'texto', [fila] * 13, [None], [{}]]
+        for campo, valor in [('indice', True), ('indice', 2), ('evidencia', ''),
+                             ('evidencia', {}), ('material', None), ('material', 'piedras')]:
+            variantes.append([dict(fila, **{campo: valor})])
+        for filas in variantes:
+            with self.subTest(filas=filas):
+                v = copy.deepcopy(original)
+                v['observaciones_higiene']['lecturas'] = filas
+                r = H.publicar([v])
+                self.assertEqual(r.pop('detalle_materiales'), {'estado': 'no_evaluado', 'lecturas': []})
+                base = H.publicar([original])
+                base.pop('detalle_materiales')
+                self.assertEqual(r, base)
+
+    @unittest.skipUnless('servidor' in sys.modules, 'Ejecutar mediante pruebas.py sin cargar pesos')
+    def test_api_evidencia_aditiva_con_resto_identico(self):
+        import servidor as S
+        r = {'problemas': [{'key': 'retiro_poda', 'nombre': 'Poda', 'gravedad': 3, 'fuentes': ['local']}],
+             'detalle': {'verificacion': {'verificadores': [voto('a'), voto('b')]}}}
+        copia = copy.deepcopy(r)
+        for v in copia['detalle']['verificacion']['verificadores']:
+            v['observaciones_higiene'].pop('lecturas')
+        nueva, anterior = S._publica(r), S._publica(copia)
+        self.assertEqual(len(nueva['observaciones_higiene']['detalle_materiales']['lecturas']), 2)
+        nueva['observaciones_higiene'].pop('detalle_materiales')
+        anterior['observaciones_higiene'].pop('detalle_materiales')
+        self.assertEqual(nueva, anterior)
+
     def parcial(self, modelo='a', material='hojas'):
         return voto(modelo, hay_bolson=True, materiales=[
             {'material': material, 'ubicacion': 'vereda', 'presentacion': 'disperso',
