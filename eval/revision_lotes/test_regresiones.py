@@ -65,6 +65,25 @@ class RegistroTest(unittest.TestCase):
             r['posibles'] = [{'key': 'retiro_poda'}]
             self.assertEqual(R.observado(r, 'categorias.retiro_poda'), 'posible')
 
+    def test_duda_malformada_no_se_puntua(self):
+        for value in ('retiro_poda', None, [None], [{'key': 'retiro_poda'}]):
+            r = dict(self.original['resultado'], en_duda=value)
+            self.assertIsNone(R.observado(r, 'categorias.retiro_poda'))
+
+    def test_duda_referencia_permanece_como_cobertura_faltante(self):
+        self.original['resultado'].update(problemas=[], en_duda=['retiro_poda'])
+        self.write(self.a / 'H0001-alto.json', self.original)
+        self.revision['original_huella'] = R.huella((self.a / 'H0001-alto.json').read_bytes())
+        self.write(self.chat / 'H0001.json', self.revision)
+        p = self.crear()
+        nueva = copy.deepcopy(self.original)
+        nueva['resultado'].update(modo_version='candidata', en_duda=[],
+                                  problemas=[{'key': 'retiro_poda'}])
+        self.write(self.a / 'H0001-alto.json', nueva)
+        r = R.comparar(p, self.a)
+        self.assertFalse(r['proteccion_de_aciertos_comprobada'])
+        self.assertEqual(len(r['faltantes']), 1)
+
     def test_duda_candidata_no_aprueba_negativo_previo(self):
         self.original['resultado'].update(problemas=[], hay_reclamo=False)
         self.write(self.a / 'H0001-alto.json', self.original)
