@@ -501,6 +501,40 @@ class RegistroTest(unittest.TestCase):
             self.assertEqual(bool(r['faltantes']), not bool(regresiones))
             self.assertFalse(r['proteccion_de_aciertos_comprobada'])
 
+    def test_humano_indeterminado_detecta_seleccion_inventada(self):
+        self.preparar_prioridad(None, 'indeterminado')
+        p = self.crear([self.export(estado='borrador', principal_humano='indeterminado')])
+        nueva = copy.deepcopy(self.original)
+        nueva['resultado']['modo_version'] = 'candidata'
+        nueva['resultado']['problema_principal'] = {
+            'key': 'retiro_poda', 'estado': 'seleccionado', 'criterio': 'escena'}
+        self.write(self.a / 'H0001-alto.json', nueva)
+        r = R.comparar(p, self.a)
+        self.assertEqual(r['conteos_prioridad']['regresion'], 1)
+        self.assertEqual(r['abstenciones_prioridad'], {'referencia': 1, 'candidata': 0})
+
+    def test_prioridad_invalida_previa_puede_persistir_o_corregirse(self):
+        self.preparar_prioridad('retiro_muebles')
+        p = self.crear([self.export(estado='borrador', principal_humano='retiro_poda')])
+        r = R.comparar(p)
+        self.assertEqual(r['conteos_prioridad']['error_persistente'], 1)
+        nueva = copy.deepcopy(self.original)
+        nueva['resultado']['modo_version'] = 'candidata'
+        nueva['resultado']['problema_principal']['key'] = 'retiro_poda'
+        self.write(self.a / 'H0001-alto.json', nueva)
+        self.assertEqual(R.comparar(p, self.a)['conteos_prioridad']['corregido'], 1)
+
+    def test_criterio_desconocido_es_cobertura_y_unico_con_varios_es_invalido(self):
+        self.preparar_prioridad()
+        r = copy.deepcopy(self.original['resultado'])
+        r['problema_principal']['criterio'] = 'criterio_futuro'
+        self.assertIsNone(R.observado(r, 'problema_principal'))
+        r['problema_principal']['criterio'] = 'unico_confirmado'
+        self.assertEqual(R.observado(r, 'problema_principal'), 'seleccion_invalida')
+        r['problemas'] = [{'key': 'retiro_poda'}]
+        r['problema_principal'] = {'key': None, 'estado': 'indeterminado'}
+        self.assertIsNone(R.observado(r, 'problema_principal'))
+
 
 if __name__ == '__main__':
     unittest.main()

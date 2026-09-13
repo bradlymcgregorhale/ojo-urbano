@@ -255,8 +255,9 @@ def observado(r, campo):
         if rechazada:
             return None
         if estado == 'seleccionado':
+            if p.get('criterio') not in ('escena', 'pedido_explicito', 'unico_confirmado'):
+                return None
             if (isinstance(key, str) and key in confirmados
-                    and p.get('criterio') in ('escena', 'pedido_explicito', 'unico_confirmado')
                     and (p['criterio'] != 'unico_confirmado' or len(confirmados) == 1)):
                 return key
             if isinstance(key, str) or key is None:
@@ -363,6 +364,7 @@ def comparar(registro, candidata=None, particion='desarrollo'):
             'conteos_prioridad': {k: sum(f['estado'] == k and f['campo'] == 'problema_principal'
                                         for f in filas) for k in conteos},
             'abstenciones_prioridad': abstenciones_prioridad,
+            'faltantes_prioridad': sum(f.get('campo') == 'problema_principal' for f in faltantes),
             'faltantes': faltantes, 'conflictos': conflictos, 'limites': banco['limites']}
 
 
