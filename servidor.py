@@ -1046,6 +1046,8 @@ def _publica(r):
         veri.get('alcance_escombros'), pub['evaluacion_foto']['rechazada'], pub.get('problemas') or [])
     observaciones_higiene.ajustar_presentacion(pub)
     pub['problema_principal'] = prioridad.seleccionar(pub, veri.get('verificadores') or [])
+    pub['hay_problema'] = bool(pub.get('problemas'))
+    pub['hay_reclamo'] = bool(pub.get('problemas')) or bool(pub.get('categorias_contexto'))
     return pub
 
 
