@@ -523,8 +523,8 @@ campo `costo_api`. La página sigue sin mostrar importes.
 ### Inventario especializado de contenedores
 
 `CONTENEDORES_ESPECIALISTA=1` activa una pasada fija para identificar secos,
-humedos de carga lateral y humedos de carga bilateral. Usa la misma foto
-original, seis referencias privadas y la configuracion validada. La plantilla
+humedos de carga lateral y humedos de carga bilateral. Usa la foto completa,
+cuatro recortes mecánicos de esa misma escena, seis referencias privadas y la configuración validada. La plantilla
 se instala fuera de git en `eval/vision/private/serving-contenedores-051.json`;
 el modulo verifica su SHA-256 antes de cada solicitud. Sin la bandera, el
 comportamiento anterior se conserva. Las cuotas y la opcion de desactivar la
@@ -539,14 +539,27 @@ contradice un reclamo confirmado sobre un contenedor, el inventario publico
 queda en revision. La presencia visible sigue siendo informativa cuando la foto
 no corresponde al texto del reclamo.
 
-Los fallos de transporte no se cachean. Una respuesta valida pero incierta
-puede cachearse y sigue siendo revision, nunca ausencia. La interfaz muestra
-ese estado y el CSV agrega `contenedores_estado` y `contenedores_motivo`.
+Los fallos de transporte no se cachean. En modo Completo, una duda visual válida
+del especialista puede activar una comprobación de presencia con los mismos tres
+verificadores configurados. Cada uno recibe la foto sin inventario ni votos
+previos. Solo tres ausencias explícitas, con evidencia y modelos distintos,
+permiten publicar `tipos=[]`. Una presencia, duda, respuesta inválida o falla
+mantiene la revisión. Las lecturas no proponen tipos ni reemplazan inventarios
+ya confirmados. Económico y Equilibrado no ejecutan esta etapa.
 
-La pasada realiza un solo intento, con un plazo de 40 segundos, y suma su costo
-al procesamiento existente. La API conserva `costo_api` para contabilizar el
-consumo, pero la pagina no muestra ese importe. El promedio observado en 100 fotos fue USD0.0038
-adicionales por foto; no representa el costo de las otras categorias. Tras la
+Cuando se corrobora ausencia, `contenedores.revision_presencia` conserva
+`motivo_previo` y las tres `lecturas`, con `modelo`, `presente` y `evidencia`.
+El campo principal `contenedores.estado` sigue siendo la decisión final: un
+reclamo confirmado sobre un contenedor puede mantenerlo en revisión aunque esas
+lecturas informen ausencia. La interfaz y el CSV conservan ese estado.
+
+El especialista y la comprobación opcional comparten un plazo de 40 segundos.
+Cada lector adicional hace un solo intento y los tres se consultan en paralelo;
+si no queda tiempo, se conserva la revisión. Todas las llamadas suman costos y
+tokens, incluidos intentos fallidos con el consumo conocido. Un fallo original
+del especialista no activa nuevos envíos. La API conserva `costo_api`, pero la
+página no muestra importes. El promedio anterior, sin esta comprobación opcional,
+fue USD0.0038 adicionales por foto en 100 fotos; no representa el costo de las otras categorias. Tras la
 revision humana de cuatro referencias, hubo 98 respuestas automaticas correctas,
 un tipo omitido y una revision. Ese resultado no garantiza la exactitud en otras
 fotos ni evalua el conteo de contenedores.
