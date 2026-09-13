@@ -1044,10 +1044,7 @@ def _publica(r):
     pub = evaluacion_foto.aplicar(pub, veri.get('verificadores') or [])
     pub['observaciones_higiene'] = observaciones_higiene.publicar(veri.get('verificadores') or [],
         veri.get('alcance_escombros'), pub['evaluacion_foto']['rechazada'], pub.get('problemas') or [])
-    if (pub['observaciones_higiene']['bolsones']['retiro_caba'] == 'excluido_por_presentacion'
-            and isinstance(pub.get('verificacion_escombros'), dict)):
-        pub['verificacion_escombros']['requiere_nueva_foto'] = False
-        pub['verificacion_escombros']['requiere_cambio_presentacion'] = True
+    observaciones_higiene.ajustar_presentacion(pub)
     pub['problema_principal'] = prioridad.seleccionar(pub, veri.get('verificadores') or [])
     return pub
 
@@ -2272,6 +2269,14 @@ function renderResultado(d){
     :'No se confirmaron problemas')
     +(revisionMaterial&&(d.hay_problema||d.hay_reclamo)?' · tipo de residuos pendiente de revisión':'');
   let h=`<div class="tarconcl">${esc(concl+aviso)}</div>`;
+  const bolsones=d.observaciones_higiene?.bolsones;
+  if(bolsones?.retiro_caba==='excluido_por_presentacion'){
+    h+=`<div class="tardesc"><strong>Retiro de escombros: presentación no admitida (CABA).</strong> ${esc(bolsones.indicacion||'Consultá al servicio de recolección cómo gestionar este bolsón.')}</div>`;
+  }else if(bolsones?.presente===true){
+    h+='<div class="modo-nota">Se observó un bolsón. La admisibilidad de su retiro no se evaluó.</div>';
+  }else if(bolsones?.estado==='contradictorio'){
+    h+='<div class="modo-nota">La presencia de un bolsón requiere revisión por lecturas contradictorias.</div>';
+  }
   const principal=d.problema_principal;
   if(principal?.estado==='seleccionado'&&principal.criterio!=='unico_confirmado'){
     const problema=probs.find(p=>p.key===principal.key);
