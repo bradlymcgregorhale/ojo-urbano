@@ -17,6 +17,9 @@ def leer(path):
     return json.loads(Path(path).read_bytes())
 
 
+CATEGORIAS = frozenset(leer(Path(__file__).resolve().parents[2] / 'categorias.json'))
+
+
 def guardar(path, value):
     with Path(path).open('x') as f:
         json.dump(value, f, ensure_ascii=False, indent=2)
@@ -93,6 +96,8 @@ def crear(base, registro, revisiones=()):
                 raise ValueError('Correcciones contradictorias: ' + path.name)
             valores[k] = v
         for k, v in valores.items():
+            if k not in CATEGORIAS:
+                raise ValueError('Categoría desconocida: ' + str(k))
             if v not in ('si', 'no', 'duda', 'sin_revisar'):
                 raise ValueError('Etiqueta humana inválida: ' + path.name)
             etiquetas['categorias.' + k] = {'si': 'confirmado', 'no': 'no',
@@ -119,7 +124,9 @@ def crear(base, registro, revisiones=()):
                 raise ValueError('Decisión humana inválida')
             if r.get('exclusion') not in (None, 'interior'):
                 raise ValueError('Exclusión inválida')
-            for v in r.get('categorias', {}).values():
+            for k, v in r.get('categorias', {}).items():
+                if k not in CATEGORIAS:
+                    raise ValueError('Categoría desconocida: ' + str(k))
                 if v not in ('confirmado', 'posible', 'no', 'sin_revisar'):
                     raise ValueError('Categoría humana inválida')
             for v in r.get('materiales', {}).values():
@@ -171,6 +178,8 @@ def etiquetas(c):
     valores = defaultdict(set)
     for a in c['anotaciones']:
         for campo, v in a['etiquetas'].items():
+            if campo.startswith('categorias.') and campo.split('.', 1)[1] not in CATEGORIAS:
+                raise ValueError('Categoría desconocida en el registro: ' + campo)
             valores[campo].add(v)
     conocidos = lambda vs: vs - {'duda', 'sin_revisar'}
     conflictos = [k for k, vs in valores.items() if len(vs) > 1 and conocidos(vs)]
@@ -180,22 +189,34 @@ def etiquetas(c):
 
 
 def observado(r, campo):
+    if r.get('analisis_estado') not in ('completo', 'parcial'):
+        return None
     if campo == 'interior_rechazado':
-        return (r.get('hay_reclamo') is False and all(
+        vacia = (r.get('hay_reclamo') is False and all(
             isinstance(r.get(k), list) and not r[k]
             for k in ('problemas', 'posibles', 'elementos_detectados')))
+        if not vacia:
+            return False
+        evaluacion = r.get('evaluacion_foto')
+        if (not isinstance(evaluacion, dict) or
+                not isinstance(evaluacion.get('rechazada'), bool) or
+                'ambito' not in evaluacion or
+                evaluacion['ambito'] not in ('publica', 'interior', 'mixto', 'indeterminado', None)):
+            return None
+        return evaluacion.get('rechazada') is True and evaluacion.get('ambito') == 'interior'
     key = campo.split('.', 1)[1]
     if any(x.get('key') == key for k in ('problemas', 'elementos_detectados') for x in r.get(k, [])):
         return 'confirmado'
     if any(x.get('key') == key for x in r.get('posibles', [])):
         return 'posible'
-    return 'no'
+    return 'no' if r.get('analisis_estado') == 'completo' else None
 
 
 def comparar(registro, candidata=None, particion='desarrollo'):
     path = Path(registro)
     banco = cargar(path)
     filas, faltantes, conflictos, versiones = [], [], [], set()
+    versiones_referencia, identicas, version_sin_cambio = set(), [], []
     for c in banco['casos']:
         if c['particion'] != particion:
             continue
@@ -206,6 +227,7 @@ def comparar(registro, candidata=None, particion='desarrollo'):
         if not expected:
             continue
         original = obtener(path.parent, c['original'])
+        versiones_referencia.add(c['modo_version'])
         if candidata is None:
             nuevo = original
         else:
@@ -214,6 +236,10 @@ def comparar(registro, candidata=None, particion='desarrollo'):
                 faltantes.append({'foto': c['foto'], 'motivo': 'Falta respuesta candidata'})
                 continue
             nuevo = leer(f)
+            if huella(f.read_bytes()) == c['original']:
+                identicas.append(c['foto'])
+            if nuevo.get('resultado', {}).get('modo_version') == c['modo_version']:
+                version_sin_cambio.append(c['foto'])
         r = nuevo.get('resultado', {})
         if (nuevo.get('foto') != c['foto'] or nuevo.get('modo') != c['modo']
                 or r.get('modo') != c['modo'] or not r.get('modo_version')
@@ -221,7 +247,7 @@ def comparar(registro, candidata=None, particion='desarrollo'):
                 or nuevo.get('entrada_api', {}).get('original_sha256') != c['sha256_foto']
                 or not all(isinstance(r.get(k), list) for k in ('problemas', 'posibles', 'elementos_detectados'))
                 or not isinstance(r.get('hay_reclamo'), bool)
-                or r.get('analisis_estado') == 'sin_verificacion'):
+                or r.get('analisis_estado') not in ('completo', 'parcial')):
             faltantes.append({'foto': c['foto'], 'motivo': 'Respuesta incompatible o sin verificación'})
             continue
         if candidata is not None and nuevo.get('contexto', '') != original.get('contexto', ''):
@@ -230,6 +256,10 @@ def comparar(registro, candidata=None, particion='desarrollo'):
         versiones.add(r['modo_version'])
         for campo, valor in expected.items():
             antes, despues = observado(original['resultado'], campo), observado(r, campo)
+            if antes is None or despues is None:
+                faltantes.append({'foto': c['foto'], 'campo': campo,
+                                  'motivo': 'Falta una decisión verificable en la referencia o candidata'})
+                continue
             ok_antes, ok_despues = antes == valor, despues == valor
             estado = ('acierto_conservado' if ok_antes and ok_despues else
                       'regresion' if ok_antes else 'corregido' if ok_despues else 'error_persistente')
@@ -238,11 +268,16 @@ def comparar(registro, candidata=None, particion='desarrollo'):
     conteos = {k: sum(f['estado'] == k for f in filas) for k in
                ('acierto_conservado', 'regresion', 'corregido', 'error_persistente')}
     aciertos_previos = conteos['acierto_conservado'] + conteos['regresion']
+    preservacion = (candidata is not None and aciertos_previos > 0 and
+                   not (faltantes or conflictos or conteos['regresion'] or identicas or version_sin_cambio)
+                   and len(versiones) == 1)
     return {'version': 1, 'registro': str(path.resolve()), 'particion': particion,
             'solo_referencia': candidata is None, 'versiones_candidatas': sorted(versiones),
-            'sin_regresiones_observadas': aciertos_previos > 0 and not (faltantes or conflictos or conteos['regresion']) and len(versiones) == 1,
+            'versiones_referencia': sorted(versiones_referencia), 'identicas': identicas,
+            'version_sin_cambio': version_sin_cambio,
+            'sin_regresiones_observadas': preservacion,
             'aciertos_previos_evaluados': aciertos_previos,
-            'proteccion_de_aciertos_comprobada': aciertos_previos > 0 and not (faltantes or conflictos or conteos['regresion']) and len(versiones) == 1,
+            'proteccion_de_aciertos_comprobada': preservacion,
             'aprobacion_de_despliegue': False, 'conteos': conteos, 'filas': filas,
             'faltantes': faltantes, 'conflictos': conflictos, 'limites': banco['limites']}
 
@@ -282,7 +317,9 @@ def main():
             return 0
         r = comparar(args.registro, args.candidata, args.particion)
         informe(r, args.informe)
-        print(json.dumps({k:r[k] for k in ('conteos', 'faltantes', 'conflictos', 'sin_regresiones_observadas')}, ensure_ascii=False))
+        print(json.dumps({k:r[k] for k in ('conteos', 'faltantes', 'conflictos',
+              'solo_referencia', 'identicas', 'version_sin_cambio',
+              'sin_regresiones_observadas', 'proteccion_de_aciertos_comprobada')}, ensure_ascii=False))
         # Un registro hecho solo de errores no comprueba preservación de aciertos.
         return 0 if r['proteccion_de_aciertos_comprobada'] else 1
     except (ValueError, KeyError, OSError, TypeError) as e:
