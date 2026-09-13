@@ -6,7 +6,8 @@ const sha=v=>crypto.createHash('sha256').update(v).digest('hex');
 const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=','base64');
 const fotos=Array.from({length:4},(_,i)=>{const id='H'+String(i+1).padStart(4,'0');fs.writeFileSync(path.join(out,'fotos',id+'.png'),image);return{foto:id,archivo:'fotos/'+id+'.png',entrada_api:'fotos/'+id+'.png',sha256:sha(image),sha256_api:sha(image)};});
 fs.writeFileSync(path.join(out,'manifest.json'),JSON.stringify({cantidad:4,fotos}));
-for(const [id,category,status]of [['H0001','recoleccion','completo'],['H0002','retiro_poda','completo'],['H0004','retiro_muebles','parcial']]){const result={modo:'alto',modo_version:'prueba-1',hay_reclamo:true,problemas:[{key:category,nombre:category}],posibles:[{key:'reparacion_vereda',nombre:'Vereda de prueba'}],elementos_detectados:[{key:'contenedor_humedos_lateral',nombre:'Contenedor de prueba'}],descripcion:'RESPUESTA SINTÉTICA PARA PRUEBA',analisis_estado:status,en_duda:['retiro_escombros','contenedor_secos'],tokens_api:10,tokens_api_completos:true,costo_api:0.001};fs.writeFileSync(path.join(analysis,id+'-alto.json'),JSON.stringify({foto:id,modo:'alto',fecha:new Date().toISOString(),resultado:result}));}
+fs.writeFileSync(path.join(temp,'manifest-privado.json'),JSON.stringify({fotos:fotos.map(f=>({...f,particion:'desarrollo'}))}));
+for(const [id,category,status]of [['H0001','recoleccion','completo'],['H0002','retiro_poda','completo'],['H0004','retiro_muebles','parcial']]){const result={problema_principal:{key:category,estado:'seleccionado',criterio:'unico_confirmado'},modo:'alto',modo_version:'prueba-1',hay_reclamo:true,problemas:[{key:category,nombre:category}],posibles:[{key:'reparacion_vereda',nombre:'Vereda de prueba'}],elementos_detectados:[{key:'contenedor_humedos_lateral',nombre:'Contenedor de prueba'}],descripcion:'RESPUESTA SINTÉTICA PARA PRUEBA',analisis_estado:status,en_duda:['retiro_escombros','contenedor_secos'],tokens_api:10,tokens_api_completos:true,costo_api:0.001};fs.writeFileSync(path.join(analysis,id+'-alto.json'),JSON.stringify({foto:id,modo:'alto',entrada_api:{sha256:sha(image),original_sha256:sha(image)},fecha:new Date().toISOString(),resultado:result}));}
 const build=spawnSync(process.env.OJO_PYTHON||'python3',[path.join(__dirname,'generar.py'),temp],{encoding:'utf8'});assert.equal(build.status,0,build.stderr);
 (async()=>{const b=await pp.launch({headless:true});try{
  const page=await b.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('file://'+path.join(out,'revision.html'));assert.equal(await page.$eval('#ambito',e=>e.value),'sin_revisar');await page.click('#aprobar');assert((await page.$eval('#mensaje',e=>e.textContent)).includes('Elegí dónde'));
@@ -37,10 +38,20 @@ const build=spawnSync(process.env.OJO_PYTHON||'python3',[path.join(__dirname,'ge
  techPage.on('pageerror',e=>errors.push(e.message));
  await techPage.goto('file://'+path.join(out,'revision.html'));
  const readState=p=>p.evaluate(()=>JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k=>k.startsWith('ojo-lote-v2:')))));
+ assert.equal(await techPage.$eval('#principal-humano',e=>e.value),'sin_revisar');
  await techPage.select('#principal-humano','recoleccion');await techPage.click('#guardar-prioridad');
  let technicalSaved=await readState(techPage);
  assert.equal(technicalSaved.revisiones.H0001.principal_humano,'recoleccion');assert.equal(technicalSaved.revisiones.H0001.estado,'borrador');assert.equal(await techPage.$eval('#avance',e=>e.textContent),'0 / 4 revisadas');
  await techPage.reload();assert.equal(await techPage.$eval('#principal-humano',e=>e.value),'recoleccion');
+ // La exportación real de prioridad debe llegar al comparador sin aprobar categorías.
+ const priorityDir=path.join(temp,'prioridad-export');fs.mkdirSync(priorityDir);
+ const priorityCdp=await techPage.createCDPSession();await priorityCdp.send('Page.setDownloadBehavior',{behavior:'allow',downloadPath:priorityDir});await techPage.click('#exportar');
+ let priorityFile;for(let i=0;i<100;i++){priorityFile=fs.readdirSync(priorityDir).find(n=>n.endsWith('.json'));if(priorityFile)break;await new Promise(r=>setTimeout(r,20));}assert(priorityFile);
+ priorityFile=path.join(priorityDir,priorityFile);const priorityRaw=fs.readFileSync(priorityFile);
+ const register=spawnSync(process.env.OJO_PYTHON||'python3',[path.join(__dirname,'regresiones.py'),'crear','--base',temp,'--registro',path.join(temp,'registro-prioridad'),'--revision',priorityFile],{encoding:'utf8'});assert.equal(register.status,0,register.stderr);
+ const compare=spawnSync(process.env.OJO_PYTHON||'python3',[path.join(__dirname,'regresiones.py'),'comparar','--registro',register.stdout.trim(),'--informe',path.join(temp,'informe-prioridad')],{encoding:'utf8'});assert.equal(compare.status,1,compare.stderr);
+ const priorityReport=JSON.parse(fs.readFileSync(path.join(temp,'informe-prioridad/comparacion.json')));assert.equal(priorityReport.filas.length,1);assert.equal(priorityReport.filas[0].campo,'problema_principal');assert.equal(priorityReport.filas[0].estado,'acierto_conservado');assert.deepEqual(fs.readFileSync(priorityFile),priorityRaw);
+ const reportPage=await techCtx.newPage();await reportPage.goto('file://'+path.join(temp,'informe-prioridad/comparacion.html'));assert((await reportPage.$eval('table',e=>e.innerText)).includes('problema_principal'));await reportPage.screenshot({path:path.join(temp,'prioridad-comparador.png'),fullPage:true});await reportPage.close();
  await techPage.click('#contexto-insuficiente');assert.equal(await techPage.$eval('#foto-select',e=>e.value),'H0002');
  await techPage.select('#foto-select','H0004');await techPage.click('#calidad-insuficiente');
  technicalSaved=await readState(techPage);

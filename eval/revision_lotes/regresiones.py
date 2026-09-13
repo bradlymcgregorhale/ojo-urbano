@@ -18,6 +18,31 @@ def leer(path):
 
 
 CATEGORIAS = frozenset(leer(Path(__file__).resolve().parents[2] / 'categorias.json'))
+SERVICIOS = CATEGORIAS - {'contenedor_humedos_lateral', 'contenedor_humedos_bilateral',
+                         'contenedor_secos', 'sin_problema'}
+
+
+def prioridad_humana(revision):
+    """Solo la elección explícita del navegador, sin aprobar sus sugerencias (#48)."""
+    valor = revision.get('principal_humano')
+    if valor is None:
+        return {}
+    if not isinstance(valor, str) or valor not in SERVICIOS | {'indeterminado', 'sin_revisar'}:
+        raise ValueError('Prioridad humana inválida')
+    if valor != 'sin_revisar':
+        if (revision.get('ambito') == 'interior' or revision.get('exclusion') == 'interior'
+                or revision.get('revision_tecnica') is not None):
+            raise ValueError('Una foto excluida o sin evaluar no admite prioridad')
+        categorias = revision.get('categorias')
+        if valor != 'indeterminado' and (not isinstance(categorias, dict)
+                                        or categorias.get(valor) != 'confirmado'):
+            raise ValueError('La prioridad debe ser un problema confirmado en la revisión')
+    historial = revision.get('historial')
+    if not isinstance(historial, list) or not any(
+            isinstance(h, dict) and h.get('accion') == 'Revisión de prioridad sin aprobar categorías'
+            for h in historial):
+        return {}
+    return {'problema_principal': valor}
 
 
 def guardar(path, value):
@@ -113,8 +138,15 @@ def crear(base, registro, revisiones=()):
         source = objeto(registro, raw)
         fuentes.append(source)
         for foto, r in export['revisiones'].items():
+            principal = prioridad_humana(r)
+            if r.get('principal_humano') is not None and not principal:
+                omitidas.append({'fuente': source, 'foto': foto,
+                                 'motivo': 'Prioridad sin constancia de guardado explícito; sin puntuar.'})
             if r.get('estado') == 'borrador':
-                omitidas.append({'fuente': source, 'foto': foto, 'motivo': 'Borrador sin puntuar.'})
+                if r.get('principal_humano') is not None:
+                    agregar(foto, r, source, principal, 'exportacion_v2_solo_prioridad')
+                omitidas.append({'fuente': source, 'foto': foto,
+                                 'motivo': 'Categorías y materiales del borrador sin puntuar.'})
                 continue
             if r.get('estado') not in ('aprobado', 'corregido'):
                 raise ValueError('Estado humano inválido')
@@ -141,11 +173,13 @@ def crear(base, registro, revisiones=()):
                 raise ValueError('Exclusión de interior con etiquetas evaluadas')
             etiquetas = ({'interior_rechazado': True} if interior else
                          {'categorias.' + k: v for k, v in r.get('categorias', {}).items()})
+            etiquetas.update(principal)
             agregar(foto, r, source, etiquetas, 'exportacion_v2')
     banco = {'version': 1, 'conjunto': conjunto, 'base_origen': str(base.resolve()),
              'fuentes': sorted(set(fuentes)),
              'casos': list(casos.values()), 'observaciones_sin_puntuar': omitidas,
-             'limites': ['Materiales, prioridad y prosa se conservan sin puntuación automática.',
+             'limites': ['Materiales, prosa y prioridades propuestas en conversación se conservan sin puntuación automática.',
+                        'Solo la prioridad elegida explícitamente en el navegador se puntúa; no aprueba las categorías.',
                         'Duda y sin_revisar no son negativos.',
                         'Una comparación de JSON no evalúa un prompt nuevo.',
                         'La revisión humana tuvo las sugerencias a la vista.']}
@@ -180,11 +214,19 @@ def etiquetas(c):
         for campo, v in a['etiquetas'].items():
             if campo.startswith('categorias.') and campo.split('.', 1)[1] not in CATEGORIAS:
                 raise ValueError('Categoría desconocida en el registro: ' + campo)
+            if campo == 'problema_principal' and v not in SERVICIOS | {'indeterminado', 'sin_revisar'}:
+                raise ValueError('Prioridad desconocida en el registro')
             valores[campo].add(v)
     conocidos = lambda vs: vs - {'duda', 'sin_revisar'}
     conflictos = [k for k, vs in valores.items() if len(vs) > 1 and conocidos(vs)]
     if 'interior_rechazado' in valores and any(k.startswith('categorias.') for k in valores):
         conflictos.append('interior_y_categorias')
+    principales = conocidos(valores.get('problema_principal', set()))
+    if principales and 'interior_rechazado' in valores:
+        conflictos.append('interior_y_prioridad')
+    for principal in principales & SERVICIOS:
+        if valores.get('categorias.' + principal, set()) - {'confirmado', 'sin_revisar'}:
+            conflictos.append('prioridad_y_categoria.' + principal)
     return {k: next(iter(vs)) for k, vs in valores.items() if len(vs) == 1 and conocidos(vs)}, conflictos
 
 
@@ -193,6 +235,37 @@ def observado(r, campo):
             any(not isinstance(k, str) for k in r.get('en_duda', []))):
         return None
     if r.get('analisis_estado') not in ('completo', 'parcial'):
+        return None
+    if campo == 'problema_principal':
+        p = r.get('problema_principal')
+        problemas = r.get('problemas')
+        if not isinstance(p, dict) or 'key' not in p or not isinstance(problemas, list):
+            return None
+        if any(not isinstance(c, dict) or not isinstance(c.get('key'), str)
+               or c['key'] not in SERVICIOS for c in problemas):
+            return None
+        confirmados = {c['key'] for c in problemas}
+        estado, key = p.get('estado'), p.get('key')
+        evaluacion = r.get('evaluacion_foto')
+        if evaluacion is not None and not isinstance(evaluacion, dict):
+            return None
+        rechazada = (evaluacion or {}).get('rechazada') is True
+        if estado == 'no_aplica' and key is None and rechazada:
+            return 'no_aplica'
+        if rechazada:
+            return None
+        if estado == 'seleccionado':
+            if p.get('criterio') not in ('escena', 'pedido_explicito', 'unico_confirmado'):
+                return None
+            if (isinstance(key, str) and key in confirmados
+                    and (p['criterio'] != 'unico_confirmado' or len(confirmados) == 1)):
+                return key
+            if isinstance(key, str) or key is None:
+                return 'seleccion_invalida'
+        elif estado == 'indeterminado' and key is None and len(confirmados) > 1:
+            return 'indeterminado'
+        elif estado == 'sin_problemas_confirmados' and key is None and not confirmados:
+            return 'sin_problemas_confirmados'
         return None
     if campo == 'interior_rechazado':
         vacia = (r.get('hay_reclamo') is False and all(
@@ -222,6 +295,7 @@ def comparar(registro, candidata=None, particion='desarrollo'):
     banco = cargar(path)
     filas, faltantes, conflictos, versiones = [], [], [], set()
     versiones_referencia, identicas, version_sin_cambio = set(), [], []
+    abstenciones_prioridad = {'referencia': 0, 'candidata': 0}
     for c in banco['casos']:
         if c['particion'] != particion:
             continue
@@ -261,6 +335,9 @@ def comparar(registro, candidata=None, particion='desarrollo'):
         versiones.add(r['modo_version'])
         for campo, valor in expected.items():
             antes, despues = observado(original['resultado'], campo), observado(r, campo)
+            if campo == 'problema_principal':
+                abstenciones_prioridad['referencia'] += antes == 'indeterminado'
+                abstenciones_prioridad['candidata'] += despues == 'indeterminado'
             if antes is None or despues is None:
                 faltantes.append({'foto': c['foto'], 'campo': campo,
                                   'motivo': 'Falta una decisión verificable en la referencia o candidata'})
@@ -284,6 +361,10 @@ def comparar(registro, candidata=None, particion='desarrollo'):
             'aciertos_previos_evaluados': aciertos_previos,
             'proteccion_de_aciertos_comprobada': preservacion,
             'aprobacion_de_despliegue': False, 'conteos': conteos, 'filas': filas,
+            'conteos_prioridad': {k: sum(f['estado'] == k and f['campo'] == 'problema_principal'
+                                        for f in filas) for k in conteos},
+            'abstenciones_prioridad': abstenciones_prioridad,
+            'faltantes_prioridad': sum(f.get('campo') == 'problema_principal' for f in faltantes),
             'faltantes': faltantes, 'conflictos': conflictos, 'limites': banco['limites']}
 
 
