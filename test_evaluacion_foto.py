@@ -277,6 +277,40 @@ class EvaluacionFotoTest(unittest.TestCase):
         self.assertFalse(r['hay_reclamo'])
         self.assertTrue(r['evaluacion_foto']['requiere_revision'])
 
+    def test_reclamo_textual_sobrevive_cuando_se_demora_higiene(self):
+        original = salida()
+        original['problemas'] = [{'key': 'retiro_poda', 'nombre': 'Retiro de poda'}]
+        original['posibles'] = []
+        original['categorias_contexto'] = [{'key': 'retiro_poda', 'respaldo': 'compatible'}]
+        original['descripcion'] = 'Pedido de retiro'
+        original['predominante'] = 'retiro_poda'
+        votos = [voto('a', ambito='publica'), voto('b', ambito='interior')]
+        r = E.aplicar(original, votos)
+        self.assertFalse(r['evaluacion_foto']['rechazada'])
+        self.assertEqual(r['problemas'], [])
+        self.assertEqual([p['key'] for p in r['posibles']], ['retiro_poda'])
+        self.assertEqual(r['categorias_contexto'], original['categorias_contexto'])
+        self.assertFalse(r['hay_problema'])
+        self.assertTrue(r['hay_reclamo'])
+        self.assertEqual(r['descripcion'], 'Pedido de retiro')
+        self.assertTrue(r['evaluacion_foto']['requiere_revision'])
+
+    def test_reclamo_textual_sobrevive_si_higiene_pasa_a_posibles(self):
+        original = salida()
+        original['problemas'] = [{'key': 'retiro_poda'}]
+        original['posibles'] = []
+        original['categorias_contexto'] = [{'key': 'retiro_escombros', 'respaldo': 'compatible'}]
+        original['predominante'] = 'retiro_poda'
+        original['problema_principal'] = {'key': 'retiro_poda'}
+        votos = [voto('a', ambito='indeterminado'), voto('b', ambito='interior')]
+        r = E.aplicar(original, votos)
+        self.assertFalse(r['evaluacion_foto']['rechazada'])
+        self.assertEqual(r['problemas'], [])
+        self.assertEqual([p['key'] for p in r['posibles']], ['retiro_poda'])
+        self.assertFalse(r['hay_problema'])
+        self.assertTrue(r['hay_reclamo'])
+        self.assertEqual(r['categorias_contexto'], original['categorias_contexto'])
+
     def test_p044_publica_conserva_voluminosos(self):
         original = salida()
         original['problemas'] = [{'key': 'retiro_muebles'}]

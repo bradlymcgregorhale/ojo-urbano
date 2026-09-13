@@ -154,7 +154,7 @@ def _demorar_higiene_sin_via_publica(r, evaluacion, verificadores):
         ya.add(p.get('key'))
     r['posibles'] = posibles
     r['hay_problema'] = bool(resto)
-    r['hay_reclamo'] = bool(resto)
+    r['hay_reclamo'] = bool(resto) or bool(r.get('categorias_contexto')) or bool(r.get('categorias_contexto'))
     if r.get('predominante') in RETIROS_HIGIENE:
         r['predominante'] = resto[0]['key'] if resto and isinstance(resto[0], dict) else None
     principal = r.get('problema_principal')
@@ -163,7 +163,7 @@ def _demorar_higiene_sin_via_publica(r, evaluacion, verificadores):
     evaluacion['requiere_revision'] = True
     if not evaluacion.get('indicacion'):
         evaluacion['indicacion'] = INDICACION_AMBITO
-    if not resto:
+    if not resto and not r.get('categorias_contexto'):
         r['descripcion'] = evaluacion['indicacion']
     return r
 
