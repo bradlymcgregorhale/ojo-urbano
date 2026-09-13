@@ -2286,6 +2286,7 @@ function renderResultado(d){
   if(d.contexto_visual?.suficiente===false)h+=`<div class="tardesc">${esc(d.contexto_visual.indicacion)}</div>`;
   if(d.estado_evaluacion==='calidad_contradictoria')h+=`<div class="tardesc">${esc(d.evaluacion_foto.indicacion)}</div>`;
   if(d.estado_evaluacion==='senal_negativa_no_corroborada')h+='<div class="tardesc">Hay una observación sobre la ubicación, calidad o encuadre que requiere revisión. La foto no se rechazó automáticamente.</div>';
+  if(d.estado_evaluacion==='indeterminada'&&d.evaluacion_foto?.requiere_revision&&d.evaluacion_foto.indicacion)h+=`<div class="tardesc">${esc(d.evaluacion_foto.indicacion)}</div>`;
   if(d.modo)h+=`<div class="modo-nota">Modo de análisis: ${esc(nombresModos[d.modo]||d.modo)}</div>`;
   if(d.analisis_estado==='sin_verificacion')h+='<div class="tardesc">Sin verificación externa. Este resultado no confirma que la foto esté libre de problemas.</div>';
   else if(d.analisis_estado==='parcial')h+='<div class="tardesc">Análisis parcial: no se pudieron completar algunas verificaciones.</div>';
