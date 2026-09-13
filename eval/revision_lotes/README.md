@@ -66,13 +66,15 @@ Por defecto se usa únicamente desarrollo. `--particion evaluacion_reservada` si
 
 Salida 0 significa que una candidata de versión nueva conservó los aciertos previos evaluados sin falta de cobertura ni conflictos. Salida 1 señala regresiones, datos faltantes, conflictos, ausencia de aciertos previos para proteger, comparación solo de referencia, archivos idénticos o versión sin cambios. Los campos `identicas`, `version_sin_cambio` y `versiones_referencia` distinguen estas condiciones. Salida 2 señala archivos inválidos. Ninguna salida aprueba por sí sola un despliegue ni demuestra exactitud general. Un registro compuesto solo por correcciones de errores necesita también aprobaciones humanas de casos correctos para probar preservación.
 
-### Reproducción acotada de poda (#45)
+### Reproducción acotada de poda y voluminosos (#45)
 
 ```sh
 .venv/bin/python eval/revision_lotes/reproducir_poda.py \
   /ruta/H0001-alto.json /ruta/H0002-alto.json \
   --salida /ruta/nueva/reproduccion.json
 ```
+
+Por defecto reproduce poda. Para comprobar voluminosos, agregá `--retiro retiro_muebles`. Para una escena mixta, usá `--retiro retiro_poda --retiro retiro_muebles`: cada retiro debe tener al menos dos lectores distintos válidos, sin voto anulado y con evidencia explícita no vacía guardada. Esta condición es más estricta que la primera versión, que contaba votos sin verificar esos campos. `cumple_retiros` informa cada resultado por separado. Una segunda ejecución de la misma política, desactivando únicamente la regla de preservación de retiros visibles, comprueba si esa regla fue necesaria para conservar cada retiro. `regla_preservacion_necesaria` distingue ese aporte de un servicio que ya sobrevivía por otra razón; solo se devuelve éxito si la regla fue necesaria para todos los retiros solicitados. Las fuentes reconstruidas ya satisfacen la corroboración inicial: esto comprueba la etapa de descarte y su alcance, no la veracidad visual de esos votos. El campo anterior `cumple_poda_humana` se conserva, con valor nulo si no se evaluó poda. No uses casos de evaluación reservada para ajustar la política a partir de esta reproducción.
 
 Reutiliza las respuestas de revisión guardadas para ejecutar el consenso de alcance y la política real de descarte, con la red bloqueada y sin pesos. La entrada previa al descarte es un escenario mínimo reconstruido: el JSON público no conserva todo el estado interno, por lo que esto no reproduce la API completa. El informe conserva huellas del original y del código. Devuelve 1 mientras esos casos sigan perdiendo la poda; ese fallo esperado muestra una corrección pendiente, no un test exitoso de exactitud. Para comprobar si cambia lo que un prompt ve en la foto siguen haciendo falta inferencias nuevas, en una evaluación separada.
 
