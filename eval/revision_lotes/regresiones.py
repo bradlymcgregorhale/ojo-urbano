@@ -1,6 +1,7 @@
 """Registro privado de revisiones y comparación sin inferencia (#51)."""
 import argparse
 from collections import defaultdict
+from datetime import datetime
 import hashlib
 import html
 import json
@@ -20,6 +21,82 @@ def leer(path):
 CATEGORIAS = frozenset(leer(Path(__file__).resolve().parents[2] / 'categorias.json'))
 SERVICIOS = CATEGORIAS - {'contenedor_humedos_lateral', 'contenedor_humedos_bilateral',
                          'contenedor_secos', 'sin_problema'}
+TECNICOS = {'calidad': 'evaluacion_foto.calidad_suficiente',
+            'contexto': 'contexto_visual.suficiente'}
+
+
+def leer_estricto(raw):
+    def unico(pares):
+        resultado = {}
+        for clave, valor in pares:
+            if clave in resultado:
+                raise ValueError('Clave JSON duplicada: ' + clave)
+            resultado[clave] = valor
+        return resultado
+    return json.loads(raw, object_pairs_hook=unico)
+
+
+def fecha_tecnica(valor):
+    if not isinstance(valor, str):
+        raise ValueError('Fecha de revisión inválida')
+    fecha = datetime.fromisoformat(valor.replace('Z', '+00:00'))
+    if fecha.tzinfo is None:
+        raise ValueError('La fecha necesita zona horaria')
+
+
+def validar_revision_tecnica(raw, manifest, fotos, particiones, base):
+    """Valida la revisión de imágenes, sin adjudicar servicios ni ámbito (#46, #52)."""
+    if not isinstance(manifest, dict) or manifest.get('particion') != 'desarrollo':
+        raise ValueError('La revisión técnica admite solo desarrollo')
+    casos = manifest.get('casos')
+    if not isinstance(casos, list) or not casos:
+        raise ValueError('Manifest técnico sin casos')
+    identidad = {}
+    for c in casos:
+        if not isinstance(c, dict) or set(c) != {'foto', 'sha256_foto'}:
+            raise ValueError('Identidad técnica inválida')
+        foto, digest = c['foto'], c['sha256_foto']
+        if (not isinstance(foto, str) or not re.fullmatch(r'H\d{4}', foto)
+                or foto in identidad or foto not in fotos
+                or particiones.get(foto) != 'desarrollo'
+                or digest != fotos[foto]['sha256_api']):
+            raise ValueError('Foto técnica ajena, duplicada o reservada')
+        if huella((base / 'entrega/entradas-api' / (foto + '.jpg')).read_bytes()) != digest:
+            raise ValueError('Cambió la imagen revisada: ' + foto)
+        identidad[foto] = digest
+    dataset = huella(json.dumps(casos, sort_keys=True).encode())
+    export = leer_estricto(raw)
+    if (not isinstance(export, dict)
+            or export.get('tipo') != 'ojo-urbano-calidad-contexto-v1'
+            or type(export.get('version')) is not int or export['version'] != 1
+            or export.get('dataset_id') != dataset or manifest.get('dataset_id') != dataset
+            or set(export) != {'tipo', 'version', 'dataset_id', 'exportada_en',
+                               'alcance', 'revisiones', 'borradores_pendientes'}):
+        raise ValueError('Exportación técnica incompatible')
+    fecha_tecnica(export['exportada_en'])
+    revisiones, borradores = export['revisiones'], export['borradores_pendientes']
+    if (not isinstance(revisiones, dict) or not isinstance(borradores, list)
+            or any(not isinstance(f, str) or f not in identidad for f in borradores)
+            or len(set(borradores)) != len(borradores)):
+        raise ValueError('Revisiones o borradores inválidos')
+    valores = {'suficiente': True, 'insuficiente': False,
+               'indeterminado': 'duda', 'sin_revisar': 'sin_revisar'}
+    resultado = []
+    for foto, r in revisiones.items():
+        if (foto not in identidad or not isinstance(r, dict)
+                or set(r) != {'foto', 'sha256_foto', 'calidad', 'contexto', 'notas', 'fecha', 'accion'}
+                or r['foto'] != foto or r['sha256_foto'] != identidad[foto]
+                or r['accion'] != 'Confirmación humana explícita de calidad y contexto'
+                or not isinstance(r['notas'], str)):
+            raise ValueError('Revisión técnica sin identidad o confirmación explícita')
+        fecha_tecnica(r['fecha'])
+        etiquetas = {}
+        for campo, destino in TECNICOS.items():
+            if not isinstance(r[campo], str) or r[campo] not in valores:
+                raise ValueError('Valor técnico inválido: ' + campo)
+            etiquetas[destino] = valores[r[campo]]
+        resultado.append((foto, r, etiquetas))
+    return resultado
 
 
 def prioridad_humana(revision):
@@ -71,7 +148,9 @@ def obtener(root, digest):
     return json.loads(raw)
 
 
-def crear(base, registro, revisiones=()):
+def crear(base, registro, revisiones=(), revisiones_tecnicas=(), manifest_tecnico=None):
+    if bool(revisiones_tecnicas) != (manifest_tecnico is not None):
+        raise ValueError('La revisión técnica requiere su manifest, y viceversa')
     base, registro = Path(base), Path(registro)
     registro.mkdir(parents=True, exist_ok=True)
     (registro / 'objetos').mkdir(exist_ok=True)
@@ -127,6 +206,15 @@ def crear(base, registro, revisiones=()):
                 raise ValueError('Etiqueta humana inválida: ' + path.name)
             etiquetas['categorias.' + k] = {'si': 'confirmado', 'no': 'no',
                                            'duda': 'duda', 'sin_revisar': 'sin_revisar'}[v]
+        if revisiones_tecnicas:
+            # Solo marcas estructuradas previas; no convertir una descripción de
+            # sombras o encuadre en una decisión técnica que la persona no tomó.
+            contexto = r.get('contexto_visual_suficiente')
+            calidad = r.get('calidad_humana')
+            if type(contexto) is bool:
+                etiquetas[TECNICOS['contexto']] = contexto
+            if isinstance(calidad, str) and calidad in ('suficiente', 'insuficiente'):
+                etiquetas[TECNICOS['calidad']] = calidad == 'suficiente'
         agregar(r['foto'], r, source, etiquetas, 'conversacion_parcial')
         if not etiquetas:
             omitidas.append({'fuente': source, 'motivo': 'Observación sin categoría adjudicada; conservada sin puntuar.'})
@@ -175,6 +263,24 @@ def crear(base, registro, revisiones=()):
                          {'categorias.' + k: v for k, v in r.get('categorias', {}).items()})
             etiquetas.update(principal)
             agregar(foto, r, source, etiquetas, 'exportacion_v2')
+    if revisiones_tecnicas:
+        manifest_raw = Path(manifest_tecnico).read_bytes()
+        tecnico = leer_estricto(manifest_raw)
+        tecnicas_vistas = set()
+        for path in revisiones_tecnicas:
+            raw = Path(path).read_bytes()
+            entradas = validar_revision_tecnica(raw, tecnico, fotos, particiones, base)
+            source = objeto(registro, raw)
+            fuentes.extend([source, objeto(registro, manifest_raw)])
+            if source in tecnicas_vistas:
+                continue
+            tecnicas_vistas.add(source)
+            for foto, r, marcas in entradas:
+                # La persona revisó la imagen. El original se vincula aquí para comparar,
+                # sin atribuirle aprobación de esa respuesta ni de sus categorías.
+                anclada = dict(r, original_huella=huella(
+                    (base / 'analisis' / (foto + '-alto.json')).read_bytes()))
+                agregar(foto, anclada, source, marcas, 'exportacion_tecnica_v1')
     banco = {'version': 1, 'conjunto': conjunto, 'base_origen': str(base.resolve()),
              'fuentes': sorted(set(fuentes)),
              'casos': list(casos.values()), 'observaciones_sin_puntuar': omitidas,
@@ -183,6 +289,9 @@ def crear(base, registro, revisiones=()):
                         'Duda y sin_revisar no son negativos.',
                         'Una comparación de JSON no evalúa un prompt nuevo.',
                         'La revisión humana tuvo las sugerencias a la vista.']}
+    if revisiones_tecnicas:
+        banco['limites'].append('La revisión técnica separada evalúa imágenes sin sugerencias; '
+                                'no aprueba categorías, ámbito ni la respuesta original.')
     raw = (json.dumps(banco, sort_keys=True, ensure_ascii=False, indent=2) + '\n').encode()
     nombre = 'registro-' + huella(raw) + '.json'
     destino = registro / nombre
@@ -216,6 +325,11 @@ def etiquetas(c):
                 raise ValueError('Categoría desconocida en el registro: ' + campo)
             if campo == 'problema_principal' and v not in SERVICIOS | {'indeterminado', 'sin_revisar'}:
                 raise ValueError('Prioridad desconocida en el registro')
+            if campo in TECNICOS.values() and not (
+                    type(v) is bool or isinstance(v, str) and v in ('duda', 'sin_revisar')):
+                raise ValueError('Etiqueta técnica inválida en el registro')
+            if campo in TECNICOS.values() and v == 'sin_revisar':
+                continue
             valores[campo].add(v)
     conocidos = lambda vs: vs - {'duda', 'sin_revisar'}
     conflictos = [k for k, vs in valores.items() if len(vs) > 1 and conocidos(vs)]
@@ -236,6 +350,14 @@ def observado(r, campo):
         return None
     if r.get('analisis_estado') not in ('completo', 'parcial'):
         return None
+    if campo in TECNICOS.values():
+        grupo, clave = campo.split('.')
+        value = r.get(grupo)
+        estado = 'estado_calidad' if grupo == 'evaluacion_foto' else 'estado'
+        if (not isinstance(value, dict) or value.get(estado) != 'evaluado'
+                or type(value.get(clave)) is not bool):
+            return None
+        return value[clave]
     if campo == 'problema_principal':
         p = r.get('problema_principal')
         problemas = r.get('problemas')
@@ -391,6 +513,8 @@ def main():
     a.add_argument('--base', required=True)
     a.add_argument('--registro', required=True)
     a.add_argument('--revision', action='append', default=[])
+    a.add_argument('--revision-tecnica', action='append', default=[])
+    a.add_argument('--manifest-tecnico')
     a = sub.add_parser('comparar')
     a.add_argument('--registro', required=True)
     a.add_argument('--candidata')
@@ -399,7 +523,8 @@ def main():
     args = p.parse_args()
     try:
         if args.accion == 'crear':
-            print(crear(args.base, args.registro, args.revision))
+            print(crear(args.base, args.registro, args.revision,
+                        args.revision_tecnica, args.manifest_tecnico))
             return 0
         r = comparar(args.registro, args.candidata, args.particion)
         informe(r, args.informe)
