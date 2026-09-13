@@ -1,5 +1,6 @@
 import copy
 import unittest
+import sys
 import observaciones_higiene as H
 
 
@@ -63,3 +64,90 @@ class ObservacionesHigieneTest(unittest.TestCase):
         self.assertIsNone(H.normalizar({'materiales':['piedras']}))
         self.assertIsNone(H.normalizar({'materiales':[{}]}))
         self.assertIsNone(H.normalizar({'materiales':[]} )['hay_bolson'])
+
+    def test_bolson_distingue_no_evaluado_duda_desacuerdo_y_ausencia(self):
+        self.assertEqual(H.publicar([])['bolsones']['estado'], 'no_evaluado')
+        self.assertEqual(H.publicar([voto('a')])['bolsones']['estado'], 'indeterminado')
+        r = H.publicar([voto('a'), voto('b', hay_bolson=True)])['bolsones']
+        self.assertEqual(r['estado'], 'contradictorio')
+        self.assertIsNone(r['presente'])
+        self.assertIsNone(r['servicio'])
+        r = H.publicar([voto('a'), voto('b')])['bolsones']
+        self.assertIs(r['presente'], False)
+        self.assertEqual(r['estado'], 'corroborado')
+
+    def test_exclusion_de_bolson_identifica_politica_y_accion_sin_inferir_material(self):
+        alcance = {'estado': 'excluido', 'revisiones': [
+            {'modelo': m, 'ubicacion': 'publica', 'presentacion': 'solo_bolson'} for m in ['a', 'b']]}
+        r = H.publicar([], alcance)
+        self.assertEqual(r['materiales'], [])
+        b = r['bolsones']
+        self.assertIs(b['presente'], True)
+        self.assertEqual(b['jurisdiccion'], 'CABA')
+        self.assertEqual(b['politica'], 'bolsones_obra_caba')
+        self.assertEqual(b['servicio'], 'retiro_escombros')
+        self.assertEqual(b['motivo'], 'presentacion_no_admitida')
+        self.assertEqual(b['accion'], 'consultar_servicio')
+        self.assertIn('147', b['indicacion'])
+        self.assertNotIn('500', b['indicacion'])
+        for variante in ['fallo', 'mixto', 'duplicado']:
+            a = copy.deepcopy(alcance)
+            if variante == 'fallo': a['fallo'] = True
+            if variante == 'mixto': a['revisiones'][1]['presentacion'] = 'bolsas_chicas_o_suelto'
+            if variante == 'duplicado': a['revisiones'][1]['modelo'] = 'a'
+            b = H.publicar([], a)['bolsones']
+            self.assertEqual(b['retiro_caba'], 'no_evaluado')
+            self.assertIsNone(b['motivo'])
+            self.assertIsNone(b['accion'])
+
+    def test_otra_revision_de_foto_se_conserva_ante_presentacion_excluida(self):
+        base = {'problemas': [{'key': 'retiro_poda'}], 'predominante': 'retiro_poda',
+                'observaciones_higiene': {'bolsones': {'retiro_caba': 'excluido_por_presentacion'}},
+                'verificacion_escombros': {'requiere_nueva_foto': True},
+                'evaluacion_foto': {}, 'contexto_visual': {}}
+        for campo in ['ninguno', 'calidad', 'complementaria', 'contexto']:
+            p = copy.deepcopy(base)
+            if campo == 'calidad': p['evaluacion_foto']['requiere_nueva_foto'] = True
+            if campo == 'complementaria': p['evaluacion_foto']['requiere_foto_complementaria'] = True
+            if campo == 'contexto': p['contexto_visual']['suficiente'] = False
+            antes = copy.deepcopy(p)
+            H.ajustar_presentacion(p)
+            self.assertIs(p['verificacion_escombros']['requiere_nueva_foto'], campo != 'ninguno')
+            self.assertIs(p['verificacion_escombros']['requiere_cambio_presentacion'], True)
+            p['verificacion_escombros'] = antes['verificacion_escombros']
+            self.assertEqual(p, antes)
+        for retiro in ['no_evaluado', None]:
+            p = copy.deepcopy(base)
+            p['observaciones_higiene']['bolsones']['retiro_caba'] = retiro
+            antes = copy.deepcopy(p)
+            H.ajustar_presentacion(p)
+            self.assertEqual(p, antes)
+        for revision in [None, [], 'sin revisión']:
+            p = copy.deepcopy(base)
+            p['verificacion_escombros'] = revision
+            antes = copy.deepcopy(p)
+            H.ajustar_presentacion(p)
+            self.assertEqual(p, antes)
+
+    @unittest.skipUnless('servidor' in sys.modules, 'Ejecutar mediante pruebas.py sin cargar pesos')
+    def test_publicacion_evalua_contexto_antes_de_ajustar_presentacion(self):
+        import servidor as S
+        import evaluacion_foto as E
+        for suficiente in [True, False]:
+            votos = [voto(m, hay_bolson=True) for m in ['a', 'b']]
+            for v in votos:
+                v['evaluacion_foto'] = E.normalizar({
+                    'ambito': 'publica', 'evidencia_ambito': 'Bolsón sobre la vereda',
+                    'calidad_suficiente': True, 'motivos_calidad': [],
+                    'contexto_suficiente': suficiente,
+                    'motivos_contexto': [] if suficiente else ['encuadre_demasiado_cerrado']})
+            alcance = {'estado': 'excluido', 'revisiones': [
+                {'modelo': m, 'ubicacion': 'publica', 'presentacion': 'solo_bolson'} for m in ['a', 'b']]}
+            r = {'problemas': [{'key': 'retiro_poda', 'nombre': 'Poda', 'gravedad': 3, 'fuentes': ['a', 'b']}],
+                 'verificacion_escombros': {'estado': 'excluido', 'requiere_nueva_foto': True},
+                 'detalle': {'verificacion': {'verificadores': votos, 'alcance_escombros': alcance}}}
+            p = S._publica(r)
+            self.assertIs(p['contexto_visual']['suficiente'], suficiente)
+            self.assertIs(p['verificacion_escombros']['requiere_nueva_foto'], not suficiente)
+            self.assertTrue(p['verificacion_escombros']['requiere_cambio_presentacion'])
+            self.assertEqual([c['key'] for c in p['problemas']], ['retiro_poda'])

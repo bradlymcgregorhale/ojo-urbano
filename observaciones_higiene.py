@@ -9,6 +9,31 @@ FUENTE_LIMPIEZA = 'https://buenosaires.gob.ar/gcaba_historico/noticias/buenos-ai
 FUENTE_ANIMALES = 'https://boletinoficialpdf.buenosaires.gob.ar/util/imagen.php?idf=1&idn=30564'
 
 
+def _bolsones(presente, estado, retiro='no_evaluado'):
+    excluido = retiro == 'excluido_por_presentacion'
+    return {'presente': presente, 'estado': estado, 'retiro_caba': retiro,
+            'jurisdiccion': 'CABA', 'politica': 'bolsones_obra_caba',
+            'servicio': 'retiro_escombros' if excluido else None,
+            'motivo': 'presentacion_no_admitida' if excluido else None,
+            'accion': 'consultar_servicio' if excluido else None,
+            'indicacion': 'Consultá al 147 cómo gestionar el retiro del bolsón.' if excluido else None}
+
+
+def ajustar_presentacion(publica):
+    """Ajusta la acción informativa en la respuesta propia, sin alterar servicios."""
+    bolsones = (publica.get('observaciones_higiene') or {}).get('bolsones') or {}
+    revision = publica.get('verificacion_escombros')
+    if bolsones.get('retiro_caba') != 'excluido_por_presentacion' or not isinstance(revision, dict):
+        return
+    foto = publica.get('evaluacion_foto') or {}
+    contexto = publica.get('contexto_visual') or {}
+    revision['requiere_nueva_foto'] = bool(
+        foto.get('requiere_nueva_foto') is True
+        or foto.get('requiere_foto_complementaria') is True
+        or contexto.get('suficiente') is False)
+    revision['requiere_cambio_presentacion'] = True
+
+
 def normalizar(valor):
     if not isinstance(valor, dict):
         return None
@@ -36,7 +61,7 @@ def normalizar(valor):
 def publicar(verificadores, alcance=None, rechazada=False, problemas=()):
     if rechazada:
         return {'estado': 'no_aplica', 'materiales': [],
-                'bolsones': {'presente': None, 'estado': 'no_aplica', 'retiro_caba': 'no_evaluado'},
+                'bolsones': _bolsones(None, 'no_aplica'),
                 'orientacion_limpieza': {'estado': 'no_aplica'}}
     lectores = [v for v in verificadores if isinstance(v, dict)]
     completos = (len(lectores) >= 2 and len({v.get('modelo') for v in lectores if v.get('modelo')}) == len(lectores)
@@ -69,6 +94,10 @@ def publicar(verificadores, alcance=None, rechazada=False, problemas=()):
     if solo_bolson:
         bolson = None if conflicto_bolson else True
     elegibilidad = 'excluido_por_presentacion' if solo_bolson and bolson is True and (alcance or {}).get('estado') == 'excluido' else 'no_evaluado'
+    desacuerdo = completos and any(v is True for v in valores) and any(v is False for v in valores)
+    estado_bolson = ('contradictorio' if conflicto_bolson or (bolson is None and desacuerdo) else
+                     'corroborado' if bolson is not None else
+                     'no_evaluado' if not observaciones and not revisiones else 'indeterminado')
     orientacion = {'estado': 'indeterminada', 'es_informativa': True}
     ordinarias = {'hojas', 'tierra_polvo', 'papel_carton', 'plastico'}
     cotidianos = bool(materiales) and all(m['estado'] == 'corroborado'
@@ -90,5 +119,5 @@ def publicar(verificadores, alcance=None, rechazada=False, problemas=()):
                           indicacion='Quien lleva al animal debe recoger sus deyecciones. La foto no identifica a esa persona ni determina otras responsabilidades.')
     return {'estado': 'evaluado' if completos else 'parcial' if observaciones else 'no_evaluado',
             'materiales': materiales,
-            'bolsones': {'presente': bolson, 'estado': 'contradictorio' if conflicto_bolson else 'corroborado' if bolson is not None else 'indeterminado',
-                         'retiro_caba': elegibilidad}, 'orientacion_limpieza': orientacion}
+            'bolsones': _bolsones(bolson, estado_bolson, elegibilidad),
+            'orientacion_limpieza': orientacion}

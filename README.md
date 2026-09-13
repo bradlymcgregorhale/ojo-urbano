@@ -573,7 +573,33 @@ La API separa la correspondencia con el comentario (`foto_valida`) de la posibil
 - `problema_principal`: selecciona una categoría ya confirmada. Con varios problemas necesita acuerdo entre lectores; ante discrepancia queda indeterminado. Los demás problemas permanecen en la respuesta.
 - `observaciones_higiene.materiales`: observaciones de material, ubicación y presentación, con estado de corroboración. La cantidad es relativa; no estima kilos ni metros cúbicos. El material no determina por sí solo el servicio.
 - `observaciones_higiene.bolsones`: distingue presencia (`true`, `false`, `null`) de exclusión del retiro por presentación. No pide otra foto únicamente porque el material esté en un bolsón excluido.
+
 - `observaciones_higiene.orientacion_limpieza`: orientación informativa, sin anular recolección, otros retiros ni reclamos independientes. La limpieza cotidiana de la vereda requiere un encuadre claro frente a un inmueble, material liviano aislado y acuerdo entre lectores. Bolsas, acumulaciones importantes de basura, poda cortada, muebles y materiales de obra quedan fuera de esa orientación. Las hojas caídas naturalmente pueden ser abundantes; su cantidad no las convierte en residuos domiciliarios.
+
+En `bolsones`, `estado` diferencia `corroborado`, `contradictorio`,
+`indeterminado`, `no_evaluado` y `no_aplica`. La falta de evaluación no equivale
+a ausencia. El campo `retiro_caba` conserva su contrato: una presencia
+corroborada no basta para excluir un servicio.
+
+Cuando el alcance ya excluyó el retiro por presentación, el resumen informa
+`jurisdiccion: "CABA"`, `politica: "bolsones_obra_caba"`,
+`servicio: "retiro_escombros"`, `motivo: "presentacion_no_admitida"`,
+`accion: "consultar_servicio"` y una `indicacion` para consultar al 147.
+Sin esa exclusión, servicio, motivo, acción e indicación son `null`.
+Jurisdicción y política identifican la configuración aplicada incluso cuando
+el retiro queda sin evaluar; no representan un hallazgo de material.
+La política identifica el criterio operativo existente del proyecto; no
+determina el material o peso ni se aplica como regla nacional.
+
+La [información municipal de recolección programada](https://buenosaires.gob.ar/gcaba_historico/jefatura-de-gabinete/higiene/recoleccion-programada),
+consultada el 13/09/2026, indica el 147 como canal del servicio. Describe
+condiciones de retiro, pero no expresa una prohibición universal de bolsones.
+La orientación no prescribe fraccionar o trasladar material a partir de una foto.
+
+La interfaz distingue la presentación no admitida de una foto insuficiente y
+conserva los otros problemas confirmados. `requiere_cambio_presentacion` no
+anula una solicitud de foto por calidad o contexto: en esos casos
+`verificacion_escombros.requiere_nueva_foto` sigue en `true`.
 
 La guía del Gobierno de la Ciudad indica barrer desde el cordón hacia el frente, juntar los residuos y embolsarlos. No indica barrerlos a la calzada. Las deyecciones de animales tienen una obligación de recolección para quien lleva al animal; una foto no identifica a esa persona. Las fuentes de estas orientaciones se incluyen en el objeto de respuesta cuando corresponde:
 
