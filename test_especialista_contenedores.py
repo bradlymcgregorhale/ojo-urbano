@@ -54,6 +54,46 @@ class Inventario(unittest.TestCase):
             self.assertEqual(E.interpretar(respuesta(tipos))['tipos'], tipos)
         self.assertEqual(E.interpretar(respuesta(uncertain=True)), E.revision())
 
+    def test_observaciones_en_revision_conservan_reclamos(self):
+        original = {
+            'problemas': [{'key': k, 'gravedad': 3} for k in
+                          ['reparacion_contenedor', 'contenedor_desbordado', 'vaciado_contenedor']],
+            'elementos_detectados': [{'key': E.TIPOS[0]}],
+            'modelos': [
+                {'modelo': 'a', 'ok': True, 'categorias': [{'key': k} for k in E.TIPOS[:2]]},
+                {'modelo': 'b', 'ok': True, 'categorias': [{'key': E.TIPOS[1]}]},
+                {'modelo': 'c', 'ok': False, 'categorias': [{'key': E.TIPOS[2]}]},
+            ],
+        }
+        antes = copy.deepcopy(original)
+        for inventario in [E.revision(), E.revision(fallo=True), None,
+                           {'estado': 'confirmado', 'tipos': []}]:
+            with self.subTest(inventario=inventario):
+                salida = E.aplicar(original, inventario, {})
+                self.assertEqual(salida['contenedores']['estado'], 'revision')
+                self.assertIsNone(salida['contenedores']['tipos'])
+                if inventario and inventario.get('estado') == 'confirmado':
+                    self.assertIn('resultados contradictorios', salida['contenedores']['motivo'])
+                self.assertEqual(salida['contenedores']['observaciones_tipos'], [
+                    {'key': E.TIPOS[0], 'fuentes': 1, 'estado': 'pendiente_de_inventario'},
+                    {'key': E.TIPOS[1], 'fuentes': 2, 'estado': 'pendiente_de_inventario'},
+                ])
+                self.assertEqual(salida['elementos_detectados'], [])
+                self.assertEqual(salida['problemas'], antes['problemas'])
+                self.assertEqual(original, antes)
+
+    def test_sin_observaciones_no_equivale_a_ausencia(self):
+        original = {'problemas': [{'key': 'retiro_muebles'}], 'modelos': []}
+        incierto = E.aplicar(original, E.revision(), {})
+        vacio = E.aplicar(original, {'estado': 'confirmado', 'tipos': []}, {})
+        self.assertEqual(incierto['contenedores']['observaciones_tipos'], [])
+        self.assertIsNone(incierto['contenedores']['tipos'])
+        self.assertEqual(incierto['contenedores']['estado'], 'revision')
+        self.assertEqual(vacio['contenedores']['tipos'], [])
+        self.assertEqual(vacio['contenedores']['estado'], 'confirmado')
+        self.assertNotIn('observaciones_tipos', vacio['contenedores'])
+        self.assertEqual(incierto['problemas'], vacio['problemas'])
+
     def test_invalidos(self):
         for data in (None, {}, {'model': 'wrong'}, respuesta(['wrong']), respuesta([E.TIPOS[0]]*2)):
             self.assertEqual(E.interpretar(data), E.revision(fallo=True))

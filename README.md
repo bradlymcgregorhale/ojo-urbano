@@ -539,6 +539,19 @@ contradice un reclamo confirmado sobre un contenedor, el inventario publico
 queda en revision. La presencia visible sigue siendo informativa cuando la foto
 no corresponde al texto del reclamo.
 
+El campo `contenedores.observaciones_tipos` solo aparece cuando el inventario
+queda en revisión. Conserva los tipos observados por modelos identificados con
+`ok: true`, con `key`, `fuentes` y `estado: "pendiente_de_inventario"`. `fuentes` cuenta modelos
+distintos, no contenedores ni intentos. Las lecturas anuladas no se incluyen.
+Estas observaciones no confirman tipos ni pasan a `elementos_detectados`.
+La lista puede estar incompleta; una lista vacía tampoco demuestra ausencia.
+La ausencia comprobada se expresa con `estado: "confirmado"` y `tipos: []`.
+
+La página muestra las observaciones como pendientes, junto al aviso de revisión,
+y conserva los reclamos respaldados de daño, desborde o vaciado. El detalle
+reutiliza las lecturas existentes y no agrega llamadas ni consumo. Los modos
+sin especialista mantienen su contrato y no agregan este inventario.
+
 Los fallos de transporte no se cachean. Una respuesta valida pero incierta
 puede cachearse y sigue siendo revision, nunca ausencia. La interfaz muestra
 ese estado y el CSV agrega `contenedores_estado` y `contenedores_motivo`.
