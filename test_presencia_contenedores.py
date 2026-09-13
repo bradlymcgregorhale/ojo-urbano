@@ -2,6 +2,7 @@
 import copy
 import io
 import json
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -109,6 +110,7 @@ class Presencia(unittest.TestCase):
             r, llamadas = self.ejecutar(fallo_modelo='m2')
             fallo.assert_called_once_with('presencia_contenedores')
         self.assertEqual((r['estado'], r['tipos'], llamadas), ('revision', None, 4))
+        self.assertIs(r['fallo'], True)
         self.assertEqual(V.tokens_total(), {'tokens_api': 15, 'tokens_api_completos': False})
         self.assertAlmostEqual(V.costo_total(), .003)
 
@@ -127,15 +129,15 @@ class Presencia(unittest.TestCase):
 
     def test_plazo_compartido_y_pedido_sin_inventario_previo(self):
         cuerpos = []
+        plazos = []
         with patch.object(V.time, 'monotonic', return_value=100) as reloj:
             def http(req, timeout, vence):
                 cuerpo = json.loads(req.data)
-                self.assertEqual(vence, 140)
+                plazos.append((cuerpo['model'], timeout, vence))
                 if cuerpo['model'] == E.MODELO:
-                    reloj.return_value = 139
+                    reloj.return_value = 133
                     return respuesta(E.MODELO, {'types': [], 'uncertain': True,
                                                  'evidence': 'MARCA_PRIVADA_NO_REENVIAR'})
-                self.assertLessEqual(timeout, 1)
                 cuerpos.append(cuerpo)
                 return respuesta(cuerpo['model'], {'presente': False, 'evidencia': 'Escena sin contenedores'})
             with patch.object(E, 'solicitud', return_value={'model': E.MODELO}), \
@@ -143,6 +145,10 @@ class Presencia(unittest.TestCase):
                     patch.object(V, '_pedir_http', side_effect=http):
                 self.assertEqual(V.verificar_contenedores(self.datos)['tipos'], [])
         self.assertEqual(len(cuerpos), 3)
+        self.assertEqual(len(plazos), 4)
+        for modelo, timeout, vence in plazos:
+            self.assertEqual(vence, 140)
+            self.assertLessEqual(timeout, 40 if modelo == E.MODELO else 7)
         for cuerpo in cuerpos:
             self.assertNotIn('MARCA_PRIVADA_NO_REENVIAR', json.dumps(cuerpo))
             self.assertEqual(cuerpo, E.solicitud_presencia(self.datos, cuerpo['model']))
@@ -150,14 +156,16 @@ class Presencia(unittest.TestCase):
     def test_sin_tiempo_no_envia_mas_ni_marca_un_fallo_inexistente(self):
         with patch.object(V.time, 'monotonic', return_value=100) as reloj:
             def http(req, *args):
-                reloj.return_value = 140
+                reloj.return_value = 139.5
                 return respuesta(E.MODELO, {'types': [], 'uncertain': True, 'evidence': 'Escena'})
             with patch.object(E, 'solicitud', return_value={'model': E.MODELO}), \
                     patch.object(V, 'modelos_activos', return_value=self.modelos), \
                     patch.object(M, 'fallo') as fallo, patch.object(V, '_pedir_http', side_effect=http) as red:
-                self.assertEqual(V.verificar_contenedores(self.datos)['estado'], 'revision')
+                resultado = V.verificar_contenedores(self.datos)
+                self.assertEqual(resultado['estado'], 'revision')
+                self.assertIs(resultado['fallo'], True)
                 self.assertEqual(red.call_count, 1)
-                fallo.assert_not_called()
+                fallo.assert_called_once_with('presencia_contenedores_sin_tiempo')
 
     def test_procedencia_no_modifica_lecturas_y_respeta_contradiccion_publica(self):
         antes = copy.deepcopy(self.lecturas)
@@ -169,6 +177,15 @@ class Presencia(unittest.TestCase):
         self.assertEqual(publico['contenedores']['estado'], 'revision')
         self.assertIsNone(publico['contenedores']['tipos'])
         self.assertEqual(len(publico['contenedores']['revision_presencia']['lecturas']), 3)
+
+    @unittest.skipUnless('servidor' in sys.modules, 'Ejecutar con pruebas.py para usar el servidor sin pesos')
+    def test_fallo_de_presencia_no_se_guarda_como_duda_valida(self):
+        import servidor as S
+        inventario, _ = self.ejecutar(fallo_modelo='m2')
+        r = {'detalle': {'verificacion': {'activa': True, 'inventario_contenedores': inventario}}}
+        self.assertFalse(S._cacheable(r))
+        r['detalle']['verificacion']['inventario_contenedores'] = E.revision()
+        self.assertTrue(S._cacheable(r))
 
 
 if __name__ == '__main__':

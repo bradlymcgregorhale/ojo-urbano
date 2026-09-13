@@ -667,10 +667,15 @@ def verificar_contenedores(datos):
             _tokens_sumar(data)
         _registrar_uso(especialista.MODELO, "inventario_contenedores", None, 1, inicio, data, error)
     modelos = list(dict.fromkeys(modelos_activos()))
-    if (not especialista.requiere_presencia(resultado) or len(modelos) != 3
-            or time.monotonic() >= vence):
+    if not especialista.requiere_presencia(resultado) or len(modelos) != 3:
         return resultado
+    if vence - time.monotonic() < 5:
+        modos.fallo('presencia_contenedores_sin_tiempo')
+        return dict(resultado, fallo=True,
+                    motivo='El inventario requiere revisión y no quedó tiempo para corroborar la ausencia.')
     lecturas = _map_modelos(modelos, lambda modelo: _verificar_presencia_contenedor(datos, modelo, vence))
+    if any(v is None or v is _FALLO_MODELO for v in lecturas):
+        resultado = dict(resultado, fallo=True)
     return especialista.resolver_ausencia(resultado, lecturas)
 
 
@@ -684,7 +689,8 @@ def _verificar_presencia_contenedor(datos, modelo, vence):
         req = urllib.request.Request(OPENROUTER_URL, data=json.dumps(cuerpo).encode(), headers={
             "Authorization": "Bearer " + api_key(), "Content-Type": "application/json"})
         resto = vence - time.monotonic()
-        if resto <= 0:
+        if resto < 5:
+            modos.fallo('presencia_contenedores_sin_tiempo')
             return None
         enviado = True
         modos.llamada()
@@ -698,6 +704,7 @@ def _verificar_presencia_contenedor(datos, modelo, vence):
     finally:
         if enviado:
             _tokens_sumar(data)
+        if enviado or error is not None:
             _registrar_uso(modelo, 'presencia_contenedores', None, 1, inicio, data, error)
 
 
