@@ -2327,15 +2327,16 @@ function renderResultado(d){
     const cantidades={aislado:'cantidad aislada',significativa:'cantidad significativa',indeterminada:'cantidad indeterminada'};
     const observados=Array.isArray(higiene.materiales)?higiene.materiales.filter(m=>m&&typeof m==='object'&&!Array.isArray(m)):[];
     let detalle=observados.map(m=>{
-      const nombre=Object.hasOwn(materiales,m.material)?materiales[m.material]:'Material sin etiqueta conocida';
-      const ubicacion=Object.hasOwn(ubicaciones,m.ubicacion)?ubicaciones[m.ubicacion]:ubicaciones.indeterminada;
-      const presentacion=Object.hasOwn(presentaciones,m.presentacion)?presentaciones[m.presentacion]:presentaciones.indeterminada;
-      const cantidad=Object.hasOwn(cantidades,m.cantidad_relativa)?cantidades[m.cantidad_relativa]:cantidades.indeterminada;
+      const nombre=typeof m.material==='string'&&Object.hasOwn(materiales,m.material)?materiales[m.material]:'Material sin etiqueta conocida';
+      const ubicacion=typeof m.ubicacion==='string'&&Object.hasOwn(ubicaciones,m.ubicacion)?ubicaciones[m.ubicacion]:ubicaciones.indeterminada;
+      const presentacion=typeof m.presentacion==='string'&&Object.hasOwn(presentaciones,m.presentacion)?presentaciones[m.presentacion]:presentaciones.indeterminada;
+      const cantidad=typeof m.cantidad_relativa==='string'&&Object.hasOwn(cantidades,m.cantidad_relativa)?cantidades[m.cantidad_relativa]:cantidades.indeterminada;
       const estado=m.estado==='corroborado'?'Corroborado':m.estado==='pendiente'?'Pendiente de corroboración':'Estado sin informar';
       const fuentes=Number.isInteger(m.fuentes)&&m.fuentes>0?` · ${m.fuentes} ${m.fuentes===1?'fuente':'fuentes'}`:'';
       return `<div class="voto"><b>${esc(nombre)}</b> · ${esc(ubicacion)} · ${esc(presentacion)} · ${esc(cantidad)}<br>${esc(estado+fuentes)}</div>`;
     }).join('');
-    if(!observados.length)detalle=`<div class="voto">${higiene.estado==='no_evaluado'
+    if(!observados.length)detalle=`<div class="voto">${Array.isArray(higiene.materiales)&&higiene.materiales.length>0
+      ?'El formato de los materiales informados no permite mostrarlos.':higiene.estado==='no_evaluado'
       ?'Los materiales no se evaluaron.':Array.isArray(higiene.materiales)&&['evaluado','parcial'].includes(higiene.estado)
         ?'No se informaron materiales; eso no confirma que no haya residuos.':'No hay una evaluación de materiales disponible.'}</div>`;
     else detalle+='<div class="modo-nota">La lista puede estar incompleta. Las fuentes no indican un porcentaje de certeza. El material por sí solo no determina el servicio de retiro.</div>';
