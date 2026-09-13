@@ -576,6 +576,15 @@ La API separa la correspondencia con el comentario (`foto_valida`) de la posibil
   La interfaz muestra ese detalle en "Materiales informados", con cantidad relativa,
   estado y número de fuentes. Una lista vacía no prueba ausencia de residuos. En
   fotos rechazadas no se muestra esta sección.
+  Si una lectura usa la ubicación general `vereda`, sus materiales se conservan
+  con `ubicacion=indeterminada`, sin atribuirlos al frente de un inmueble.
+  `normalizacion_parcial=true` identifica esa recuperación. Todos los materiales
+  de ese resultado quedan pendientes de corroboración y con cantidad indeterminada;
+  la interfaz explica que faltan ubicaciones precisas. Esa lectura parcial no entra
+  en el consenso de bolsones ni de orientación de limpieza. Los demás errores de
+  formato no se corrigen por suposición. El cambio no agrega consultas a modelos.
+  El estado general `parcial` describe los materiales disponibles; bolsones y
+  orientación conservan sus propios estados y pueden seguir en `no_evaluado`.
   La agrupación actual usa material, ubicación y presentación; no identifica un
   objeto único ni distingue dos focos que compartan esos atributos. Tampoco separa
   el origen visual del dato aportado por texto. Esas ampliaciones siguen pendientes
