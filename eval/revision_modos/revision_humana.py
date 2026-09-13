@@ -30,6 +30,7 @@ def mejorar(page, base, ejemplos=()):
     js = (RECURSOS / 'revision-humana.js').read_text()
     header_end = page.index('</style>') + len('</style>')
     prefix, legacy = page[:header_end], page[header_end:]
+    prefix = re.sub(r'(<head\b[^>]*>)', r'\1<meta charset="utf-8">', prefix, count=1, flags=re.I)
     prefix = re.sub(r'<title>.*?</title>', '<title>Ojo Urbano: revisión humana de fotos</title>', prefix)
     legacy = legacy.replace('</html>', '')
     legacy = legacy.replace("document.querySelectorAll('select,input')", "document.querySelectorAll('#legacy select,#legacy input')")
