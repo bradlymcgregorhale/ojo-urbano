@@ -1,6 +1,7 @@
 """Contrato y controles contra rechazos falsos, sin red ni pesos."""
 import copy
 import json
+import sys
 import unittest
 from pathlib import Path
 
@@ -310,6 +311,26 @@ class EvaluacionFotoTest(unittest.TestCase):
         self.assertFalse(r['hay_problema'])
         self.assertTrue(r['hay_reclamo'])
         self.assertEqual(r['categorias_contexto'], original['categorias_contexto'])
+
+    @unittest.skipUnless('servidor' in sys.modules, 'Ejecutar mediante pruebas.py sin cargar pesos')
+    def test_api_conserva_reclamo_textual_tras_demorar_higiene(self):
+        import servidor as S
+        r = {
+            'problemas': [{'key': 'retiro_poda', 'nombre': 'Poda', 'gravedad': 3,
+                           'fuentes': ['a', 'b']}],
+            'posibles': [],
+            'categorias_contexto': [{'key': 'retiro_escombros', 'nombre': 'Escombros',
+                                     'respaldo': 'compatible'}],
+            'elementos_detectados': [], 'en_duda': [], 'descartados_por_foto': [],
+            'hay_problema': True, 'hay_reclamo': True, 'descripcion': 'Poda.',
+            'detalle': {'verificacion': {'activa': True, 'verificadores': [
+                voto('a', ambito='indeterminado'), voto('b', ambito='interior')]}}}
+        p = S._publica(r)
+        self.assertEqual(p['problemas'], [])
+        self.assertEqual([x['key'] for x in p['posibles']], ['retiro_poda'])
+        self.assertFalse(p['hay_problema'])
+        self.assertTrue(p['hay_reclamo'])
+        self.assertEqual([c['key'] for c in p['categorias_contexto']], ['retiro_escombros'])
 
     def test_p044_publica_conserva_voluminosos(self):
         original = salida()
