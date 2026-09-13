@@ -10,6 +10,7 @@ function crearServicio(base,config,transporte){
  const ledgerPath=path.join(out,'estado.json'),ledger=fs.existsSync(ledgerPath)?json(ledgerPath):{gasto_usd:0,reserva_incierta_usd:0,intentos:[],activo:null};
  if(!(config.tope_usd>0&&config.tope_usd<5)||!config.modo_version||!config.token||!/^[a-f0-9]{48,}$/.test(config.token))throw Error('Configuración de reanálisis inválida.');
  const guardar=()=>atomic(ledgerPath,ledger),byId=id=>ledger.intentos.find(x=>x.id===id);
+ const reservarIncierto=a=>{if(!a.reserva_incierta_usd){a.reserva_incierta_usd=1;ledger.reserva_incierta_usd+=1;}};
  const exponer=a=>({...a,url:a.estado==='listo'?'/'+config.token+'/revision/'+a.id:null});
  const estado=()=>({modo_version:config.modo_version,tope_usd:config.tope_usd,gasto_usd:ledger.gasto_usd,reserva_incierta_usd:ledger.reserva_incierta_usd,reserva_acotada_usd:ledger.reserva_acotada_usd||0,activo:ledger.activo,bloqueo:ledger.bloqueo||null,intentos:ledger.intentos.map(exponer)});
  const validarFoto=id=>{const row=manifest.fotos.find(x=>x.foto===id);if(!row)throw Error('Foto ajena al lote.');const input=inputs[id];if(!input)throw Error('Falta entrada preparada.');const original=fs.readFileSync(path.join(base,'entrega',row.archivo)),raw=fs.readFileSync(path.join(base,'entrega',input.archivo));if(sha(original)!==row.sha256||sha(raw)!==row.sha256_api||sha(raw)!==input.sha256||input.original_sha256!==row.sha256)throw Error('Cambió la foto original o su entrada.');return{row,raw,input};};
@@ -37,6 +38,7 @@ function crearServicio(base,config,transporte){
     entrada_api:inputs[a.foto],version_esperada:config.modo_version,resultado:r,original_huella:a.original_huella};
    const raw=recuperado?fs.readFileSync(archivo):JSON.stringify(wrapper,null,2);if(!recuperado)fs.writeFileSync(archivo,raw,{flag:'wx',mode:0o600});
    a.huella=sha(raw);a.modo_version=r.modo_version;a.cache=cache;a.fecha=wrapper.fecha;a.costo_api=r.costo_api;
+   if(a.reserva_incierta_usd){ledger.reserva_incierta_usd=Math.max(0,ledger.reserva_incierta_usd-a.reserva_incierta_usd);delete a.reserva_incierta_usd;}
    if(!cache){if(Number.isFinite(r.costo_api)&&r.costo_api>=0)ledger.gasto_usd+=r.costo_api+0.000001;
     if(!Number.isFinite(r.costo_api)||r.costo_api<0||r.tokens_api_completos!==true)ledger.reserva_incierta_usd+=1;}
    a.estado='listo';delete a.error;ledger.activo=null;
@@ -46,7 +48,7 @@ function crearServicio(base,config,transporte){
    }
    guardar();
   }catch(e){a.error=e.message;
-   if(a.envio_iniciado){a.estado='pendiente_conciliacion';ledger.bloqueo='Hay un pedido pendiente de conciliación. No se generan más cargos.';if(!a.trabajo)ledger.reserva_incierta_usd=Math.max(ledger.reserva_incierta_usd,1);}
+   if(a.envio_iniciado){a.estado='pendiente_conciliacion';ledger.bloqueo='Hay un pedido pendiente de conciliación. No se generan más cargos.';reservarIncierto(a);}
    else{a.estado='no_enviado';ledger.activo=null;}
    guardar();
   }
@@ -67,7 +69,8 @@ function crearServicio(base,config,transporte){
   if(sha(fs.readFileSync(path.join(base,'analisis',a.foto+'-alto.json')))!==a.original_huella)throw Error('Cambió el original.');
   const D={version:2,conjunto:sha(Buffer.from(a.original_huella+id)),fotos:[{...row,archivo:'/'+config.token+'/foto/'+a.foto,entrada_api:'/'+config.token+'/entrada/'+a.foto}],
    resultados:{[a.foto]:{respuesta:wrapper.resultado,huella:a.huella,fecha:a.fecha}},categorias:json(path.join(__dirname,'../../categorias.json')),proceso:{estado:'reanalisis_individual',gasto_observado_usd:ledger.gasto_usd},cantidad:1,
-   procedencia:{tipo:'reanalisis',intento:id,original_huella:a.original_huella,nueva_huella:a.huella,version_original:old.resultado.modo_version,version_nueva:wrapper.resultado.modo_version,foto_sha256:row.sha256,entrada_sha256:row.sha256_api},anterior:old.resultado,aviso_reanalisis:a.aviso||null};
+   procedencia:{tipo:'reanalisis',intento:id,original_huella:a.original_huella,nueva_huella:a.huella,version_original:old.resultado.modo_version,version_nueva:wrapper.resultado.modo_version,foto_sha256:row.sha256,entrada_sha256:row.sha256_api,cache:wrapper.cache},anterior:old.resultado,
+   aviso_reanalisis:[a.aviso,wrapper.cache?'Respuesta recuperada de caché: no se ejecutó otra inferencia.':null,old.resultado.modo_version===wrapper.resultado.modo_version?'La versión coincide con la respuesta anterior. No representa una versión corregida distinta.':null].filter(Boolean).join(' ')||null};
   return fs.readFileSync(path.join(__dirname,'pagina.html'),'utf8').replace('/* ESTILOS */',()=>fs.readFileSync(path.join(__dirname,'pagina.css'),'utf8')).replace('/* APLICACION */',()=>fs.readFileSync(path.join(__dirname,'pagina.js'),'utf8')).replace('DATOS_JSON',()=>JSON.stringify(D).replaceAll('<','\\u003c'));
  }
  const server=http.createServer(async(req,res)=>{
@@ -92,9 +95,9 @@ function crearServicio(base,config,transporte){
   }catch(e){return respond(409,{error:e.message});}
  });
  const pendiente=byId(ledger.activo);
- if(pendiente?.trabajo)void continuar(pendiente);
+ if(pendiente&&(pendiente.trabajo||fs.existsSync(path.join(out,pendiente.id+'.json'))))void continuar(pendiente);
  else if(pendiente){
-  if(pendiente.envio_iniciado){pendiente.estado='pendiente_conciliacion';ledger.reserva_incierta_usd=Math.max(ledger.reserva_incierta_usd,1);ledger.bloqueo='Hay un pedido pendiente de conciliación. No se generan más cargos.';}
+  if(pendiente.envio_iniciado){pendiente.estado='pendiente_conciliacion';reservarIncierto(pendiente);ledger.bloqueo='Hay un pedido pendiente de conciliación. No se generan más cargos.';}
   else{pendiente.estado='no_enviado';pendiente.error='El servicio se interrumpió antes del envío.';ledger.activo=null;}
   guardar();
  }
