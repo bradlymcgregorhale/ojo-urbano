@@ -177,3 +177,32 @@ La revisión humana del 6 de septiembre corrige T109 a secos y cama descartada, 
 ```
 
 La importación solo lee revisiones marcadas como terminadas, copia las fotos y conserva la procedencia y el hash de cada revisión. Informa fuentes faltantes y conflictos. No hace llamadas a OpenRouter. Una instalación sin esas fuentes no tiene la colección completa, aunque pueda ejecutar una selección disponible.
+
+## Evidencia del ejecutor de inventario
+
+`evaluar_inventario.py` conserva los bytes recibidos en
+`evidencia/<id>/respuesta.bin` antes de decodificar JSON o llamar al intérprete.
+El archivo `registro.json` de esa carpeta vincula la tarea con las huellas del
+plan, las tareas, la foto y el cuerpo de la solicitud. También registra el estado
+HTTP y la etapa del error cuando corresponda. No guarda la clave ni los
+encabezados de autorización. Los cuerpos recibidos son evidencia privada y no
+deben incorporarse a git.
+
+Un error HTTP conserva su cuerpo si pudo leerse. Un fallo de transporte puede
+dejar solo el registro del error o un cuerpo parcial, identificado como tal.
+El registro inicial también permite identificar el intento si la ejecución se
+interrumpe. Si falla la escritura del cuerpo, el registro indica
+`respuesta_conservada=false` cuando todavía puede escribirse en disco.
+Un error de JSON mantiene el intento pendiente. En esos casos hay que revisar la
+evidencia y conciliar el consumo antes de otro envío; borrar `activo` o la carpeta
+de evidencia no constituye una conciliación.
+
+Si falla el intérprete, `<id>.json` conserva la respuesta original y
+`interpretado.estado=error_interpretacion`. El ejecutor registra el consumo
+conocido una sola vez y detiene la fase. Si faltan costo o tokens válidos,
+mantiene una reserva incierta y bloquea nuevas solicitudes. Corregir el intérprete
+permite revisar la respuesta guardada sin volver a enviar la foto; este ejecutor
+no realiza esa recuperación automáticamente. Los casos exitosos conservan su
+respuesta e interpretación, con una referencia adicional a la evidencia.
+El ledger se lee después de adquirir el bloqueo exclusivo para conservar el
+gasto registrado por otra ejecución antes de ese bloqueo.
