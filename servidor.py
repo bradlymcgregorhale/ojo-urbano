@@ -2280,6 +2280,13 @@ function renderResultado(d){
   }else if(bolsones?.estado==='contradictorio'){
     h+='<div class="modo-nota">La presencia de un bolsón requiere revisión por lecturas contradictorias.</div>';
   }
+  const ori=d.observaciones_higiene?.orientacion_limpieza;
+  if(ori?.estado==='orientacion_disponible'&&typeof ori.indicacion==='string'&&ori.indicacion.trim()){
+    const titulo=ori.tarea==='recoger_deyecciones'
+      ?'Orientación: recoger deyecciones'
+      :'Orientación: limpieza cotidiana de la vereda';
+    h+=`<div class="tardesc"><strong>${esc(titulo)}</strong> ${esc(ori.indicacion)}</div>`;
+  }
   const principal=d.problema_principal;
   if(principal?.estado==='seleccionado'&&principal.criterio!=='unico_confirmado'){
     const problema=probs.find(p=>p.key===principal.key);

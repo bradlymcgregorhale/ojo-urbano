@@ -28,6 +28,25 @@ def _orientacion(estado):
             'fuentes_consultadas_el': FECHA_CONSULTA_LIMPIEZA}
 
 
+_ORDINARIAS = {'hojas', 'tierra_polvo', 'papel_carton', 'plastico'}
+
+
+def _foco_limpieza_cotidiana(foco):
+    if not isinstance(foco, dict) or foco.get('ubicacion') != 'vereda_frente_inmueble':
+        return False
+    if foco.get('material') == 'hojas' and foco.get('presentacion') in {'disperso', 'acumulado'}:
+        return True
+    return (foco.get('presentacion') == 'disperso' and foco.get('cantidad_relativa') == 'aislado'
+            and foco.get('material') in _ORDINARIAS)
+
+
+def _lecturas_limpieza_cotidiana(observaciones):
+    """Hojas en la vereda frente al inmueble no exigen acuerdo de presentación."""
+    return bool(observaciones) and all(
+        bool(o.get('materiales')) and all(_foco_limpieza_cotidiana(m) for m in o['materiales'])
+        for o in observaciones)
+
+
 def _bolsones(presente, estado, retiro='no_evaluado'):
     excluido = retiro == 'excluido_por_presentacion'
     return {'presente': presente, 'estado': estado, 'retiro_caba': retiro,
@@ -132,12 +151,7 @@ def _publicar_completas(verificadores, alcance=None, rechazada=False, problemas=
                      'corroborado' if bolson is not None else
                      'no_evaluado' if not observaciones and not revisiones else 'indeterminado')
     orientacion = _orientacion('indeterminada' if observaciones else 'no_evaluado')
-    ordinarias = {'hojas', 'tierra_polvo', 'papel_carton', 'plastico'}
-    cotidianos = bool(materiales) and all(m['estado'] == 'corroborado'
-        and m['ubicacion'] == 'vereda_frente_inmueble'
-        and ((m['material'] == 'hojas' and m['presentacion'] in {'disperso', 'acumulado'})
-             or (m['presentacion'] == 'disperso' and m['cantidad_relativa'] == 'aislado'
-                 and m['material'] in ordinarias)) for m in materiales)
+    cotidianos = _lecturas_limpieza_cotidiana(observaciones)
     if any(p.get('key') in {'recoleccion', 'retiro_poda', 'retiro_muebles', 'retiro_escombros'} for p in problemas):
         cotidianos = False
     if completos and cotidianos and all(o.get('solo_limpieza_cotidiana_frente') is True for o in observaciones):
