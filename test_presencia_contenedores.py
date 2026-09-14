@@ -55,6 +55,47 @@ class Presencia(unittest.TestCase):
             self.assertEqual(E.resolver_ausencia(original, self.lecturas), antes)
             self.assertEqual(original, antes)
 
+    def _cruda(self, modelo, contenido):
+        return {'model': modelo, 'choices': [{'finish_reason': 'stop', 'message': {
+            'content': contenido}}], 'usage': {'cost': .001, 'total_tokens': 5}}
+
+    def _lecturas(self, pares):
+        return [E.interpretar_presencia(self._cruda(modelo, contenido), modelo)
+                for modelo, contenido in pares]
+
+    def test_p014_piloto_tres_false_coinciden_con_la_etiqueta_humana(self):
+        # Textos crudos de presencia-independiente-20260913. La etiqueta humana
+        # del 14/09/2026 es lista vacía: bolsas y voluminosos, sin contenedor.
+        humano = []
+        pares = [
+            ('openai/gpt-5-mini',
+             '{"presente":false,"evidencia":"Se ven bolsas y residuos apilados sobre la vereda/suelo; no se aprecia ningún contenedor municipal (no hay contenedor con ruedas ni contenedor metálico visible)."}'),
+            ('google/gemini-3.5-flash-lite',
+             '```json\n{"presente":false,"evidencia":"Acumulación de bolsas de residuos en la vía pública sin contenedor municipal visible"}\n```'),
+            ('openai/gpt-5.6-luna',
+             '{"presente":false,"evidencia":"Se observan bolsas y residuos acumulados, pero no se reconoce ningún contenedor municipal."}'),
+        ]
+        lecturas = self._lecturas(pares)
+        self.assertEqual([v['presente'] for v in lecturas], [False, False, False])
+        resuelto = E.resolver_ausencia(E.revision(), lecturas)
+        self.assertEqual((resuelto['estado'], resuelto['tipos']), ('confirmado', humano))
+
+    def test_p014_integrado_con_luna_null_sigue_en_revision(self):
+        # Textos crudos de inventario-integrado-100-20260913. Mini y flash-lite
+        # niegan; Luna deja presente=null. No se inventa ausencia.
+        pares = [
+            ('openai/gpt-5-mini',
+             '{"presente":false,"evidencia":"Solo se ven bolsas y escombros apilados sobre la calzada; no se distinguen contenedores municipales grandes con tapa o ruedas."}'),
+            ('google/gemini-3.5-flash-lite',
+             '```json\n{"presente":false,"evidencia":"Se observan bolsas de residuos y escombros acumuladas en la vía pública, pero no hay ningún contenedor municipal."}\n```'),
+            ('openai/gpt-5.6-luna',
+             '{"presente":null,"evidencia":"Se observan bolsas y residuos acumulados, pero no se distingue claramente ningún contenedor municipal."}'),
+        ]
+        original = E.revision()
+        lecturas = self._lecturas(pares)
+        self.assertEqual([v['presente'] for v in lecturas], [False, False, None])
+        self.assertEqual(E.resolver_ausencia(original, lecturas), original)
+
     def test_parsea_json_y_bloque_sin_relajar_el_contrato(self):
         r = respuesta('m1', {'presente': False, 'evidencia': 'Sin contenedores'})
         for bloque in [False, True]:
