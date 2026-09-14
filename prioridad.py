@@ -30,7 +30,104 @@ def normalizar(valor, categorias, vistas, contexto, categorias_contexto):
     return r
 
 
-def seleccionar(publica, verificadores):
+def _confirmados(publica):
+    vistos = []
+    for c in publica.get('problemas') or []:
+        key = c.get('key') if isinstance(c, dict) else None
+        if isinstance(key, str) and key not in vistos:
+            vistos.append(key)
+    return vistos
+
+
+def _propuestas_completas(verificadores):
+    ok = [v for v in verificadores or [] if isinstance(v, dict) and v.get('ok') is True]
+    if not ok:
+        return None
+    fuentes = {v.get('modelo') for v in ok if v.get('modelo')}
+    if (len(fuentes) < 2 or len(fuentes) != len(ok)
+            or len(ok) != len(verificadores or [])):
+        return None
+    propuestas = []
+    for v in ok:
+        p = v.get('prioridad_propuesta')
+        if not isinstance(p, dict) or not isinstance(p.get('key'), str) or not p.get('key'):
+            return None
+        propuestas.append(p)
+    return propuestas
+
+
+def armar_candidatos(publica, verificadores, catalogo=None):
+    catalogo = catalogo or {}
+    candidatos = []
+    for key in _confirmados(publica):
+        observaciones = []
+        vistos = set()
+        for v in verificadores or []:
+            for c in (v.get('categorias') or []) if isinstance(v, dict) else []:
+                if not isinstance(c, dict) or c.get('key') != key:
+                    continue
+                evidencia = c.get('evidencia')
+                if not isinstance(evidencia, str):
+                    continue
+                texto = evidencia.strip()
+                marca = texto.casefold()
+                if texto and marca not in vistos:
+                    vistos.add(marca)
+                    observaciones.append(texto)
+        observaciones.sort(key=str.casefold)
+        nombre = (catalogo.get(key) or {}).get('nombre') if isinstance(catalogo.get(key), dict) else None
+        candidatos.append({
+            'key': key,
+            'nombre': nombre if isinstance(nombre, str) and nombre.strip() else key,
+            'observaciones': observaciones,
+        })
+    return candidatos
+
+
+def requiere_comparacion(publica, verificadores):
+    if (publica.get('evaluacion_foto') or {}).get('rechazada'):
+        return False
+    if (publica.get('contexto_visual') or {}).get('suficiente') is False:
+        return False
+    confirmados = set(_confirmados(publica))
+    if len(confirmados) < 2:
+        return False
+    propuestas = _propuestas_completas(verificadores)
+    if not propuestas:
+        return False
+    valores = {(p.get('key'), p.get('criterio')) for p in propuestas}
+    if len(valores) == 1:
+        return False
+    return any(p.get('key') in confirmados for p in propuestas)
+
+
+def interpretar_comparacion(valor, confirmados):
+    if not isinstance(valor, dict):
+        return None
+    key = valor.get('key')
+    if not isinstance(key, str) or key not in confirmados:
+        return None
+    r = {'key': key, 'criterio': 'escena'}
+    fundamento = valor.get('fundamento')
+    if isinstance(fundamento, str) and fundamento in FUNDAMENTOS:
+        r['fundamento'] = fundamento
+    return r
+
+
+def desde_guardada(verificacion):
+    if not isinstance(verificacion, dict):
+        return None
+    if verificacion.get('prioridad_comparacion_error'):
+        def falla(_candidatos):
+            raise RuntimeError('prioridad_comparacion')
+        return falla
+    if 'prioridad_comparacion' not in verificacion:
+        return None
+    valor = verificacion.get('prioridad_comparacion')
+    return lambda _candidatos: valor
+
+
+def seleccionar(publica, verificadores, comparacion=None):
     sin = {'key': None, 'estado': 'sin_problemas_confirmados', 'criterio': None, 'motivo': None}
     if (publica.get('evaluacion_foto') or {}).get('rechazada'):
         return dict(sin, estado='no_aplica')
@@ -53,17 +150,28 @@ def seleccionar(publica, verificadores):
             or len(propuestas) != len(verificadores)):
         return pendiente
     valores = {(p['key'], p['criterio']) for p in propuestas}
-    if len(valores) != 1:
+    if len(valores) == 1:
+        key, criterio = next(iter(valores))
+        if key not in confirmados:
+            return pendiente
+        motivo = ('Es el problema confirmado que corresponde al pedido explícito del vecino.'
+                  if criterio == 'pedido_explicito' else
+                  'Es la intervención principal de la escena; los demás hallazgos siguen registrados.')
+        if criterio == 'escena':
+            for fundamento, texto in FUNDAMENTOS.items():
+                if sum(p.get('fundamento') == fundamento for p in propuestas) >= 2:
+                    motivo = texto
+                    break
+        return {'key': key, 'estado': 'seleccionado', 'criterio': criterio, 'motivo': motivo}
+    if comparacion is None or not requiere_comparacion(publica, verificadores):
         return pendiente
-    key, criterio = next(iter(valores))
-    if key not in confirmados:
+    try:
+        valor = comparacion(armar_candidatos(publica, verificadores))
+    except Exception:
+        return dict(sin, estado='no_evaluado')
+    elegido = interpretar_comparacion(valor, confirmados)
+    if elegido is None:
         return pendiente
-    motivo = ('Es el problema confirmado que corresponde al pedido explícito del vecino.'
-              if criterio == 'pedido_explicito' else
-              'Es la intervención principal de la escena; los demás hallazgos siguen registrados.')
-    if criterio == 'escena':
-        for fundamento, texto in FUNDAMENTOS.items():
-            if sum(p.get('fundamento') == fundamento for p in propuestas) >= 2:
-                motivo = texto
-                break
-    return {'key': key, 'estado': 'seleccionado', 'criterio': criterio, 'motivo': motivo}
+    motivo = FUNDAMENTOS.get(elegido.get('fundamento'),
+                             'Es la intervención principal de la escena; los demás hallazgos siguen registrados.')
+    return {'key': elegido['key'], 'estado': 'seleccionado', 'criterio': 'escena', 'motivo': motivo}

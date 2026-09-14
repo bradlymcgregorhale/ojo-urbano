@@ -885,6 +885,21 @@ def procesar(datos, contexto, verificar):
     if politica_escombros.requiere_obra_servicios(salida):
         revision_obra = verificador.validar_contexto_obra_servicios(contexto)
         salida = politica_escombros.aplicar_obra_servicios(salida, revision_obra)
+    perfil = modos.perfil_actual()
+    if perfil and perfil.modo == "alto":
+        veri_actual = dict((salida.get("detalle") or {}).get("verificacion") or {})
+        lecturas = veri_actual.get("verificadores") or []
+        previa = evaluacion_foto.aplicar({"problemas": list(salida.get("problemas") or [])}, lecturas)
+        if prioridad.requiere_comparacion(previa, lecturas):
+            try:
+                candidatos = prioridad.armar_candidatos(previa, lecturas, CATEGORIAS)
+                veri_actual["prioridad_comparacion"] = verificador.comparar_prioridad(
+                    img, candidatos)
+            except Exception:
+                veri_actual["prioridad_comparacion_error"] = True
+            detalle = dict(salida.get("detalle") or {})
+            detalle["verificacion"] = veri_actual
+            salida["detalle"] = detalle
     salida["costo_api"] = verificador.costo_total()
     salida.update(verificador.tokens_total())
     return modos.completar(salida)
@@ -1045,7 +1060,9 @@ def _publica(r):
     pub['observaciones_higiene'] = observaciones_higiene.publicar(veri.get('verificadores') or [],
         veri.get('alcance_escombros'), pub['evaluacion_foto']['rechazada'], pub.get('problemas') or [])
     observaciones_higiene.ajustar_presentacion(pub)
-    pub['problema_principal'] = prioridad.seleccionar(pub, veri.get('verificadores') or [])
+    pub['problema_principal'] = prioridad.seleccionar(
+        pub, veri.get('verificadores') or [],
+        comparacion=prioridad.desde_guardada(veri))
     pub['hay_problema'] = bool(pub.get('problemas'))
     pub['hay_reclamo'] = bool(pub.get('problemas')) or bool(pub.get('categorias_contexto'))
     return pub

@@ -65,6 +65,7 @@ from prompts import (
     _PROMPT_PATENTE,
     _PROMPT_ALCANCE_ESCOMBROS,
     _PROMPT_OBRA_SERVICIOS_CONTEXTO,
+    PRIORIDAD_COMPARACION as _PROMPT_PRIORIDAD_COMPARACION,
     _PROMPT_SEGUNDA_MIRADA,
     _PROMPT_SEGUNDA_MIRADA_BASE,
     _PROMPT_RELACION_CONTENEDOR,
@@ -195,6 +196,8 @@ VERIFICADORES = [m.strip() for m in os.environ.get(
 SEGUNDA_MIRADA_ESCOMBROS = os.environ.get(
     "SEGUNDA_MIRADA_ESCOMBROS", "1").strip().lower() not in ("0", "false", "no")
 LADO_SEGUNDA_MIRADA = int(os.environ.get("LADO_SEGUNDA_MIRADA", "1600"))
+MODELO_PRIORIDAD_COMPARACION = os.environ.get(
+    "PRIORIDAD_COMPARACION_MODELO", "anthropic/claude-opus-5")
 # Segunda mirada dirigida para la BASE del contenedor: cuando algún
 # verificador reporta retiro_muebles con evidencia de "estructura metálica" y
 # hay un contenedor en la escena, se re-pregunta SOLO por ese objeto. Medido
@@ -1018,6 +1021,22 @@ def _leer_patente(img):
     if len(validas) >= 2 and len(set(validas)) == 1:
         return validas[0]
     return None
+
+
+def comparar_prioridad(img, candidatos):
+    """Una lectura dirigida de prioridad, no un cuarto verificador."""
+    if not candidatos:
+        return None
+    data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+    contenido = _llamar(MODELO_PRIORIDAD_COMPARACION, [
+        {"role": "system", "content": _PROMPT_PRIORIDAD_COMPARACION},
+        {"role": "user", "content": [
+            {"type": "text", "text": "Intervenciones finales y observaciones guardadas: "
+             + json.dumps(candidatos, ensure_ascii=False)},
+            {"type": "image_url", "image_url": {"url": data_url}},
+        ]},
+    ], max_tokens=1800, etapa="prioridad_comparacion")
+    return _extraer_json(contenido)
 
 
 @modos.minimo_fuentes(2, {'aceptado': False, 'estado': 'indeterminado', 'fallo': False, 'revisiones': []}, ())
