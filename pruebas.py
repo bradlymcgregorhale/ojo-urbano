@@ -1037,6 +1037,20 @@ _interno = {
                                      "contenedor_secos": ["vlm/uno"]}}}}
 _interno["descripcion"] = "Solo el clasificador local detectó algo acá."
 _pub = servidor._publica(_interno)
+_con_lector = json.loads(json.dumps(_interno))
+_con_lector["detalle"]["verificacion"]["verificadores"] = [
+    {"modelo": "vlm/uno", "ok": True, "categorias": [], "descripcion": "x",
+     "evaluacion_foto": {"ambito": "publica", "evidencia_ambito": "vereda", "calidad_suficiente": True,
+                         "motivos_calidad": [], "contexto_suficiente": False,
+                         "motivos_contexto": ["entorno_no_visible"],
+                         "contexto": "texto del vecino", "modelo_local": {"score": 0.9}}}]
+_lector_pub = servidor._publica(_con_lector)["modelos"][0]["evaluacion_foto"]
+check("cada lector publica su evaluacion_foto normalizada, sin campos extra",
+      _lector_pub == {"ambito": "publica", "calidad_suficiente": True, "motivos_calidad": [],
+                      "contexto_suficiente": False, "motivos_contexto": ["entorno_no_visible"]},
+      str(_lector_pub))
+check("un lector sin lectura publica evaluacion_foto null",
+      servidor._publica(_interno)["modelos"] == [] and servidor.evaluacion_foto.normalizar(None) is None)
 check("un problema sostenido solo por el modelo local no se publica",
       [p["key"] for p in _pub["problemas"]] == ["recoleccion"],
       str([p["key"] for p in _pub["problemas"]]))

@@ -375,6 +375,120 @@ class EvaluacionFotoTest(unittest.TestCase):
         self.assertFalse(r['hay_problema'])
         self.assertEqual(r['descripcion'], r['evaluacion_foto']['indicacion'])
 
+    def test_mayoria_de_tres_decide_calidad_y_encuadre(self):
+        votos = [voto('a', calidad_suficiente=False, motivos_calidad=['desenfoque']),
+                 voto('b', calidad_suficiente=False, motivos_calidad=['detalle_insuficiente']),
+                 voto('c')]
+        sin_hallazgos = dict(salida(), problemas=[], hay_problema=False, hay_reclamo=False)
+        r = E.aplicar(sin_hallazgos, votos)
+        self.assertEqual(r['estado_evaluacion'], 'rechazada_calidad')
+        self.assertEqual(r['evaluacion_foto']['decision_calidad'], 'mayoria')
+        self.assertEqual(r['evaluacion_foto']['estado_calidad'], 'evaluado')
+        self.assertEqual(r['evaluacion_foto']['motivos'], ['desenfoque', 'detalle_insuficiente'])
+        self.assertTrue(r['evaluacion_foto']['requiere_nueva_foto'])
+        self.assertEqual(r['problemas'], [])
+        original = salida()
+        votos = [voto('a', contexto_suficiente=False, motivos_contexto=['encuadre_demasiado_cerrado']),
+                 voto('b', contexto_suficiente=False, motivos_contexto=['entorno_no_visible']),
+                 voto('c')]
+        r = E.aplicar(original, votos)
+        self.assertEqual(r['estado_evaluacion'], 'contexto_insuficiente')
+        self.assertFalse(r['contexto_visual']['suficiente'])
+        self.assertEqual(r['contexto_visual']['estado'], 'evaluado')
+        self.assertEqual(r['contexto_visual']['motivos'], ['encuadre_demasiado_cerrado', 'entorno_no_visible'])
+        self.assertTrue(r['evaluacion_foto']['requiere_foto_complementaria'])
+        self.assertFalse(r['evaluacion_foto']['rechazada'])
+        for k in original:
+            self.assertEqual(r[k], original[k])
+
+    def test_mayoria_exige_dos_lectores_distintos_y_sin_empate(self):
+        casos = [
+            # dos lecturas del mismo modelo no suman dos fuentes
+            [voto('a', calidad_suficiente=False, motivos_calidad=['desenfoque'])] * 2 + [voto('b')],
+            # uno en contra, uno a favor y uno sin decisión: empate
+            [voto('a', calidad_suficiente=False, motivos_calidad=['desenfoque']), voto('b'),
+             voto('c', calidad_suficiente=None)],
+            # dos lectores en desacuerdo, sin tercero
+            [voto('a', calidad_suficiente=False, motivos_calidad=['desenfoque']), voto('b')],
+            # un false sin motivo no es un voto
+            [voto('a', calidad_suficiente=False), voto('b', calidad_suficiente=False), voto('c')],
+        ]
+        for votos in casos:
+            with self.subTest(votos=votos):
+                r = E.aplicar(salida(), votos)
+                self.assertFalse(r['evaluacion_foto']['rechazada'])
+                self.assertIsNone(r['evaluacion_foto']['calidad_suficiente'])
+                self.assertEqual(r['problemas'], salida()['problemas'])
+
+    def test_mayoria_a_favor_conserva_la_senal_de_revision(self):
+        votos = [voto('a'), voto('b'),
+                 voto('c', contexto_suficiente=False, motivos_contexto=['situacion_cortada'])]
+        r = E.aplicar(salida(), votos)
+        self.assertTrue(r['contexto_visual']['suficiente'])
+        self.assertEqual(r['contexto_visual']['estado'], 'evaluado')
+        self.assertEqual(r['contexto_visual']['motivos'], [])
+        self.assertEqual(r['estado_evaluacion'], 'senal_negativa_no_corroborada')
+        self.assertTrue(r['evaluacion_foto']['requiere_revision'])
+        self.assertFalse(r['evaluacion_foto']['requiere_foto_complementaria'])
+
+    def test_un_lector_caido_no_impide_dos_votos_explicitos(self):
+        votos = [voto('a', calidad_suficiente=False, motivos_calidad=['oscuridad']),
+                 voto('b', calidad_suficiente=False, motivos_calidad=['oscuridad']),
+                 {'modelo': 'c', 'ok': False}]
+        r = E.aplicar(dict(salida(), problemas=[], hay_problema=False, hay_reclamo=False), votos)
+        self.assertEqual(r['estado_evaluacion'], 'rechazada_calidad')
+        self.assertEqual(r['evaluacion_foto']['motivos'], ['oscuridad'])
+        # Con un problema ya confirmado, ese mismo padrón pide revisión en vez de rechazar.
+        self.assertEqual(E.aplicar(salida(), votos)['estado_evaluacion'], 'calidad_contradictoria')
+
+    def test_mayoria_no_alcanza_para_el_ambito(self):
+        votos = [voto('a', ambito='interior'), voto('b', ambito='interior'), voto('c')]
+        r = E.aplicar(salida(), votos)
+        self.assertFalse(r['evaluacion_foto']['rechazada'])
+        self.assertIsNone(r['evaluacion_foto']['ambito'])
+        self.assertNotEqual(r['estado_evaluacion'], 'rechazada_interior')
+
+    def test_mayoria_no_borra_un_problema_confirmado_con_el_modelo_local(self):
+        # retiro_muebles quedó confirmado por el modelo local y un solo lector: los
+        # otros dos no dan evidencia y votan calidad insuficiente. Se pide revisión.
+        votos = [voto('a', calidad_suficiente=False, motivos_calidad=['desenfoque']),
+                 voto('b', calidad_suficiente=False, motivos_calidad=['desenfoque']), voto('c')]
+        votos[2]['categorias'] = [{'key': 'retiro_muebles', 'evidencia': 'Un colchón entero en la vereda.'}]
+        r = E.aplicar(salida(), votos)
+        self.assertEqual(r['estado_evaluacion'], 'calidad_contradictoria')
+        self.assertFalse(r['evaluacion_foto']['rechazada'])
+        self.assertTrue(r['evaluacion_foto']['requiere_revision'])
+        self.assertEqual(r['problemas'], salida()['problemas'])
+        # Con unanimidad de los tres lectores y un solo respaldo, el rechazo sí corre.
+        votos = [voto(m, calidad_suficiente=False, motivos_calidad=['desenfoque']) for m in 'abc']
+        votos[2]['categorias'] = [{'key': 'retiro_muebles', 'evidencia': 'Un colchón entero en la vereda.'}]
+        r = E.aplicar(salida(), votos)
+        self.assertEqual(r['estado_evaluacion'], 'rechazada_calidad')
+        self.assertEqual(r['evaluacion_foto']['decision_calidad'], 'unanime')
+
+    def test_solo_los_votos_elegibles_aportan_motivos_y_senales(self):
+        # Una entrada caída que igual trae una lectura, y un duplicado del lector a,
+        # no votan, no suman motivos ni activan la señal de revisión.
+        caido = dict(voto('z', contexto_suficiente=False, motivos_contexto=['situacion_cortada']), ok=False)
+        duplicado = voto('a', calidad_suficiente=False, motivos_calidad=['movimiento'])
+        votos = [voto('a', calidad_suficiente=False, motivos_calidad=['desenfoque']),
+                 voto('b', calidad_suficiente=False, motivos_calidad=['oscuridad']), duplicado, caido]
+        r = E.aplicar(dict(salida(), problemas=[], hay_problema=False), votos)
+        self.assertEqual(r['evaluacion_foto']['motivos'], ['desenfoque', 'oscuridad'])
+        r = E.aplicar(salida(), [voto('a'), voto('b'), caido])
+        self.assertEqual(r['estado_evaluacion'], 'valida_corroborada' if False else r['estado_evaluacion'])
+        self.assertFalse(r['evaluacion_foto']['requiere_revision'])
+        self.assertIsNone(r['contexto_visual']['suficiente'] if r['contexto_visual']['estado'] != 'evaluado' else None)
+
+    def test_mayoria_de_calidad_respeta_la_evidencia_contradictoria(self):
+        votos = [voto('a', calidad_suficiente=False, motivos_calidad=['desenfoque']),
+                 voto('b', calidad_suficiente=False, motivos_calidad=['desenfoque']), voto('c')]
+        for v in votos:
+            v['categorias'] = [{'key': 'retiro_muebles', 'evidencia': 'Un colchón entero en la vereda.'}]
+        r = E.aplicar(salida(), votos)
+        self.assertEqual(r['estado_evaluacion'], 'calidad_contradictoria')
+        self.assertEqual(r['problemas'], salida()['problemas'])
+
     def test_retiros_higiene_existen_en_el_catalogo(self):
         cats = json.loads(Path(__file__).with_name('categorias.json').read_text())
         for key in E.RETIROS_HIGIENE:

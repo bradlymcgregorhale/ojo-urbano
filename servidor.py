@@ -1036,7 +1036,10 @@ def _publica(r):
                          **({"anulada_por": c["anulada_por"]}
                             if c.get("anulada_por") else {})}
                         for c in (v.get("categorias") or [])],
-         "descripcion": v.get("descripcion")}
+         "descripcion": v.get("descripcion"),
+         # Lectura de ámbito, calidad y encuadre de cada lector (#97, #102), para
+         # auditar la mayoría publicada en evaluacion_foto y contexto_visual.
+         "evaluacion_foto": evaluacion_foto.normalizar(v.get("evaluacion_foto"))}
         for v in (veri.get("verificadores") or [])]
     local = (r.get("detalle") or {}).get("modelo_local") or {}
     if local.get("probabilidades"):
