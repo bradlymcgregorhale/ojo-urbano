@@ -647,6 +647,34 @@ def verificar_contenedores(datos):
         _registrar_uso(especialista.MODELO, "inventario_contenedores", None, 1, inicio, data, error)
 
 
+class RespuestaNoUtilizableError(ValueError):
+    """El proveedor respondió, pero no entregó una respuesta final completa."""
+
+
+def _contenido_final(data):
+    """Acepta contenido final; nunca convierte razonamiento en una respuesta."""
+    if not isinstance(data, dict) or data.get("error"):
+        raise RespuestaNoUtilizableError("respuesta del proveedor inválida")
+    choices = data.get("choices")
+    if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
+        raise RespuestaNoUtilizableError("falta una respuesta única")
+    choice = choices[0]
+    if choice.get("error") or choice.get("finish_reason") != "stop":
+        raise RespuestaNoUtilizableError("respuesta sin terminación completa")
+    native = choice.get("native_finish_reason")
+    if native is not None and (not isinstance(native, str) or native.strip().lower() in {
+            "length", "max_tokens", "max_output_tokens", "tool_use", "tool_calls",
+            "pause_turn", "refusal", "content_filter", "error", "model_context_window_exceeded"}):
+        raise RespuestaNoUtilizableError("terminación nativa incompatible")
+    message = choice.get("message")
+    if not isinstance(message, dict) or message.get("refusal") or message.get("tool_calls"):
+        raise RespuestaNoUtilizableError("falta un mensaje final utilizable")
+    content = message.get("content")
+    if not isinstance(content, str) or not content.strip() or "{" not in content:
+        raise RespuestaNoUtilizableError("falta contenido JSON final")
+    return content
+
+
 def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa"):
     # reasoning effort bajo: los modelos razonadores (Kimi) pueden gastar todo
     # el presupuesto pensando y devolver el JSON vacío (finish_reason=length)
@@ -693,16 +721,15 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa")
         try:
             modos.llamada()
             data = _pedir_http(req, min(TIMEOUT, resto), vence)
-            _costo_sumar(data.get("usage"))
-            msg = data["choices"][0]["message"]
-            # algunos modelos razonadores dejan el JSON en "reasoning"
-            contenido = msg.get("content") or msg.get("reasoning") or ""
-            if "{" in contenido:
-                return contenido
-            ultimo = ValueError("respuesta sin JSON")
-            error = ultimo
-        except (urllib.error.URLError, KeyError, json.JSONDecodeError,
-                OSError, ValueError) as e:
+            _costo_sumar(data.get("usage") if isinstance(data, dict) else None)
+            return _contenido_final(data)
+        except (RespuestaNoUtilizableError, json.JSONDecodeError, UnicodeDecodeError) as e:
+            # Ya llegó una respuesta paga: conservar el consumo y devolver el
+            # fallo sin reenviar para buscar otra respuesta que sí se pueda usar.
+            error = e
+            modos.fallo(etapa)
+            raise
+        except (urllib.error.URLError, KeyError, OSError, ValueError) as e:
             ultimo = e
             error = e
         finally:

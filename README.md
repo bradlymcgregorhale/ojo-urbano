@@ -520,6 +520,30 @@ original; ese valor no representa consumo adicional por consultar la caché.
 Estos campos no generan llamadas extra ni modifican las clasificaciones o el
 campo `costo_api`. La página sigue sin mostrar importes.
 
+### Respuestas completas del proveedor
+
+Los verificadores y el árbitro usan únicamente `message.content` con
+`finish_reason=stop`. No usan el razonamiento interno como respuesta final.
+Una terminación ausente, desconocida o interrumpida, una negativa del proveedor
+o un mensaje sin contenido JSON utilizable dejan la etapa como fallida. Si la
+terminación nativa declara un límite, interrupción o uso de herramientas,
+tampoco se acepta aunque el estado normalizado diga `stop`. Otros nombres
+nativos pueden variar según el proveedor; se conserva el estado normalizado.
+
+Una respuesta HTTP recibida pero inutilizable no dispara otro envío automático.
+Su costo y sus tokens conocidos se contabilizan una sola vez. Si el cuerpo no
+se puede decodificar, el conteo de tokens queda incompleto; no se inventa el
+consumo faltante. Los errores de transporte mantienen su política de reintentos. Un error informado dentro de
+un cuerpo HTTP recibido también detiene ese intento; no se supone que estuvo
+libre de cargos. La evaluación con respuestas guardadas aplica la misma
+validación y conserva una caché vigente marcada como reutilizable que resulte
+incompatible, sin reenviarla. El vencimiento y la opción explícita `--fresh`
+mantienen su comportamiento anterior de solicitar una respuesta nueva.
+El evaluador informa `cache_rejected`, con la ruta y el motivo del rechazo,
+y lo registra en su historial de solicitudes. En la API, los fallos se
+reflejan en `analisis_estado` y `analisis_limitaciones`; no equivalen a que la
+foto esté libre de problemas.
+
 ### Inventario especializado de contenedores
 
 `CONTENEDORES_ESPECIALISTA=1` activa una pasada fija para identificar secos,

@@ -164,9 +164,10 @@ def evaluate(case, private, identity, server, transport, allow_initial_live=Fals
                     for event in reversed(transport.events[before:]):
                         if event.get('model_requested') == model:
                             event['error_type'] = type(exc).__name__
-                            key = event['request_hash']
-                            (transport.cache / (key + '.json')).unlink(missing_ok=True)
-                            transport.seen.pop(key, None)
+                            if not isinstance(exc, R.CacheRejected):
+                                key = event['request_hash']
+                                (transport.cache / (key + '.json')).unlink(missing_ok=True)
+                                transport.seen.pop(key, None)
                             break
                 raise
         return original_map(models, checked_one)
@@ -177,10 +178,14 @@ def evaluate(case, private, identity, server, transport, allow_initial_live=Fals
         # First-pass cache misses stop before the pipeline can spend money on
         # follow-ups, unless a fresh initial reading was explicitly requested.
         if not allow_initial_live and initial_fixture is None:
-            offline = R.Transport(private / 'cache', max_age_days=transport.max_age / 86400)
+            offline = R.Transport(transport.cache, max_age_days=transport.max_age / 86400,
+                                  journal=transport.journal)
             offline.seen.update(transport.seen)
             for model in R.V.VERIFICADORES:
                 initial = R.evaluate_case(case, model, private, offline, server.CATEGORIAS)
+                if initial['status'] == 'cache_rejected':
+                    transport.events.extend(e for e in offline.events if e.get('source') == 'cache_rejected')
+                    raise R.CacheRejected(initial['error'])
                 if initial['status'] not in {'pass', 'fail'}:
                     raise R.NotAvailable('Missing initial response for ' + model)
         with ExitStack() as stack, \
@@ -213,15 +218,23 @@ def evaluate(case, private, identity, server, transport, allow_initial_live=Fals
         evidence_view = dict(internal, en_duda=internal['detalle']['verificacion'].get('en_duda', []))
         if failures or not server._cacheable(evidence_view):
             kinds = {e.get('error_type') for e in failures}
-            row.update(status='budget' if 'BudgetStop' in kinds else 'uncached' if 'NotAvailable' in kinds else 'error',
-                       error='Incomplete model evidence; final result is not scored.')
+            rejected = [e for e in failures if e.get('error_type') == 'CacheRejected']
+            if rejected:
+                row.update(status='cache_rejected', error='; '.join(
+                    f"Caché rechazada en {e['cache_path']}: {e['reason']}" for e in rejected))
+            else:
+                row.update(status='budget' if 'BudgetStop' in kinds else 'uncached' if 'NotAvailable' in kinds else 'error',
+                           error='Incomplete model evidence; final result is not scored.')
+    except R.CacheRejected as exc:
+        row.update(status='cache_rejected', error=str(exc))
     except R.NotAvailable as exc:
         row.update(status='uncached', error=str(exc))
     except Exception as exc:
         row.update(status='error', error=str(exc)[:300])
     row['requests'] = transport.events[start:]
     row['cost_usd'] = float(transport.meter.spent - paid_before)
-    row['response'] = {'source': 'live' if any(e.get('source') == 'live' for e in row['requests']) else 'cache'}
+    row['response'] = {'source': 'cache_rejected' if row['status'] == 'cache_rejected' else
+                       'live' if any(e.get('source') == 'live' for e in row['requests']) else 'cache'}
     return row
 
 

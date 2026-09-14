@@ -226,6 +226,30 @@ class ApiModos(unittest.TestCase):
             self.assertFalse(self.S._cache)
             self.assertEqual(a['modo'], 'bajo')
 
+    def test_respuesta_interrumpida_no_vota_ni_reenvia_en_ningun_modo(self):
+        def http(req, *_):
+            datos = json.loads(req.data); self.llamadas.append(datos)
+            contenido = json.dumps({'categorias': [{'key': 'retiro_escombros',
+                'gravedad': 3, 'evidencia': 'material visible'}], 'sin_problema': False})
+            return {'model': datos['model'], 'usage': {'total_tokens': 10, 'cost': .001},
+                    'choices': [{'finish_reason': 'length',
+                                 'message': {'content': None, 'reasoning': contenido}}]}
+        with patch.object(V, '_pedir_http', side_effect=http):
+            for modo, cantidad in [('bajo', 1), ('medio', 2), ('alto', 4)]:
+                with self.subTest(modo=modo):
+                    self.llamadas.clear()
+                    r = self.post(modo)
+                    self.assertEqual(r.status_code, 200, r.text)
+                    d = r.json()
+                    self.assertEqual(d['analisis_estado'], 'parcial', d)
+                    self.assertIn('etapa_fallida', d['analisis_limitaciones'])
+                    self.assertEqual(d['problemas'], [])
+                    self.assertEqual(len(self.llamadas), cantidad)
+                    self.assertEqual(d['tokens_api'], cantidad * 10)
+                    self.assertTrue(d['tokens_api_completos'])
+                    self.assertEqual(d['costo_api'], cantidad * .001)
+                    self.assertFalse(self.S._cache)
+
     def test_cola_conserva_perfil_capturado_y_error(self):
         inicio = threading.Event();seguir = threading.Event()
         async def espera(*args, **kwargs):
