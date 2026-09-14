@@ -70,6 +70,7 @@ _RUBRICA = (
 
 EVALUACION_FOTO = cargar_prompt('compartidos/evaluacion_foto')
 PRIORIDAD = cargar_prompt('compartidos/prioridad')
+PRIORIDAD_COMPARACION = cargar_prompt('compartidos/prioridad_comparacion')
 OBSERVACIONES_HIGIENE = cargar_prompt('compartidos/observaciones_higiene')
 
 _PROMPT_PATENTE = cargar_prompt('dirigidos/patente')

@@ -14,6 +14,8 @@ mirar las bolsas está en [segundas_miradas/escombros.txt](segundas_miradas/esco
 | `arbitro/*.txt` | Sistema del árbitro y bloques del mensaje de usuario para resolver disputas y redactar la descripción. |
 | `contexto/*.txt` | Clasificación del reclamo escrito cuando la foto no corresponde. |
 | `compartidos/subtipo_humedos.txt` | Regla única del color del contenedor de húmedos, insertada en la rúbrica y en la segunda mirada de subtipo. |
+| `compartidos/prioridad.txt` | Pedido de `prioridad_propuesta` en la primera pasada de cada verificador. |
+| `compartidos/prioridad_comparacion.txt` | Comparación dirigida, solo en Completo, cuando esas propuestas no coinciden. No agrega un cuarto verificador ni cambia la clasificación. |
 
 `verificador.py` decide cuándo usar cada prompt, arma los datos del caso y
 procesa las respuestas. Los umbrales, vetos y reglas de consenso están ahí.

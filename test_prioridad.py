@@ -52,6 +52,76 @@ class PrioridadTest(unittest.TestCase):
         self.assertIsNone(P.normalizar(valor, cats, [], 'retiren las ramas', ctx))
         self.assertIsNone(P.normalizar({'key': '<script>', 'criterio': 'escena'}, cats, vistas, '', []))
 
+    def _disenso(self):
+        r = {'problemas': [{'key': 'retiro_escombros'}, {'key': 'recoleccion'}]}
+        v = [
+            {'modelo': 'a', 'ok': True, 'prioridad_propuesta': {'key': 'retiro_escombros', 'criterio': 'escena'},
+             'categorias': [{'key': 'retiro_escombros', 'evidencia': 'sacos de obra'},
+                            {'key': 'recoleccion', 'evidencia': 'bolsas negras'}]},
+            {'modelo': 'b', 'ok': True, 'prioridad_propuesta': {'key': 'recoleccion', 'criterio': 'escena'},
+             'categorias': [{'key': 'retiro_escombros', 'evidencia': 'Sacos de obra'},
+                            {'key': 'recoleccion', 'evidencia': 'tres bolsas'}]},
+        ]
+        return r, v
+
+    def test_comparacion_solo_ante_disenso_completo(self):
+        r, v = self._disenso()
+        llamadas = []
+
+        def comparacion(candidatos):
+            llamadas.append(candidatos)
+            return {'key': 'retiro_escombros', 'fundamento': 'acumulacion_principal', 'evidencia': 'sacos'}
+
+        consenso = copy.deepcopy(v)
+        consenso[1]['prioridad_propuesta']['key'] = 'retiro_escombros'
+        self.assertEqual(P.seleccionar(r, consenso, comparacion=comparacion)['key'], 'retiro_escombros')
+        self.assertEqual(llamadas, [])
+        self.assertTrue(P.requiere_comparacion(r, v))
+        elegido = P.seleccionar(r, v, comparacion=comparacion)
+        self.assertEqual(elegido['key'], 'retiro_escombros')
+        self.assertEqual(elegido['criterio'], 'escena')
+        self.assertEqual(elegido['motivo'], P.FUNDAMENTOS['acumulacion_principal'])
+        self.assertEqual(len(llamadas), 1)
+        self.assertEqual([c['key'] for c in llamadas[0]], ['retiro_escombros', 'recoleccion'])
+        self.assertEqual(llamadas[0][0]['observaciones'], ['sacos de obra'])
+
+    def test_comparacion_fallida_nula_o_fuera_de_confirmadas_no_inventa(self):
+        r, v = self._disenso()
+        self.assertEqual(P.seleccionar(r, v)['estado'], 'indeterminado')
+        def boom(_candidatos):
+            raise TimeoutError('x')
+        self.assertEqual(P.seleccionar(r, v, comparacion=boom)['estado'], 'no_evaluado')
+        self.assertEqual(
+            P.seleccionar(r, v, comparacion=lambda _c: {'key': None, 'fundamento': None, 'evidencia': 'empate'})['estado'],
+            'indeterminado')
+        self.assertEqual(
+            P.seleccionar(r, v, comparacion=lambda _c: {'key': 'volquete_mal_dispuesto', 'fundamento': 'objeto_principal', 'evidencia': 'x'})['estado'],
+            'indeterminado')
+        self.assertFalse(P.requiere_comparacion(dict(r, contexto_visual={'suficiente': False}), v))
+        self.assertFalse(P.requiere_comparacion({'problemas': [{'key': 'retiro_escombros'}]}, v))
+
+    def test_comparacion_guardada_no_vuelve_a_consultar(self):
+        r, v = self._disenso()
+        veri = {'prioridad_comparacion': {'key': 'retiro_escombros', 'fundamento': 'acumulacion_principal'}}
+        self.assertEqual(P.seleccionar(r, v, comparacion=P.desde_guardada(veri))['key'], 'retiro_escombros')
+        self.assertEqual(
+            P.seleccionar(r, v, comparacion=P.desde_guardada({'prioridad_comparacion_error': True}))['estado'],
+            'no_evaluado')
+        self.assertIsNone(P.desde_guardada({}))
+
+    def test_comparar_prioridad_usa_el_prompt_dirigido(self):
+        from unittest.mock import patch
+        import verificador as V
+        with patch.object(V, '_imagen_data_url', return_value='data:image/jpeg;base64,QQ=='), \
+                patch.object(V, '_llamar', return_value='{"key":"retiro_escombros","fundamento":"acumulacion_principal","evidencia":"sacos"}') as llamada:
+            r = V.comparar_prioridad(object(), [{'key': 'retiro_escombros', 'nombre': 'Escombros', 'observaciones': ['sacos']}])
+        self.assertEqual(r['key'], 'retiro_escombros')
+        modelo, mensajes = llamada.call_args.args[:2]
+        self.assertEqual(modelo, V.MODELO_PRIORIDAD_COMPARACION)
+        self.assertEqual(llamada.call_args.kwargs['etapa'], 'prioridad_comparacion')
+        self.assertEqual(mensajes[0]['content'], V._PROMPT_PRIORIDAD_COMPARACION)
+        self.assertNotIn(V.PRIORIDAD[:40], mensajes[0]['content'])
+
 
 if __name__ == '__main__':
     unittest.main()
