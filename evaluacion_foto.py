@@ -43,7 +43,13 @@ def normalizar(valor):
 
 
 def resumir(verificadores):
-    """Dos fuentes como mínimo; ninguna respuesta ausente se interpreta como acuerdo."""
+    """Dos fuentes como mínimo; ninguna respuesta ausente se interpreta como acuerdo.
+
+    El ámbito exige que todos los lectores coincidan. La calidad y el encuadre se
+    deciden por mayoría de lectores distintos (#97, #102): con tres lectores, dos
+    votos iguales alcanzan aunque el tercero opine lo contrario; con dos, hace
+    falta acuerdo. Un lector que falló no cuenta a favor ni en contra.
+    """
     vistos = [v for v in verificadores if isinstance(v, dict)]
     lecturas = [v.get('evaluacion_foto') for v in vistos]
     cantidad = len({v.get('modelo') for v in vistos if v.get('modelo')})
@@ -61,19 +67,43 @@ def resumir(verificadores):
             return presentes[0], 'evaluado'
         return None, 'indeterminado'
 
+    # Padrón de votos: una lectura válida por lector distinto. Un lector caído,
+    # duplicado o sin lectura no vota, no aporta motivos ni señales.
+    elegibles = {}
+    for v in vistos:
+        if v.get('ok') is True and v.get('modelo') and isinstance(v.get('evaluacion_foto'), dict):
+            elegibles.setdefault(v['modelo'], v['evaluacion_foto'])
+    elegibles = list(elegibles.values())
+
+    def mayoria(campo):
+        """Calidad y contexto: dos lectores distintos con el mismo valor y más votos que el
+        contrario. Un empate queda indeterminado. El ámbito conserva la unanimidad (#95).
+        Devuelve valor, estado y cómo se decidió ('unanime', 'mayoria' o None)."""
+        unanime, estado_unanime = consenso(campo)
+        if estado_unanime == 'evaluado':
+            return unanime, estado_unanime, 'unanime'
+        votos = [x[campo] for x in elegibles if type(x.get(campo)) is bool]
+        if not votos:
+            return None, estado_unanime, None
+        a_favor, en_contra = votos.count(True), votos.count(False)
+        if en_contra >= 2 and en_contra > a_favor:
+            return False, 'evaluado', 'mayoria'
+        if a_favor >= 2 and a_favor > en_contra:
+            return True, 'evaluado', 'mayoria'
+        return None, 'indeterminado', None
+
     ambito, estado_ambito = consenso('ambito')
-    calidad, estado_calidad = consenso('calidad_suficiente')
-    contexto, estado_contexto = consenso('contexto_suficiente')
-    motivos_calidad = sorted({m for x in lecturas if isinstance(x, dict)
+    calidad, estado_calidad, decision_calidad = mayoria('calidad_suficiente')
+    contexto, estado_contexto, decision_contexto = mayoria('contexto_suficiente')
+    motivos_calidad = sorted({m for x in elegibles if x.get('calidad_suficiente') is False
                               for m in x.get('motivos_calidad', [])}) if calidad is False else []
-    motivos_contexto = sorted({m for x in lecturas if isinstance(x, dict)
+    motivos_contexto = sorted({m for x in elegibles if x.get('contexto_suficiente') is False
                                for m in x.get('motivos_contexto', [])}) if contexto is False else []
     interior = ambito == 'interior' and estado_ambito == 'evaluado'
     rechazada = interior or calidad is False
     alguna = any(isinstance(x, dict) for x in lecturas)
-    negativa = any(isinstance(x, dict) and (x.get('ambito') == 'interior'
-                   or x.get('calidad_suficiente') is False or x.get('contexto_suficiente') is False)
-                   for x in lecturas)
+    negativa = any(x.get('ambito') == 'interior' or x.get('calidad_suficiente') is False
+                   or x.get('contexto_suficiente') is False for x in elegibles)
     sin_objecion = bool(vistos) and all(v.get('ok') is True for v in vistos) and all(
         isinstance(x, dict) and x.get('ambito') == 'publica'
         and x.get('calidad_suficiente') is True and x.get('contexto_suficiente') is True for x in lecturas)
@@ -89,6 +119,7 @@ def resumir(verificadores):
     evaluacion = {'ambito': ambito, 'estado_ambito': estado_ambito,
                   'estado': estado,
                   'calidad_suficiente': calidad, 'estado_calidad': estado_calidad,
+                  'decision_calidad': decision_calidad,
                   'motivos': ['interior'] if interior else motivos_calidad,
                   'rechazada': rechazada,
                   'requiere_revision': estado == 'senal_negativa_no_corroborada' or revision_ambito,
@@ -98,7 +129,8 @@ def resumir(verificadores):
                   else INDICACION_CONTEXTO if contexto is False
                   else INDICACION_REVISION if estado == 'senal_negativa_no_corroborada'
                   else INDICACION_AMBITO if revision_ambito else None}
-    encuadre = {'suficiente': contexto, 'estado': estado_contexto, 'motivos': motivos_contexto,
+    encuadre = {'suficiente': contexto, 'estado': estado_contexto, 'decision': decision_contexto,
+                'motivos': motivos_contexto,
                 'indicacion': INDICACION_CONTEXTO if contexto is False else None}
     return evaluacion, encuadre
 
@@ -183,7 +215,10 @@ def aplicar(publica, verificadores):
                 if (c.get('key') in confirmadas and not c.get('anulada_por')
                         and str(c.get('evidencia') or '').strip()):
                     respaldo.setdefault(c['key'], set()).add(v['modelo'])
-        if any(len(fuentes) >= 2 for fuentes in respaldo.values()):
+        # Con una mayoría (no unanimidad) alcanza que haya un problema confirmado por
+        # dos fuentes, aunque una sea el modelo local: la foto sirvió para verlo.
+        confirmadas_con_fuentes = confirmadas and evaluacion.get('decision_calidad') == 'mayoria'
+        if any(len(fuentes) >= 2 for fuentes in respaldo.values()) or confirmadas_con_fuentes:
             evaluacion.update(estado='calidad_contradictoria', rechazada=False,
                               calidad_suficiente=None, estado_calidad='contradictorio',
                               requiere_nueva_foto=False, requiere_revision=True,
