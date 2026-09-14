@@ -101,6 +101,35 @@ class PrioridadTest(unittest.TestCase):
         self.assertFalse(P.requiere_comparacion({'problemas': [{'key': 'retiro_escombros'}]}, v))
         self.assertFalse(P.requiere_comparacion(dict(r, evaluacion_foto={'rechazada': True}), v))
 
+    def test_escena_mixta_sin_prioridad_clara_no_inventa_principal(self):
+        r = {'problemas': [
+            {'key': 'barrido'}, {'key': 'hidrolavado_grafitis'},
+            {'key': 'recoleccion'}, {'key': 'retiro_muebles'},
+        ]}
+        v = [
+            {'modelo': 'a', 'ok': True, 'prioridad_propuesta': {'key': 'recoleccion', 'criterio': 'escena'},
+             'categorias': [{'key': 'recoleccion', 'evidencia': 'papeles sueltos'}]},
+            {'modelo': 'b', 'ok': True, 'prioridad_propuesta': {'key': 'retiro_muebles', 'criterio': 'escena'},
+             'categorias': [{'key': 'retiro_muebles', 'evidencia': 'cajón en la vereda'},
+                            {'key': 'barrido', 'evidencia': 'restos en baldosas'}]},
+            {'modelo': 'c', 'ok': True, 'prioridad_propuesta': {'key': 'barrido', 'criterio': 'escena'},
+             'categorias': [{'key': 'barrido', 'evidencia': 'hojas y papeles'},
+                            {'key': 'hidrolavado_grafitis', 'evidencia': 'pintada en la pared'}]},
+        ]
+        llamadas = []
+
+        def empate(candidatos):
+            llamadas.append([c['key'] for c in candidatos])
+            return {'key': None, 'fundamento': None, 'evidencia': 'varios focos sin uno principal'}
+
+        self.assertTrue(P.requiere_comparacion(r, v))
+        self.assertEqual(P.seleccionar(r, v, comparacion=empate)['estado'], 'indeterminado')
+        self.assertEqual(llamadas, [['barrido', 'hidrolavado_grafitis', 'recoleccion', 'retiro_muebles']])
+        sin_propuestas = [{'modelo': m, 'ok': True} for m in ['a', 'b', 'c']]
+        self.assertFalse(P.requiere_comparacion(r, sin_propuestas))
+        self.assertEqual(P.seleccionar(r, sin_propuestas, comparacion=empate)['estado'], 'no_evaluado')
+        self.assertEqual(llamadas, [['barrido', 'hidrolavado_grafitis', 'recoleccion', 'retiro_muebles']])
+
     def test_comparacion_usa_problemas_despues_de_evaluar_ambito(self):
         import evaluacion_foto as E
         r, v = self._disenso()
