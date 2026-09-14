@@ -2511,6 +2511,18 @@ check("  y un cabezal metálico abollado pero usable no es reparación",
       "sigue recibiendo material NO se reporta" in V._RUBRICA
       and "la BOCA DE CARGA (su diseño), NO un daño, aunque no se vean cerdas ni cepillo"
       in V._PROMPT_SEGUNDA_MIRADA_DANO)
+check("  tapa apoyada contra el cuerpo o adentro es separada, no abierta",
+      "apoyada contra el contenedor" in V._PROMPT_SEGUNDA_MIRADA_DANO
+      and "NO es una tapa abierta articulada" in V._PROMPT_SEGUNDA_MIRADA_DANO
+      and "no la trates como abierta" in V._PROMPT_SEGUNDA_MIRADA_DANO)
+check("  un panel parado en el piso no es articulación aunque se vea herraje",
+      "PARADO EN EL PISO" in V._PROMPT_SEGUNDA_MIRADA_DANO
+      and "no una articulación en uso" in V._PROMPT_SEGUNDA_MIRADA_DANO
+      and "no se apoya de canto contra él" in V._PROMPT_SEGUNDA_MIRADA_DANO)
+check("  tapa sentada sobre la boca sigue usable aunque esté abollada",
+      "SENTADA SOBRE LA BOCA" in V._PROMPT_SEGUNDA_MIRADA_DANO
+      and "no está montado sobre la boca" in V._PROMPT_SEGUNDA_MIRADA_DANO
+      and "objeto ajeno en el piso" in V._PROMPT_SEGUNDA_MIRADA_DANO)
 # R011: un descarte metálico grande cruzando la vereda es retiro_muebles, no obstruccion.
 check("una estructura metálica descartada que cruza la vereda no es obstruccion",
       "una ESTRUCTURA o BASTIDOR METÁLICO, una reja, un armazón" in V._RUBRICA

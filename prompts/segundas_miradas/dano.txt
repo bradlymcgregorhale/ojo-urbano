@@ -1,7 +1,10 @@
 Auditás UNA sola cosa en esta foto: si el contenedor de basura SE PUEDE USAR con normalidad. No\
  preguntamos si se ve lindo: el uso normal incluye poder cerrar la tapa propia. Decidí:
 - "uso_comprometido": el daño le impide el uso normal a un vecino o a la cuadrilla: la tapa está\
- SEPARADA del cuerpo (tirada en el piso o colgando con el herraje arrancado), o colgando de una sola bisagra fuera de alineación, partida con un pedazo\
+ SEPARADA del cuerpo (tirada en el piso, apoyada contra el contenedor, metida adentro, suelta al\
+ lado, o colgando con el herraje arrancado). Una tapa apoyada contra el cuerpo o adentro NO es una\
+ tapa abierta articulada: está desprendida. También cuenta colgando de una sola bisagra fuera de\
+ alineación, partida con un pedazo\
  faltante, o tan DEFORMADA que ya no puede cerrar aunque siga enganchada; el PEDAL está roto o\
  falta; el cuerpo tiene un agujero grande, está quemado, derretido o partido de lado a lado; o le\
  falta una pieza funcional y se nota el hueco; o una BARRA o RIEL de izado del costado quedó SALIDA\
@@ -9,7 +12,10 @@ Auditás UNA sola cosa en esta foto: si el contenedor de basura SE PUEDE USAR co
  parado (la barra sana va vertical y pegada al costado).
 - "usable": el contenedor funciona aunque se vea usado, sucio o golpeado. Las tapas abiertas, dadas\
  vuelta hacia atrás o paradas sobre su eje con los herrajes intactos son USO (los\
- recuperadores las dejan así), no rotura: si se pueden volver a cerrar, es usable. Los rayones,\
+ recuperadores las dejan así), no rotura: si se pueden volver a cerrar, es usable. Una tapa que sigue SENTADA SOBRE LA BOCA o el techo del cuerpo, aunque esté abollada,\
+ entreabierta o sucia, es usable: no la trates como desprendida por un plástico u objeto ajeno en\
+ el piso. Un panel de canto contra el costado o el frente no está montado sobre la boca. Si no ves el eje\
+ o las bisagras y la tapa está fuera de su lugar, no la trates como abierta. Los rayones,\
  abolladuras, marcas y rajaduras chicas no comprometen nada. La RANURA o abertura rectangular ancha\
  y horizontal del cabezal de un contenedor de reciclables/secos es la BOCA DE CARGA (su diseño), NO\
  un daño, aunque no se vean cerdas ni cepillo; y un cabezal metálico ABOLLADO, hundido o deformado\
@@ -21,6 +27,10 @@ Auditás UNA sola cosa en esta foto: si el contenedor de basura SE PUEDE USAR co
 El color y material dependen del diseño: también hay contenedores verdes y cabezales metálicos.\
  Para atribuir una pieza suelta al contenedor, buscá forma, tamaño, encastre o herrajes compatibles\
  y la parte que falta; el mismo color o una inscripción de la empresa por sí solos no alcanzan.\
+ Un panel de tapa PARADO EN EL PISO y apoyado de canto contra el frente o el costado del cuerpo es\
+ una tapa SEPARADA, aunque en el borde superior del cuerpo quede un herraje a la vista: ese herraje\
+ es el asiento que quedó en el cuerpo, no una articulación en uso. Una tapa articulada cuelga o gira\
+ desde el borde del cuerpo; no se apoya de canto contra él.\
  Una tapa o cabezal propio AUSENTE o SEPARADO compromete el uso normal aunque todavía se puedan\
  tirar bolsas por la abertura. Eso es distinto de una tapa abierta que sigue articulada o de la\
  ranura normal de carga de reciclables. Si no podés distinguir ausencia de apertura, respondé\
