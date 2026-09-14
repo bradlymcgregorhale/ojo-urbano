@@ -40,11 +40,31 @@ def _foco_limpieza_cotidiana(foco):
             and foco.get('material') in _ORDINARIAS)
 
 
+def _liviano_en_vereda(foco):
+    return (isinstance(foco, dict)
+            and foco.get('ubicacion') == 'vereda_frente_inmueble'
+            and foco.get('presentacion') in {'disperso', 'acumulado'}
+            and foco.get('material') in _ORDINARIAS)
+
+
 def _lecturas_limpieza_cotidiana(observaciones):
-    """Hojas en la vereda frente al inmueble no exigen acuerdo de presentación."""
-    return bool(observaciones) and all(
-        bool(o.get('materiales')) and all(_foco_limpieza_cotidiana(m) for m in o['materiales'])
-        for o in observaciones)
+    """Hojas en la vereda frente al inmueble no exigen acuerdo de presentación
+    ni que papel, plástico o polvo pendientes estén aislados."""
+    if not observaciones:
+        return False, False, False
+    cotidianos = True
+    hojas_y_livianos = True
+    extra = False
+    for o in observaciones:
+        materiales = o.get('materiales') or []
+        if not materiales:
+            return False, False, False
+        cotidianos = cotidianos and all(_foco_limpieza_cotidiana(m) for m in materiales)
+        tiene_hojas = any(m.get('material') == 'hojas' and _liviano_en_vereda(m) for m in materiales)
+        hojas_y_livianos = hojas_y_livianos and tiene_hojas and all(_liviano_en_vereda(m) for m in materiales)
+        extra = extra or any(m.get('material') in {'papel_carton', 'plastico', 'tierra_polvo'}
+                             and _liviano_en_vereda(m) for m in materiales)
+    return cotidianos, hojas_y_livianos, extra
 
 
 def _bolsones(presente, estado, retiro='no_evaluado'):
@@ -151,11 +171,13 @@ def _publicar_completas(verificadores, alcance=None, rechazada=False, problemas=
                      'corroborado' if bolson is not None else
                      'no_evaluado' if not observaciones and not revisiones else 'indeterminado')
     orientacion = _orientacion('indeterminada' if observaciones else 'no_evaluado')
-    cotidianos = _lecturas_limpieza_cotidiana(observaciones)
+    cotidianos, hojas_y_livianos, extra = _lecturas_limpieza_cotidiana(observaciones)
     if any(p.get('key') in {'recoleccion', 'retiro_poda', 'retiro_muebles', 'retiro_escombros'} for p in problemas):
-        cotidianos = False
-    # Un false explícito veta; omitir el booleano no inventa ni bloquea.
-    if completos and cotidianos and all(o.get('solo_limpieza_cotidiana_frente') is not False for o in observaciones):
+        cotidianos = hojas_y_livianos = False
+    # Un false explícito veta la escena de solo suciedad cotidiana. Si hay hojas
+    # y livianos en la misma vereda, no apaga la orientación ni la recolección.
+    solo_ok = all(o.get('solo_limpieza_cotidiana_frente') is not False for o in observaciones)
+    if completos and ((hojas_y_livianos and extra) or (cotidianos and solo_ok)):
         orientacion.update(estado='orientacion_disponible', tarea='limpieza_cotidiana_vereda',
                           responsable_orientativo='frentista', fuente=FUENTE_LIMPIEZA,
                           indicacion='La limpieza cotidiana de la vereda corresponde al frentista. Barré desde el cordón hacia el frente, juntá los residuos y embolsalos. No los barras a la calzada.')

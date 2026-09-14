@@ -126,6 +126,43 @@ class ObservacionesHigieneTest(unittest.TestCase):
         self.assertEqual(H.publicar(votos, problemas=[{'key': 'barrido'}])['orientacion_limpieza']['estado'],
                          'indeterminada')
 
+    def test_hojas_corroboradas_orientan_aunque_haya_livianos_pendientes(self):
+        def hoja(modelo, extras=()):
+            materiales = [{'material': 'hojas', 'ubicacion': 'vereda_frente_inmueble',
+                           'presentacion': 'acumulado', 'cantidad_relativa': 'significativa',
+                           'evidencia': 'Hojas secas cubriendo la vereda'}]
+            materiales.extend(extras)
+            return voto(modelo, materiales=materiales)
+
+        papel = {'material': 'papel_carton', 'ubicacion': 'vereda_frente_inmueble',
+                 'presentacion': 'disperso', 'cantidad_relativa': 'indeterminada',
+                 'evidencia': 'Papel visible entre las hojas'}
+        plastico = {'material': 'plastico', 'ubicacion': 'vereda_frente_inmueble',
+                    'presentacion': 'disperso', 'cantidad_relativa': 'indeterminada',
+                    'evidencia': 'Vaso plástico entre las hojas'}
+        votos = [hoja('a', [plastico]), hoja('b'), hoja('c', [papel])]
+        for v in votos:
+            v['observaciones_higiene']['solo_limpieza_cotidiana_frente'] = None
+        r = H.publicar(votos, problemas=[{'key': 'barrido'}])
+        self.assertEqual(r['orientacion_limpieza']['estado'], 'orientacion_disponible')
+        self.assertEqual(r['orientacion_limpieza']['tarea'], 'limpieza_cotidiana_vereda')
+        self.assertEqual(r['orientacion_limpieza']['responsable_orientativo'], 'frentista')
+        por_material = {m['material']: m for m in r['materiales']}
+        self.assertEqual(por_material['hojas']['estado'], 'corroborado')
+        self.assertEqual(por_material['hojas']['fuentes'], 3)
+        self.assertEqual(por_material['papel_carton']['estado'], 'pendiente')
+        self.assertEqual(por_material['plastico']['estado'], 'pendiente')
+        self.assertEqual(por_material['papel_carton']['cantidad_relativa'], 'indeterminada')
+        votos[0]['observaciones_higiene']['solo_limpieza_cotidiana_frente'] = False
+        self.assertEqual(H.publicar(votos, problemas=[{'key': 'barrido'}])['orientacion_limpieza']['estado'],
+                         'orientacion_disponible')
+        self.assertEqual(H.publicar(votos, problemas=[{'key': 'recoleccion'}])['orientacion_limpieza']['estado'],
+                         'indeterminada')
+        bolsa = dict(papel, presentacion='bolsa')
+        bloqueo = [hoja('a', [bolsa]), hoja('b'), hoja('c')]
+        self.assertEqual(H.publicar(bloqueo, problemas=[{'key': 'barrido'}])['orientacion_limpieza']['estado'],
+                         'indeterminada')
+
     def test_excrementos_no_se_atribuyen_al_frentista(self):
         votos = [voto('a'), voto('b')]
         for v in votos: v['observaciones_higiene']['materiales'][0]['material'] = 'excrementos'
