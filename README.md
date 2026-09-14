@@ -587,13 +587,18 @@ La API separa la correspondencia con el comentario (`foto_valida`) de la posibil
   El estado general `parcial` describe los materiales disponibles; bolsones y
   orientación conservan sus propios estados y pueden seguir en `no_evaluado`.
   La agrupación actual usa material, ubicación y presentación; no identifica un
-  objeto único ni distingue dos focos que compartan esos atributos. Tampoco separa
-  el origen visual del dato aportado por texto. Esas ampliaciones siguen pendientes
-  en #56 y no se pueden reconstruir a partir del número de fuentes.
+  objeto único ni distingue dos focos que compartan esos atributos.
+  Si una lectura incluye `materiales_contexto`, esos materiales se publican aparte
+  con `estado=aportado_por_texto` y no entran al resumen visual de ese lector.
+  Un material citado en el comentario y también listado como visible en la misma
+  lectura se conserva solo como texto: la cita no demuestra el contenido de una
+  bolsa opaca. Sin esa clave, `origen` sigue en `no_evaluado`; no se infiere el
+  origen a partir del número de fuentes. Identificar cada foco sigue pendiente
+  en #56.
   `detalle_materiales` conserva las descripciones individuales que devolvieron los
   modelos, disponibles en "Qué describió cada modelo". Cada lectura incluye modelo,
   material, ubicación, presentación, cantidad y evidencia, con `estado=lectura_individual`
-  y `origen=no_evaluado`. Su `referencia` identifica una fila dentro de esta respuesta;
+  y `origen` `visual`, `texto` o `no_evaluado`. Su `referencia` identifica una fila dentro de esta respuesta;
   no es un identificador de objeto ni se mantiene entre reanálisis. Dos descripciones
   del mismo material se conservan aunque el resumen las agrupe. La evidencia usa
   el saneado de texto de la API y se limita a 500 caracteres;

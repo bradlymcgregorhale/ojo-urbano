@@ -2115,7 +2115,8 @@ def _verificar_uno(modelo, data_url, categorias, contexto=""):
         # cadena "false" en vez del literal JSON daría True. Cualquier cosa
         # que no sea un sí o un no reconocible se trata como "no se pronunció".
         return {"modelo": modelo, "ok": True, "categorias": vistas,
-                "observaciones_higiene": observaciones_higiene.normalizar(veredicto.get("observaciones_higiene")),
+                "observaciones_higiene": observaciones_higiene.normalizar(
+                    observaciones_higiene.incorporar_contexto_hermano(veredicto)),
             "evaluacion_foto": evaluacion_foto.normalizar(veredicto.get('evaluacion_foto')),
                 "prioridad_propuesta": prioridad.normalizar(veredicto.get('prioridad_propuesta'),
                     categorias, vistas, contexto, ctx_cats),
