@@ -162,6 +162,10 @@ class ObservacionesHigieneTest(unittest.TestCase):
         bloqueo = [hoja('a', [bolsa]), hoja('b'), hoja('c')]
         self.assertEqual(H.publicar(bloqueo, problemas=[{'key': 'barrido'}])['orientacion_limpieza']['estado'],
                          'indeterminada')
+        pila = dict(plastico, presentacion='acumulado', cantidad_relativa='significativa')
+        acumulado = [hoja('a', [pila]), hoja('b', [pila]), hoja('c', [pila])]
+        self.assertEqual(H.publicar(acumulado, problemas=[{'key': 'barrido'}])['orientacion_limpieza']['estado'],
+                         'indeterminada')
 
     def test_excrementos_no_se_atribuyen_al_frentista(self):
         votos = [voto('a'), voto('b')]

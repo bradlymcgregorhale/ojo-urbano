@@ -41,15 +41,17 @@ def _foco_limpieza_cotidiana(foco):
 
 
 def _liviano_en_vereda(foco):
-    return (isinstance(foco, dict)
-            and foco.get('ubicacion') == 'vereda_frente_inmueble'
-            and foco.get('presentacion') in {'disperso', 'acumulado'}
-            and foco.get('material') in _ORDINARIAS)
+    if not isinstance(foco, dict) or foco.get('ubicacion') != 'vereda_frente_inmueble':
+        return False
+    if foco.get('material') == 'hojas' and foco.get('presentacion') in {'disperso', 'acumulado'}:
+        return True
+    return (foco.get('presentacion') == 'disperso'
+            and foco.get('material') in {'tierra_polvo', 'papel_carton', 'plastico'})
 
 
 def _lecturas_limpieza_cotidiana(observaciones):
     """Hojas en la vereda frente al inmueble no exigen acuerdo de presentación
-    ni que papel, plástico o polvo pendientes estén aislados."""
+    ni que papel, plástico o polvo dispersos estén aislados."""
     if not observaciones:
         return False, False, False
     cotidianos = True
@@ -174,8 +176,8 @@ def _publicar_completas(verificadores, alcance=None, rechazada=False, problemas=
     cotidianos, hojas_y_livianos, extra = _lecturas_limpieza_cotidiana(observaciones)
     if any(p.get('key') in {'recoleccion', 'retiro_poda', 'retiro_muebles', 'retiro_escombros'} for p in problemas):
         cotidianos = hojas_y_livianos = False
-    # Un false explícito veta la escena de solo suciedad cotidiana. Si hay hojas
-    # y livianos en la misma vereda, no apaga la orientación ni la recolección.
+    # Un false explícito veta la escena de solo suciedad cotidiana. Hojas
+    # corroboradas con livianos dispersos en la misma vereda no se apagan.
     solo_ok = all(o.get('solo_limpieza_cotidiana_frente') is not False for o in observaciones)
     if completos and ((hojas_y_livianos and extra) or (cotidianos and solo_ok)):
         orientacion.update(estado='orientacion_disponible', tarea='limpieza_cotidiana_vereda',
