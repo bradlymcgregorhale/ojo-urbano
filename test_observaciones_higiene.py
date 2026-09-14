@@ -82,6 +82,50 @@ class ObservacionesHigieneTest(unittest.TestCase):
         self.assertEqual(H.publicar(votos)['orientacion_limpieza']['responsable_orientativo'], 'frentista')
         self.assertEqual(H.publicar(votos, problemas=[{'key':'retiro_poda'}])['orientacion_limpieza']['estado'], 'indeterminada')
 
+    def test_hojas_en_vereda_orientan_aunque_no_acuerden_presentacion(self):
+        votos = [voto('a'), voto('b'), voto('c')]
+        votos[0]['observaciones_higiene']['materiales'][0].update(
+            presentacion='acumulado', cantidad_relativa='significativa')
+        votos[1]['observaciones_higiene']['materiales'][0].update(
+            presentacion='acumulado', cantidad_relativa='significativa')
+        votos[2]['observaciones_higiene']['materiales'][0].update(
+            presentacion='disperso', cantidad_relativa='significativa')
+        r = H.publicar(votos, problemas=[{'key': 'barrido'}])
+        self.assertEqual(r['orientacion_limpieza']['estado'], 'orientacion_disponible')
+        self.assertEqual(r['orientacion_limpieza']['responsable_orientativo'], 'frentista')
+        self.assertEqual(r['orientacion_limpieza']['tarea'], 'limpieza_cotidiana_vereda')
+        self.assertTrue(all(m['estado'] == 'pendiente' for m in r['materiales']))
+        self.assertEqual({m['presentacion'] for m in r['materiales']}, {'acumulado', 'disperso'})
+        self.assertEqual(H.publicar(votos, problemas=[{'key': 'retiro_escombros'}])['orientacion_limpieza']['estado'],
+                         'indeterminada')
+
+    def test_hojas_en_vereda_orientan_aunque_solo_limpieza_se_omita(self):
+        votos = [voto('a'), voto('b'), voto('c')]
+        votos[0]['observaciones_higiene']['materiales'][0].update(
+            presentacion='acumulado', cantidad_relativa='significativa')
+        votos[1]['observaciones_higiene']['materiales'][0].update(
+            presentacion='acumulado', cantidad_relativa='significativa')
+        votos[2]['observaciones_higiene']['materiales'][0].update(
+            presentacion='disperso', cantidad_relativa='significativa')
+        for v in votos:
+            v['observaciones_higiene']['solo_limpieza_cotidiana_frente'] = None
+        r = H.publicar(votos, problemas=[{'key': 'barrido'}])
+        self.assertEqual(r['orientacion_limpieza']['estado'], 'orientacion_disponible')
+        self.assertEqual(r['orientacion_limpieza']['responsable_orientativo'], 'frentista')
+        crudos = []
+        for modelo, presentacion in [('a', 'acumulado'), ('b', 'acumulado'), ('c', 'disperso')]:
+            crudos.append({'modelo': modelo, 'ok': True, 'observaciones_higiene': H.normalizar({
+                'hay_bolson': False, 'materiales': [{
+                    'material': 'hojas', 'ubicacion': 'vereda_frente_inmueble',
+                    'presentacion': presentacion, 'cantidad_relativa': 'significativa',
+                    'evidencia': 'Hojas cubriendo la vereda'}]})})
+        self.assertIsNone(crudos[0]['observaciones_higiene']['solo_limpieza_cotidiana_frente'])
+        self.assertEqual(H.publicar(crudos, problemas=[{'key': 'barrido'}])['orientacion_limpieza']['estado'],
+                         'orientacion_disponible')
+        votos[1]['observaciones_higiene']['solo_limpieza_cotidiana_frente'] = False
+        self.assertEqual(H.publicar(votos, problemas=[{'key': 'barrido'}])['orientacion_limpieza']['estado'],
+                         'indeterminada')
+
     def test_excrementos_no_se_atribuyen_al_frentista(self):
         votos = [voto('a'), voto('b')]
         for v in votos: v['observaciones_higiene']['materiales'][0]['material'] = 'excrementos'
