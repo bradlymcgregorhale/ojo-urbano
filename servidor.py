@@ -889,7 +889,7 @@ def procesar(datos, contexto, verificar):
     if perfil and perfil.modo == "alto":
         veri_actual = dict((salida.get("detalle") or {}).get("verificacion") or {})
         lecturas = veri_actual.get("verificadores") or []
-        previa = {"problemas": salida.get("problemas") or []}
+        previa = evaluacion_foto.aplicar({"problemas": list(salida.get("problemas") or [])}, lecturas)
         if prioridad.requiere_comparacion(previa, lecturas):
             try:
                 candidatos = prioridad.armar_candidatos(previa, lecturas, CATEGORIAS)

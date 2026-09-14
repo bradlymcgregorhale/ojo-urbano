@@ -99,6 +99,21 @@ class PrioridadTest(unittest.TestCase):
             'indeterminado')
         self.assertFalse(P.requiere_comparacion(dict(r, contexto_visual={'suficiente': False}), v))
         self.assertFalse(P.requiere_comparacion({'problemas': [{'key': 'retiro_escombros'}]}, v))
+        self.assertFalse(P.requiere_comparacion(dict(r, evaluacion_foto={'rechazada': True}), v))
+
+    def test_comparacion_usa_problemas_despues_de_evaluar_ambito(self):
+        import evaluacion_foto as E
+        r, v = self._disenso()
+        for lectura in v:
+            lectura['evaluacion_foto'] = {
+                'ambito': 'interior', 'evidencia_ambito': 'El colchón está dentro de una habitación.',
+                'calidad_suficiente': True, 'contexto_suficiente': True,
+            }
+        previa = E.aplicar(r, v)
+        self.assertTrue(previa['evaluacion_foto']['rechazada'])
+        self.assertFalse(P.requiere_comparacion(previa, v))
+        self.assertEqual(P.seleccionar(previa, v, comparacion=lambda _c: {'key': 'retiro_escombros'})['estado'],
+                         'no_aplica')
 
     def test_comparacion_guardada_no_vuelve_a_consultar(self):
         r, v = self._disenso()
