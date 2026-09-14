@@ -381,6 +381,27 @@ class ObservacionesHigieneTest(unittest.TestCase):
         candidata.pop('observaciones_higiene')
         self.assertEqual(base, candidata)
 
+    def test_contexto_hermano_se_incorpora_sin_pisar_el_bloque(self):
+        cita = 'Dentro de las bolsas hay cascotes de hormigón.'
+        bloque = {'hay_bolson': False, 'solo_limpieza_cotidiana_frente': False, 'materiales': [
+            {'material': 'residuos_mezclados', 'ubicacion': 'calzada', 'presentacion': 'bolsa',
+             'cantidad_relativa': 'aislado', 'evidencia': 'cuatro bolsas de residuos negras'}]}
+        hermano = [{'material': 'hormigon_cascotes', 'cita_contexto': cita}]
+        n = H.normalizar(H.incorporar_contexto_hermano({
+            'observaciones_higiene': bloque, 'materiales_contexto': hermano}))
+        self.assertEqual([m['material'] for m in n['materiales']], ['residuos_mezclados'])
+        self.assertEqual(n['materiales_contexto'][0]['material'], 'hormigon_cascotes')
+        self.assertEqual(n['materiales_contexto'][0]['cita_contexto'], cita)
+        anidado = dict(bloque, materiales_contexto=[
+            {'material': 'plastico', 'cita_contexto': 'Hay plástico.'}])
+        n2 = H.normalizar(H.incorporar_contexto_hermano({
+            'observaciones_higiene': anidado, 'materiales_contexto': hermano}))
+        self.assertEqual(n2['materiales_contexto'][0]['material'], 'plastico')
+        self.assertIsNone(H.incorporar_contexto_hermano('no'))
+        self.assertEqual(H.incorporar_contexto_hermano(
+            {'observaciones_higiene': bloque, 'materiales_contexto': 'fuera'})['materiales'],
+            bloque['materiales'])
+
     def test_comentario_no_convierte_cascotes_en_evidencia_visual(self):
         cita = 'Dentro de las bolsas hay cascotes de hormigón.'
         bolsa = {'material': 'plastico', 'ubicacion': 'calzada', 'presentacion': 'bolsa',

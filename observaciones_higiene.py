@@ -96,6 +96,21 @@ def ajustar_presentacion(publica):
     revision['requiere_cambio_presentacion'] = True
 
 
+def incorporar_contexto_hermano(veredicto):
+    """Si el modelo puso materiales_contexto al lado del bloque, lo incorpora."""
+    if not isinstance(veredicto, dict):
+        return None
+    obs = veredicto.get('observaciones_higiene')
+    if not isinstance(obs, dict):
+        return obs
+    if 'materiales_contexto' in obs:
+        return obs
+    hermano = veredicto.get('materiales_contexto')
+    if not isinstance(hermano, list):
+        return obs
+    return dict(obs, materiales_contexto=hermano)
+
+
 def _materiales_de_contexto(valor):
     """Lee materiales declarados en el comentario. Ausencia de clave no es una lista vacía."""
     if 'materiales_contexto' not in valor:
