@@ -154,7 +154,8 @@ def _publicar_completas(verificadores, alcance=None, rechazada=False, problemas=
     cotidianos = _lecturas_limpieza_cotidiana(observaciones)
     if any(p.get('key') in {'recoleccion', 'retiro_poda', 'retiro_muebles', 'retiro_escombros'} for p in problemas):
         cotidianos = False
-    if completos and cotidianos and all(o.get('solo_limpieza_cotidiana_frente') is True for o in observaciones):
+    # Un false explícito veta; omitir el booleano no inventa ni bloquea.
+    if completos and cotidianos and all(o.get('solo_limpieza_cotidiana_frente') is not False for o in observaciones):
         orientacion.update(estado='orientacion_disponible', tarea='limpieza_cotidiana_vereda',
                           responsable_orientativo='frentista', fuente=FUENTE_LIMPIEZA,
                           indicacion='La limpieza cotidiana de la vereda corresponde al frentista. Barré desde el cordón hacia el frente, juntá los residuos y embolsalos. No los barras a la calzada.')
