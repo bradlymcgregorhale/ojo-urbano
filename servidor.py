@@ -1802,7 +1802,7 @@ select{max-width:100%;padding:8px;font:inherit;border:1px solid #aaa;border-radi
     <option value="medio" disabled>Equilibrado (no disponible)</option>
     <option value="alto" selected>Completo</option>
   </select>
-  <p id="modo-ayuda">Completo mantiene todas las verificaciones. Económico y Equilibrado usan menos y pueden dejar más casos pendientes. La elección se aplica a las fotos que agregues después.</p>
+  <p id="modo-ayuda">Completo mantiene todas las verificaciones. Económico y Equilibrado usan menos y pueden dejar más casos pendientes. Se aplica a las fotos en espera y a las que agregues después; las ya enviadas conservan su modo. La elección queda guardada en este navegador.</p>
   <p id="modo-estado" role="status" aria-live="polite"></p>
 
   <div id="drop" role="button" tabindex="0" aria-label="Elegir fotos para analizar">
@@ -1920,6 +1920,13 @@ document.querySelectorAll('.ruta').forEach(el=>{el.textContent=RUTAS[el.dataset.
 const GRAV={1:'registro',2:'leve',3:'típico',4:'grave',5:'crítico'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const nombresModos={bajo:'Económico',medio:'Equilibrado',alto:'Completo'};
+// La elección general vale para las tarjetas en espera (#129); las enviadas ya
+// mandaron su modo y no se tocan. Se recuerda en este navegador.
+const CLAVE_MODO='ojo-urbano-modo-general';
+function modoRecordado(actual){
+  try{const v=localStorage.getItem(CLAVE_MODO);return v&&nombresModos[v]?v:null;}catch(e){return null;}
+}
+function guardarModo(v){try{localStorage.setItem(CLAVE_MODO,v);}catch(e){}}
 let perfilesModos={};
 const modoBloqueado=modo=>perfilesModos[modo]?.disponible===false;
 function opcionesModos(valor){
@@ -1937,7 +1944,10 @@ async function actualizarModos(){
   }catch(e){
     $('#modo-estado').textContent='No pude actualizar los modos disponibles. El servidor comprobará el modo al enviar la foto.';
   }
-  const general=$('#modo-general'), seleccionado=general.value||'alto';
+  const general=$('#modo-general');
+  let seleccionado=modoRecordado(general.value)||general.value||'alto';
+  // Un modo recordado que el servidor ya no ofrece vuelve a Completo, sin dejar la elección vieja guardada.
+  if(modoBloqueado(seleccionado)&&modoRecordado(general.value)===seleccionado){seleccionado='alto';guardarModo('alto');}
   general.innerHTML=opcionesModos(seleccionado);general.value=seleccionado;
   document.querySelectorAll('select[data-modo]').forEach(el=>{
     const valor=el.value;el.innerHTML=opcionesModos(valor);el.value=valor;
@@ -1949,7 +1959,10 @@ async function actualizarModos(){
 actualizarModos();
 window.addEventListener('focus',actualizarModos);
 $('#modo-general').onchange=()=>{
-  $('#modo-estado').textContent=modoBloqueado($('#modo-general').value)?'El modo elegido no está disponible.':'';
+  const v=$('#modo-general').value;
+  $('#modo-estado').textContent=modoBloqueado(v)?'El modo elegido no está disponible.':'';
+  guardarModo(v);
+  for(const it of items){if(!it.modoFijo&&it.estado==='espera'){it.modo=v;pintar(it);}}
 };
 
 const SNIP={
