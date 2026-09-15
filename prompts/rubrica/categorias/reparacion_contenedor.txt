@@ -41,7 +41,9 @@
  distintos: los recuperadores las dejan volcadas así para revolver, se ve caótico pero no hay nada\
  roto; "tapas desprendidas" exige ver la tapa SEPARADA del cuerpo o el herraje arrancado, no tapas\
  abiertas de par en par. El color y material dependen del diseño; también hay contenedores verdes\
- y cabezales metálicos. Un perfil, viga, caño o caja ajenos no prueban daño del contenedor. Para\
+ y cabezales metálicos. Un perfil, viga, caño o caja ajenos no prueban daño del contenedor. Y un armario técnico de\
+ chapa con PUERTA de frente y bisagras, parado en la vereda (un buzón eléctrico), no es un\
+ contenedor aunque esté oxidado: eso es buzon_electrico. Para\
  reconocer una pieza propia, buscá forma, tamaño, encastre o herrajes compatibles y la parte que\
  falta. Color o inscripción de la empresa por sí solos no prueban esa relación. La base y las\
  barras de izado descritas arriba también pueden ser metálicas. Una tapa o cabezal propio ausente\

@@ -34,6 +34,7 @@ RUBRICA_CATEGORIAS = (
     'lavado_contenedor',
     'vehiculo_mal_estacionado',
     'columna_poste_cable',
+    'buzon_electrico',
     'puesto_diarios',
     'puesto_flores',
     'volquete_mal_dispuesto',

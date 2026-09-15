@@ -85,3 +85,9 @@ Al desplegar, copiá `prompts/` completo junto con `verificador.py`,
 `servidor.py` y `politica_escombros.py` antes de reiniciar el servicio.
 Copiar solo `verificador.py` no alcanza. Los cambios
 en los textos necesitan reinicio para entrar en uso.
+
+`rubrica/categorias/buzon_electrico.txt` (#115) corresponde a la prestación de la
+Ciudad 1641314335507, "Buzón eléctrico en mal estado o abandonado". Ese código
+queda en `categorias.json` como metadato interno (`prestacion`); la API pública
+sigue publicando solo `key` y `nombre`. La categoría no tiene clase en el modelo
+local: se confirma con dos lectores, como las demás sin voto local.
