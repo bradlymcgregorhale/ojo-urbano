@@ -20,7 +20,7 @@ mirar las bolsas está en [segundas_miradas/escombros.txt](segundas_miradas/esco
 `verificador.py` decide cuándo usar cada prompt, arma los datos del caso y
 procesa las respuestas. Los umbrales, vetos y reglas de consenso están ahí.
 Las pasadas dirigidas se activan según los votos y la configuración; no todas
-corren para cada foto.
+se ejecutan para cada foto.
 
 `dirigidos/alcance_escombros.txt` separa ubicación, presentación, contenido
 visible y testimonio vecinal. No recibe puntajes locales ni votos anteriores.
