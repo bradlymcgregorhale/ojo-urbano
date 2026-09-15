@@ -1,4 +1,4 @@
-/* Recorrido completo con transporte sintético, sin pedidos a OpenRouter. */
+/* Recorrido completo con transporte sintético, sin pedidos a OpenRouter (#58, #118). */
 'use strict';
 const {crearServicio}=require('./reanalizar.cjs'),fs=require('fs'),path=require('path'),os=require('os'),crypto=require('crypto'),assert=require('assert'),{spawnSync}=require('child_process');
 const pp=require(process.env.OJO_PUPPETEER||'puppeteer'),sha=b=>crypto.createHash('sha256').update(b).digest('hex');
@@ -7,7 +7,7 @@ const pp=require(process.env.OJO_PUPPETEER||'puppeteer'),sha=b=>crypto.createHas
  const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=','base64');fs.writeFileSync(path.join(e,'foto.jpg'),bytes);
  const row={foto:'H0001',archivo:'foto.jpg',entrada_api:'foto.jpg',sha256:sha(bytes),sha256_api:sha(bytes)};fs.writeFileSync(path.join(e,'manifest.json'),JSON.stringify({fotos:[row]}));fs.writeFileSync(path.join(a,'entradas-api.json'),JSON.stringify({H0001:{archivo:'foto.jpg',sha256:sha(bytes),original_sha256:sha(bytes)}}));
  const old={modo:'alto',modo_version:'anterior',hay_reclamo:true,problemas:[{key:'recoleccion',nombre:'Recolección'}],posibles:[],elementos_detectados:[],descripcion:'Resultado anterior',analisis_estado:'completo',costo_api:.01,tokens_api:10,tokens_api_completos:true};
- fs.writeFileSync(path.join(a,'H0001-alto.json'),JSON.stringify({foto:'H0001',modo:'alto',fecha:'2026-09-12T12:00:00Z',resultado:old}));fs.writeFileSync(path.join(a,'estado.json'),JSON.stringify({pausa_usuario:true}));
+ fs.writeFileSync(path.join(a,'H0001-alto.json'),JSON.stringify({foto:'H0001',modo:'alto',fecha:'2026-09-12T12:00:00Z',resultado:old}));fs.writeFileSync(path.join(a,'estado.json'),JSON.stringify({pausa_usuario:true}));fs.mkdirSync(path.join(a,'reanalisis'));fs.writeFileSync(path.join(a,'reanalisis/estado.json'),JSON.stringify({gasto_usd:.1,reserva_incierta_usd:0,reserva_acotada_usd:1,activo:null,intentos:[]}));
  let calls=0;const cfg={modo_version:'nueva',token:'b'.repeat(64),tope_usd:3,intervalo_ms:5};
  const s=crearServicio(base,cfg,{version:async()=>'nueva',enviar:async raw=>{assert.deepEqual(raw,bytes);calls++;return{trabajo:'job',estado:'en_cola'}},consultar:async()=>({trabajo:'job',estado:'listo',resultado:{...old,modo_version:'nueva',descripcion:'Respuesta nueva $& <b>texto</b>',problemas:[{key:'retiro_poda',nombre:'Retiro de poda'}]}})});
  await new Promise(r=>s.server.listen(0,'127.0.0.1',r));cfg.puerto=s.server.address().port;fs.writeFileSync(path.join(a,'reanalisis-config.json'),JSON.stringify(cfg));
@@ -15,7 +15,7 @@ const pp=require(process.env.OJO_PUPPETEER||'puppeteer'),sha=b=>crypto.createHas
  const b=await pp.launch({headless:true,protocolTimeout:15000});try{
   console.log('navegador iniciado');const page=await b.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('file://'+path.join(e,'revision.html'));
   console.log('página cargada');await page.click('#aprobar-publica');const saved=await page.evaluate(()=>localStorage.getItem(Object.keys(localStorage).find(k=>k.startsWith('ojo-lote-v2:'))));
-  console.log('esperando servicio',await page.$eval('#reanalisar-estado',e=>e.textContent));await page.waitForFunction(()=>!document.getElementById('reanalisar-foto').disabled,{polling:100,timeout:5000});await page.click('#reanalisar-foto');
+  console.log('esperando servicio',await page.$eval('#reanalisar-estado',e=>e.textContent));await page.waitForFunction(()=>!document.getElementById('reanalisar-foto').disabled,{polling:100,timeout:5000});assert((await page.$eval('#reanalisar-ayuda',e=>e.textContent)).includes('Reservas: USD 1.0000'));await page.click('#reanalisar-foto');
   console.log('pedido enviado');await page.waitForSelector('#reanalisar-intentos a',{timeout:15000});const link=await page.$eval('#reanalisar-intentos a',e=>e.href);
   console.log('resultado disponible');const next=await b.newPage();next.on('pageerror',e=>errors.push(e.message));await next.goto(link);assert.equal(await next.$eval('#descripcion-original',e=>e.textContent),'Respuesta nueva $& <b>texto</b>');assert((await next.$eval('#comparacion-resumen',e=>e.textContent)).includes('Recolección'));
   await next.click('#aprobar-publica');const newSaved=await next.evaluate(()=>JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k=>k.startsWith('ojo-lote-v2:')))));assert.notEqual(newSaved.conjunto,JSON.parse(saved).conjunto);assert.equal(newSaved.revisiones.H0001.categorias.retiro_poda,'confirmado');
@@ -25,6 +25,6 @@ const pp=require(process.env.OJO_PUPPETEER||'puppeteer'),sha=b=>crypto.createHas
   for(let i=0;i<30&&!fs.readdirSync(base).some(f=>f.startsWith('ojo-urbano-lote-revisado-'));i++)await new Promise(r=>setTimeout(r,100));
   console.log('descarga terminada');const exported=JSON.parse(fs.readFileSync(path.join(base,fs.readdirSync(base).find(f=>f.startsWith('ojo-urbano-lote-revisado-')&&f.endsWith('.json')))));assert.equal(exported.procedencia.version_nueva,'nueva');assert.equal(exported.procedencia.version_original,'anterior');
   console.log('exportación verificada');await next.bringToFront();await next.setViewport({width:390,height:844});assert(await next.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await next.screenshot({path:path.join(base,'comparacion-celular.png')});assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({archivo_local_a_api_local:true,pedido_unico:true,revision_anterior_intacta:true,revision_nueva_independiente:true,exportacion_con_huellas:true,json_seguro:true,celular:true,evidencia:base}));
+  console.log(JSON.stringify({archivo_local_a_api_local:true,reserva_acotada_compatible:true,pedido_unico:true,revision_anterior_intacta:true,revision_nueva_independiente:true,exportacion_con_huellas:true,json_seguro:true,celular:true,evidencia:base}));
  }finally{console.log('cerrando navegador');await b.close();console.log('cerrando servicio');s.server.closeAllConnections();await new Promise(r=>s.server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1});
