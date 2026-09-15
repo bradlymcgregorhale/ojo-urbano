@@ -1152,6 +1152,10 @@ check("la tarjeta titula la lectura preliminar (#122)",
 _prelim = servidor._publica(dict(_interno, problemas=[], categorias_contexto=[], modo='alto',
                                 posibles=[{"key": "recoleccion", "nombre": "Recolección", "origen": "foto",
                                            "arbitro": None, "fuentes": ["t/a"]}]))
+check("el selector general de modo actualiza las tarjetas en espera y se recuerda (#129)",
+      "for(const it of items){if(!it.modoFijo&&it.estado==='espera'){it.modo=v;pintar(it);}}" in _src
+      and "localStorage.getItem(CLAVE_MODO)" in _src and "guardarModo(v)" in _src
+      and "modoRecordado(general.value)||general.value||'alto'" in _src and "if(modoBloqueado(seleccionado)&&modoRecordado(general.value)===seleccionado){seleccionado='alto';guardarModo('alto');}" in _src)
 check("  y Completo nunca publica preliminar (#122)",
       _prelim["conclusion"]["estado"] == "sin_indicios" and _prelim["hay_problema"] is False)
 _solo_local = dict(_interno, problemas=[_interno["problemas"][1]],
