@@ -517,18 +517,31 @@ _tokens_foto = contextvars.ContextVar("tokens_foto", default=None)
 
 def tokens_reset():
     """Abre un conteo propio de la foto, compartido por sus llamadas paralelas."""
-    _tokens_foto.set({"total": 0, "completos": True, "lock": threading.Lock()})
+    _tokens_foto.set({"total": 0, "completos": True, "entrada": 0, "salida": 0,
+                      "desglose_completo": True, "lock": threading.Lock()})
 
 
-def tokens_total():
-    """Devuelve el uso conocido y señala si algún intento no informó tokens."""
+def tokens_total(desglose=False):
+    """Devuelve el uso conocido y señala si algún intento no informó tokens.
+
+    Con ``desglose`` agrega la entrada (prompt) y la salida (completion) sumadas
+    por separado; ``tokens_desglose_completo`` es falso si algún intento no
+    informó esos dos conteos, aunque su total sí se haya sumado.
+    """
     estado = _tokens_foto.get()
     _tokens_foto.set(None)
     if estado is None:
-        return {"tokens_api": 0, "tokens_api_completos": True}
+        r = {"tokens_api": 0, "tokens_api_completos": True}
+        if desglose:
+            r.update(tokens_entrada=0, tokens_salida=0, tokens_desglose_completo=True)
+        return r
     with estado["lock"]:
-        return {"tokens_api": estado["total"],
-                "tokens_api_completos": estado["completos"]}
+        r = {"tokens_api": estado["total"],
+             "tokens_api_completos": estado["completos"]}
+        if desglose:
+            r.update(tokens_entrada=estado["entrada"], tokens_salida=estado["salida"],
+                     tokens_desglose_completo=estado["desglose_completo"])
+        return r
 
 
 def _tokens_sumar(data):
@@ -542,12 +555,20 @@ def _tokens_sumar(data):
         entrada, salida = uso.get("prompt_tokens"), uso.get("completion_tokens")
         total = (entrada + salida if type(entrada) is int and entrada >= 0
                  and type(salida) is int and salida >= 0 else None)
+    entrada, salida = uso.get("prompt_tokens"), uso.get("completion_tokens")
+    desglose = (type(entrada) is int and entrada >= 0
+                and type(salida) is int and salida >= 0)
     # Razonamiento y caché son detalles del total, no consumos adicionales.
     with estado["lock"]:
         if total is None:
             estado["completos"] = False
         else:
             estado["total"] += total
+        if desglose:
+            estado["entrada"] += entrada
+            estado["salida"] += salida
+        else:
+            estado["desglose_completo"] = False
 
 
 def _map_con_contexto(pool, fn, valores):

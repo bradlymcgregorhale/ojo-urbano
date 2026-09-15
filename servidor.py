@@ -901,7 +901,7 @@ def procesar(datos, contexto, verificar):
             detalle["verificacion"] = veri_actual
             salida["detalle"] = detalle
     salida["costo_api"] = verificador.costo_total()
-    salida.update(verificador.tokens_total())
+    salida.update(verificador.tokens_total(desglose=True))
     return modos.completar(salida)
 
 
@@ -2274,11 +2274,29 @@ function pintar(it){
   actualizarBarra();
 }
 
+const fmtNum=n=>Number(n).toLocaleString('es-AR');
+function lineaCosto(d){
+  // Texto de una línea: importe, tokens (entrada y salida) y costo por millón de tokens.
+  let t='Costo de procesamiento (API): US$ '+d.costo_api.toLocaleString('es-AR',{minimumFractionDigits:4,maximumFractionDigits:4});
+  const tok=typeof d.tokens_api==='number'&&d.tokens_api>0?d.tokens_api:null;
+  if(tok){
+    t+=' · '+fmtNum(tok)+' tokens';
+    const desglose=typeof d.tokens_entrada==='number'&&typeof d.tokens_salida==='number';
+    if(desglose&&d.tokens_desglose_completo!==false)
+      t+=' (entrada '+fmtNum(d.tokens_entrada)+', salida '+fmtNum(d.tokens_salida)+')';
+    else if(desglose&&d.tokens_entrada+d.tokens_salida>0)
+      t+=' (entrada '+fmtNum(d.tokens_entrada)+', salida '+fmtNum(d.tokens_salida)+', desglose incompleto)';
+    t+=' · US$ '+(d.costo_api/tok*1e6).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})+' por millón de tokens';
+    if(d.tokens_api_completos===false)t+=' · conteo de tokens incompleto';
+  }
+  return t;
+}
 function renderResultado(d){
   if(d.evaluacion_foto?.rechazada){
     return `<div class="tarconcl">Foto rechazada: ${d.evaluacion_foto.ambito==='interior'?'interior':'calidad insuficiente'}</div>`+
       `<div class="tardesc">${esc(d.evaluacion_foto.indicacion||'Necesitamos otra foto para evaluar el reclamo.')}</div>`+
-      `<div class="modo-nota">Modo: ${esc(nombresModos[d.modo]||d.modo||'Sin informar')} · Análisis: ${esc(d.analisis_estado||'Sin informar')}</div>`;
+      `<div class="modo-nota">Modo: ${esc(nombresModos[d.modo]||d.modo||'Sin informar')} · Análisis: ${esc(d.analisis_estado||'Sin informar')}</div>`+
+      (typeof d.costo_api==='number'&&d.costo_api>0?`<div class="tarcosto">${esc(lineaCosto(d))}</div>`:'');
   }
   const probs=d.problemas||[];
   const aviso=(d.foto_valida===false&&d.hay_problema)
@@ -2292,6 +2310,7 @@ function renderResultado(d){
     :'No se confirmaron problemas')
     +(revisionMaterial&&(d.hay_problema||d.hay_reclamo)?' · tipo de residuos pendiente de revisión':'');
   let h=`<div class="tarconcl">${esc(concl+aviso)}</div>`;
+  if(typeof d.costo_api==='number'&&d.costo_api>0)h+=`<div class="tarcosto">${esc(lineaCosto(d))}</div>`;
   const bolsones=d.observaciones_higiene?.bolsones;
   if(bolsones?.retiro_caba==='excluido_por_presentacion'){
     h+=`<div class="tardesc"><strong>Retiro de escombros: presentación no admitida (CABA).</strong> ${esc(bolsones.indicacion||'Consultá al servicio de recolección cómo gestionar este bolsón.')}</div>`;
@@ -2487,7 +2506,8 @@ $('#csvbtn').onclick=()=>{
   const cab=['archivo','contexto','estado','hay_problema','gravedad_maxima','predominante','problemas',
     'patente','elementos_detectados','posibles','en_duda','hay_reclamo','foto_valida_estado',
     'verificacion_activa','verificacion_motivo','descripcion','error','trabajo',
-    'contenedores_estado','contenedores_motivo','modo','modo_version','analisis_estado','analisis_limitaciones'];
+    'contenedores_estado','contenedores_motivo','modo','modo_version','analisis_estado','analisis_limitaciones',
+    'costo_api','tokens_api','tokens_entrada','tokens_salida','tokens_api_completos','tokens_desglose_completo'];
   const filas=[cab];
   for(const it of items){
     const d=it.resultado||{};
@@ -2500,7 +2520,8 @@ $('#csvbtn').onclick=()=>{
       d.hay_reclamo??'',d.foto_valida_estado??'',d.verificacion_activa??'',
       d.verificacion_motivo??'',d.descripcion??'',it.estado==='error'?it.detalle:'',it.trabajo||'',
       d.contenedores?.estado??'',d.contenedores?.motivo??'',d.modo||it.modoFijo||it.modo,
-      d.modo_version||'',d.analisis_estado||'',(d.analisis_limitaciones||[]).join(' | ')]);
+      d.modo_version||'',d.analisis_estado||'',(d.analisis_limitaciones||[]).join(' | '),
+      d.costo_api??'',d.tokens_api??'',d.tokens_entrada??'',d.tokens_salida??'',d.tokens_api_completos??'',d.tokens_desglose_completo??'']);
   }
   // comillas para separadores y saltos; el apóstrofo inicial neutraliza
   // fórmulas (=, +, -, @) si el CSV se abre en una planilla

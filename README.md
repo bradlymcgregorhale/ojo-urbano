@@ -515,10 +515,18 @@ los intentos sin datos no se puede determinar. Sin llamadas, el total es cero y
 el conteo está completo. Cada foto tiene su propio acumulador, incluso cuando
 se procesan varias en paralelo.
 
+`tokens_entrada` y `tokens_salida` suman por separado `prompt_tokens` y
+`completion_tokens` de los mismos intentos (la salida incluye el razonamiento).
+`tokens_desglose_completo` vale `false` si algún intento informó el total pero
+no esos dos conteos; en ese caso las sumas parciales se conservan sin inventar
+la diferencia.
+
 Una respuesta recuperada de la caché local conserva los tokens del análisis
 original; ese valor no representa consumo adicional por consultar la caché.
 Estos campos no generan llamadas extra ni modifican las clasificaciones o el
-campo `costo_api`. La página sigue sin mostrar importes.
+campo `costo_api`. La tarjeta de la página muestra el costo, los tokens con su
+desglose y el costo por millón de tokens (`costo_api` dividido por `tokens_api`)
+cuando el análisis tuvo costo; el CSV exporta las mismas columnas.
 
 ### Respuestas completas del proveedor
 
