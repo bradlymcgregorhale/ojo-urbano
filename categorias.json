@@ -139,6 +139,11 @@
     "nombre": "Columna, poste o cable en mal estado",
     "grupo": "Infraestructura"
   },
+  "buzon_electrico": {
+    "nombre": "Buzón eléctrico en mal estado o abandonado",
+    "grupo": "Infraestructura",
+    "prestacion": "1641314335507"
+  },
   "mayor_iluminacion": {
     "nombre": "Falta de iluminación en la vía pública",
     "grupo": "Infraestructura"

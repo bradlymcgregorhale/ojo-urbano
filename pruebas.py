@@ -2558,6 +2558,34 @@ check("  subtipo del recortado: pared plana gris sin poste -> bilateral",
 check("  la entrada lateral advierte contra votar lateral por el color",
       "TODO contenedor de húmedos GRIS (cualquier tono, claro u oscuro) es BILATERAL" in V._RUBRICA
       and '"Oscuro" por sí solo NO es señal de lateral' in V._RUBRICA)
+
+# #115 (H0228): un gabinete eléctrico corroído no es un cesto ni un contenedor.
+check("la rúbrica tiene la categoría buzon_electrico con su clave y su prestación",
+      "- buzon_electrico: un BUZÓN o GABINETE ELÉCTRICO de la vía pública" in V._RUBRICA
+      and CATS["buzon_electrico"]["grupo"] == "Infraestructura"
+      and CATS["buzon_electrico"]["prestacion"] == "1641314335507"
+      and any(p["codigo"] == "1641314335507" for p in V.PRESTACIONES))
+check("  exige las dos condiciones: armario autónomo en la vereda y daño observable",
+      "demuestre LAS DOS condiciones a la vez" in V._RUBRICA
+      and "visualmente SEPARADO de paredes, pilares y frentes" in V._RUBRICA
+      and "Si no podés comprobar las dos condiciones, omití la categoría" in V._RUBRICA)
+check("  excluye lo empotrado, el vidrio como puerta abierta y el gabinete sano",
+      "EMPOTRADO en la pared, el pilar o el frente" in V._RUBRICA
+      and "NO demuestra que esté abierta" in V._RUBRICA
+      and "Un gabinete sano NO se reporta" in V._RUBRICA)
+check("  y lo separa de cesto, contenedor, mueble y poste",
+      "no tiene boca hacia arriba ni canasto" in V._RUBRICA
+      and "tirado en el piso como descarte sí es retiro_muebles" in V._RUBRICA
+      and "van en columna_poste_cable" in V._RUBRICA)
+check("  la entrada de cesto manda el armario con puerta de frente a buzon_electrico",
+      "no es un cesto aunque esté oxidado: eso es\n buzon_electrico".replace("\n", "") in V._RUBRICA)
+check("  y la de contenedor también",
+      "no es un\n contenedor aunque esté oxidado: eso es buzon_electrico".replace("\n", "") in V._RUBRICA)
+check("  buzon_electrico no lleva parte ni patente y no está en RESTANTES",
+      "buzon_electrico" not in V.PARTE_KEYS and "buzon_electrico" not in V.PATENTE_KEYS
+      and "- buzon_electrico: Buzón eléctrico" not in V._prompt_sistema(CATS))
+check("  toda clave de la rúbrica existe en el catálogo",
+      all(k in CATS for k in P.RUBRICA_CATEGORIAS))
 # Ronda 6 #14: gris es regla DOMINANTE — ni forma ni postes/barras lo hacen lateral (V055, V092)
 check("  gris de cualquier tono es bilateral, sin excepción (r6 #14)",
       "el GRIS de cualquier tono NO es lateral: es bilateral" in V._RUBRICA

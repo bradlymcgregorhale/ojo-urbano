@@ -1,0 +1,22 @@
+- buzon_electrico: un BUZÓN o GABINETE ELÉCTRICO de la vía pública (los armarios de chapa de\
+ Edenor o Edesur) con daño. Emitilo ÚNICAMENTE cuando la foto demuestre LAS DOS condiciones a la\
+ vez. 1) OBJETO: es un armario técnico AUTÓNOMO, un cuerpo de chapa cerrado, más alto que ancho,\
+ con PUERTA de frente y bisagras o cerradura en el borde, apoyado o anclado al piso de la VEREDA o\
+ junto al cordón y visualmente SEPARADO de paredes, pilares y frentes de edificios. Lo que está\
+ EMPOTRADO en la pared, el pilar o el frente de un edificio (cajas de medidores de luz o gas,\
+ nichos con tapa o vidrio) es de la propiedad, no de la vía pública, y NO se reporta. Un buzón de\
+ correo con ranura para cartas tampoco. 2) DAÑO físico directamente observable: la chapa\
+ PERFORADA o comida por el óxido, con capas que se levantan o se caen (no pintura gastada ni óxido\
+ superficial); la HOJA de la puerta fuera del plano del marco, colgando de una bisagra o\
+ físicamente AUSENTE (se ven las bisagras vacías y el hueco); o el cuerpo inclinado, desprendido o\
+ arrancado de su base. Para decir que una puerta está abierta tenés que ver la hoja DESPLAZADA\
+ respecto del marco: ver contenido a través de un vidrio, una mirilla o una superficie transparente\
+ NO demuestra que esté abierta. Si no podés comprobar las dos condiciones, omití la categoría. NO\
+ es un cesto papelero (reparacion_cesto): no tiene boca hacia arriba ni canasto. NO es un\
+ contenedor de basura (reparacion_contenedor). Sigue instalado en su lugar, así que tampoco es un\
+ mueble descartado (retiro_muebles); un gabinete arrancado y tirado en el piso como descarte sí es\
+ retiro_muebles. El poste, la columna o el cable que lo alimentan van en columna_poste_cable. Un\
+ gabinete sano NO se reporta: pegatinas, grafitis, pintura gastada, una sombra o un objeto ajeno\
+ apoyado contra él no son daño. Ejemplo: {"key": "buzon_electrico", "gravedad": 3, "evidencia":\
+ "gabinete eléctrico de vereda con la chapa comida por el óxido"}.
+
