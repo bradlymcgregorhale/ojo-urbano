@@ -30,12 +30,12 @@ El problema de medir esto es que el pipeline llama a modelos que no repiten
 respuesta. Para que un cambio en el código no se confunda con el ruido de los
 modelos, casi todo se mide sobre **evidencia congelada**: cada foto se
 clasifica UNA vez (modelo local + los dos verificadores) y ese resultado se
-guarda. Después se re-corre solo la lógica que cambió, reusando esos
+guarda. Después se vuelve a ejecutar solo la lógica que cambió, reusando esos
 veredictos. Así el diff es atribuible al código.
 
 Dos advertencias que costaron caro:
 
-- **La tasa de cambio del árbitro deriva con el tiempo.** Dos corridas
+- **La tasa de cambio del árbitro deriva con el tiempo.** Dos ejecuciones
   idénticas dieron 13,9% y 7,8%. Comparar condiciones en bloques secuenciales
   mezcla la condición con el momento: hay que **intercalar** las condiciones
   foto por foto (`harness/interleaved.py`).
@@ -81,7 +81,7 @@ Para rehacer el eval desde cero (llama a modelos, cuesta plata):
 | votación pareada | `harness/interleaved.py` | |
 | piso de ruido | `harness/ruido2.py` | |
 | calidad contra la adjudicación | `harness/calidad_arbitro.py` | |
-| piso de ruido, dos brazos (#7) | `harness/estabilidad.py` | replay puro, no necesita fotos; acepta `shard total` para correr en procesos paralelos |
+| piso de ruido, dos brazos (#7) | `harness/estabilidad.py` | replay puro, no necesita fotos; acepta `shard total` para ejecutar en procesos paralelos |
 | inyección estampada, muestra grande (#8) | `harness/inyeccion.py` | necesita las fotos en `eval/fotos_cache/` y el modelo local; `shard total`, reanudable |
 
 Los scripts son reanudables: guardan lo hecho y saltean lo que ya está.

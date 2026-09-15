@@ -73,7 +73,7 @@ GRAV_MAX = 5
 # confirmar hallazgos de una sola fuente. v3: la respuesta viene resumida (los
 # modelos de visión en "modelos", sin el ranking completo del modelo local ni
 # los campos repetidos); el volcado entero se pide con ?detalle=1. v4: el
-# modelo local desaparece de la respuesta (sigue corriendo y contando como
+# modelo local desaparece de la respuesta (sigue ejecutándose y contando como
 # fuente del consenso, pero su voto no se publica); no hay más ?detalle=1;
 # "fuentes" pasa a ser un conteo; hay_problema vuelve a significar problema
 # CONFIRMADO (hay_problema == bool(problemas)) y hay_reclamo expresa "el
@@ -238,7 +238,7 @@ def siglip_vec(img):
 def _liberar_transitorio():
     """Libera los tensores intermedios de MPS y fuerza gc tras cada foto. No
     descarga el modelo (eso lo cuida guard_modelo); baja el PICO de memoria por
-    request, que es lo que apretaba la Mac en corridas batch."""
+    request, que es lo que apretaba la memoria en ejecuciones por lotes."""
     import gc
     gc.collect()
     t = _siglip.get("torch") or _dino.get("torch")
@@ -328,7 +328,7 @@ _cupos = threading.BoundedSemaphore(CONCURRENCIA)
 # la reserva sin que hubiera fallado nada.
 TECHO_TRABAJO = max(120, int(os.environ.get("TECHO_TRABAJO", "600")))
 # Los hilos perdidos no pueden quedarse con los workers, o el próximo pedido
-# esperaría por uno libre en vez de correr. Se deja lugar para unos cuantos.
+# esperaría por uno libre en vez de ejecutar. Se deja lugar para unos cuantos.
 ABANDONO_MAX = max(1, int(os.environ.get("ABANDONO_MAX", "4")))
 _perdidos = {"vivos": 0, "total": 0, "lock": threading.Lock()}
 # Tantos hilos como cupos: con el semáforo de admisión, un trabajo aceptado
@@ -417,7 +417,7 @@ def _abrir_imagen(datos):
     ANTES del convert(), que es el que materializa la imagen entera en RAM.
     El corte es en el mismo umbral en el que Pillow apenas avisaría, así que
     el warning queda cubierto sin tocar el filtro global de warnings (que no
-    sería seguro de mutar ahora que esto corre en un hilo aparte).
+    sería seguro de mutar ahora que esto se ejecuta en un hilo aparte).
     """
     demasiado = f"la foto supera los {MAX_PIXELES // 1_000_000} megapíxeles"
     try:
@@ -1362,10 +1362,10 @@ async def _correr_con_cupo(datos, contexto, verificar, huella, perfil=None):
                     _perdidos["vivos"] = max(0, _perdidos["vivos"] - 1)
 
     # El pipeline es sincrónico y tarda 25-60 s: fuera del event loop, o
-    # bloquea /salud, la portada y cualquier otro pedido mientras corre.
+    # bloquea /salud, la portada y cualquier otro pedido mientras se ejecuta.
     # Se usa el pool propio (y no asyncio.to_thread) para poder preguntarle al
     # future si el trabajo llegó a arrancar: si se cancela mientras todavía
-    # estaba encolado, el finally de trabajo() nunca corre y el cupo se
+    # estaba encolado, el finally de trabajo() nunca se ejecuta y el cupo se
     # perdería para siempre.
     def ejecutar():
         with modos.usar(perfil):
@@ -1381,7 +1381,7 @@ async def _correr_con_cupo(datos, contexto, verificar, huella, perfil=None):
         return await asyncio.wrap_future(tarea)
     except asyncio.CancelledError:
         # cancel() devuelve True solo si seguía en la cola: ahí es seguro
-        # soltar, porque trabajo() no va a correr nunca. Si devuelve False ya
+        # soltar, porque trabajo() no va a ejecutar nunca. Si devuelve False ya
         # arrancó y lo suelta su propio finally.
         if tarea.cancel():
             techo.cancel()
@@ -1433,7 +1433,7 @@ def _posicion_trabajo(t):
 
 
 async def _correr_trabajo(t):
-    """Vida completa de un trabajo: espera su turno, corre el pipeline y deja
+    """Vida completa de un trabajo: espera su turno, se ejecuta el pipeline y deja
     el resultado (o el error) en el registro. Nunca levanta hacia afuera salvo
     la cancelación del apagado."""
     try:

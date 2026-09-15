@@ -6,13 +6,13 @@ los dos verificadores. El cambio que se evalua (CONSENSO_VLM_SOLO) vive
 AGUAS ABAJO de esto, en la logica de consenso, asi que congelando esta capa
 el diff entre los dos brazos queda 100% atribuible al cambio y no al ruido
 de los modelos. El arbitro NO se llama aca: su prompt cambia entre brazos,
-que es justamente el cambio, y se corre en la fase de replay.
+que es justamente el cambio, y se se ejecuta en la fase de replay.
 """
 import os
 import sys
 from pathlib import Path
 
-# Rutas relativas al repo: el harness corre desde cualquier clon.
+# Rutas relativas al repo: el harness se ejecuta desde cualquier clon.
 REPO = Path(__file__).resolve().parents[2]
 DATOS = REPO / "eval" / "datos"
 sys.path.insert(0, str(REPO))
@@ -116,7 +116,7 @@ def bajar(ident, url):
 def main():
     if not DB:
         sys.exit("Pone SOLICITUDES_DB=/ruta/solicitudes.sqlite para re-muestrear.\n"
-                 "Para auditar lo publicado no hace falta: corre eval/analizar.py.")
+                 "Para auditar lo publicado no hace falta: ejecutá eval/analizar.py.")
     con = sqlite3.connect(DB, uri=True)
     hechos = set()
     if SALIDA.exists():

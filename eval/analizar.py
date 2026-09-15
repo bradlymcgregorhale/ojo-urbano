@@ -208,7 +208,7 @@ exp = cargar("experimentos_arbitro.json")
 if exp:
     print("  ATENCIÓN: las condiciones en bloque secuencial NO son comparables")
     print("  entre sí. La tasa deriva con el tiempo: ver M32_r1 vs M32_r2, dos")
-    print("  corridas IDÉNTICAS. Por eso la comparación válida es la pareada.\n")
+    print("  ejecuciones IDÉNTICAS. Por eso la comparación válida es la pareada.\n")
     por = {c["id"]: c for c in exp["condiciones"]}
     for c in exp["condiciones"]:
         lo, hi = wilson(c["flips"], c["n"])

@@ -7,7 +7,7 @@
     {"id": "B_pin",      "desc": "temp0 con allow_fallbacks=false, deepseek",       "flips": 21, "n": 231, "diseno": "bloque_secuencial"},
     {"id": "C_denso",    "desc": "temp0, arbitro mistral-small-24b (denso)",        "flips": 7,  "n": 231, "diseno": "bloque_secuencial"},
     {"id": "C_denso_rep","desc": "repeticion de C_denso",                           "flips": 14, "n": 231, "diseno": "bloque_secuencial"},
-    {"id": "M32_r1",     "desc": "mistral-small-3.2-24b, corrida 1",                "flips": 32, "n": 231, "diseno": "bloque_secuencial"},
-    {"id": "M32_r2",     "desc": "mistral-small-3.2-24b, corrida 2 (identica)",     "flips": 18, "n": 231, "diseno": "bloque_secuencial"}
+    {"id": "M32_r1",     "desc": "mistral-small-3.2-24b, ejecución 1",                "flips": 32, "n": 231, "diseno": "bloque_secuencial"},
+    {"id": "M32_r2",     "desc": "mistral-small-3.2-24b, ejecución 2 (idéntica)",     "flips": 18, "n": 231, "diseno": "bloque_secuencial"}
   ]
 }

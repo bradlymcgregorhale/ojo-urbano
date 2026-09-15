@@ -6,7 +6,7 @@ tapa) a reparacion_contenedor en vez de retiro_muebles. Una regla así puede
 pasarse de largo y suprimir voluminosos de verdad, que es justo lo que pasó
 la vez anterior que se endureció la rúbrica (rompió retiro_poda).
 
-Se corren SOLO las fotos cuyo gold incluye alguna clave de contenedor/cesto o
+Se se ejecutan SOLO las fotos cuyo gold incluye alguna clave de contenedor/cesto o
 retiro_muebles, con los MISMOS dos modelos con los que se capturó
 evidencia_rubrica_v3.jsonl, para que la única diferencia sea la rúbrica.
 
@@ -44,7 +44,7 @@ def seleccionar():
     """Fotos cuyo gold toca alguna de las claves en juego y están en el cache.
 
     Se arma acá y no en un archivo suelto de /tmp, para que el harness se
-    pueda correr desde cualquier clon sin pasos previos.
+    pueda ejecutar desde cualquier clon sin pasos previos.
     """
     adj = json.load((DATOS / "adjudicacion.json").open())
     por_n = {x["n"]: x for x in json.load((DATOS / "muestra.json").open())}
