@@ -501,6 +501,23 @@ Las descripciones de los modelos forman parte de la respuesta y pueden transcrib
 
 [MIT](LICENSE)
 
+### Conclusión publicada
+
+`conclusion` resume lo publicado sin cambiar `problemas` ni las invariantes:
+`estado` es `confirmada` (hay problemas), `por_texto` (solo `categorias_contexto`),
+`rechazada` (foto rechazada por ámbito o calidad), `preliminar` o `sin_indicios`;
+`categorias` lista `key` y `nombre`; `texto` es la frase que muestra la tarjeta.
+
+`preliminar` solo aparece en un modo sin árbitro (Económico) cuando no hay
+problemas confirmados y quedan `posibles` de origen foto sin veredicto. Ahí
+`requiere_revision` vale `true`, la descripción pasa a "Lectura preliminar: se
+detectaron indicios de ... Requieren corroboración." y la tarjeta titula
+"Lectura preliminar: requiere corroboración". `hay_problema` sigue en `false`:
+un voto único no confirma nada; describe lo que vio el lector para que una
+persona o una corrida en Completo lo corrobore. En Equilibrado y Completo los
+`posibles` ya pasaron por el árbitro y la conclusión es `confirmada` o
+`sin_indicios`. El CSV exporta `conclusion_estado`.
+
 ### Consumo de tokens por foto
 
 La respuesta de análisis incluye `tokens_api`, la suma de `usage.total_tokens`

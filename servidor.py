@@ -1068,7 +1068,47 @@ def _publica(r):
         comparacion=prioridad.desde_guardada(veri))
     pub['hay_problema'] = bool(pub.get('problemas'))
     pub['hay_reclamo'] = bool(pub.get('problemas')) or bool(pub.get('categorias_contexto'))
+    pub['conclusion'] = _conclusion(pub)
+    if pub['conclusion']['estado'] == 'preliminar':
+        pub['descripcion'] = pub['conclusion']['texto']
     return pub
+
+
+def _conclusion(pub):
+    """Conclusión legible sobre lo PUBLICADO (#122).
+
+    No cambia problemas ni las invariantes: en un modo sin árbitro (Económico),
+    los posibles de la foto que nadie arbitró se presentan como lectura
+    preliminar que requiere corroboración, en vez de "sin problemas".
+    """
+    if (pub.get('evaluacion_foto') or {}).get('rechazada'):
+        return {'estado': 'rechazada', 'categorias': [], 'requiere_revision': False,
+                'texto': (pub.get('evaluacion_foto') or {}).get('indicacion')}
+    if pub.get('problemas'):
+        cats = [{'key': c.get('key'), 'nombre': c.get('nombre')} for c in pub['problemas']]
+        return {'estado': 'confirmada', 'categorias': cats, 'requiere_revision': False,
+                'texto': 'Incidencias confirmadas: ' + ', '.join(c['nombre'] or c['key'] or '' for c in cats) + '.'}
+    if pub.get('categorias_contexto'):
+        cats = [{'key': c.get('key'), 'nombre': c.get('nombre')} for c in pub['categorias_contexto']]
+        return {'estado': 'por_texto', 'categorias': cats, 'requiere_revision': False,
+                'texto': 'Reclamo según tu texto, sin confirmación en la foto.'}
+    perfil = PERFILES.get(pub.get('modo')) if hasattr(PERFILES, 'get') else None
+    # Solo Económico: un Completo o Equilibrado sin árbitro configurado es una
+    # degradación, no un modo de lectura única.
+    sin_arbitro = pub.get('modo') == 'bajo' and perfil is not None and not perfil.arbitro
+    preliminares = [c for c in pub.get('posibles') or []
+                    if isinstance(c, dict) and c.get('key') and c.get('origen') == 'foto'
+                    and not c.get('arbitro')] if sin_arbitro else []
+    if preliminares:
+        cats = [{'key': c['key'], 'nombre': c.get('nombre') or nombre_de(c['key'])} for c in preliminares]
+        # Los nombres del catálogo empiezan en mayúscula; dentro de la frase van en minúscula
+        # (salvo siglas o nombres propios, que no tenemos en el catálogo).
+        nombres = [c['nombre'][0].lower() + c['nombre'][1:] if c['nombre'] else c['key'] for c in cats]
+        lista = nombres[0] if len(nombres) == 1 else ', '.join(nombres[:-1]) + ' y ' + nombres[-1]
+        return {'estado': 'preliminar', 'categorias': cats, 'requiere_revision': True,
+                'texto': 'Lectura preliminar: se detectaron indicios de ' + lista + '. Requieren corroboración.'}
+    return {'estado': 'sin_indicios', 'categorias': [], 'requiere_revision': False,
+            'texto': 'No se confirmaron problemas con la evidencia disponible.'}
 
 
 app = FastAPI(title="Ojo Urbano")
@@ -2307,6 +2347,7 @@ function renderResultado(d){
       +(d.gravedad_maxima?` · gravedad ${d.gravedad_maxima}/5 (${GRAV[d.gravedad_maxima]||''})`:'')
     :d.hay_reclamo?'Reclamo por texto, sin confirmación en la foto'
     :revisionMaterial?'Requiere revisión del tipo de residuos'
+    :d.conclusion?.estado==='preliminar'?'Lectura preliminar: requiere corroboración'
     :'No se confirmaron problemas')
     +(revisionMaterial&&(d.hay_problema||d.hay_reclamo)?' · tipo de residuos pendiente de revisión':'');
   let h=`<div class="tarconcl">${esc(concl+aviso)}</div>`;
@@ -2507,7 +2548,7 @@ $('#csvbtn').onclick=()=>{
     'patente','elementos_detectados','posibles','en_duda','hay_reclamo','foto_valida_estado',
     'verificacion_activa','verificacion_motivo','descripcion','error','trabajo',
     'contenedores_estado','contenedores_motivo','modo','modo_version','analisis_estado','analisis_limitaciones',
-    'costo_api','tokens_api','tokens_entrada','tokens_salida','tokens_api_completos','tokens_desglose_completo'];
+    'costo_api','tokens_api','tokens_entrada','tokens_salida','tokens_api_completos','tokens_desglose_completo','conclusion_estado'];
   const filas=[cab];
   for(const it of items){
     const d=it.resultado||{};
@@ -2521,7 +2562,7 @@ $('#csvbtn').onclick=()=>{
       d.verificacion_motivo??'',d.descripcion??'',it.estado==='error'?it.detalle:'',it.trabajo||'',
       d.contenedores?.estado??'',d.contenedores?.motivo??'',d.modo||it.modoFijo||it.modo,
       d.modo_version||'',d.analisis_estado||'',(d.analisis_limitaciones||[]).join(' | '),
-      d.costo_api??'',d.tokens_api??'',d.tokens_entrada??'',d.tokens_salida??'',d.tokens_api_completos??'',d.tokens_desglose_completo??'']);
+      d.costo_api??'',d.tokens_api??'',d.tokens_entrada??'',d.tokens_salida??'',d.tokens_api_completos??'',d.tokens_desglose_completo??'',d.conclusion?.estado??'']);
   }
   // comillas para separadores y saltos; el apóstrofo inicial neutraliza
   // fórmulas (=, +, -, @) si el CSV se abre en una planilla

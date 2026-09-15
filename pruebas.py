@@ -1145,6 +1145,15 @@ check("  y el CSV exporta costo y tokens (#120)",
       and "d.costo_api??'',d.tokens_api??'',d.tokens_entrada??'',d.tokens_salida??'',d.tokens_api_completos??'',d.tokens_desglose_completo??''" in _src)
 check("  y la foto rechazada también muestra el costo (#120)",
       _src.count("esc(lineaCosto(d))") == 2)
+# #122: conclusión preliminar en Económico, sin tocar problemas ni invariantes.
+check("la tarjeta titula la lectura preliminar (#122)",
+      "d.conclusion?.estado==='preliminar'?'Lectura preliminar: requiere corroboración'" in _src
+      and "'conclusion_estado'];" in _src and "d.conclusion?.estado??''" in _src)
+_prelim = servidor._publica(dict(_interno, problemas=[], categorias_contexto=[], modo='alto',
+                                posibles=[{"key": "recoleccion", "nombre": "Recolección", "origen": "foto",
+                                           "arbitro": None, "fuentes": ["t/a"]}]))
+check("  y Completo nunca publica preliminar (#122)",
+      _prelim["conclusion"]["estado"] == "sin_indicios" and _prelim["hay_problema"] is False)
 _solo_local = dict(_interno, problemas=[_interno["problemas"][1]],
                    categorias_contexto=[])
 check("sin fuentes publicables: hay_problema y hay_reclamo son false",
