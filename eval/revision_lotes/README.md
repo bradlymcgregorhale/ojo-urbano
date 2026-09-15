@@ -10,7 +10,7 @@ Los botones "Falta contexto" y "Mala calidad" piden otra foto y avanzan, sin mar
 
 La selección de prioridad permite señalar el problema principal entre las categorías confirmadas en la revisión. Guardarla no aprueba la foto ni cambia categorías. Si después quitás la confirmación de ese problema, se elimina su prioridad para evitar una contradicción. El comparador puntúa esa elección por separado, incluso cuando la revisión queda como borrador. Exige la constancia de "Guardar solo la prioridad" en el historial de la exportación; un campo sin ese registro queda conservado pero sin puntuar. Las sugerencias de categorías y materiales del borrador no se convierten en etiquetas humanas.
 
-Las decisiones se guardan en el navegador. Exportá la revisión al terminar cada tanda; ese JSON permite recuperar el trabajo o llevarlo a otro dispositivo. Cambiar de navegador o limpiar sus datos puede borrar la copia local. "Actualizar resultados" carga las respuestas que vaya completando la cola sin borrar las revisiones.
+Las decisiones y la foto actual se guardan en el navegador. Exportá la revisión al terminar cada tanda; ese JSON permite recuperar el trabajo o llevarlo a otro dispositivo. Cambiar de navegador o limpiar sus datos puede borrar la copia local. Si el catálogo incorpora una categoría, las revisiones guardadas la reciben como `sin_revisar`, sin perder su posición ni convertirla en un negativo. "Actualizar resultados" carga las respuestas que vaya completando la cola sin borrar las revisiones.
 
 ## Generación y procesamiento
 
@@ -144,7 +144,7 @@ El botón del informe conserva el original y abre otra página para comparar y r
 
 Antes de enviar, el servicio comprueba las huellas, la versión desplegada, el presupuesto y que no haya otro intento pendiente. Reserva un dólar por pedido, cuenta el costo conocido y detiene nuevos envíos si falta información de consumo. Una respuesta perdida no provoca otro POST. Un trabajo con identificador puede recuperarse con consultas al reiniciar. Si no hay identificador, hay que conciliarlo antes de continuar. El importe reservado no es un cargo observado.
 
-Una conciliación externa puede registrar una cota documentada en `reserva_acotada_usd` cuando se conoce el único pedido fallido, sus límites y las tarifas aplicables. Esa reserva sigue descontándose del presupuesto y se muestra separada del consumo conocido. No se libera por el mero paso del tiempo ni convierte un costo desconocido en cero.
+Una conciliación externa puede registrar una cota documentada en `reserva_acotada_usd` cuando se conoce el único pedido fallido, sus límites y las tarifas aplicables. Esa reserva sigue descontándose del presupuesto y se muestra separada del consumo conocido. No se libera por el mero paso del tiempo ni convierte un costo desconocido en cero. La interfaz mantiene disponible el reanálisis mientras el consumo conocido, la reserva acotada y la reserva de USD 1 para el pedido nuevo no superen el tope, igual que el servicio local.
 
 La configuración y los intentos son privados. No publiques el token ni expongas este servicio mediante un túnel. El reanálisis no modifica `analisis/estado.json` ni reanuda la cola de fotos. Después de otro despliegue, actualizá la versión de la configuración y regenerá el HTML. Si se abrió desde otro equipo, el servicio loopback de este equipo no estará disponible.
 
