@@ -45,7 +45,7 @@ Una clasificación en Completo tarda entre 25 y 60 segundos; los otros modos, me
 
 La API recibe la imagen y, si existe, el texto escrito por quien reporta en el campo `contexto`.
 
-El modelo local procesa la foto en el equipo donde corre la API. Combina embeddings de CLIP, DINOv2 y SigLIP2 con un clasificador multi-etiqueta de regresión logística, entrenado con miles de fotos callejeras etiquetadas a mano. También estima una gravedad de 1 a 5.
+El modelo local procesa la foto en el mismo equipo donde está instalada la API. Combina embeddings de CLIP, DINOv2 y SigLIP2 con un clasificador multi-etiqueta de regresión logística, entrenado con miles de fotos callejeras etiquetadas a mano. También estima una gravedad de 1 a 5.
 
 Si configuraste OpenRouter, uno, dos o tres modelos de visión según el modo (por defecto GPT-5 mini, Gemini Flash Lite y GPT-5.6 luna en Completo) evalúan la misma imagen con una rúbrica por categoría. La confirmación visual necesita al menos dos fuentes. La aceptación contextual de escombros, explicada abajo, es una excepción. El modelo local participa como una fuente y sus puntuaciones aparecen por separado en `modelo_local`.
 
@@ -59,7 +59,7 @@ Hay categorías que el modelo local no conoce, entre ellas `vehiculo_mal_estacio
 
 ## Modos de análisis
 
-Cada foto se analiza en uno de tres modos. Se elige por foto, con el campo `modo` del formulario o con el selector de la portada, y define cuántos lectores externos miran la imagen, qué comprobaciones corren y cuánto cuesta. El modelo local participa en los tres y la regla de dos fuentes para confirmar una categoría no cambia.
+Cada foto se analiza en uno de tres modos. Se elige por foto, con el campo `modo` del formulario o con el selector de la portada, y define cuántos lectores externos miran la imagen, qué comprobaciones se hacen y cuánto cuesta. El modelo local participa en los tres y la regla de dos fuentes para confirmar una categoría no cambia.
 
 | | Económico (`bajo`) | Equilibrado (`medio`) | Completo (`alto`) |
 |---|---|---|---|
@@ -76,7 +76,7 @@ Completo es el modo por defecto y el único que recorre todas las etapas. Tarda 
 
 Equilibrado usa dos lectores y el árbitro de texto. Puede confirmar categorías con la misma regla de dos fuentes, pero no tiene especialista de contenedores ni comparación de prioridad, y las comprobaciones de calidad y encuadre necesitan que los dos lectores coincidan.
 
-Económico usa un solo lector y ninguna etapa que exija dos. Como una categoría se confirma con dos fuentes y el modelo local solo cuenta cuando supera su umbral, casi todo lo que ve ese lector queda en `posibles`. Por eso su respuesta trae una `conclusion` con `estado: "preliminar"` cuando hay indicios sin corroborar: describe qué vio el lector y pide corroboración, sin publicarlo como problema confirmado. Sirve como filtro barato antes de una corrida en Completo, o para revisar a mano.
+Económico usa un solo lector y ninguna etapa que exija dos. Como una categoría se confirma con dos fuentes y el modelo local solo cuenta cuando supera su umbral, casi todo lo que ve ese lector queda en `posibles`. Por eso su respuesta trae una `conclusion` con `estado: "preliminar"` cuando hay indicios sin corroborar: describe qué vio el lector y pide corroboración, sin publicarlo como problema confirmado. Sirve como filtro barato antes de un análisis en Completo, o para revisar a mano.
 
 Las comprobaciones que un modo no ejecuta aparecen en `analisis_limitaciones` (`modo_reducido`, `especialista_desactivado`, `corroboracion_insuficiente`) y las categorías que quedaron sin corroborar por esa omisión pasan a `posibles`; no se bajan los requisitos de evidencia para compensar. Cada respuesta lleva `modo` y `modo_version`, y la caché distingue los modos entre sí. Los lectores de cada modo se configuran con `VERIFICADORES_BAJO`, `VERIFICADORES_MEDIO` y `VERIFICADORES_ALTO`; un modo sin lista válida figura como no disponible en `GET /salud`.
 
@@ -324,7 +324,7 @@ problemas confirmados y quedan `posibles` de origen foto sin veredicto. Ahí
 detectaron indicios de ... Requieren corroboración." y la tarjeta titula
 "Lectura preliminar: requiere corroboración". `hay_problema` sigue en `false`:
 un voto único no confirma nada; describe lo que vio el lector para que una
-persona o una corrida en Completo lo corrobore. En Equilibrado y Completo los
+persona o un análisis en Completo lo corrobore. En Equilibrado y Completo los
 `posibles` ya pasaron por el árbitro y la conclusión es `confirmada` o
 `sin_indicios`. El CSV exporta `conclusion_estado`.
 
@@ -526,7 +526,7 @@ Por default, el árbitro no confirma lo que vio una sola fuente. Esas deteccione
 
 Publicar un contenedor que no existe es un error costoso, por lo que la API aplica dos vetos de presencia mediante revisiones dirigidas y decisión por mayoría.
 
-El veto general corre cuando los verificadores confirman un contenedor pero el clasificador local da valores mínimos para todas las claves de contenedor. Si la revisión dirigida concluye que no hay ninguno, la presencia baja a `en_duda`. Para esta decisión, un contenedor municipal es ancho, de unos dos metros. Un tacho angosto y vertical no cuenta como tal.
+El veto general se aplica cuando los verificadores confirman un contenedor pero el clasificador local da valores mínimos para todas las claves de contenedor. Si la revisión dirigida concluye que no hay ninguno, la presencia baja a `en_duda`. Para esta decisión, un contenedor municipal es ancho, de unos dos metros. Un tacho angosto y vertical no cuenta como tal.
 
 El segundo veto revisa una clave concreta cuando un objeto junto a un contenedor real fue interpretado como otro contenedor. Se aplica a `contenedor_secos` y al bilateral, donde el clasificador local es un detector confiable. No se aplica al lateral porque es el tipo más común y el que el modelo local más omite. Cuando este veto se activa, la descripción pierde solamente las frases referidas al contenedor descartado.
 
@@ -534,7 +534,7 @@ Con `revision_contenedores: "contenedores-preservacion-20260906"`, una discrepan
 
 ### Fusión de escombros embolsados
 
-Esta fusión solo corre con la verificación activa. Tiene un nivel confiado, con puntaje interno mayor o igual a `0.95` y puntaje local de recolección menor o igual a `0.2`, y uno de rescate, con valores de `0.70` y `0.1`.
+Esta fusión solo se activa con la verificación activa. Tiene un nivel confiado, con puntaje interno mayor o igual a `0.95` y puntaje local de recolección menor o igual a `0.2`, y uno de rescate, con valores de `0.70` y `0.1`.
 
 En ambos niveles debe existir otra pila confirmada. Una poda confirmada bloquea la fusión. También la bloquea el rechazo dirigido de un verificador que indique que no son escombros, salvo en el nivel confiado cuando la corroboración viene solamente de `retiro_muebles`.
 
@@ -607,7 +607,7 @@ La configuración se lee desde variables de entorno o `.env`. La lista completa 
 | Variable | Default | Qué hace |
 |---|---|---|
 | `OPENROUTER_API_KEY` | vacía | Habilita la verificación cruzada. Nunca la commitees. |
-| `VERIFICADORES` | tres modelos (ver `.env.example`) | Modelos de visión separados por coma. Podés configurar uno, dos, tres o más. Una categoría necesita al menos 2 fuentes y el modelo local cuenta como una. Las pasadas dirigidas agregan llamadas solo cuando se activan. La repregunta entre modelos corre con 3 o más verificadores. |
+| `VERIFICADORES` | tres modelos (ver `.env.example`) | Modelos de visión separados por coma. Podés configurar uno, dos, tres o más. Una categoría necesita al menos 2 fuentes y el modelo local cuenta como una. Las pasadas dirigidas agregan llamadas solo cuando se activan. La repregunta entre modelos se hace con 3 o más verificadores. |
 | `VERIFICADORES_BAJO` | sin configurar | Un modelo para Económico. No usa árbitro ni especialista. Las comprobaciones que necesitan dos lectores externos quedan pendientes, sin bajar el requisito de evidencia. |
 | `VERIFICADORES_MEDIO` | sin configurar | Dos modelos distintos para Equilibrado. El árbitro recibe solo texto y no puede confirmar una categoría de una fuente única. No usa el especialista. |
 | `VERIFICADORES_ALTO` | hereda `VERIFICADORES` | Tres modelos distintos si se define explícitamente. Conserva el recorrido completo, incluido el especialista cuando está habilitado. |
@@ -642,7 +642,7 @@ En la prueba del 2026-09-05 comparé nueve fotos, tres modelos y ambos modos
 clave estable, USD 0,06657341: 0,9% menos, con resultados inconsistentes entre
 la muestra inicial y la segunda tanda. Ambos reutilizaron cerca del 75% de
 los tokens de entrada. La muestra es chica, comparte cachés del proveedor y
-las respuestas varían entre corridas; no demuestra ahorro atribuible al cambio
+las respuestas varían entre ejecuciones; no demuestra ahorro atribuible al cambio
 ni equivalencia estadística de calidad. Por eso la afinidad sigue apagada.
 
 El ahorro depende de los hits reales del proveedor, la frecuencia de pedidos y
@@ -707,7 +707,7 @@ Esto ya pasó: un hilo quedó ocupado y, con `CONCURRENCIA=1`, todas las llamada
 
 ## Privacidad
 
-Sin verificación, el modelo local procesa la foto en el equipo donde corre la API y no la envía a ningún lado.
+Sin verificación, el modelo local procesa la foto en el mismo equipo donde está instalada la API y no la envía a ningún lado.
 
 Con la verificación activa, la imagen se reduce a 1024 px y se envía a los modelos configurados mediante OpenRouter. Revisá las políticas de datos de esos proveedores antes de procesar fotos sensibles.
 
