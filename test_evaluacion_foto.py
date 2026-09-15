@@ -459,7 +459,7 @@ class EvaluacionFotoTest(unittest.TestCase):
         self.assertFalse(r['evaluacion_foto']['rechazada'])
         self.assertTrue(r['evaluacion_foto']['requiere_revision'])
         self.assertEqual(r['problemas'], salida()['problemas'])
-        # Con unanimidad de los tres lectores y un solo respaldo, el rechazo sí corre.
+        # Con unanimidad de los tres lectores y un solo respaldo, el rechazo sí se ejecuta.
         votos = [voto(m, calidad_suficiente=False, motivos_calidad=['desenfoque']) for m in 'abc']
         votos[2]['categorias'] = [{'key': 'retiro_muebles', 'evidencia': 'Un colchón entero en la vereda.'}]
         r = E.aplicar(salida(), votos)

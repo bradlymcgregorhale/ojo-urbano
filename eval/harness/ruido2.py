@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Piso de ruido del arbitro, con sharding para correr en paralelo.
+"""Piso de ruido del arbitro, con sharding para ejecutar en paralelo.
 
     ruido2.py <modo> <shard> <total_shards>
 Env: TEMPERATURA, PROVEEDOR_FIJO, ARBITRO (para probar otro modelo).
@@ -10,7 +10,7 @@ import os
 import sys
 from pathlib import Path
 
-# Rutas relativas al repo: el harness corre desde cualquier clon.
+# Rutas relativas al repo: el harness se ejecuta desde cualquier clon.
 REPO = Path(__file__).resolve().parents[2]
 DATOS = REPO / "eval" / "datos"
 sys.path.insert(0, str(REPO))

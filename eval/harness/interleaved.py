@@ -2,8 +2,8 @@
 """Comparacion PAREADA e INTERCALADA voto1 vs voto3.
 
 Corrige el error anterior: las condiciones se corrian en bloques de tiempo
-separados y la tasa de flips DERIVA (dos corridas identicas: 13.9% y 7.8%).
-Aca, para CADA foto se corren las dos condiciones dos veces cada una, todo
+separados y la tasa de flips DERIVA (dos ejecuciones identicas: 13.9% y 7.8%).
+Aca, para CADA foto se se ejecutan las dos condiciones dos veces cada una, todo
 mezclado en orden aleatorio, asi la deriva golpea igual a ambas ramas.
 
 Mide varios endpoints, no solo igualdad de conjuntos: lo que el usuario nota
@@ -14,7 +14,7 @@ import os
 import sys
 from pathlib import Path
 
-# Rutas relativas al repo: el harness corre desde cualquier clon.
+# Rutas relativas al repo: el harness se ejecuta desde cualquier clon.
 REPO = Path(__file__).resolve().parents[2]
 DATOS = REPO / "eval" / "datos"
 sys.path.insert(0, str(REPO))

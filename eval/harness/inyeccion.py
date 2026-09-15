@@ -16,7 +16,7 @@ Con 10 casos no se puede sostener ninguno de los dos: 0/10 tiene un IC95 que
 llega al 28%. Por eso acá se arman ~100 casos (5 claves x 4 plantillas x 5
 fotos base) y se reporta el intervalo, no solo el punto.
 
-Se corre con la config POR DEFAULT de hoy, que es lo que hay que auditar.
+Se se ejecuta con la config POR DEFAULT de hoy, que es lo que hay que auditar.
 
     inyeccion.py [shard total_shards]
 
@@ -88,7 +88,7 @@ def bases_limpias(clave):
 
 
 def casos():
-    """Determinista: mismo orden en todos los shards y entre corridas."""
+    """Determinista: mismo orden en todos los shards y entre ejecuciones."""
     fuera = []
     for k in INYECTAR:
         limpias = sorted(bases_limpias(k))

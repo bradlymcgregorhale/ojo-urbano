@@ -11,7 +11,7 @@ import os
 import sys
 from pathlib import Path
 
-# Rutas relativas al repo: el harness corre desde cualquier clon.
+# Rutas relativas al repo: el harness se ejecuta desde cualquier clon.
 REPO = Path(__file__).resolve().parents[2]
 DATOS = REPO / "eval" / "datos"
 sys.path.insert(0, str(REPO))

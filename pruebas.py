@@ -380,7 +380,7 @@ check("POST /trabajos/cancelar cancela igual que DELETE",
       f"HTTP {código6}/{código7} {eF}")
 
 # Prioridad: con un trabajo esperando el cupo, un sincrónico que llega
-# después igual gana el cupo; el trabajo recién corre cuando el sincrónico
+# después igual gana el cupo; el trabajo recién se ejecuta cuando el sincrónico
 # terminó.
 _demora["s"] = 0.6
 _res_sync = {}
@@ -443,7 +443,7 @@ check("el semáforo de cupos arranca en CONCURRENCIA",
 
 
 # Cancelar el await mientras el trabajo sigue ENCOLADO no debe perder el cupo:
-# trabajo() nunca arranca, así que su finally nunca corre.
+# trabajo() nunca arranca, así que su finally nunca se ejecuta.
 async def _cancelar_encolado():
     libera = threading.Event()
     # Hay que tapar TODOS los workers, no uno: el pool tiene lugar de sobra
@@ -511,7 +511,7 @@ time.sleep(0.6)
 _espera_real2, S.ESPERA_CUPO = S.ESPERA_CUPO, 0
 _ocupado, _ = pedir("/clasificar", *_multipart("f.jpg", foto(811, 611))[::1])
 S.ESPERA_CUPO = _espera_real2
-check("mientras un trabajo corre, el siguiente recibe 503", _ocupado == 503,
+check("mientras un trabajo se ejecuta, el siguiente recibe 503", _ocupado == 503,
       f"HTTP {_ocupado}")
 time.sleep(1.6)                # pasa el techo: el cupo tiene que volver
 S.procesar = _procesar_real2
@@ -570,7 +570,7 @@ _par_b.close()
 
 print("[#1] caché por foto")
 # No se mide por tiempo (el encoder stub es instantáneo): se cuenta cuántas
-# veces corre el pipeline de verdad.
+# veces se ejecuta el pipeline de verdad.
 _corridas = {"n": 0}
 _procesar_real = S.procesar
 
@@ -584,10 +584,10 @@ S.procesar = _contando
 misma = foto(807, 607)
 pedir("/clasificar", *_multipart("f.jpg", misma)[::1])
 pedir("/clasificar", *_multipart("f.jpg", misma)[::1])
-check("la misma foto no vuelve a procesarse", _corridas["n"] == 1, f"{_corridas['n']} corridas")
+check("la misma foto no vuelve a procesarse", _corridas["n"] == 1, f"{_corridas['n']} ejecuciones")
 pedir("/clasificar", *_multipart("f.jpg", misma, contexto="hay ratas")[::1])
 check("distinto contexto sí se procesa de nuevo", _corridas["n"] == 2,
-      f"{_corridas['n']} corridas")
+      f"{_corridas['n']} ejecuciones")
 
 # Un resultado degradado por cuota agotada no puede quedar cacheado: al día
 # siguiente, con cuota nueva, la misma foto tiene que volver a verificarse.
@@ -607,7 +607,7 @@ check("no se cachea si el veto de presencia por clave falló",
           "activa": True, "verificadores": [{"ok": True}, {"ok": True}],
           "segunda_mirada_presencia_clave": {
               "contenedor_secos": {"fallo": True, "retiro_votos": False}}}}}))
-check("sí se cachea si el veto por clave corrió entero",
+check("sí se cachea si el veto por clave se ejecutó entero",
       S._cacheable({"detalle": {"verificacion": {
           "activa": True, "verificadores": [{"ok": True}, {"ok": True}],
           "segunda_mirada_presencia_clave": {
@@ -678,8 +678,8 @@ for t in hilos:
 for t in hilos:
     t.join()
 _demora["s"] = 0.0
-check("con CONCURRENCIA=1 solo corre un pipeline a la vez",
-      _corridas["n"] == 1, f"{_corridas['n']} corridas")
+check("con CONCURRENCIA=1 solo se ejecuta un pipeline a la vez",
+      _corridas["n"] == 1, f"{_corridas['n']} ejecuciones")
 check("y los simultáneos de la misma foto salen todos con el resultado",
       salidas == [200, 200, 200], str(salidas))
 check("sin dejar a nadie en la cola", not S._cola, f"{len(S._cola)} esperando")
@@ -1613,7 +1613,7 @@ check("la evidencia también", all(c == "\n" or c >= " " for c in evid), repr(ev
 check("y acotadas", len(V._texto_limpio("x" * 9000, V.DESC_MAX)) == V.DESC_MAX)
 
 # Las pasadas dirigidas (base/daño) llaman a _llamar DESPUÉS de la pasada
-# principal y pisarían la captura: se apagan solo para esta corrida.
+# principal y pisarían la captura: se apagan solo para esta ejecución.
 _smb_prev = V.SEGUNDA_MIRADA_BASE
 V.SEGUNDA_MIRADA_BASE = False
 V.verificar(_Img(), CATS, SIN_LOCAL, "hay ratas del tamaño de un perro en la esquina")
@@ -1756,7 +1756,7 @@ else:
   try:
     # se mockea DENTRO del try: si se tocara antes del if de la foto, un cache
     # ausente dejaría el global contaminado para todo lo que sigue.
-    # La suite corre sin clave a propósito; para entrar al camino con
+    # La suite se ejecuta sin clave a propósito; para entrar al camino con
     # verificación hay que decir que está disponible, con los modelos mockeados.
     V.disponible = lambda: True
     # Estas pruebas aíslan la fusión anterior. La revisión final tiene
@@ -1887,14 +1887,14 @@ else:
     check("  pero la respuesta NO se cachea",
           servidor._cacheable(_r) is False,
           str(_r["detalle"]["verificacion"].get("ruteo_contexto_fallo")))
-    # El mismo caso pero con el encaminamiento corriendo bien y devolviendo
+    # El mismo caso pero con el encaminamiento ejecutándose bien y devolviendo
     # vacío (el vecino no pidió nada del catálogo): ahí sí es estable.
     # sin árbitro: lo de una sola fuente queda en duda de forma estable, así
     # que lo único que puede impedir el cacheo es el fallo del encaminamiento
     V.ARBITRO = ""
     V._clasificar_contexto = lambda c, cats: []
     _r = _pedir(_bytes, "esto es un disparate", "1")
-    check("si el encaminamiento corre y no mapea nada, sí se cachea",
+    check("si el encaminamiento se ejecuta y no mapea nada, sí se cachea",
           servidor._cacheable(_r) is True,
           "fallo=%s en_duda=%s arbitro=%s" % (
               _r["detalle"]["verificacion"].get("ruteo_contexto_fallo"),
@@ -2151,7 +2151,7 @@ else:
 
 print("[#G] gravedad: mediana de los verificadores, no el maximo")
 # El maximo era un veto de una sola mano hacia arriba: con tres muestras
-# ruidosas corre siempre por encima del centro (medido: 58% de las fotos
+# ruidosas queda siempre por encima del centro (medido: 58% de las fotos
 # en 4). La mediana aguanta un modelo alarmista; con 2 votos se redondea
 # para abajo, que es el lado que empuja contra la inflacion.
 _prev_g = (V.VERIFICADORES, V.ARBITRO, V._llamar, V.CONSENSO_VLM_SOLO)
@@ -2720,7 +2720,7 @@ V.VERIFICADORES, V.ARBITRO, V.CONSENSO_VLM_SOLO, V._llamar = _estado_prev
 
 print("[#B] segunda mirada de la base del contenedor")
 # Caso real: contenedor corrido de su base metálica, de noche. En 1 de 5
-# corridas DOS modelos leían la base como chatarra y retiro_muebles se
+# ejecuciones DOS modelos leían la base como chatarra y retiro_muebles se
 # confirmaba al reporte. La pasada dirigida tiene que poder desautorizar esos
 # votos (invariante del dueño: la base NUNCA sale como voluminoso) sin
 # tocar un mueble real de la misma escena.
@@ -2887,7 +2887,7 @@ check("  y el voto retirado NO se repregunta (no resucita por la ventana)",
 # 2b) Voto MIXTO: el mismo modelo nombra el sillón Y la estructura metálica
 # en una sola evidencia (cada modelo tiene UNA entrada por categoría).
 # Retirar ese voto borraría el sillón real: no es candidato, y si era el
-# único metálico la pasada dirigida ni corre.
+# único metálico la pasada dirigida ni se ejecuta.
 _r = _correr_base(
     {"b/uno": ([{"key": "retiro_muebles", "gravedad": 3,
                  "evidencia": "sillón viejo y estructura metálica larga"},
@@ -2895,7 +2895,7 @@ _r = _correr_base(
      "b/dos": ([dict(_CONT)], "Contenedor sano."),
      "b/tres": ([dict(_CONT)], "Contenedor sano.")},
     {})  # cualquier llamada dirigida acá reventaría con KeyError
-check("un voto que nombra un mueble real no se toca (y la pasada no corre)",
+check("un voto que nombra un mueble real no se toca (y la pasada no se ejecuta)",
       _r.get("segunda_mirada_base") is None
       and any(p["key"] == "retiro_muebles" for p in _r["posibles"]))
 
@@ -2966,7 +2966,7 @@ check("'base' con contenedores apoyados normales no promueve ni retira",
       and "retiro_muebles" in _claves, str(sorted(_claves)))
 
 # 2e) Tapas dadas vuelta para el cirujeo + fierros ajenos: dos modelos
-# confirman "tapas rotas y desprendidas" (caso real: 3 de 6 corridas). La
+# confirman "tapas rotas y desprendidas" (caso real: 3 de 6 ejecuciones). La
 # pasada dirigida del daño dice "usable" -> reparacion se retira
 # entera y los votos vuelven anotados.
 _r = _correr_base(
@@ -2977,7 +2977,7 @@ _r = _correr_base(
                  "evidencia": "piezas sueltas de la tapa junto al contenedor"}],
                "Tapas caídas."),
      "b/tres": ([dict(_CONT)], "Contenedor entero, tapas abiertas.")},
-    {},  # la pasada de la base no corre: no hay votos metálicos de muebles
+    {},  # la pasada de la base no se ejecuta: no hay votos metálicos de muebles
     {"b/uno": "usable", "b/dos": "indeterminado",
      "b/tres": "usable"})
 _claves = {c["key"] for c in _r["confirmadas"]}
@@ -3115,7 +3115,7 @@ check("la barra disputada se promueve con dos lecturas dirigidas de la barra",
       str([c["key"] for c in _r["confirmadas"]]))
 
 # 2f-sexies) una reparacion disputada GENÉRICA (sin barra en la evidencia) NO
-# se promueve: la pasada dirigida ni siquiera corre para el voto suelto.
+# se promueve: la pasada dirigida ni siquiera se ejecuta para el voto suelto.
 _r = _correr_base(
     {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3,
                  "evidencia": "tapa rota del contenedor"},
@@ -3132,7 +3132,7 @@ check("una reparacion disputada genérica no se promueve por la pasada del daño
 
 # 2f-septies) GATILLO POR PISTA: sin voto de reparación en el pase principal,
 # pero un verificador NOMBRA la barra en su descripción y hay contenedor -> la
-# pasada dirigida corre igual y, con dos lecturas de la barra, confirma. Es el
+# pasada dirigida se ejecuta igual y, con dos lecturas de la barra, confirma. Es el
 # caso real M006: el pase principal casi nunca surface la barra, la dirigida sí.
 _r = _correr_base(
     {"b/uno": ([dict(_CONT)], "Contenedor con la barra de izado lateral colgando en diagonal."),
@@ -3158,7 +3158,7 @@ check("la pista de barra en un contenedor sano no crea reparación",
       "reparacion_contenedor" not in {c["key"] for c in _r["confirmadas"]},
       str([c["key"] for c in _r["confirmadas"]]))
 
-# 2f-nonies) VETO NO-OP (hallado por codex): si la pasada corre por barra_hint
+# 2f-nonies) VETO NO-OP (hallado por codex): si la pasada se ejecuta por barra_hint
 # pero el único voto de reparación quedó clasificado como BASE (evidencia con
 # "riel", fuera de `tapas`) y el audit dice 'usable', el veto no tiene nada que
 # retirar; NO debe marcar reparacion_contenedor como adjudicada por un retiro
@@ -3229,7 +3229,7 @@ check("  y la descripción no sigue afirmando el volcado",
       str(_r.get("descripcion")))
 
 # contenedor PARADO pero MAL UBICADO: reposicion legítima; "parado" es
-# verdad y NO la refuta (hallazgo de codex). El veto no corre porque
+# verdad y NO la refuta (hallazgo de codex). El veto no se ejecuta porque
 # ninguna evidencia afirma un volcado.
 _volcado_resp = {"b/uno": "parado", "b/dos": "parado", "b/tres": "parado"}
 _r = _correr_base(
@@ -3543,10 +3543,10 @@ _ctx = [c.get("key") for c in _r.get("categorias_contexto", [])]
 check("  el fantasma vetado no valida el lavado del contexto",
       "lavado_contenedor" not in _ctx and "desratizacion" in _ctx,
       str(_ctx))
-# el recortado real: local 0.17 supera el piso, la pasada ni corre
+# el recortado real: local 0.17 supera el piso, la pasada ni se ejecuta
 _conf, _duda = _correr_pres(0.17, {
     "b/uno": {"veredicto": "ausente"}, "b/dos": {"veredicto": "ausente"}})
-check("  con el local sobre el piso la pasada no corre",
+check("  con el local sobre el piso la pasada no se ejecuta",
       "contenedor_humedos_lateral" in _conf, str(sorted(_conf)))
 # la mirada dirigida lo encuentra -> se mantiene
 _conf, _duda = _correr_pres(0.05, {
@@ -3659,10 +3659,10 @@ _r = _correr_pk(1.0, {"b/uno": {"veredicto": "ausente"},
 _conf = {c["key"] for c in _r["confirmadas"]}
 check("  el lateral con local en cero NO se veta (10 de 110 reales van bajo el piso)",
       "contenedor_humedos_lateral" in _conf, str(sorted(_conf)))
-# positivo real: local alto -> la pasada ni corre
+# positivo real: local alto -> la pasada ni se ejecuta
 _r = _correr_pk(0.93, {"b/uno": {"veredicto": "ausente"},
                        "b/dos": {"veredicto": "ausente"}})
-check("  con el local sobre el piso la pasada no corre",
+check("  con el local sobre el piso la pasada no se ejecuta",
       "contenedor_secos" in {c["key"] for c in _r["confirmadas"]},
       str(sorted(c["key"] for c in _r["confirmadas"])))
 # empate dirigido: se mantiene (mismo criterio que el veto general)
@@ -3678,7 +3678,7 @@ _local_t044 = {"predichas": [], "probabilidades": [
     {"key": "contenedor_humedos_lateral", "nombre": "L", "score": 0.0},
     {"key": "contenedor_humedos_bilateral", "nombre": "B", "score": 0.07},
     # como en la foto real: hay un verde de reciclables que el local ve
-    # clarísimo, así que el veto GENERAL de presencia no corre
+    # clarísimo, así que el veto GENERAL de presencia no se ejecuta
     {"key": "contenedor_secos", "nombre": "S", "score": 0.999}],
     "gravedad": {"value": 2, "raw": 2.0}}
 
@@ -4216,7 +4216,7 @@ _r = _correr_vol("sillón grande descartado en la vereda", {},
 check("el objeto concreto visto por uno solo: si otro lo ve, se publica",
       "retiro_muebles" in {c["key"] for c in _r["confirmadas"]},
       str([c["key"] for c in _r["confirmadas"]]))
-check("  y el chequeo genérico ni corre (manda la pregunta por el objeto)",
+check("  y el chequeo genérico ni se ejecuta (manda la pregunta por el objeto)",
       _r.get("segunda_mirada_voluminoso") is None,
       str(_r.get("segunda_mirada_voluminoso")))
 # nadie más lo ve -> no se publica (el caso U003: uno vio tablones, los otros
@@ -4282,7 +4282,7 @@ _LOCAL_ESC = {"predichas": [{"key": "retiro_escombros", "nombre": "RE",
 
 
 def _correr_esc_dudoso(resp_bolsas):
-    # esta sección corre con la mirada de escombros apagada por default
+    # esta sección se ejecuta con la mirada de escombros apagada por default
     V.SEGUNDA_MIRADA_ESCOMBROS = True
 
     def _llamar_e(modelo, mensajes, **k):
@@ -4560,7 +4560,7 @@ check("la rúbrica de poda conserva la escena mixta Y la excepción del cartel",
       "reportá LAS DOS COSAS" in V._RUBRICA
       and "aunque las bolsas sean opacas" in V._RUBRICA
       and "y no hay cartel, es una bolsa de residuos" in V._RUBRICA)
-# control: local de acuerdo -> la pasada ni corre
+# control: local de acuerdo -> la pasada ni se ejecuta
 _v = _correr_sub("contenedor_humedos_lateral", 0.98, 0.01)
 check("  local de acuerdo: no toca nada",
       "contenedor_humedos_lateral" in _v, str(sorted(_v)))

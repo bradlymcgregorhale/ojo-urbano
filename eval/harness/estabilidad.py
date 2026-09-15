@@ -4,7 +4,7 @@
 #7 midió que el árbitro cambiaba de opinión en el 17,5% de las fotos ante la
 MISMA entrada. Aquel número salió de replayar evidencia congelada: los
 veredictos de los verificadores están guardados, así que lo único que puede
-variar entre dos corridas es el árbitro.
+variar entre dos ejecuciones es el árbitro.
 
 Acá se replica ese mismo experimento sobre la misma evidencia, con dos brazos:
 
@@ -14,7 +14,7 @@ Acá se replica ese mismo experimento sobre la misma evidencia, con dos brazos:
   arbitro_confirma=0  el default de hoy (lo de una sola fuente sale como
                       POSIBLE y el árbitro no lo promueve).
 
-Los dos brazos corren sobre las mismas filas y en la misma sesión, así que la
+Los dos brazos se ejecutan sobre las mismas filas y en la misma sesión, así que la
 diferencia no puede venir de la muestra ni del momento del día.
 
 Se reporta por separado la cohorte dirigida y la aleatoria, que es el segundo
@@ -24,7 +24,7 @@ criterio de aceptación de #7.
 
 Cada shard es un PROCESO aparte: verificador guarda estado en el módulo, así
 que no se puede paralelizar con hilos, pero sí con procesos. Sin argumentos
-corre todo en uno solo.
+se ejecuta todo en uno solo.
 
 Sale JSON por stdout y un detalle por fila en estabilidad.jsonl.
 """
