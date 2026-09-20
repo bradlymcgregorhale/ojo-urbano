@@ -1618,10 +1618,10 @@ check("y acotadas", len(V._texto_limpio("x" * 9000, V.DESC_MAX)) == V.DESC_MAX)
 
 # Las pasadas dirigidas (base/daño) llaman a _llamar DESPUÉS de la pasada
 # principal y pisarían la captura: se apagan solo para esta ejecución.
-_smb_prev = V.SEGUNDA_MIRADA_BASE
-V.SEGUNDA_MIRADA_BASE = False
+_smb_prev, _enc_prev = V.SEGUNDA_MIRADA_BASE, V.PREGUNTA_ENCUADRE
+V.SEGUNDA_MIRADA_BASE = V.PREGUNTA_ENCUADRE = False
 V.verificar(_Img(), CATS, SIN_LOCAL, "hay ratas del tamaño de un perro en la esquina")
-V.SEGUNDA_MIRADA_BASE = _smb_prev
+V.SEGUNDA_MIRADA_BASE, V.PREGUNTA_ENCUADRE = _smb_prev, _enc_prev
 msgs = capturado["m"]
 check("la rúbrica va en system", msgs[0]["role"] == "system"
       and "retiro_muebles:" in msgs[0]["content"])
@@ -4432,6 +4432,153 @@ check("  y queda registrado como descartado, no como negativo",
        (_r.get("segunda_mirada_voluminoso") or {}).get("descartados") or []],
       str(_r.get("segunda_mirada_voluminoso")))
 _voluminoso_resp = {}
+
+print("[#114] encuadre con el criterio de uso de la cuadrilla de Higiene (pregunta separada)")
+import evaluacion_foto as _EF
+_encuadre_114 = V._PROMPT_ENCUADRE_HIGIENE
+check("la pregunta de encuadre pide la extensión completa del material retirable y su entorno inmediato",
+      "Material para retirar o limpiar (residuos, bolsas, escombros, restos de poda, muebles, acopios, suciedad):"
+      " alcanza cuando se ve la extensión completa del problema (todo lo que hay que retirar o limpiar, no un pedazo)"
+      " y su entorno inmediato" in _encuadre_114
+      and "Reconocer qué es el material no reemplaza ver dónde está y cuánto abarca." in _encuadre_114)
+check("  el objeto fijo dañado se juzga por el objeto y el daño, aunque sea un primer plano",
+      "Objeto fijo dañado (contenedor, cesto, buzón o gabinete eléctrico, vereda, cordón, columna, poste, rampa):"
+      " alcanza cuando se ve el objeto y el daño con claridad, aunque sea un primer plano del objeto" in _encuadre_114
+      and "un primer plano de la parte dañada de un objeto fijo también alcanza si se entiende qué objeto es"
+      in _encuadre_114)
+check("  la excepción del objeto fijo no cubre el material apoyado contra él",
+      "La excepción del objeto fijo no se extiende al material retirable apoyado contra él" in _encuadre_114)
+check("  los cuatro motivos de la pregunta son los que acepta evaluacion_foto",
+      all(m in _encuadre_114 for m in _EF.MOTIVOS_CONTEXTO)
+      and _EF.MOTIVOS_CONTEXTO == {"encuadre_demasiado_cerrado", "situacion_cortada",
+                                   "entorno_no_visible", "demasiado_lejos_o_borrosa"})
+check("  la rúbrica compartida no cambió: el encuadre lo decide la pregunta separada",
+      "Un detalle de daño puede ser reconocible aunque necesite una foto complementaria" in V._prompt_sistema(CATS)
+      and V._PROMPT_ENCUADRE_HIGIENE not in V._prompt_sistema(CATS))
+
+# Replay sin red con la forma de las respuestas de la validación v2 de #114
+# (48 fotos, 288 llamadas), sin fotos ni textos privados.
+def _resp_encuadre(suficiente, motivo, evidencia="ramas sobre la vereda"):
+    return json.dumps({"contexto_suficiente": suficiente, "motivo": motivo, "evidencia": evidencia})
+
+_capturas_114 = []
+def _llamar_encuadre(mapa, cortada=()):
+    def fake(modelo, mensajes, **k):
+        _capturas_114.append((modelo, mensajes, k))
+        if modelo in cortada:
+            return '{"contexto_suficiente": fal'
+        return mapa[modelo]
+    return fake
+
+_mapa_h0174 = {"lector/uno": _resp_encuadre(False, "entorno_no_visible"),
+               "lector/dos": _resp_encuadre(False, "entorno_no_visible"),
+               "lector/tres": _resp_encuadre(False, "situacion_cortada")}
+with patch.object(V, "VERIFICADORES", list(_mapa_h0174)), \
+        patch.object(V, "_llamar", _llamar_encuadre(_mapa_h0174)):
+    _lect = V._pregunta_encuadre("data:image/jpeg;base64,PRUEBA")
+check("la pregunta de encuadre va a cada lector con su prompt en system y la foto",
+      len(_capturas_114) == 3 and all(m[0]["content"] == _encuadre_114 and m[0]["role"] == "system"
+                                      and m[1]["content"][1]["image_url"]["url"] == "data:image/jpeg;base64,PRUEBA"
+                                      for _, m, _k in _capturas_114)
+      and all(_k.get("etapa") == "pregunta_encuadre" and _k.get("max_tokens") == 400 for _, _m, _k in _capturas_114),
+      str(_capturas_114[:1])[:200])
+check("  cada lector queda con su voto y su motivo",
+      {m: (l["contexto_suficiente"], l["motivos_contexto"]) for m, l in _lect.items()}
+      == {"lector/uno": (False, ["entorno_no_visible"]), "lector/dos": (False, ["entorno_no_visible"]),
+          "lector/tres": (False, ["situacion_cortada"])}, str(_lect))
+_mapa_mixto = {"lector/uno": _resp_encuadre(True, None),
+               "lector/dos": _resp_encuadre(False, "motivo_inventado"),
+               "lector/tres": _resp_encuadre(False, "encuadre_demasiado_cerrado")}
+with patch.object(V, "VERIFICADORES", list(_mapa_mixto)), \
+        patch.object(V, "_llamar", _llamar_encuadre(_mapa_mixto, cortada={"lector/tres"})):
+    _lect = V._pregunta_encuadre("data:image/jpeg;base64,PRUEBA")
+check("  un motivo inventado o una salida cortada no votan; un true sin motivo sí",
+      set(_lect) == {"lector/uno"} and _lect["lector/uno"] == {"contexto_suficiente": True, "motivos_contexto": [],
+                                                              "evidencia": "ramas sobre la vereda"}, str(_lect))
+
+def _veredicto_114(modelo, contexto=True, ef=True, ok=True):
+    v = {"modelo": modelo, "ok": ok, "categorias": [{"key": "retiro_poda", "gravedad": 2, "evidencia": "ramas"}],
+         "descripcion": "Ramas apiladas."}
+    if ef:
+        v["evaluacion_foto"] = {"ambito": "publica", "calidad_suficiente": True, "motivos_calidad": [],
+                                "contexto_suficiente": contexto, "motivos_contexto": []}
+    return v
+
+# H0174: la rúbrica dio suficiente 2 a 1 y la pregunta corta insuficiente 3 a 0.
+_vs = [_veredicto_114("lector/uno"), _veredicto_114("lector/dos"), _veredicto_114("lector/tres", contexto=False)]
+V._aplicar_encuadre(_vs, {"lector/uno": {"contexto_suficiente": False, "motivos_contexto": ["entorno_no_visible"], "evidencia": "e"},
+                          "lector/dos": {"contexto_suficiente": False, "motivos_contexto": ["entorno_no_visible"], "evidencia": "e"},
+                          "lector/tres": {"contexto_suficiente": False, "motivos_contexto": ["situacion_cortada"], "evidencia": "e"}})
+_ev, _cv = _EF.resumir(_vs)
+check("la pregunta separada reemplaza el encuadre de la rúbrica en cada lector",
+      all(v["evaluacion_foto"]["contexto_suficiente"] is False for v in _vs)
+      and _cv["suficiente"] is False and _cv["decision"] == "unanime"
+      and _cv["motivos"] == ["entorno_no_visible", "situacion_cortada"]
+      and all(v["encuadre_higiene"]["estado"] == "evaluado" for v in _vs), str(_cv))
+check("  y no toca ámbito, calidad ni categorías",
+      all(v["evaluacion_foto"]["ambito"] == "publica" and v["evaluacion_foto"]["calidad_suficiente"] is True
+          and [c["key"] for c in v["categorias"]] == ["retiro_poda"] for v in _vs)
+      and _ev["rechazada"] is False and _ev["estado"] == "contexto_insuficiente")
+# H0185: un lector permisivo contra dos.
+_vs = [_veredicto_114("lector/uno"), _veredicto_114("lector/dos"), _veredicto_114("lector/tres")]
+V._aplicar_encuadre(_vs, {"lector/uno": {"contexto_suficiente": True, "motivos_contexto": [], "evidencia": "e"},
+                          "lector/dos": {"contexto_suficiente": False, "motivos_contexto": ["encuadre_demasiado_cerrado"], "evidencia": "e"},
+                          "lector/tres": {"contexto_suficiente": False, "motivos_contexto": ["encuadre_demasiado_cerrado"], "evidencia": "e"}})
+_ev, _cv = _EF.resumir(_vs)
+check("  dos contra uno alcanza por mayoría y la foto no se rechaza",
+      _cv["suficiente"] is False and _cv["decision"] == "mayoria" and _ev["rechazada"] is False
+      and _ev["requiere_foto_complementaria"] is True and _cv["indicacion"] == _EF.INDICACION_CONTEXTO, str(_cv))
+# H0228: objeto fijo dañado, tres suficiente.
+_vs = [_veredicto_114("lector/uno", contexto=False), _veredicto_114("lector/dos"), _veredicto_114("lector/tres")]
+V._aplicar_encuadre(_vs, {m: {"contexto_suficiente": True, "motivos_contexto": [], "evidencia": "e"} for m in ("lector/uno", "lector/dos", "lector/tres")})
+_ev, _cv = _EF.resumir(_vs)
+check("  tres suficiente conservan el contexto y no piden foto complementaria",
+      _cv["suficiente"] is True and _cv["indicacion"] is None and _ev["requiere_foto_complementaria"] is False
+      and _ev["estado"] == "valida_corroborada", str(_cv))
+# Un lector sin lectura válida conserva lo que dijo la rúbrica; uno sin evaluacion_foto recibe solo el encuadre.
+_vs = [_veredicto_114("lector/uno"), _veredicto_114("lector/dos", ef=False), _veredicto_114("lector/tres", ok=False)]
+V._aplicar_encuadre(_vs, {"lector/dos": {"contexto_suficiente": False, "motivos_contexto": ["demasiado_lejos_o_borrosa"], "evidencia": "e"}})
+check("  sin lectura válida el lector conserva la rúbrica; un fallo de la primera pasada no se toca",
+      _vs[0]["evaluacion_foto"]["contexto_suficiente"] is True and _vs[0]["encuadre_higiene"] == {"estado": "sin_lectura"}
+      and _vs[1]["evaluacion_foto"] == {"ambito": None, "calidad_suficiente": None, "motivos_calidad": [],
+                                        "contexto_suficiente": False, "motivos_contexto": ["demasiado_lejos_o_borrosa"]}
+      and "encuadre_higiene" not in _vs[2] and _vs[2]["evaluacion_foto"]["contexto_suficiente"] is True, str(_vs))
+_ev, _cv = _EF.resumir([_vs[0], _vs[1]])
+check("  la toma lejana o borrosa pide acercarse, no alejarse, cuando es el único motivo",
+      _cv["suficiente"] is None and _cv["indicacion"] is None
+      and _EF.resumir([dict(_vs[1], modelo="a"), dict(_vs[1], modelo="b")])[1]["indicacion"] == _EF.INDICACION_CONTEXTO_LEJOS
+      and _EF.resumir([dict(_vs[1], modelo="a"), dict(_vs[1], modelo="b"),
+                       dict(_veredicto_114("c", contexto=False), evaluacion_foto=dict(_vs[1]["evaluacion_foto"], motivos_contexto=["encuadre_demasiado_cerrado"]))]
+                      )[1]["indicacion"] == _EF.INDICACION_CONTEXTO, str(_cv))
+# De punta a punta en verificar: la pregunta corre con dos o más lectores y no con uno.
+_prev_114 = {n: getattr(V, n) for n in ("_verificar_uno", "_llamar", "VERIFICADORES", "ARBITRO", "PREGUNTA_ENCUADRE",
+                                       "SEGUNDA_MIRADA_BASE", "CONSENSO_VLM_SOLO", "ARBITRO_CONFIRMA")}
+try:
+    V.ARBITRO, V.CONSENSO_VLM_SOLO, V.ARBITRO_CONFIRMA, V.SEGUNDA_MIRADA_BASE = "", "confirma", False, False
+    V.PREGUNTA_ENCUADRE = True
+    V._verificar_uno = lambda m, du, c, contexto="": _veredicto_114(m)
+    _capturas_114.clear()
+    V.VERIFICADORES = ["lector/uno", "lector/dos", "lector/tres"]
+    V._llamar = _llamar_encuadre({"lector/uno": _resp_encuadre(False, "encuadre_demasiado_cerrado"),
+                                  "lector/dos": _resp_encuadre(False, "encuadre_demasiado_cerrado"),
+                                  "lector/tres": _resp_encuadre(True, None)})
+    _r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+    check("en verificar la pregunta corre una vez por lector y decide el encuadre publicado",
+          len(_capturas_114) == 3
+          and [v["evaluacion_foto"]["contexto_suficiente"] for v in _r["verificadores"]] == [False, False, True]
+          and _EF.resumir(_r["verificadores"])[1]["suficiente"] is False
+          and {c["key"] for c in _r["confirmadas"]} == {"retiro_poda"}, str(_capturas_114[:1])[:120])
+    _capturas_114.clear()
+    V.VERIFICADORES = ["lector/uno"]
+    V.verificar(_Img(), CATS, SIN_LOCAL, "")
+    check("  con un solo lector no se paga la pregunta", _capturas_114 == [])
+    V.VERIFICADORES = ["lector/uno", "lector/dos", "lector/tres"]
+    V.PREGUNTA_ENCUADRE = False
+    V.verificar(_Img(), CATS, SIN_LOCAL, "")
+    check("  PREGUNTA_ENCUADRE=0 la apaga", _capturas_114 == [])
+finally:
+    for _n, _v in _prev_114.items():
+        setattr(V, _n, _v)
 
 print("[#C] señal de calidad de la foto (informativa, no veta)")
 from PIL import Image as _PILImage

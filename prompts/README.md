@@ -14,6 +14,8 @@ mirar las bolsas está en [segundas_miradas/escombros.txt](segundas_miradas/esco
 | `arbitro/*.txt` | Sistema del árbitro y bloques del mensaje de usuario para resolver disputas y redactar la descripción. |
 | `contexto/*.txt` | Clasificación del reclamo escrito cuando la foto no corresponde. |
 | `compartidos/subtipo_humedos.txt` | Regla única del color del contenedor de húmedos, insertada en la rúbrica y en la segunda mirada de subtipo. |
+| `compartidos/evaluacion_foto.txt` | Ámbito, calidad y encuadre (`evaluacion_foto`) en la primera pasada de cada verificador. El encuadre que se publica no sale de acá: lo decide `dirigidos/encuadre_higiene.txt`. |
+| `dirigidos/encuadre_higiene.txt` | Pregunta separada de encuadre a cada lector, después de la primera pasada (#114): criterio de la cuadrilla de Higiene, extensión completa del material retirable y entorno inmediato; un objeto fijo dañado (contenedor, cesto, buzón eléctrico, vereda, cordón) alcanza con el objeto y el daño. Reemplaza `contexto_suficiente` y `motivos_contexto` de cada lector; sin lectura válida se conserva la primera pasada. Corre con dos o más lectores; `PREGUNTA_ENCUADRE=0` la apaga. Medida dentro de la rúbrica el criterio se diluía (H0174 y H0185 quedaban suficientes 2 a 1), por eso va aparte. |
 | `compartidos/prioridad.txt` | Pedido de `prioridad_propuesta` en la primera pasada de cada verificador. |
 | `compartidos/prioridad_comparacion.txt` | Comparación dirigida, solo en Completo, cuando esas propuestas no coinciden. No agrega un cuarto verificador ni cambia la clasificación. |
 
