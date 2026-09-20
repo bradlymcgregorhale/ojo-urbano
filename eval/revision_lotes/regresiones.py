@@ -149,7 +149,12 @@ def obtener(root, digest):
 
 
 def crear(base, registro, revisiones=(), revisiones_tecnicas=(), manifest_tecnico=None):
-    if bool(revisiones_tecnicas) != (manifest_tecnico is not None):
+    # Cada página de revisión técnica trae su propio manifest; se admiten varios y cada
+    # exportación se aparea con el suyo por dataset_id, sin adivinar.
+    if isinstance(manifest_tecnico, (str, Path)):
+        manifest_tecnico = [manifest_tecnico]
+    manifests_tecnicos = list(manifest_tecnico or [])
+    if bool(revisiones_tecnicas) != bool(manifests_tecnicos):
         raise ValueError('La revisión técnica requiere su manifest, y viceversa')
     base, registro = Path(base), Path(registro)
     registro.mkdir(parents=True, exist_ok=True)
@@ -264,11 +269,22 @@ def crear(base, registro, revisiones=(), revisiones_tecnicas=(), manifest_tecnic
             etiquetas.update(principal)
             agregar(foto, r, source, etiquetas, 'exportacion_v2')
     if revisiones_tecnicas:
-        manifest_raw = Path(manifest_tecnico).read_bytes()
-        tecnico = leer_estricto(manifest_raw)
+        tecnicos = {}
+        for path in manifests_tecnicos:
+            manifest_raw = Path(path).read_bytes()
+            tecnico = leer_estricto(manifest_raw)
+            dataset = tecnico.get('dataset_id') if isinstance(tecnico, dict) else None
+            if not isinstance(dataset, str) or dataset in tecnicos:
+                raise ValueError('Manifest técnico sin dataset_id o repetido')
+            tecnicos[dataset] = (manifest_raw, tecnico)
         tecnicas_vistas = set()
         for path in revisiones_tecnicas:
             raw = Path(path).read_bytes()
+            export = leer_estricto(raw)
+            dataset = export.get('dataset_id') if isinstance(export, dict) else None
+            if dataset not in tecnicos:
+                raise ValueError('Exportación técnica sin manifest: ' + str(path))
+            manifest_raw, tecnico = tecnicos[dataset]
             entradas = validar_revision_tecnica(raw, tecnico, fotos, particiones, base)
             source = objeto(registro, raw)
             fuentes.extend([source, objeto(registro, manifest_raw)])
@@ -514,7 +530,7 @@ def main():
     a.add_argument('--registro', required=True)
     a.add_argument('--revision', action='append', default=[])
     a.add_argument('--revision-tecnica', action='append', default=[])
-    a.add_argument('--manifest-tecnico')
+    a.add_argument('--manifest-tecnico', action='append', default=[])
     a = sub.add_parser('comparar')
     a.add_argument('--registro', required=True)
     a.add_argument('--candidata')
