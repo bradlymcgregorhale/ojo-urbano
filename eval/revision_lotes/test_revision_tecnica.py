@@ -184,6 +184,54 @@ class TecnicaTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.crear()
 
+    def test_dos_paginas_con_manifests_distintos_se_aparean_por_dataset(self):
+        # Segunda página de revisión técnica (#114): otra foto, otro manifest, otro dataset_id.
+        imagen2 = self.base / 'entrega/entradas-api/H0002.jpg'
+        imagen2.write_bytes(b'segunda imagen sintetica')
+        digest2 = R.huella(imagen2.read_bytes())
+        foto2 = {'foto': 'H0002', 'sha256': 'c' * 64, 'sha256_api': digest2}
+        self.write(self.base / 'entrega/manifest.json', {'fotos': [self.foto, foto2]})
+        self.write(self.base / 'manifest-privado.json',
+                   {'fotos': [dict(self.foto, particion='desarrollo'),
+                              dict(foto2, particion='desarrollo')]})
+        original2 = copy.deepcopy(self.original)
+        original2['foto'] = 'H0002'
+        original2['entrada_api'] = {'sha256': digest2, 'original_sha256': 'c' * 64}
+        self.write(self.a / 'H0002-alto.json', original2)
+        casos2 = [{'foto': 'H0002', 'sha256_foto': digest2}]
+        dataset2 = R.huella(json.dumps(casos2, sort_keys=True).encode())
+        mp2 = self.root / 'manifest-tecnico-2.json'
+        self.write(mp2, {'casos': casos2, 'dataset_id': dataset2, 'particion': 'desarrollo'})
+        tecnica2 = copy.deepcopy(self.tecnica)
+        tecnica2['dataset_id'] = dataset2
+        tecnica2['revisiones'] = {'H0002': dict(self.tecnica['revisiones']['H0001'],
+            foto='H0002', sha256_foto=digest2, calidad='insuficiente', contexto='insuficiente')}
+        tp2 = self.root / 'tecnica-2.json'
+        self.write(tp2, tecnica2)
+        # Sin el segundo manifest no se adivina el dataset.
+        with self.assertRaises(ValueError):
+            R.crear(self.base, self.reg, revisiones_tecnicas=[self.tp, tp2],
+                    manifest_tecnico=self.mp)
+        with self.assertRaises(ValueError):
+            R.crear(self.base, self.reg, revisiones_tecnicas=[self.tp, tp2],
+                    manifest_tecnico=[self.mp, self.mp])
+        registro = R.crear(self.base, self.reg, revisiones_tecnicas=[self.tp, tp2],
+                           manifest_tecnico=[self.mp, mp2])
+        banco = R.cargar(registro)
+        casos = {c['foto']: c for c in banco['casos']}
+        self.assertIs(R.etiquetas(casos['H0001'])[0]['evaluacion_foto.calidad_suficiente'], True)
+        etiquetas2, conflictos2 = R.etiquetas(casos['H0002'])
+        self.assertEqual(etiquetas2, {'evaluacion_foto.calidad_suficiente': False,
+                                      'contexto_visual.suficiente': False})
+        self.assertFalse(conflictos2)
+        self.assertEqual(len([a for a in casos['H0002']['anotaciones']
+                              if a['tipo'] == 'exportacion_tecnica_v1']), 1)
+        for f in (self.tp, tp2, self.mp, mp2):
+            self.assertIn(R.huella(f.read_bytes()), banco['fuentes'])
+        # El orden de los manifests no cambia el registro.
+        self.assertEqual(R.crear(self.base, self.reg, revisiones_tecnicas=[tp2, self.tp],
+                                 manifest_tecnico=[mp2, self.mp]), registro)
+
     def test_compara_rechazo_nuevo_y_contexto_sin_confundir_categorias(self):
         self.tecnica['revisiones']['H0001']['contexto'] = 'suficiente'
         self.write(self.tp, self.tecnica)
