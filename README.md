@@ -411,16 +411,35 @@ y conserva los reclamos respaldados de daño, desborde o vaciado. El detalle
 reutiliza las lecturas existentes y no agrega llamadas ni consumo. Los modos
 sin especialista mantienen su contrato y no agregan este inventario.
 
-Los fallos de transporte no se guardan en caché. Una respuesta válida pero incierta
-puede guardarse en caché y sigue en `revision`, nunca indica ausencia. La interfaz muestra
-ese estado y el CSV agrega `contenedores_estado` y `contenedores_motivo`.
+Los fallos de transporte no se guardan en caché. En modo Completo, una duda visual
+válida del especialista puede activar una comprobación de presencia con los mismos
+tres verificadores configurados. Cada uno recibe la foto sin inventario ni votos
+previos. Solo tres ausencias explícitas, con evidencia y modelos distintos,
+permiten publicar `tipos=[]`. Una presencia, una duda (`presente=null`), una
+respuesta inválida o una falla mantienen la revisión. Las lecturas no proponen
+tipos ni reemplazan inventarios ya confirmados. Económico y Equilibrado no
+ejecutan esta etapa. La interfaz muestra ese estado y el CSV agrega
+`contenedores_estado` y `contenedores_motivo`.
 
-La pasada realiza un solo intento, con un plazo de 40 segundos, y suma su costo
-al `costo_api` de la foto. El promedio observado en 100 fotos fue USD 0,0038
-adicionales por foto; no representa el costo de las otras categorías. Tras la
-revisión humana de cuatro referencias, hubo 98 respuestas automáticas correctas,
-un tipo omitido y una revisión. Ese resultado no garantiza la exactitud en otras
-fotos ni evalúa el conteo de contenedores.
+Cuando se corrobora ausencia, `contenedores.revision_presencia` conserva
+`motivo_previo` y las tres `lecturas`, con `modelo`, `presente` y `evidencia`.
+El campo principal `contenedores.estado` sigue siendo la decisión final: un
+reclamo confirmado sobre un contenedor puede mantenerlo en revisión aunque esas
+lecturas informen ausencia. La interfaz y el CSV conservan ese estado.
+
+El especialista y la comprobación opcional comparten un plazo de 40 segundos.
+Cada lector adicional hace un solo intento y los tres se consultan en paralelo;
+una foto incierta puede sumar hasta tres solicitudes. Si quedan menos de cinco
+segundos, no se inician esos pedidos. La revisión por falta de tiempo o por un
+fallo de esta etapa no se guarda en caché. Todas las llamadas suman costos y
+tokens, incluidos intentos fallidos con el consumo conocido. Un fallo original
+del especialista no activa nuevos envíos. La API conserva `costo_api`, pero la
+página no muestra importes. El promedio anterior, sin esta comprobación
+opcional, fue USD 0,0038 adicionales por foto en 100 fotos; no representa el
+costo de las otras categorías. Tras la revisión humana de cuatro referencias,
+hubo 98 respuestas automáticas correctas, un tipo omitido y una revisión. Ese
+resultado no garantiza la exactitud en otras fotos ni evalúa el conteo de
+contenedores.
 
 ### Evaluación de la foto y observaciones de higiene
 
