@@ -86,6 +86,8 @@ _PROMPT_RELACION_CONTENEDOR = cargar_prompt('segundas_miradas/relacion_contenedo
 
 _PROMPT_SEGUNDA_MIRADA_DANO = cargar_prompt('segundas_miradas/dano')
 
+_PROMPT_SEGUNDA_MIRADA_CABEZAL = cargar_prompt('segundas_miradas/cabezal')
+
 _PROMPT_SEGUNDA_MIRADA_POSTES = cargar_prompt('segundas_miradas/postes')
 
 _PROMPT_SEGUNDA_MIRADA_VOLCADO = cargar_prompt('segundas_miradas/volcado')

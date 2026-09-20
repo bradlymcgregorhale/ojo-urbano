@@ -70,6 +70,7 @@ from prompts import (
     _PROMPT_SEGUNDA_MIRADA_BASE,
     _PROMPT_RELACION_CONTENEDOR,
     _PROMPT_SEGUNDA_MIRADA_DANO,
+    _PROMPT_SEGUNDA_MIRADA_CABEZAL,
     _PROMPT_SEGUNDA_MIRADA_POSTES,
     _PROMPT_SEGUNDA_MIRADA_VOLCADO,
     _PROMPT_SEGUNDA_MIRADA_SUBTIPO,
@@ -212,6 +213,13 @@ SEGUNDA_MIRADA_BASE = os.environ.get(
 # leídas como rotas, fierros ajenos atribuidos al contenedor).
 SEGUNDA_MIRADA_DANO = os.environ.get(
     "SEGUNDA_MIRADA_DANO", "1").strip().lower() not in ("0", "false", "no")
+# Pregunta dirigida por el CABEZAL del contenedor lateral (#111): el lateral
+# sin capota, con la chapa caída adentro, se lee como "tapa articulada dada
+# vuelta" y el veto del daño lo deja sin reclamo. Corre solo sobre laterales
+# con un voto de reparación anulado por ese veto o con votos que hablan del
+# cabezal, la capota o la tapa abierta; no toca el veto.
+SEGUNDA_MIRADA_CABEZAL = os.environ.get(
+    "SEGUNDA_MIRADA_CABEZAL", "1").strip().lower() not in ("0", "false", "no")
 # Segunda mirada dirigida para el VOLCADO (el techo en pendiente de los
 # laterales, de esquina y de noche, se lee como contenedor tumbado).
 SEGUNDA_MIRADA_VOLCADO = os.environ.get(
@@ -1541,6 +1549,53 @@ def _segunda_mirada_dano(img):
         elif veredicto == "usable" and evidencia:
             sin_dano.append((modelo, evidencia))
     return dano, sin_dano, fallo
+
+
+# Pistas de que la primera pasada miró la parte de arriba de un lateral: el
+# cabezal o la capota por su nombre, o una tapa/boca abierta o fuera de lugar.
+# En H0150 (lateral sin capota) ningún lector votó reparación en dos Completo:
+# los tres describieron "boca abierta" o "tapa abierta", así que la sola
+# mención del cabezal no alcanzaba como gatillo.
+_PATRON_CABEZAL_LATERAL = re.compile(
+    r"cabezal|capota|"
+    r"\btapas?\s+(?:\w+\s+){0,2}?(?:abiert|levantad|dad[ao]s?\s+vuelta|volcad|"
+    r"caid|hundid|metid|hacia\s+adentro|ausente|faltante)|"
+    r"\bboca\s+abierta|\bsin\s+(?:tapa|cabezal|capota)\b|"
+    r"\bfalta\s+(?:la\s+)?(?:tapa|cabezal|capota)\b|"
+    r"\binterior\s+(?:visible|vacio|a\s+la\s+vista)")
+
+
+def _segunda_mirada_cabezal(img):
+    """Pregunta dirigida SOLO por el cabezal del contenedor lateral: si la
+    capota está montada sobre el marco superior o no. Pregunta a TODOS los
+    verificadores. Devuelve (sin_cabezal, montado, no_se_ve, fallo)."""
+    data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+
+    def _uno(modelo):
+        contenido = _llamar(modelo, [
+            {"role": "system", "content": _PROMPT_SEGUNDA_MIRADA_CABEZAL},
+            {"role": "user", "content": [
+                {"type": "text", "text": "La foto:"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]},
+        ], max_tokens=400, etapa="segunda_mirada_cabezal")
+        v = _extraer_json(contenido)
+        return (str(v.get("veredicto", "")).strip().lower(),
+                _texto_limpio(v.get("evidencia"), EVID_MAX))
+
+    sin_cabezal, montado, no_se_ve, fallo = [], [], [], False
+    for modelo, r in zip(modelos_activos(), _map_modelos(modelos_activos(), _uno)):
+        if r is _FALLO_MODELO:
+            fallo = True
+            continue
+        veredicto, evidencia = r
+        if veredicto == "sin_cabezal" and evidencia:
+            sin_cabezal.append((modelo, evidencia))
+        elif veredicto == "montado" and evidencia:
+            montado.append((modelo, evidencia))
+        elif veredicto == "no_se_ve":
+            no_se_ve.append((modelo, evidencia))
+    return sin_cabezal, montado, no_se_ve, fallo
 
 
 # Objetos CONCRETOS que una descripción puede nombrar. Se usan para el saneo
@@ -2998,6 +3053,96 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                     disputadas.add("reparacion_contenedor")
                 adjudicadas_dirigidas.add("reparacion_contenedor")
 
+    # PREGUNTA DIRIGIDA DEL CABEZAL DEL LATERAL (#111). El lateral sin capota
+    # (la chapa curva caída ADENTRO del cuerpo, H0150) se lee en la primera
+    # pasada como "boca abierta" y en la segunda mirada del daño como "tapa
+    # articulada dada vuelta": el veto tumba los votos de reparación cuando
+    # los hay, y cuando no los hay nadie pregunta. Cinco frases apiladas en
+    # el prompt del daño y un recorte no movieron esa lectura, así que acá se
+    # hace OTRA pregunta, geométrica: ¿la capota está arriba del marco
+    # superior o no? Corre solo con un lateral en escena, sin reparación
+    # confirmada, y con un voto de reparación anulado por el veto del daño o
+    # con votos que hablan del cabezal, la capota o la tapa abierta. El veto
+    # del daño no se toca: si la pregunta responde "montado" o "no_se_ve",
+    # todo queda como estaba. Solo una lectura unánime de sin_cabezal (al
+    # menos dos lectores, ninguno en contra ni en duda) restaura los votos
+    # anulados y suma a los lectores dirigidos como fuentes. La mayoría
+    # simple (2 a 1) se midió y descartó: en ticket-111 un lateral sano con
+    # la capota levantada (H0023) juntó dos sin_cabezal en una repetición.
+    # CANDIDATA NO PROMOVIDA (ticket-111, 20/09): en tres pilotos H0150 nunca
+    # recibió sin_cabezal de los tres lectores a la vez; un lector distinto
+    # cada vez lee la capota caída adentro como levantada hacia atrás.
+    segunda_mirada_cabezal = None
+    _lateral_en_escena = ("contenedor_humedos_lateral" in confirmadas
+                          or "contenedor_humedos_lateral" in presencia_dudosa)
+    _anulados_dano = [(v, c) for v, c, por in votos_anulados
+                      if por == "segunda_mirada_dano"
+                      and c["key"] == "reparacion_contenedor"]
+    _menciona_cabezal = any(
+        _PATRON_CABEZAL_LATERAL.search(_norm_texto(_t))
+        for v in activos
+        for _t in [v.get("descripcion") or ""]
+        + [c.get("evidencia") or "" for c in v["categorias"]]
+        + [c.get("evidencia") or "" for _v2, c, _por in votos_anulados
+           if _v2 is v])
+    if (SEGUNDA_MIRADA_CABEZAL and _lateral_en_escena
+            and "reparacion_contenedor" not in confirmadas
+            and (_anulados_dano or _menciona_cabezal)):
+        sin_sm, mont_sm, nove_sm, fallo_sc = _segunda_mirada_cabezal(img)
+        restaura = bool(len(sin_sm) >= 2 and not mont_sm and not nove_sm)
+        segunda_mirada_cabezal = {
+            "sin_cabezal": [{"modelo": m, "evidencia": e} for m, e in sin_sm],
+            "montado": [{"modelo": m, "evidencia": e} for m, e in mont_sm],
+            "no_se_ve": [{"modelo": m, "evidencia": e} for m, e in nove_sm],
+            "gatillo": "veto_dano" if _anulados_dano else "texto",
+            "promovio": restaura,
+            "fallo": fallo_sc,
+        }
+        if restaura:
+            # 1) Los votos que el veto del daño retiró vuelven enteros: el
+            # modelo sí vio la pieza fuera de lugar, la pasada del daño la
+            # leyó como tapa abierta y la pregunta del cabezal la desmiente.
+            for v, c in _anulados_dano:
+                v["categorias"].append(c)
+                votos_anulados[:] = [x for x in votos_anulados
+                                     if not (x[0] is v and x[1] is c)]
+                desc_desautorizadas.discard(v["modelo"])
+                fr = fuentes.setdefault("reparacion_contenedor", [])
+                if v["modelo"] not in fr:
+                    fr.append(v["modelo"])
+                try:
+                    g = min(5, max(1, int(c.get("gravedad", 1))))
+                except (TypeError, ValueError):
+                    g = 1
+                grav_votos.setdefault("reparacion_contenedor", []).append(g)
+                if c.get("parte") in ("tapa", "pedal", "cuerpo"):
+                    partes.setdefault("reparacion_contenedor", {}) \
+                        .setdefault(c["parte"], []).append(v["modelo"])
+            if segunda_mirada_dano is not None:
+                segunda_mirada_dano["restaurado_por_cabezal"] = True
+            # 2) Los lectores dirigidos que vieron el marco vacío son fuentes:
+            # igual que la barra en diagonal, dos lecturas dirigidas confirman
+            # aunque la primera pasada no haya votado (H0150).
+            fr = fuentes.setdefault("reparacion_contenedor", [])
+            for m, _e in sin_sm:
+                if m not in fr:
+                    fr.append(m)
+            if len(fr) >= 2:
+                confirmadas.add("reparacion_contenedor")
+                disputadas.discard("reparacion_contenedor")
+            elif fr:
+                disputadas.add("reparacion_contenedor")
+            if not grav_votos.get("reparacion_contenedor"):
+                grav_votos["reparacion_contenedor"] = [3]
+            # el hallazgo dirigido es el cabezal: parte "tapa" (tapa/cabezal
+            # desprendido o ausente, como lo define la rúbrica)
+            _tapa = partes.setdefault("reparacion_contenedor", {}) \
+                .setdefault("tapa", [])
+            for m, _e in sin_sm:
+                if m not in _tapa:
+                    _tapa.append(m)
+            adjudicadas_dirigidas.add("reparacion_contenedor")
+
     # Una base confirmada puede ser un mueble ajeno. El local solo habilita
     # la revisión; el cambio exige identidad física corroborada y ausencia
     # de otra avería, sin invalidar daños de tapa/cuerpo por proximidad.
@@ -3884,6 +4029,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # filtran las frases que atribuyen rotura al contenedor (solo esas: una
     # "bolsa rota" no dispara) y se aclara el estado real.
     if (segunda_mirada_dano and segunda_mirada_dano.get("retiro_votos")
+            and not segunda_mirada_dano.get("restaurado_por_cabezal")
             and descripcion):
         _rotura = re.compile(r"rot[ao]|desprendid|partid|quebrad|arrancad|"
                              r"desmontad|destroz|dañad|danad|agrietad|"
@@ -3899,6 +4045,28 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                     "abiertas o dadas vuelta son por el uso, no una rotura.")
             descripcion = (" ".join(limpias).strip() + " " + nota).strip() \
                 if limpias else nota
+
+    # Si la pregunta del cabezal confirmó el lateral sin capota, la prosa no
+    # puede seguir diciendo que el contenedor está entero o con la tapa
+    # abierta: se borran esas frases y se explica qué se reportó.
+    if ((segunda_mirada_cabezal or {}).get("promovio") and descripcion):
+        _sano = re.compile(r"enter[oa]|buen estado|sin dan[oa]s|sin roturas|"
+                           r"no (?:se observa|presenta|hay) (?:un )?(?:problema|dan[oa]|"
+                           r"rotura)|en su lugar|tapa abierta|boca abierta|"
+                           r"tapas abiertas")
+        frases = re.split(r"(?<=[.!?])\s+", descripcion)
+        limpias = [f for f in frases
+                   if not (_sano.search(_norm_texto(f))
+                           and re.search(r"contenedor|tapa|boca",
+                                         _norm_texto(f)))]
+        nota = ("Visto de cerca, al contenedor negro le falta el cabezal: la "
+                "capota no está montada sobre el cuerpo (quedó caída adentro, "
+                "en el piso o ausente), así que se reporta su reparación.")
+        if "cabezal" not in _norm_texto(" ".join(limpias)):
+            descripcion = (" ".join(limpias).strip() + " " + nota).strip() \
+                if limpias else nota
+        elif len(limpias) < len(frases):
+            descripcion = " ".join(limpias).strip()
 
     # Ídem con el veto de presencia: si se adjudicó que NO hay contenedor
     # municipal, la prosa no puede seguir afirmándolo.
@@ -4209,6 +4377,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         "segunda_mirada_base": segunda_mirada_base,
         # Ídem para la del daño del contenedor (tapas dadas vuelta, fierros).
         "segunda_mirada_dano": segunda_mirada_dano,
+        # Pregunta dirigida del cabezal del lateral (None si no se ejecutó).
+        "segunda_mirada_cabezal": segunda_mirada_cabezal,
         "segunda_mirada_relacion": segunda_mirada_relacion,
         # Ídem para la del volcado (techo en pendiente leído como tumbado).
         "segunda_mirada_volcado": segunda_mirada_volcado,

@@ -470,6 +470,9 @@ def _cacheable(respuesta):
         # Ídem la del daño del contenedor.
         if (veri.get("segunda_mirada_dano") or {}).get("fallo"):
             return False
+        # Ídem la pregunta del cabezal del lateral.
+        if (veri.get("segunda_mirada_cabezal") or {}).get("fallo"):
+            return False
         if (veri.get("segunda_mirada_relacion") or {}).get("fallo"):
             return False
         if (veri.get("segunda_mirada_secos") or {}).get("fallo"):

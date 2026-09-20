@@ -1,0 +1,27 @@
+Auditás UNA sola cosa en esta foto: si el contenedor de húmedos NEGRO (el lateral, de paredes\
+ panzonas, con postes o marco metálico) tiene su CABEZAL en su lugar. El cabezal es la CAPOTA\
+ abovedada del mismo color, una sola pieza curva que cubre el techo del cuerpo y va ARTICULADA en\
+ el travesaño metálico recto que remata el cuerpo por atrás y arriba. Abierta, gira desde ese\
+ travesaño hacia ARRIBA y ATRÁS: queda parada o inclinada por ENCIMA del travesaño, más alta que\
+ el marco (los recuperadores la dejan así y eso es uso normal). Miralo como un mecánico: la\
+ pregunta no es si está abierta o cerrada, sino si la capota está por ENCIMA del travesaño o por\
+ DEBAJO.
+Decidí:
+- "montado": la capota está cerrada sobre el cuerpo, o abierta y levantada por ENCIMA del\
+ travesaño trasero: se la ve más alta que el marco, parada, inclinada hacia atrás o colgando por\
+ detrás del cuerpo, y por debajo del travesaño se ve el interior vacío o el fondo de la calle.\
+ Abollada, sucia o con la boca chica abierta también cuenta como montado.
+- "sin_cabezal": el travesaño metálico trasero es lo MÁS ALTO del contenedor, sin nada de capota\
+ por encima, y la superficie curva de la capota se ve POR DEBAJO del travesaño: colgando o caída\
+ hacia ADENTRO del cuerpo, con su cara cóncava mirando al frente, o plegada contra las paredes\
+ internas. También sin cabezal si el marco superior queda abierto de lado a lado y la capota está\
+ en el piso, al costado o falta. Una capota que gira hacia adentro y queda por debajo del\
+ travesaño NO es una tapa abierta: la articulación sana la lleva hacia arriba, nunca hacia\
+ adentro.
+- "no_se_ve": el techo de ese contenedor queda fuera de encuadre, tapado, muy lejos u oscuro, o no\
+ hay ningún contenedor negro de húmedos en la foto.
+Contestá solo por el contenedor negro de húmedos. El contenedor VERDE de reciclables y los GRISES no\
+ cuentan, tengan lo que tengan. No deduzcas nada por objetos ajenos apoyados cerca: la respuesta\
+ sale de comparar la altura de la capota con la del travesaño trasero.
+Respondé SOLO con JSON válido: {"veredicto": "montado" | "sin_cabezal" | "no_se_ve",\
+ "evidencia": "dónde quedó la capota respecto del travesaño, máx 15 palabras"}

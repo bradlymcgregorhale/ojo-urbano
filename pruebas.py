@@ -2563,6 +2563,16 @@ check("  tapa sentada sobre la boca sigue usable aunque esté abollada",
       "SENTADA SOBRE LA BOCA" in V._PROMPT_SEGUNDA_MIRADA_DANO
       and "no está montado sobre la boca" in V._PROMPT_SEGUNDA_MIRADA_DANO
       and "objeto ajeno en el piso" in V._PROMPT_SEGUNDA_MIRADA_DANO)
+# #111: la pregunta del cabezal es geométrica (capota arriba o abajo del
+# travesaño trasero), no "abierta o rota", y solo mira el lateral negro.
+check("  la pregunta del cabezal compara la capota con el travesaño trasero",
+      "por ENCIMA del travesaño o por" in V._PROMPT_SEGUNDA_MIRADA_CABEZAL
+      and "POR DEBAJO del travesaño" in V._PROMPT_SEGUNDA_MIRADA_CABEZAL
+      and "nunca hacia adentro" in V._PROMPT_SEGUNDA_MIRADA_CABEZAL)
+check("  y deja afuera al verde de reciclables y a los grises",
+      "El contenedor VERDE de reciclables y los GRISES no cuentan"
+      in V._PROMPT_SEGUNDA_MIRADA_CABEZAL
+      and '"montado" | "sin_cabezal" | "no_se_ve"' in V._PROMPT_SEGUNDA_MIRADA_CABEZAL)
 # R011: un descarte metálico grande cruzando la vereda es retiro_muebles, no obstruccion.
 check("una estructura metálica descartada que cruza la vereda no es obstruccion",
       "una ESTRUCTURA o BASTIDOR METÁLICO, una reja, un armazón" in V._RUBRICA
@@ -2787,6 +2797,12 @@ def _correr_base(votos, dirigidas, dano=None):
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_VOLCADO:
             return json.dumps({"veredicto": _volcado_resp[modelo],
                                "evidencia": "lo que vi"})
+        if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_CABEZAL:
+            # sin fixture, la pregunta del cabezal no tiene que ejecutarse
+            assert modelo in _cabezal_resp, "pregunta del cabezal no esperada"
+            _cv = _cabezal_resp[modelo]
+            _ver, _ev = _cv if isinstance(_cv, tuple) else (_cv, "lo que vi")
+            return json.dumps({"veredicto": _ver, "evidencia": _ev})
         if mensajes[0].get("content") == V._PROMPT_SEGUNDA_MIRADA_PRESENCIA:
             return json.dumps(dict(_presencia_resp.get(
                 modelo, {"veredicto": "no_se_distingue", "ubicacion": None}),
@@ -2823,6 +2839,7 @@ def _correr_base(votos, dirigidas, dano=None):
 
 
 _repregunta_resp = {}
+_cabezal_resp = {}
 _abierta_que_es = "mueble descartado"
 _voluminoso_resp = {}
 _desborde_resp = {}
@@ -3178,6 +3195,181 @@ _r = _correr_base(
 check("el veto no-op no marca la reparación como adjudicada por un retiro que no pasó",
       "reparacion_contenedor" not in (_r.get("adjudicadas_dirigidas") or []),
       str(_r.get("adjudicadas_dirigidas")))
+
+# 2g) PREGUNTA DIRIGIDA DEL CABEZAL DEL LATERAL (#111). Caso H0220/H0150: el
+# lateral sin capota, con la chapa caída adentro. Mini y Gemini votan
+# reparación, la segunda mirada del daño la lee como tapa articulada y veta.
+# La pregunta del cabezal (geométrica: capota arriba o abajo del travesaño)
+# responde sin_cabezal por unanimidad -> los votos anulados vuelven y la
+# reparación se publica. El veto del daño no cambia: solo se restaura después.
+_LAT = {"key": "contenedor_humedos_lateral", "gravedad": 1,
+        "evidencia": "contenedor negro panzón con postes"}
+_VOTOS_H0220 = {
+    "b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3, "parte": "tapa",
+                "evidencia": "cabezal desprendido, pieza metálica adentro del contenedor"},
+               dict(_LAT)], "Contenedor negro con el cabezal desprendido adentro."),
+    "b/dos": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                "evidencia": "tapa desprendida caída dentro del cuerpo"},
+               dict(_LAT)], "Contenedor negro con la tapa caída adentro."),
+    "b/tres": ([dict(_LAT)], "Contenedor negro entero, con la boca abierta.")}
+_DANO_VETA = {"b/uno": ("usable", "tapa articulada visible y en su lugar"),
+              "b/dos": ("uso_comprometido", "falta la tapa superior"),
+              "b/tres": ("usable", "tapa abierta pero articulada")}
+_cabezal_resp = {"b/uno": ("sin_cabezal", "chapa curva hundida por debajo del travesaño"),
+                 "b/dos": ("sin_cabezal", "marco abierto y capota caída adentro"),
+                 "b/tres": ("sin_cabezal", "el travesaño es lo más alto, capota adentro")}
+_r = _correr_base(_VOTOS_H0220, {}, _DANO_VETA)
+_claves = {c["key"] for c in _r["confirmadas"]}
+_rep_c = next((c for c in _r["confirmadas"] if c["key"] == "reparacion_contenedor"), {})
+check("cabezal: tres sin_cabezal restauran los votos que el veto del daño anuló",
+      "reparacion_contenedor" in _claves, str(sorted(_claves)))
+check("  y la reparación sale con los dos lectores restaurados más el tercero dirigido",
+      sorted(_rep_c.get("fuentes", [])) == ["b/dos", "b/tres", "b/uno"],
+      str(_rep_c))
+check("  con parte tapa y gravedad de los votos originales",
+      _rep_c.get("parte") == "tapa" and _rep_c.get("gravedad") == 3, str(_rep_c))
+check("  los votos restaurados no quedan anotados como anulados",
+      not any(c.get("anulada_por") == "segunda_mirada_dano"
+              for v in _r["verificadores"] for c in v.get("categorias", [])),
+      str([c for v in _r["verificadores"] for c in v.get("categorias", [])]))
+_smc = _r.get("segunda_mirada_cabezal") or {}
+check("  el detalle registra la pregunta, el gatillo del veto y la promoción",
+      _smc.get("promovio") is True and _smc.get("gatillo") == "veto_dano"
+      and len(_smc.get("sin_cabezal") or []) == 3, str(_smc))
+check("  y el veto del daño sigue registrado tal cual, marcado como restaurado",
+      (_r.get("segunda_mirada_dano") or {}).get("retiro_votos") is True
+      and (_r.get("segunda_mirada_dano") or {}).get("restaurado_por_cabezal") is True,
+      str(_r.get("segunda_mirada_dano")))
+check("  la descripción explica el cabezal y no dice que está entero",
+      "cabezal" in (_r.get("descripcion") or "").lower()
+      and "entero" not in (_r.get("descripcion") or "").lower(),
+      str(_r.get("descripcion")))
+
+# 2g-bis) Un solo "montado" deja el veto como está: la duda gana. La mayoría
+# simple se midió y descartó (ticket-111: H0023, lateral sano con la capota
+# levantada, juntó dos sin_cabezal en una repetición).
+_cabezal_resp = {"b/uno": ("sin_cabezal", "capota caída adentro"),
+                 "b/dos": ("sin_cabezal", "marco abierto"),
+                 "b/tres": ("montado", "capota levantada hacia atrás sobre el travesaño")}
+_r = _correr_base(_VOTOS_H0220, {}, _DANO_VETA)
+check("cabezal: un 'montado' deja el veto del daño como estaba",
+      "reparacion_contenedor" not in {c["key"] for c in _r["confirmadas"]}
+      and not any(p["key"] == "reparacion_contenedor" for p in _r["posibles"]),
+      str([c["key"] for c in _r["confirmadas"]]))
+check("  y los votos siguen anotados como anulados por el veto del daño",
+      sum(1 for v in _r["verificadores"] for c in v.get("categorias", [])
+          if c.get("anulada_por") == "segunda_mirada_dano") == 2,
+      str([c for v in _r["verificadores"] for c in v.get("categorias", [])]))
+check("  el detalle dice que no promovió",
+      (_r.get("segunda_mirada_cabezal") or {}).get("promovio") is False,
+      str(_r.get("segunda_mirada_cabezal")))
+check("  y la descripción no habla de un cabezal faltante",
+      "falta el cabezal" not in (_r.get("descripcion") or ""), str(_r.get("descripcion")))
+
+# 2g-ter) Un "no_se_ve" deja todo como está aunque haya dos sin_cabezal: la
+# duda no restaura.
+_cabezal_resp = {"b/uno": ("sin_cabezal", "capota caída adentro"),
+                 "b/dos": ("sin_cabezal", "marco abierto"),
+                 "b/tres": ("no_se_ve", "el techo queda fuera de encuadre")}
+_r = _correr_base(_VOTOS_H0220, {}, _DANO_VETA)
+check("cabezal: un 'no_se_ve' no restaura nada",
+      "reparacion_contenedor" not in {c["key"] for c in _r["confirmadas"]}
+      and (_r.get("segunda_mirada_cabezal") or {}).get("promovio") is False,
+      str(_r.get("segunda_mirada_cabezal")))
+
+# 2g-quater) Caso H0150: NADIE votó reparación en la primera pasada (dos
+# Completo reales lo muestran); los lectores describen "boca abierta" o "tapa
+# abierta" sobre un lateral. La pista de texto dispara la pregunta y tres
+# sin_cabezal confirman la reparación con los lectores dirigidos como fuentes.
+_VOTOS_H0150 = {
+    "b/uno": ([dict(_LAT), {"key": "lavado_contenedor", "gravedad": 2,
+                            "evidencia": "chorreaduras en la superficie"}],
+              "Contenedor de húmedos negro con la tapa abierta y muy sucio."),
+    "b/dos": ([dict(_LAT)], "Contenedor de húmedos negro en buen estado."),
+    "b/tres": ([dict(_LAT)], "Contenedor negro, entero y en su lugar, con la boca abierta.")}
+_cabezal_resp = {"b/uno": ("sin_cabezal", "chapa curva hundida por debajo del travesaño"),
+                 "b/dos": ("sin_cabezal", "marco abierto y capota caída adentro"),
+                 "b/tres": ("sin_cabezal", "travesaño pelado, capota adentro del cuerpo")}
+_r = _correr_base(_VOTOS_H0150, {})
+_rep_c = next((c for c in _r["confirmadas"] if c["key"] == "reparacion_contenedor"), {})
+check("cabezal: sin votos de reparación, la pista de texto dispara y confirma",
+      bool(_rep_c) and sorted(_rep_c.get("fuentes", [])) == ["b/dos", "b/tres", "b/uno"],
+      str(_rep_c))
+check("  con gravedad 3 por defecto y parte tapa",
+      _rep_c.get("gravedad") == 3 and _rep_c.get("parte") == "tapa", str(_rep_c))
+check("  el gatillo fue el texto y no hubo veto del daño",
+      (_r.get("segunda_mirada_cabezal") or {}).get("gatillo") == "texto"
+      and _r.get("segunda_mirada_dano") is None,
+      str(_r.get("segunda_mirada_cabezal")))
+check("  la descripción deja de decir que está entero y explica el cabezal",
+      "cabezal" in (_r.get("descripcion") or "").lower()
+      and "entero" not in (_r.get("descripcion") or "").lower()
+      and "buen estado" not in (_r.get("descripcion") or "").lower(),
+      str(_r.get("descripcion")))
+
+# 2g-quinquies) Sin pista (nadie habla del cabezal ni de la tapa abierta) la
+# pregunta NO se ejecuta: el fixture vacío hace saltar el assert si se llama.
+_cabezal_resp = {}
+_r = _correr_base(
+    {"b/uno": ([dict(_LAT)], "Contenedor negro sucio."),
+     "b/dos": ([dict(_LAT)], "Contenedor negro junto al cordón."),
+     "b/tres": ([dict(_LAT)], "Contenedor negro.")}, {})
+check("cabezal: sin pista de texto ni veto la pregunta no corre",
+      _r.get("segunda_mirada_cabezal") is None
+      and "reparacion_contenedor" not in {c["key"] for c in _r["confirmadas"]},
+      str(_r.get("segunda_mirada_cabezal")))
+
+# 2g-sexies) En un BILATERAL (gris) no corre aunque el veto del daño haya
+# anulado votos: la capota articulada es del lateral.
+_cabezal_resp = {}
+_r = _correr_base(
+    {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "cabezal desprendido adentro"}, dict(_CONT)], "Cabezal adentro."),
+     "b/dos": ([{"key": "reparacion_contenedor", "gravedad": 3,
+                 "evidencia": "tapa caída dentro del cuerpo"}, dict(_CONT)], "Tapa adentro."),
+     "b/tres": ([dict(_CONT)], "Contenedor gris con la tapa abierta.")},
+    {}, _DANO_VETA)
+check("cabezal: en un bilateral no se pregunta y el veto queda",
+      _r.get("segunda_mirada_cabezal") is None
+      and "reparacion_contenedor" not in {c["key"] for c in _r["confirmadas"]},
+      str(_r.get("segunda_mirada_cabezal")))
+
+# 2g-septies) Con reparación ya confirmada (H0181: tres votos, sin veto) no se
+# gasta la pregunta.
+_cabezal_resp = {}
+_r = _correr_base(
+    {"b/uno": ([{"key": "reparacion_contenedor", "gravedad": 3, "parte": "tapa",
+                 "evidencia": "capota del contenedor en el piso"}, dict(_LAT)], "Capota en el piso."),
+     "b/dos": ([{"key": "reparacion_contenedor", "gravedad": 3, "parte": "tapa",
+                 "evidencia": "cabezal desprendido apoyado al lado"}, dict(_LAT)], "Cabezal al lado."),
+     "b/tres": ([{"key": "reparacion_contenedor", "gravedad": 3, "parte": "tapa",
+                 "evidencia": "tapa grande desprendida en el piso"}, dict(_LAT)], "Tapa en el piso.")},
+    {},
+    {"b/uno": "uso_comprometido", "b/dos": "uso_comprometido", "b/tres": "uso_comprometido"})
+check("cabezal: con la reparación confirmada la pregunta no corre",
+      _r.get("segunda_mirada_cabezal") is None
+      and "reparacion_contenedor" in {c["key"] for c in _r["confirmadas"]},
+      str(_r.get("segunda_mirada_cabezal")))
+
+# 2g-octies) Llave de configuración: apagada, nada corre.
+_cabezal_resp = {}
+with patch.object(V, "SEGUNDA_MIRADA_CABEZAL", False):
+    _r = _correr_base(_VOTOS_H0220, {}, _DANO_VETA)
+check("cabezal: con SEGUNDA_MIRADA_CABEZAL=0 la pregunta no corre",
+      _r.get("segunda_mirada_cabezal") is None, str(_r.get("segunda_mirada_cabezal")))
+
+# 2g-nonies) La pista de texto: lo que dispara y lo que no.
+_pc = V._PATRON_CABEZAL_LATERAL
+check("pista del cabezal: cabezal, capota, tapa abierta, boca abierta, tapa dada vuelta",
+      all(_pc.search(V._norm_texto(t)) for t in [
+          "cabezal desprendido", "la capota está caída", "con la tapa abierta",
+          "boca abierta pero sin daños", "tapas dadas vuelta", "tapa del contenedor levantada",
+          "sin tapa", "falta la tapa", "interior vacío"]))
+check("  y no dispara con tapa cerrada, bolsa rota ni contenedor sucio",
+      not any(_pc.search(V._norm_texto(t)) for t in [
+          "tapa cerrada", "bolsa rota junto al contenedor", "contenedor negro sucio",
+          "tapa de la alcantarilla abierta al lado"]))
+_cabezal_resp = {}
 
 # 2f) Daño REAL: la pasada dirigida lo confirma dos veces -> no se toca.
 _r = _correr_base(
