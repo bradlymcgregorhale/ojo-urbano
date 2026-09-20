@@ -2201,6 +2201,8 @@ _cats_prompt = {"recoleccion": {"nombre": "Basura"},
 _textos_prompt = {k: getattr(V, k) for k in _huellas if k.startswith("_")
                   or k == "REGLA_SUBTIPO_HUMEDOS"}
 _textos_prompt["sistema_con_restantes"] = V._prompt_sistema(_cats_prompt)
+_textos_prompt["inventario_presencia"] = (
+    AQUI / "prompts" / "inventario" / "presencia.txt").read_text(encoding="utf-8")
 _textos_prompt["usuario_sin_contexto"] = V._prompt_usuario()
 with patch.object(V, "_prestaciones_candidatas", return_value=[]):
     _textos_prompt["usuario_con_contexto"] = V._prompt_usuario(_ctx_prompt)

@@ -96,6 +96,29 @@ class Presencia(unittest.TestCase):
         self.assertEqual([v['presente'] for v in lecturas], [False, False, None])
         self.assertEqual(E.resolver_ausencia(original, lecturas), original)
 
+    def test_p014_control_20260920_con_dos_null_sigue_en_revision(self):
+        # Textos crudos del control integrado del 20/09/2026 (ticket-110). Los
+        # tres responden dentro del contrato: flash-lite niega entre cercos,
+        # Luna y Mini dejan presente=null por un objeto oscuro a la derecha.
+        # No es un problema de formato: la duda se conserva y no hay ausencia.
+        pares = [
+            ('google/gemini-3.5-flash-lite',
+             '```json\n{"presente":false,"evidencia":"acumulación de bolsas de residuos en la vía pública sin contenedor municipal"}\n```'),
+            ('openai/gpt-5.6-luna',
+             '{"presente":null,"evidencia":"Se observan numerosas bolsas y residuos acumulados, pero no se distingue con claridad un contenedor municipal."}'),
+            ('openai/gpt-5-mini',
+             '{"presente":null,"evidencia":"Se ven muchas bolsas de basura amontonadas; a la derecha hay un objeto cilíndrico parcialmente visible que podría ser un contenedor municipal pero no se distingue con claridad."}'),
+        ]
+        original = E.revision()
+        lecturas = self._lecturas(pares)
+        self.assertEqual([v['presente'] for v in lecturas], [False, None, None])
+        self.assertEqual(E.resolver_ausencia(original, lecturas), original)
+        # Una sola duda alcanza para conservar la revisión, aunque las otras dos nieguen.
+        con_una_duda = [dict(v, presente=False) if v['presente'] is None and i == 2 else v
+                        for i, v in enumerate(lecturas)]
+        self.assertEqual([v['presente'] for v in con_una_duda], [False, None, False])
+        self.assertEqual(E.resolver_ausencia(original, con_una_duda), original)
+
     def test_parsea_json_y_bloque_sin_relajar_el_contrato(self):
         r = respuesta('m1', {'presente': False, 'evidencia': 'Sin contenedores'})
         for bloque in [False, True]:
