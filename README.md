@@ -1,19 +1,20 @@
 # Ojo Urbano
 
-Ojo Urbano es una API en Python que clasifica fotos de incidencias urbanas. Reconoce residuos en la vía pública, escombros, objetos voluminosos, contenedores y cestos, baches, veredas, vehículos, plagas, poda, volquetes y las demás categorías definidas en [`categorias.json`](categorias.json), 44 en total.
+Ojo Urbano es una API en Python que clasifica fotos de incidencias urbanas. Reconoce residuos en la vía pública, escombros, objetos voluminosos, contenedores y cestos, baches, veredas, vehículos, plagas, poda, volquetes y las demás categorías de [`categorias.json`](categorias.json), 46 en total.
 
-El clasificador local es un modelo open source que entrenamos: embeddings de CLIP, DINOv2 y SigLIP2 con un cabezal de regresión logística multi-etiqueta, sobre miles de fotos callejeras etiquetadas a mano. Corre en tu máquina y no manda la foto a ningún lado. Con una clave de [OpenRouter](https://openrouter.ai), tres modelos de visión revisan la misma imagen y la API cruza esos resultados con el modelo local antes de publicar una categoría.
+El clasificador local es un modelo de código abierto que entrenamos nosotros: embeddings de CLIP, DINOv2 y SigLIP2 con un cabezal de regresión logística multietiqueta, sobre miles de fotos callejeras etiquetadas a mano. Se ejecuta en el mismo equipo donde está instalada la API y no envía la foto a ningún servicio externo. Si configurás una clave de [OpenRouter](https://openrouter.ai), hasta tres modelos de visión revisan la misma imagen y la API cruza esas lecturas con el modelo local antes de publicar una categoría.
 
 ## Arranque rápido
 
-Necesitás Python 3, un entorno virtual y varios GB libres para los embeddings. Los modelos se descargan una sola vez.
+Hace falta Python 3, un entorno virtual y varios GB libres en disco para los embeddings. Los modelos se descargan una sola vez.
 
 ```bash
 git clone https://github.com/bradlymcgregorhale/ojo-urbano.git
 cd ojo-urbano
-python3 -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate      # en Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env
+cp .env.example .env           # en Windows: copy .env.example .env
 ```
 
 Para obtener una clasificación completa, editá `.env` y cargá `OPENROUTER_API_KEY`. Sin esa clave el servidor arranca y ejecuta el modelo local, pero no publica categorías: `problemas` queda vacío porque falta la verificación.
@@ -22,7 +23,7 @@ Para obtener una clasificación completa, editá `.env` y cargá `OPENROUTER_API
 python servidor.py
 ```
 
-La primera ejecución descarga CLIP, DINOv2 y SigLIP2. Puede tardar y necesita varios GB de disco y de RAM. En una Mac con poca memoria se va a sentir.
+La primera ejecución descarga CLIP, DINOv2 y SigLIP2. Tarda y necesita varios GB de disco y de RAM; en un equipo con poca memoria libre se nota.
 
 Cuando termine de cargar, abrí http://127.0.0.1:8080 y arrastrá una foto. La portada permite subir varias y descargar un CSV al finalizar.
 
@@ -38,23 +39,46 @@ O usar el cliente de ejemplo:
 python ejemplo.py foto.jpg
 ```
 
-Una clasificación con verificación tarda entre 25 y 60 segundos.
+Una clasificación en Completo tarda entre 25 y 60 segundos; los otros modos, menos (ver [Modos de análisis](#modos-de-análisis)).
 
 ## Qué pasa con una foto
 
 La API recibe la imagen y, si existe, el texto escrito por quien reporta en el campo `contexto`.
 
-El modelo local procesa la foto en tu máquina. Combina embeddings de CLIP, DINOv2 y SigLIP2 con un clasificador multi-etiqueta de regresión logística, entrenado con miles de fotos callejeras etiquetadas a mano. También estima una gravedad de 1 a 5.
+El modelo local procesa la foto en el mismo equipo donde está instalada la API. Combina embeddings de CLIP, DINOv2 y SigLIP2 con un clasificador multietiqueta de regresión logística, entrenado con miles de fotos callejeras etiquetadas a mano. También estima una gravedad de 1 a 5.
 
-Si configuraste OpenRouter, GPT-5 mini, Gemini Flash Lite y GPT-5.6 luna evalúan la misma imagen con una rúbrica por categoría. La confirmación visual necesita al menos dos fuentes. La aceptación contextual de escombros, explicada abajo, es una excepción. El modelo local participa como una fuente y sus puntuaciones aparecen por separado en `modelo_local`.
+Si configuraste OpenRouter, uno, dos o tres modelos de visión según el modo (por defecto GPT-5 mini, Gemini Flash Lite y GPT-5.6 luna en Completo) evalúan la misma imagen con una rúbrica por categoría. La confirmación visual necesita al menos dos fuentes. La aceptación contextual de escombros, explicada abajo, es una excepción. El modelo local participa como una fuente y sus puntuaciones aparecen por separado en `modelo_local`.
 
-Una detección sostenida por una sola fuente vuelve en `posibles`. DeepSeek actúa como árbitro de texto cuando hay desacuerdos y deja el motivo en la respuesta. Por default no convierte una detección aislada en problema confirmado, porque las mediciones no mostraron una mejora.
+Una detección sostenida por una sola fuente aparece en `posibles`. DeepSeek actúa como árbitro de texto cuando hay desacuerdos y deja el motivo en la respuesta. Por defecto no convierte una detección aislada en problema confirmado, porque las mediciones no mostraron una mejora.
 
 El contexto también participa en la decisión. Si la foto no muestra lo que la persona describió, el reclamo se arma a partir del texto y los hallazgos visuales pasan a `descartados_por_foto`. Sin contexto, se informa lo que aparece en la imagen.
 
-Escombros tiene una excepción a ese ruteo textual: la foto debe mostrar bolsas chicas o material suelto en espacio público. Una afirmación del vecino puede resolver el contenido oculto, pero no habilita un retiro dentro de propiedad privada ni de bolsones grandes de obra.
+Escombros tiene una excepción a ese ruteo textual: la foto debe mostrar bolsas chicas o material suelto en espacio público. Una afirmación del vecino puede aclarar el contenido oculto, pero no habilita un retiro dentro de propiedad privada ni de bolsones grandes de obra.
 
 Hay categorías que el modelo local no conoce, entre ellas `vehiculo_mal_estacionado` y `columna_poste_cable`. En esos casos la detección depende de los modelos de visión y necesita coincidencia entre dos fuentes.
+
+## Modos de análisis
+
+Cada foto se analiza en uno de tres modos. Se elige por foto, con el campo `modo` del formulario o con el selector de la portada, y define cuántos lectores externos miran la imagen, qué comprobaciones se hacen y cuánto cuesta. El modelo local participa en los tres y la regla de dos fuentes para confirmar una categoría no cambia.
+
+| | Económico (`bajo`) | Equilibrado (`medio`) | Completo (`alto`) |
+|---|---|---|---|
+| Lectores de visión | 1 | 2 | 3 |
+| Árbitro de texto | no | sí | sí; puede ver la foto con `ARBITRO_VE_FOTO` |
+| Especialista de contenedores | no | no | sí, con `CONTENEDORES_ESPECIALISTA=1` |
+| Lectura de patente, relación con el contenedor, subtipo y postes | no | sí | sí |
+| Alcance de escombros | no | sí | sí |
+| Ámbito, calidad y encuadre | no se evalúan | los dos lectores tienen que coincidir | ámbito por unanimidad; calidad y encuadre por mayoría |
+| Comparación de prioridad | no | no | sí, si los lectores no coinciden |
+| Costo observado por foto | USD 0,003 a 0,007 | USD 0,006 a 0,008 | USD 0,015 a 0,05 |
+
+Completo es el modo por defecto y el único que recorre todas las etapas. Tarda entre 25 y 60 segundos por foto. Es el que conviene para publicar un resultado o para corroborar lo que otro modo dejó pendiente.
+
+Equilibrado usa dos lectores y el árbitro de texto. Puede confirmar categorías con la misma regla de dos fuentes, pero no tiene especialista de contenedores ni comparación de prioridad, y las comprobaciones de calidad y encuadre necesitan que los dos lectores coincidan.
+
+Económico usa un solo lector y ninguna etapa que exija dos. Como una categoría se confirma con dos fuentes y el modelo local solo cuenta cuando supera su umbral, casi todo lo que ve ese lector queda en `posibles`. Por eso su respuesta trae una `conclusion` con `estado: "preliminar"` cuando hay indicios sin corroborar: describe qué vio el lector y pide corroboración, sin publicarlo como problema confirmado. Sirve como filtro barato antes de un análisis en Completo, o para revisar a mano.
+
+Las comprobaciones que un modo no ejecuta aparecen en `analisis_limitaciones` (`modo_reducido`, `especialista_desactivado`, `corroboracion_insuficiente`) y las categorías que quedaron sin corroborar por esa omisión pasan a `posibles`; no se bajan los requisitos de evidencia para compensar. Cada respuesta lleva `modo` y `modo_version`, y la caché distingue los modos entre sí. Los lectores de cada modo se configuran con `VERIFICADORES_BAJO`, `VERIFICADORES_MEDIO` y `VERIFICADORES_ALTO`; un modo sin lista válida figura como no disponible en `GET /salud`.
 
 ## Dónde ayuda el modelo local
 
@@ -68,7 +92,7 @@ La tarjeta muestra el tipo de contenedor detectado antes de la descripción. Si 
 
 El estado del contenedor, por ejemplo si está lleno, roto o tiene la tapa trabada, queda principalmente a cargo de los modelos de visión. "Lleno/desbordado" es el punto con menor precisión.
 
-El otro caso importante son los escombros embolsados, en especial bolsas de cascote fotografiadas de noche y sin material visible. En una prueba con 7 modelos de visión no hubo detecciones. El modelo local sí pudo separarlas de las bolsas de basura.
+El otro caso importante es el de los escombros embolsados, en especial bolsas de cascote fotografiadas de noche y sin material visible. En una prueba con 7 modelos de visión no hubo detecciones. El modelo local sí pudo separarlas de las bolsas de basura.
 
 Cuando el modelo local tiene suficiente confianza y los verificadores ya confirmaron una pila como `recoleccion` o `retiro_muebles`, la API puede promover `retiro_escombros` con `reclasificado_por: "modelo_local"`. Un puntaje local cercano a cero se toma como señal para reentrenar, no para cambiar el prompt. Esta fusión se desactiva con `FUSION_ESCOMBROS=0`.
 
@@ -80,9 +104,9 @@ También se conserva `retiro_escombros` como posible cuando el local puntúa al 
 
 Si el vecino afirma que las bolsas contienen escombros y la foto es compatible, puede aceptarse ese dato. No alcanza una pregunta, una suposición, una negación ni una orden de clasificación. Ver cartón en una bolsa tampoco revela el contenido de las demás. Cuando el material sigue oculto, el resultado lleva `origen: "contexto_vecinal"`, una fuente y `confianza: "baja"`; los votos originales siguen disponibles en `modelos`. Una afirmación falsa sobre bolsas opacas puede pasar este control. El sistema no puede comprobar su contenido desde la foto.
 
-Un alcance privado, limitado a bolsones grandes o indeterminado no puede volver a aceptarse por la fusión local ni por el texto. La misma pila tampoco se reasigna a recolección común, muebles o poda. Se conservan otros residuos públicos sólo si la revisión los identifica aparte. Un fallo de la revisión impide guardar la respuesta en caché.
+Un caso de alcance privado, limitado a bolsones grandes o indeterminado no puede aceptarse otra vez por la fusión local ni por el texto. La misma pila tampoco se reasigna a recolección común, muebles o poda. Se conservan otros residuos públicos sólo si la revisión los identifica aparte. Un fallo de la revisión impide guardar la respuesta en caché.
 
-El código de veredas `154014` es otro reclamo: restos o vallados abandonados por obras de empresas de servicios públicos que dificultan el paso. Si aparece como alternativa, una revisión corta del texto comprueba esas condiciones. "Escombros de una refacción" no alcanza. Un reclamo genuino por esa obra se conserva aunque haya un bolsón excluido del retiro de higiene; una sugerencia sin respaldo queda fuera de `problemas` y `categorias_contexto`.
+El código de veredas `154014` corresponde a otro reclamo: restos o vallados abandonados por obras de empresas de servicios públicos que dificultan el paso. Si aparece como alternativa, una revisión corta del texto comprueba esas condiciones. "Escombros de una refacción" no alcanza. Un reclamo genuino por esa obra se conserva aunque haya un bolsón excluido del retiro de higiene; una sugerencia sin respaldo queda fuera de `problemas` y `categorias_contexto`.
 
 Las veredas, los vehículos, la ocupación, las plagas y la luminaria dependen principalmente de los modelos de visión.
 
@@ -90,11 +114,11 @@ Las veredas, los vehículos, la ocupación, las plagas y la luminaria dependen p
 
 El servicio está escrito en Python.
 
-- FastAPI y uvicorn exponen la API desde `servidor.py`. La página de demostración está embebida en ese archivo, sin un frontend separado.
-- `model.joblib` contiene el modelo local: embeddings de CLIP, DINOv2 y SigLIP2, un scaler, un OneVsRest de regresión logística y un regresor de gravedad. Corre en CPU con PyTorch, transformers, sentence-transformers, scikit-learn, joblib y Pillow.
+- FastAPI y uvicorn exponen la API desde `servidor.py`. La página de demostración está embebida en ese archivo, sin una interfaz separada.
+- `model.joblib` contiene el modelo local: embeddings de CLIP, DINOv2 y SigLIP2, un scaler, un OneVsRest de regresión logística y un regresor de gravedad. Se ejecuta en CPU con PyTorch, transformers, sentence-transformers, scikit-learn, joblib y Pillow.
 - `verificador.py` hace las llamadas a OpenRouter. Los modelos de visión trabajan en paralelo. DeepSeek interviene como árbitro de texto porque sus modelos en OpenRouter no aceptan imágenes.
 - Los criterios por categoría y las pasadas dirigidas están en [`prompts/`](prompts/README.md), junto con las instrucciones del árbitro y del análisis de texto.
-- [`categorias.json`](categorias.json) contiene las 44 categorías propias. [`prestaciones.json`](prestaciones.json) contiene el catálogo completo de la Ciudad usado para interpretar el texto del vecino.
+- [`categorias.json`](categorias.json) contiene las 46 categorías propias. [`prestaciones.json`](prestaciones.json) contiene el catálogo completo de la Ciudad usado para interpretar el texto del vecino.
 
 ## API
 
@@ -104,8 +128,8 @@ Recibe `multipart/form-data` con estos campos:
 
 - `file`: la foto.
 - `contexto`: texto opcional de hasta 500 caracteres.
-- `modo`: `bajo` (Económico), `medio` (Equilibrado) o `alto` (Completo). Se envía como campo del formulario; si lo omitís, se usa `alto`.
-- `verificar`: `auto`, `1` o `0`. El valor por default es `auto`, que verifica cuando hay una clave configurada. `1` fuerza la verificación y `0` devuelve una respuesta degradada, sin clasificación.
+- `modo`: `bajo` (Económico), `medio` (Equilibrado) o `alto` (Completo). Se envía como campo del formulario; si lo omitís, se usa `alto`. Qué hace cada uno está en [Modos de análisis](#modos-de-análisis).
+- `verificar`: `auto`, `1` o `0`. El valor por defecto es `auto`, que verifica cuando hay una clave configurada. `1` fuerza la verificación y `0` devuelve una respuesta degradada, sin clasificación.
 
 Los modelos usan `contexto` para interpretar la imagen y decidir si respalda lo que se describió. La API nunca devuelve ese texto porque puede contener nombres o patentes.
 
@@ -123,8 +147,8 @@ explican las omisiones o la falta de corroboración. Los trabajos conservan
 su modo y versión desde la creación, también al consultar un error.
 
 La caché distingue foto, contexto normalizado, `verificar`, modo y versión de
-la configuración. Los resultados parciales de Bajo y Medio no se guardan.
-Alto conserva su política de caché. Un resultado reutilizado conserva los
+la configuración. Los resultados parciales de Económico y Equilibrado no se
+guardan; Completo conserva su política de caché. Un resultado reutilizado conserva los
 tokens y el costo del análisis original.
 
 ```bash
@@ -176,14 +200,14 @@ Ejemplo de respuesta:
 - `problemas` contiene lo que se reporta, con gravedad de 1 a 5 y la cantidad de `fuentes`. La confirmación visual requiere al menos 2 fuentes; el retiro de escombros basado en testimonio puede tener una sola, identificada como contexto. El clasificador local cuenta para el consenso. Sus detecciones aisladas no se convierten en incidencias publicadas.
 - Una entrada de `problemas` puede traer `codigo`, correspondiente a una prestación del catálogo de la Ciudad, en lugar de `key`. Para aceptar ambos formatos usá `p.get("key") or p.get("codigo")`.
 - Cada problema incluye `confianza`: `alta` con 3 o más fuentes y `media` con 2. La aceptación de escombros basada en contenido informado por el vecino usa una fuente y confianza `baja`. El campo superior `predominante` contiene la clave del problema de mayor gravedad. Si hay empate, elige el que tenga más fuentes. Vale `null` cuando no hay uno.
-- `verificacion_escombros`, cuando aparece, informa `estado`, `motivo`, `basado_en_contexto` y `requiere_nueva_foto`. Su estado `apto` significa que la ubicación y presentación sirven para el retiro, no que el material esté confirmado. Para decidir qué reclamo se acepta, usar `problemas`. Una contradicción de contenido puede requerir aclaración aunque `requiere_nueva_foto` sea `false`.
+- `verificacion_escombros`, cuando aparece, informa `estado`, `motivo`, `basado_en_contexto` y `requiere_nueva_foto`. Su estado `apto` significa que la ubicación y presentación sirven para el retiro, no que el material esté confirmado. Para decidir qué reclamo se acepta, usá `problemas`. Una contradicción de contenido puede requerir aclaración aunque `requiere_nueva_foto` sea `false`.
 - `patente` puede aparecer en escenas de `vehiculo_mal_estacionado` o `vehiculo_abandonado`. Acepta formatos argentinos como `AB123CD` y `ABC123`. Solo se devuelve cuando dos lectores independientes obtienen la misma cadena del vehículo protagonista. Cualquier lectura válida que discrepe la suprime. Si hace falta, la API vuelve a leer la foto a mayor resolución solo para la chapa. El valor aparece arriba y dentro del problema confirmado.
 - `foto_valida` dice si la imagen respalda el contexto. `true` significa que sirve como prueba, `false` que no muestra lo reclamado y `null` que no pudo evaluarse. Un valor `null` no significa que la foto sea correcta.
 - `foto_valida_estado` explica ese resultado. `corresponde` y `no_corresponde` acompañan a `true` y `false`. Con `null` puede valer `sin_contexto`, `empate`, `sin_opinion` o `no_evaluado`. Solo `no_corresponde` descarta los hallazgos visuales.
 - `posibles` reúne detecciones no confirmadas y siempre está presente. `origen` puede ser `foto`, `foto_no_relacionada` o `contexto_vecinal`.
 - `descartados_por_foto` contiene lo que mostraba una imagen marcada con `foto_valida: false`. Esas entradas no se reportan y traen `motivo_descarte`.
 - `descripcion` resume la escena. La escribe el árbitro cuando interviene; de lo contrario se usa la descripción del verificador que más coincide con el resultado. Sin verificación vale `null`.
-- `categorias_contexto` contiene lo que describe el texto y la foto no confirma. No modifica `gravedad_maxima` ni `hay_problema`, pero sí puede hacer que `hay_reclamo` sea `true`. Cada entrada trae `respaldo_visual`, con valor `compatible`, `neutral` o `contradice`. Un reclamo ajeno a las 44 categorías puede mapear a una prestación de [`prestaciones.json`](prestaciones.json), que usa `codigo` en lugar de `key`.
+- `categorias_contexto` contiene lo que describe el texto y la foto no confirma. No modifica `gravedad_maxima` ni `hay_problema`, pero sí puede hacer que `hay_reclamo` sea `true`. Cada entrada trae `respaldo_visual`, con valor `compatible`, `neutral` o `contradice`. Un reclamo ajeno a las 46 categorías puede mapear a una prestación de [`prestaciones.json`](prestaciones.json), que usa `codigo` en lugar de `key`.
 - `elementos_detectados` enumera los contenedores visibles aunque no tengan problemas.
 - `en_duda` contiene categorías con una fuente que el árbitro no resolvió. Las detecciones aisladas normalmente aparecen en `posibles`. La excepción son las claves de presencia `contenedor_*`: no pasan por el árbitro ni por `posibles`. Con una fuente quedan en `en_duda`; con dos pasan a `elementos_detectados`.
 - `calidad_foto` informa `lado_menor`, `nitidez`, `luminancia` y `definicion`, que puede ser `buena` o `limitada`. No filtra resultados ni cambia decisiones. Sobre 200 fotos etiquetadas por personas, la calidad global no predijo los errores.
@@ -287,6 +311,200 @@ no se ejecutó, se conserva la ausencia de `verificacion_escombros`.
 `tokens_api`, `tokens_api_completos` y `costo_api` siguen describiendo el
 análisis original; esta lista de revisores no desglosa todas sus llamadas.
 
+### Conclusión publicada
+
+`conclusion` resume lo publicado sin cambiar `problemas` ni las invariantes:
+`estado` es `confirmada` (hay problemas), `por_texto` (solo `categorias_contexto`),
+`rechazada` (foto rechazada por ámbito o calidad), `preliminar` o `sin_indicios`;
+`categorias` lista `key` y `nombre`; `texto` es la frase que muestra la tarjeta.
+
+`preliminar` solo aparece en un modo sin árbitro (Económico) cuando no hay
+problemas confirmados y quedan `posibles` de origen foto sin veredicto. Ahí
+`requiere_revision` vale `true`, la descripción pasa a "Lectura preliminar: se
+detectaron indicios de ... Requieren corroboración." y la tarjeta titula
+"Lectura preliminar: requiere corroboración". `hay_problema` sigue en `false`:
+un voto único no confirma nada; describe lo que vio el lector para que una
+persona o un análisis en Completo lo corrobore. En Equilibrado y Completo los
+`posibles` ya pasaron por el árbitro y la conclusión es `confirmada` o
+`sin_indicios`. El CSV exporta `conclusion_estado`.
+
+### Consumo de tokens por foto
+
+La respuesta de análisis incluye `tokens_api`, la suma de `usage.total_tokens`
+informada por OpenRouter en todos los intentos usados para procesar esa foto.
+Incluye verificadores, árbitro, revisiones dirigidas y el especialista de
+contenedores. Si falta el total y están ambos conteos, suma `prompt_tokens` y
+`completion_tokens`. Los detalles de razonamiento y caché no se suman otra vez.
+
+`tokens_api_completos` indica si todos los intentos informaron un conteo válido.
+Si vale `false`, `tokens_api` contiene solamente la suma conocida: el consumo de
+los intentos sin datos no se puede determinar. Sin llamadas, el total es cero y
+el conteo está completo. Cada foto tiene su propio acumulador, incluso cuando
+se procesan varias en paralelo.
+
+`tokens_entrada` y `tokens_salida` suman por separado `prompt_tokens` y
+`completion_tokens` de los mismos intentos (la salida incluye el razonamiento).
+`tokens_desglose_completo` vale `false` si algún intento informó el total pero
+no esos dos conteos; en ese caso las sumas parciales se conservan sin inventar
+la diferencia.
+
+Una respuesta recuperada de la caché local conserva los tokens del análisis
+original; ese valor no representa consumo adicional por consultar la caché.
+Estos campos no generan llamadas extra ni modifican las clasificaciones o el
+campo `costo_api`. La tarjeta de la página muestra el costo, los tokens con su
+desglose y el costo por millón de tokens (`costo_api` dividido por `tokens_api`)
+cuando el análisis tuvo costo; el CSV exporta las mismas columnas.
+
+### Respuestas completas del proveedor
+
+Los verificadores y el árbitro usan únicamente `message.content` con
+`finish_reason=stop`. No usan el razonamiento interno como respuesta final.
+Una terminación ausente, desconocida o interrumpida, una negativa del proveedor
+o un mensaje sin contenido JSON utilizable dejan la etapa como fallida. Si la
+terminación nativa declara un límite, interrupción o uso de herramientas,
+tampoco se acepta aunque el estado normalizado diga `stop`. Otros nombres
+nativos pueden variar según el proveedor; se conserva el estado normalizado.
+
+Una respuesta HTTP que llega pero no se puede usar no dispara otro envío automático.
+Su costo y sus tokens conocidos se contabilizan una sola vez. Si el cuerpo no
+se puede decodificar, el conteo de tokens queda incompleto; no se inventa el
+consumo faltante. Los errores de transporte mantienen su política de reintentos. Un error informado en el
+cuerpo de una respuesta HTTP también detiene ese intento; no se supone que estuvo
+libre de cargos. La evaluación con respuestas guardadas aplica la misma
+validación y conserva una caché vigente marcada como reutilizable que resulte
+incompatible, sin reenviarla. El vencimiento y la opción explícita `--fresh`
+mantienen su comportamiento anterior de solicitar una respuesta nueva.
+El evaluador informa `cache_rejected`, con la ruta y el motivo del rechazo,
+y lo registra en su historial de solicitudes. En la API, los fallos se
+reflejan en `analisis_estado` y `analisis_limitaciones`; no equivalen a que la
+foto esté libre de problemas.
+
+### Inventario especializado de contenedores
+
+`CONTENEDORES_ESPECIALISTA=1` activa una pasada fija para identificar secos,
+húmedos de carga lateral y húmedos de carga bilateral. Usa la misma foto
+original, seis referencias privadas y la configuración validada. La plantilla
+se instala fuera de git en `eval/vision/private/serving-contenedores-051.json`;
+el módulo verifica su SHA-256 antes de cada solicitud. Sin la bandera, el
+comportamiento anterior se conserva. Las cuotas y la opción de desactivar la
+verificación siguen aplicando.
+
+La respuesta pública agrega `contenedores`: `estado` es `confirmado` o
+`revision`; `tipos` es una lista (vacía si no se detectan contenedores) o `null`
+cuando hace falta revisión; `motivo` explica la revisión. Los tipos confirmados
+sustituyen solamente esos tres tipos en `elementos_detectados`. Recolección,
+escombros, daños y los otros reclamos conservan sus reglas. Si una lectura vacía
+contradice un reclamo confirmado sobre un contenedor, el inventario público
+queda en revisión. La presencia visible sigue siendo informativa cuando la foto
+no corresponde al texto del reclamo.
+
+El campo `contenedores.observaciones_tipos` solo aparece cuando el inventario
+queda en revisión. Conserva los tipos observados por modelos identificados con
+`ok: true`, con `key`, `fuentes` y `estado: "pendiente_de_inventario"`. `fuentes` cuenta modelos
+distintos, no contenedores ni intentos. Las lecturas anuladas no se incluyen.
+Estas observaciones no confirman tipos ni pasan a `elementos_detectados`.
+La lista puede estar incompleta; una lista vacía tampoco demuestra ausencia.
+La ausencia comprobada se expresa con `estado: "confirmado"` y `tipos: []`.
+
+La página muestra las observaciones como pendientes, junto al aviso de revisión,
+y conserva los reclamos respaldados de daño, desborde o vaciado. El detalle
+reutiliza las lecturas existentes y no agrega llamadas ni consumo. Los modos
+sin especialista mantienen su contrato y no agregan este inventario.
+
+Los fallos de transporte no se guardan en caché. Una respuesta válida pero incierta
+puede guardarse en caché y sigue en `revision`, nunca indica ausencia. La interfaz muestra
+ese estado y el CSV agrega `contenedores_estado` y `contenedores_motivo`.
+
+La pasada realiza un solo intento, con un plazo de 40 segundos, y suma su costo
+al `costo_api` de la foto. El promedio observado en 100 fotos fue USD 0,0038
+adicionales por foto; no representa el costo de las otras categorías. Tras la
+revisión humana de cuatro referencias, hubo 98 respuestas automáticas correctas,
+un tipo omitido y una revisión. Ese resultado no garantiza la exactitud en otras
+fotos ni evalúa el conteo de contenedores.
+
+### Evaluación de la foto y observaciones de higiene
+
+La API separa la correspondencia con el comentario (`foto_valida`) de la posibilidad de aceptar la imagen. Una foto puede corresponder al objeto mencionado y, aun así, no servir para un reclamo por estar dentro de una vivienda.
+
+- `evaluacion_foto.rechazada`: rechazo por interior o calidad insuficiente corroborada. En ese caso no hay servicios confirmados, posibles ni elementos detectados. La respuesta conserva el consumo y el estado del análisis.
+- `evaluacion_foto.requiere_revision`: devuelve `true` cuando el estado es `senal_negativa_no_corroborada` o `calidad_contradictoria`. También se activa en `indeterminada` si una lectura válida informa ámbito `mixto` o `indeterminado`; la indicación pide aclarar la ubicación mediante contexto o una foto, sin afirmar que sea interior. Conserva los hallazgos. Si hay un rechazo o un encuadre insuficiente corroborado, prevalece ese estado. La falta de evaluación, por sí sola, no activa esta bandera ni demuestra que la foto sea válida. La `indicacion` puede ser una nota para quien revisa; para exigir otra foto, usá `requiere_nueva_foto` o `requiere_foto_complementaria`, que no se activan por una duda de ámbito.
+  En ese caso, aportar contexto y adjuntar una foto son alternativas para aclarar la ubicación; la API no exige ambas ni impone una nueva foto.
+- `contexto_visual.suficiente`: `true`, `false` o `null`. Una toma demasiado cerrada puede necesitar una foto complementaria aunque permita reconocer un daño. No borra hallazgos visibles ni demuestra que la escena sea interior. `contexto_visual.estado` distingue `evaluado` de `indeterminado` y `no_evaluado`; con `false`, `motivos` trae códigos estables (`encuadre_demasiado_cerrado`, `entorno_no_visible`, `situacion_cortada`) e `indicacion` dice qué mostrar en la nueva foto.
+- `evaluacion_foto.calidad_suficiente`: `true`, `false` o `null`, con `estado_calidad` y `motivos` (`desenfoque`, `movimiento`, `oscuridad`, `sobreexposicion`, `detalle_insuficiente`). Un `false` corroborado rechaza la foto y pide otra; un fallo técnico o una evaluación sin acuerdo deja `null`, nunca un rechazo.
+- Cómo se decide: el ámbito exige que todos los lectores coincidan. La calidad y el encuadre se deciden por mayoría de lectores distintos: en Completo, dos votos iguales alcanzan aunque el tercero opine lo contrario; en Equilibrado hacen falta los dos; Económico no evalúa estos campos. Un lector que falló no cuenta a favor ni en contra y un `false` sin motivo no es un voto. Cada entrada de `modelos` publica la lectura `evaluacion_foto` de ese lector para auditar la decisión.
+- `problema_principal`: selecciona una categoría ya confirmada. Con varios problemas necesita acuerdo entre los lectores de Completo. Si no coinciden, Completo hace una comparación dirigida de esas categorías finales; no suma un cuarto verificador ni cambia la clasificación. Económico y Equilibrado no hacen esa llamada. Si la comparación falla, la API se abstiene o elige una categoría que ya no está confirmada, el campo queda indeterminado o no evaluado. Los demás problemas permanecen en la respuesta.
+- `observaciones_higiene.materiales`: observaciones de material, ubicación y presentación, con estado de corroboración. La cantidad es relativa; no estima kilos ni metros cúbicos. El material no determina por sí solo el servicio.
+  La interfaz muestra ese detalle en "Materiales informados", con cantidad relativa,
+  estado y número de fuentes. Una lista vacía no prueba ausencia de residuos. En
+  fotos rechazadas no se muestra esta sección.
+  Si una lectura usa la ubicación general `vereda`, sus materiales se conservan
+  con `ubicacion=indeterminada`, sin atribuirlos al frente de un inmueble.
+  `normalizacion_parcial=true` identifica esa recuperación. Todos los materiales
+  de ese resultado quedan pendientes de corroboración y con cantidad indeterminada;
+  la interfaz explica que faltan ubicaciones precisas. Esa lectura parcial no entra
+  en el consenso de bolsones ni de orientación de limpieza. Los demás errores de
+  formato no se corrigen por suposición. El cambio no agrega consultas a modelos.
+  El estado general `parcial` describe los materiales disponibles; bolsones y
+  orientación conservan sus propios estados y pueden seguir en `no_evaluado`.
+  La agrupación actual usa material, ubicación y presentación; no identifica un
+  objeto único ni distingue dos focos que compartan esos atributos.
+  Si una lectura incluye `materiales_contexto`, esos materiales se publican aparte
+  con `estado=aportado_por_texto` y no entran al resumen visual de ese lector.
+  Un material citado en el comentario y también listado como visible en la misma
+  lectura se conserva solo como texto: la cita no demuestra el contenido de una
+  bolsa opaca. Sin esa clave, `origen` sigue en `no_evaluado`; no se infiere el
+  origen a partir del número de fuentes. Identificar cada foco sigue pendiente
+  en #56.
+  `detalle_materiales` conserva las descripciones individuales que devolvieron los
+  modelos, disponibles en "Qué describió cada modelo". Cada lectura incluye modelo,
+  material, ubicación, presentación, cantidad y evidencia, con `estado=lectura_individual`
+  y `origen` `visual`, `texto` o `no_evaluado`. Su `referencia` identifica una fila dentro de esta respuesta;
+  no es un identificador de objeto ni se mantiene entre reanálisis. Dos descripciones
+  del mismo material se conservan aunque el resumen las agrupe. La evidencia usa
+  el saneado de texto de la API y se limita a 500 caracteres;
+  `evidencia_truncada` indica el recorte. `normalizacion_parcial`
+  mantiene la limitación de ubicación de la lectura. El detalle tiene estado
+  `disponible`, `no_evaluado` si no hay descripciones conservadas (también en respuestas
+  anteriores), o `no_aplica` con lista vacía si la foto fue rechazada. Estas lecturas
+  no suman votos ni cambian servicios, bolsones u orientación; tampoco agregan consultas.
+- `observaciones_higiene.bolsones`: distingue presencia (`true`, `false`, `null`) de exclusión del retiro por presentación. No pide otra foto únicamente porque el material esté en un bolsón excluido.
+
+- `observaciones_higiene.orientacion_limpieza`: orientación informativa, sin anular recolección, otros retiros ni reclamos independientes. La limpieza cotidiana de la vereda requiere un encuadre claro frente a un inmueble. Las hojas caídas en esa vereda bastan para ofrecer esta orientación, aunque los lectores no acuerden si están acumuladas o dispersas, aunque la cantidad sea abundante, y aunque no marquen el indicador interno de limpieza cotidiana. Un rechazo explícito de esa limpieza deja indeterminada la escena de solo suciedad cotidiana. Si las hojas en esa vereda están corroboradas, papel, plástico o polvo dispersos sobre la misma vereda no apagan esa orientación, aunque no estén aislados, no acuerden cantidad o algún lector marque el rechazo. Si esos livianos están en cantidad significativa, la orientación queda indeterminada. Un envoltorio liviano sin hojas sigue pidiendo presentación dispersa, cantidad aislada y acuerdo. Bolsas, acumulaciones de basura, poda cortada, muebles y materiales de obra quedan fuera de esa orientación. Las hojas caídas naturalmente no se convierten en residuos domiciliarios por su cantidad.
+  El estado es `no_evaluado` cuando no quedó ninguna lectura de observaciones disponible (incluidos errores o verificación desactivada); `indeterminada` cuando hay lecturas pero no alcanzan para dar orientación; `orientacion_disponible` cuando se cumplen las condiciones; y `no_aplica` cuando la foto fue rechazada. Una lectura válida sin materiales sigue siendo una evaluación, no prueba ausencia de suciedad ni se convierte en `no_evaluado`. Una sola fuente o fuentes duplicadas no producen acuerdo.
+  Todos los estados incluyen `es_informativa=true` e identifican `jurisdiccion=CABA`, `politica=limpieza_veredas_y_deyecciones_caba`, `version_politica` y `fuentes_consultadas_el`. La versión identifica la regla del sistema, no la fecha de vigencia de una norma. La fecha de consulta se actualiza al volver a comprobar las fuentes; no es la fecha de análisis de cada foto. `fuente`, `tarea`, `responsable_orientativo` e `indicacion` solo se agregan cuando hay orientación disponible. Las revisiones de alcance de escombros pueden informar un bolsón, pero no reemplazan las lecturas de orientación de limpieza. Las fuentes consultadas el 13/09/2026 son la [guía de limpieza de veredas de CABA](https://buenosaires.gob.ar/gcaba_historico/noticias/buenos-aires-limpia-todo-lo-que-necesitas-saber-para-cuidar-tu-barrio) y el [artículo 29 inciso c de la Ordenanza 41.831](https://boletinoficialpdf.buenosaires.gob.ar/util/imagen.php?idf=1&idn=30564), para deyecciones de animales.
+
+En `bolsones`, `estado` diferencia `corroborado`, `contradictorio`,
+`indeterminado`, `no_evaluado` y `no_aplica`. La falta de evaluación no equivale
+a ausencia. El campo `retiro_caba` conserva su contrato: una presencia
+corroborada no basta para excluir un servicio.
+
+Cuando el alcance ya excluyó el retiro por presentación, el resumen informa
+`jurisdiccion: "CABA"`, `politica: "bolsones_obra_caba"`,
+`servicio: "retiro_escombros"`, `motivo: "presentacion_no_admitida"`,
+`accion: "consultar_servicio"` y una `indicacion` para consultar al 147.
+Sin esa exclusión, servicio, motivo, acción e indicación son `null`.
+Jurisdicción y política identifican la configuración aplicada incluso cuando
+el retiro queda sin evaluar; no representan un hallazgo de material.
+La política identifica el criterio operativo existente del proyecto; no
+determina el material o peso ni se aplica como regla nacional.
+
+La [información municipal de recolección programada](https://buenosaires.gob.ar/gcaba_historico/jefatura-de-gabinete/higiene/recoleccion-programada),
+consultada el 13/09/2026, indica el 147 como canal del servicio. Describe
+condiciones de retiro, pero no expresa una prohibición universal de bolsones.
+La orientación no prescribe fraccionar o trasladar material a partir de una foto.
+
+La interfaz distingue la presentación no admitida de una foto insuficiente y
+conserva los otros problemas confirmados. `requiere_cambio_presentacion` no
+anula una solicitud de foto por calidad o contexto: en esos casos
+`verificacion_escombros.requiere_nueva_foto` sigue en `true`.
+
+La guía del Gobierno de la Ciudad indica barrer desde el cordón hacia el frente, juntar los residuos y embolsarlos. No indica barrerlos a la calzada. Las deyecciones de animales tienen una obligación de recolección para quien lleva al animal; una foto no identifica a esa persona. Las fuentes de estas orientaciones se incluyen en el objeto de respuesta cuando corresponde:
+
+- https://buenosaires.gob.ar/gcaba_historico/noticias/buenos-aires-limpia-todo-lo-que-necesitas-saber-para-cuidar-tu-barrio
+- https://boletinoficialpdf.buenosaires.gob.ar/util/imagen.php?idf=1&idn=30564
+
+Un valor `null` o un estado indeterminado no significa ausencia. Las evaluaciones incompletas tampoco cuentan como acuerdo. Si hay evidencia corroborada de un problema y a la vez los lectores dicen que la calidad impide evaluarlo, se conserva el problema y se publica `calidad_contradictoria` para revisión.
+
 ## Reglas de clasificación
 
 ### Contexto y foto
@@ -302,13 +520,13 @@ Cuando el texto es ambiguo, la API elige la categoría genérica. Por ejemplo, "
 
 ### Detecciones de una sola fuente
 
-Por default, el árbitro no confirma lo que vio una sola fuente. Esas detecciones aparecen en `posibles`. En una prueba con cuatro modelos de árbitro, solo 2 de 21 confirmaciones fueron rescates correctos. `ARBITRO_CONFIRMA=1` recupera el comportamiento anterior.
+Por defecto, el árbitro no confirma lo que vio una sola fuente. Esas detecciones aparecen en `posibles`. En una prueba con cuatro modelos de árbitro, solo 2 de 21 confirmaciones fueron rescates correctos. `ARBITRO_CONFIRMA=1` recupera el comportamiento anterior.
 
 ### Presencia de contenedores
 
 Publicar un contenedor que no existe es un error costoso, por lo que la API aplica dos vetos de presencia mediante revisiones dirigidas y decisión por mayoría.
 
-El veto general corre cuando los verificadores confirman un contenedor pero el clasificador local da valores mínimos para todas las claves de contenedor. Si la revisión dirigida concluye que no hay ninguno, la presencia baja a `en_duda`. Para esta decisión, un contenedor municipal es ancho, de unos dos metros. Un tacho angosto y vertical no cuenta como tal.
+El veto general se aplica cuando los verificadores confirman un contenedor pero el clasificador local da valores mínimos para todas las claves de contenedor. Si la revisión dirigida concluye que no hay ninguno, la presencia baja a `en_duda`. Para esta decisión, un contenedor municipal es ancho, de unos dos metros. Un tacho angosto y vertical no cuenta como tal.
 
 El segundo veto revisa una clave concreta cuando un objeto junto a un contenedor real fue interpretado como otro contenedor. Se aplica a `contenedor_secos` y al bilateral, donde el clasificador local es un detector confiable. No se aplica al lateral porque es el tipo más común y el que el modelo local más omite. Cuando este veto se activa, la descripción pierde solamente las frases referidas al contenedor descartado.
 
@@ -316,7 +534,7 @@ Con `revision_contenedores: "contenedores-preservacion-20260906"`, una discrepan
 
 ### Fusión de escombros embolsados
 
-Esta fusión solo corre con la verificación activa. Tiene un nivel confiado, con puntaje interno mayor o igual a `0.95` y puntaje local de recolección menor o igual a `0.2`, y uno de rescate, con valores de `0.70` y `0.1`.
+Esta fusión solo se activa con la verificación activa. Tiene un nivel confiado, con puntaje interno mayor o igual a `0.95` y puntaje local de recolección menor o igual a `0.2`, y uno de rescate, con valores de `0.70` y `0.1`.
 
 En ambos niveles debe existir otra pila confirmada. Una poda confirmada bloquea la fusión. También la bloquea el rechazo dirigido de un verificador que indique que no son escombros, salvo en el nivel confiado cuando la corroboración viene solamente de `retiro_muebles`.
 
@@ -359,15 +577,15 @@ Otras reglas:
 
 - Si la foto está en caché, el `POST` responde directamente con `{"estado": "listo", "resultado": ...}`.
 - Los pedidos sincrónicos tienen prioridad sobre los trabajos en cola.
-- `TRABAJOS_MAX` limita los pendientes. Su default es `10`; por encima devuelve `503`.
-- `TRABAJOS_POR_IP` limita los pendientes por IP. Su default es `4`; por encima devuelve `429`.
-- `TRABAJO_TTL` conserva el resultado durante `1800` segundos por default.
-- `TRABAJO_ESPERA` permite esperar el turno durante `900` segundos por default.
+- `TRABAJOS_MAX` limita los pendientes. Su valor predeterminado es `10`; por encima devuelve `503`.
+- `TRABAJOS_POR_IP` limita los pendientes por IP. Su valor predeterminado es `4`; por encima devuelve `429`.
+- `TRABAJO_TTL` conserva el resultado durante `1800` segundos por defecto.
+- `TRABAJO_ESPERA` permite esperar el turno durante `900` segundos por defecto.
 - Los trabajos viven en la memoria del proceso y se pierden al reiniciar.
 - Un `404` al consultar significa que el trabajo es desconocido o venció. El cliente debe volver a enviar la foto.
 - El `POST` usa las mismas protecciones que `/clasificar`. Consultar el estado no consume cuota.
 
-La portada disponible en `GET /` usa esta vía.
+La portada, disponible en `GET /`, usa esta vía.
 
 ### `GET /salud`
 
@@ -386,10 +604,10 @@ otro consumo. El modo también aparece en las descargas JSON y CSV.
 
 La configuración se lee desde variables de entorno o `.env`. La lista completa está en [`.env.example`](.env.example).
 
-| Variable | Default | Qué hace |
+| Variable | Valor predeterminado | Qué hace |
 |---|---|---|
-| `OPENROUTER_API_KEY` | vacía | Habilita la verificación cruzada. Nunca la commitees. |
-| `VERIFICADORES` | tres modelos (ver `.env.example`) | Modelos de visión separados por coma. Podés configurar uno, dos, tres o más. Una categoría necesita al menos 2 fuentes y el modelo local cuenta como una. Las pasadas dirigidas agregan llamadas solo cuando se activan. La repregunta entre modelos corre con 3 o más verificadores. |
+| `OPENROUTER_API_KEY` | vacía | Habilita la verificación cruzada. Nunca la subas al repositorio. |
+| `VERIFICADORES` | tres modelos (ver `.env.example`) | Modelos de visión separados por coma. Podés configurar uno, dos, tres o más. Una categoría necesita al menos 2 fuentes y el modelo local cuenta como una. Las pasadas dirigidas agregan llamadas solo cuando se activan. La repregunta entre modelos se hace con 3 o más verificadores. |
 | `VERIFICADORES_BAJO` | sin configurar | Un modelo para Económico. No usa árbitro ni especialista. Las comprobaciones que necesitan dos lectores externos quedan pendientes, sin bajar el requisito de evidencia. |
 | `VERIFICADORES_MEDIO` | sin configurar | Dos modelos distintos para Equilibrado. El árbitro recibe solo texto y no puede confirmar una categoría de una fuente única. No usa el especialista. |
 | `VERIFICADORES_ALTO` | hereda `VERIFICADORES` | Tres modelos distintos si se define explícitamente. Conserva el recorrido completo, incluido el especialista cuando está habilitado. |
@@ -400,7 +618,7 @@ La configuración se lee desde variables de entorno o `.env`. La lista completa 
 | `HOST` / `PORT` | `127.0.0.1` / `8080` | Dirección y puerto de la API. |
 | `VERIFICADOR_TIMEOUT` | `120` | Segundos por llamada a OpenRouter. |
 | `VERIFICADOR_DEADLINE` | `180` | Tiempo máximo total de reintentos por modelo. |
-| `OPENROUTER_CACHE_PROMPTS` | `0` | Prueba opt-in de afinidad por modelo y prefijo de sistema. Apagada hasta demostrar ahorro consistente. |
+| `OPENROUTER_CACHE_PROMPTS` | `0` | Prueba opcional de afinidad por modelo y prefijo de sistema. Apagada hasta demostrar ahorro consistente. |
 | `OPENROUTER_LOG_USO` | `1` | Registra tokens, caché y costo por intento en stderr. `0` lo apaga. |
 
 Las listas nuevas se validan al iniciar. Definirlas vacías, repetir modelos o
@@ -410,26 +628,26 @@ ahorro. El modelo local sigue participando en los tres modos. Una misma fuente
 puede recibir varias consultas, que cuentan en el consumo pero no como votos
 independientes.
 
-Los modelos de DeepSeek disponibles en OpenRouter no aceptan imágenes. Por eso el valor configurado por default interviene como árbitro de texto.
+Los modelos de DeepSeek disponibles en OpenRouter no aceptan imágenes. Por eso el valor configurado por defecto interviene como árbitro de texto.
 
 Si se activa, la afinidad usa `prompt_cache_key`, calculada con el modelo y los mensajes
 iniciales de sistema. La foto y el contexto del vecino no forman parte de esa
 clave. Cada pedido conserva todos sus mensajes: no se reutilizan respuestas de
 otras fotos ni se recortan reglas, modelos o pasadas dirigidas. Los pedidos sin
 prefijo de sistema, como la lectura de patente, mantienen el ruteo automático.
-El failover conserva su configuración anterior.
+La conmutación automática entre proveedores conserva su configuración anterior.
 
 En la prueba del 2026-09-05 comparé nueve fotos, tres modelos y ambos modos
 (54 llamadas de primera pasada). El ruteo habitual costó USD 0,06716852 y la
 clave estable, USD 0,06657341: 0,9% menos, con resultados inconsistentes entre
 la muestra inicial y la segunda tanda. Ambos reutilizaron cerca del 75% de
 los tokens de entrada. La muestra es chica, comparte cachés del proveedor y
-las respuestas varían entre corridas; no demuestra ahorro atribuible al cambio
+las respuestas varían entre ejecuciones; no demuestra ahorro atribuible al cambio
 ni equivalencia estadística de calidad. Por eso la afinidad sigue apagada.
 
-El ahorro depende de los hits reales del proveedor, la frecuencia de pedidos y
-la vigencia de su caché. No se activan breakpoints ni almacenamiento explícito
-pago. Los registros `openrouter_uso` permiten medirlo sin llamadas extra:
+El ahorro depende de los aciertos de caché reales del proveedor, la frecuencia de pedidos y
+la vigencia de su caché. No se activan puntos de corte de caché ni almacenamiento
+explícito pago. Los registros `openrouter_uso` permiten medirlo sin llamadas extra:
 incluyen etapa, modelo, tokens de entrada/salida/razonamiento, `cached_tokens`,
 `cache_write_tokens`, costo, duración, proveedor e identificador de generación.
 Un campo ausente queda en `null`, no en cero. Los intentos fallidos o truncados
@@ -442,11 +660,11 @@ y [contabilidad de uso](https://openrouter.ai/docs/cookbook/administration/usage
 
 ## Si publicás la API
 
-Cada foto usa entre 25 y 60 segundos de CPU y una llamada paga a OpenRouter por verificador, tres por default. Si hay una disputa, puede sumarse la llamada al árbitro.
+Cada foto en Completo usa entre 25 y 60 segundos de CPU y una llamada paga a OpenRouter por verificador, tres por defecto, más las pasadas dirigidas que se activen y, si hay una disputa, la llamada al árbitro. Económico y Equilibrado usan menos llamadas.
 
 `/clasificar` incluye estos límites:
 
-| Variable | Default | Qué hace |
+| Variable | Valor predeterminado | Qué hace |
 |---|---|---|
 | `MAX_BYTES` | `10485760` (10 MB) | Tamaño máximo del archivo. Si lo supera, responde `413`. |
 | `MAX_PIXELES` | `25000000` | Cantidad máxima de píxeles. Frena bombas de descompresión y responde `400`. |
@@ -475,21 +693,21 @@ El contenido de `contexto` y cualquier texto visible dentro de la foto llegan a 
 
 Los verificadores usan la misma foto y el mismo prompt, así que no son fuentes independientes. Una inyección que funcione en dos modelos alcanza para formar consenso.
 
-`CONSENSO_VLM_SOLO=arbitro` envía esas categorías al árbitro, pero no es el valor por default porque una evaluación no pudo demostrar que ayudara. El comportamiento está implementado en [`verificador.py`](verificador.py) y evaluado en [`eval/`](eval/).
+`CONSENSO_VLM_SOLO=arbitro` envía esas categorías al árbitro, pero no es el valor por defecto porque una evaluación no pudo demostrar que ayudara. El comportamiento está implementado en [`verificador.py`](verificador.py) y evaluado en [`eval/`](eval/).
 
 `descripcion` es texto generado por un modelo y puede estar influido por quien subió la foto. Escapalo antes de insertarlo en HTML y no abras reportes automáticos sin revisión humana.
 
 ## Si un proveedor se cuelga
 
-Las llamadas a OpenRouter tienen un límite absoluto de tiempo, no solamente un timeout por operación de socket. `urllib` reinicia su timeout con cada byte, por lo que los keepalives enviados mientras un modelo genera podrían dejar un hilo esperando sin límite. Cuando se cumple el plazo, el servicio ejecuta `shutdown()` sobre el socket.
+Las llamadas a OpenRouter tienen un límite absoluto de tiempo, no solo un tiempo de espera por operación del socket. `urllib` reinicia su timeout con cada byte, por lo que los paquetes que mantienen viva la conexión mientras un modelo genera una respuesta podrían dejar un hilo esperando indefinidamente. Cuando se cumple el plazo, el servicio ejecuta `shutdown()` sobre el socket.
 
 Esto ya pasó: un hilo quedó ocupado y, con `CONCURRENCIA=1`, todas las llamadas a `/clasificar` devolvieron `503` hasta reiniciar. Mientras tanto, `/salud` siguió respondiendo `200`.
 
-`TECHO_TRABAJO` funciona como última protección y tiene un default de `600` segundos. Al superar ese tiempo, el trabajo se considera perdido y libera su cupo. El hilo continúa vivo porque Python no permite matarlo, pero el servicio vuelve a aceptar trabajo.
+`TECHO_TRABAJO` funciona como última protección y tiene un valor predeterminado de `600` segundos. Al superar ese tiempo, el trabajo se considera perdido y libera su cupo. El hilo continúa vivo porque Python no permite matarlo, pero el servicio vuelve a aceptar trabajo.
 
 ## Privacidad
 
-Sin verificación, el modelo local procesa la foto en la máquina y no la envía.
+Sin verificación, el modelo local procesa la foto en el mismo equipo donde está instalada la API y no la envía a ningún lado.
 
 Con la verificación activa, la imagen se reduce a 1024 px y se envía a los modelos configurados mediante OpenRouter. Revisá las políticas de datos de esos proveedores antes de procesar fotos sensibles.
 
@@ -500,173 +718,3 @@ Las descripciones de los modelos forman parte de la respuesta y pueden transcrib
 ## Licencia
 
 [MIT](LICENSE)
-
-### Consumo de tokens por foto
-
-La respuesta de análisis incluye `tokens_api`, la suma de `usage.total_tokens`
-informada por OpenRouter en todos los intentos usados para procesar esa foto.
-Incluye verificadores, árbitro, revisiones dirigidas y el especialista de
-contenedores. Si falta el total y están ambos conteos, suma `prompt_tokens` y
-`completion_tokens`. Los detalles de razonamiento y caché no se suman otra vez.
-
-`tokens_api_completos` indica si todos los intentos informaron un conteo válido.
-Si vale `false`, `tokens_api` contiene solamente la suma conocida: el consumo de
-los intentos sin datos no se puede determinar. Sin llamadas, el total es cero y
-el conteo está completo. Cada foto tiene su propio acumulador, incluso cuando
-se procesan varias en paralelo.
-
-Una respuesta recuperada de la caché local conserva los tokens del análisis
-original; ese valor no representa consumo adicional por consultar la caché.
-Estos campos no generan llamadas extra ni modifican las clasificaciones o el
-campo `costo_api`. La página sigue sin mostrar importes.
-
-### Respuestas completas del proveedor
-
-Los verificadores y el árbitro usan únicamente `message.content` con
-`finish_reason=stop`. No usan el razonamiento interno como respuesta final.
-Una terminación ausente, desconocida o interrumpida, una negativa del proveedor
-o un mensaje sin contenido JSON utilizable dejan la etapa como fallida. Si la
-terminación nativa declara un límite, interrupción o uso de herramientas,
-tampoco se acepta aunque el estado normalizado diga `stop`. Otros nombres
-nativos pueden variar según el proveedor; se conserva el estado normalizado.
-
-Una respuesta HTTP recibida pero inutilizable no dispara otro envío automático.
-Su costo y sus tokens conocidos se contabilizan una sola vez. Si el cuerpo no
-se puede decodificar, el conteo de tokens queda incompleto; no se inventa el
-consumo faltante. Los errores de transporte mantienen su política de reintentos. Un error informado dentro de
-un cuerpo HTTP recibido también detiene ese intento; no se supone que estuvo
-libre de cargos. La evaluación con respuestas guardadas aplica la misma
-validación y conserva una caché vigente marcada como reutilizable que resulte
-incompatible, sin reenviarla. El vencimiento y la opción explícita `--fresh`
-mantienen su comportamiento anterior de solicitar una respuesta nueva.
-El evaluador informa `cache_rejected`, con la ruta y el motivo del rechazo,
-y lo registra en su historial de solicitudes. En la API, los fallos se
-reflejan en `analisis_estado` y `analisis_limitaciones`; no equivalen a que la
-foto esté libre de problemas.
-
-### Inventario especializado de contenedores
-
-`CONTENEDORES_ESPECIALISTA=1` activa una pasada fija para identificar secos,
-humedos de carga lateral y humedos de carga bilateral. Usa la misma foto
-original, seis referencias privadas y la configuracion validada. La plantilla
-se instala fuera de git en `eval/vision/private/serving-contenedores-051.json`;
-el modulo verifica su SHA-256 antes de cada solicitud. Sin la bandera, el
-comportamiento anterior se conserva. Las cuotas y la opcion de desactivar la
-verificacion siguen aplicando.
-
-La respuesta publica agrega `contenedores`: `estado` es `confirmado` o
-`revision`; `tipos` es una lista (vacia si no se detectan contenedores) o `null`
-cuando hace falta revision; `motivo` explica la revision. Los tipos confirmados
-sustituyen solamente esos tres tipos en `elementos_detectados`. Recoleccion,
-escombros, danos y los otros reclamos conservan sus reglas. Si una lectura vacia
-contradice un reclamo confirmado sobre un contenedor, el inventario publico
-queda en revision. La presencia visible sigue siendo informativa cuando la foto
-no corresponde al texto del reclamo.
-
-El campo `contenedores.observaciones_tipos` solo aparece cuando el inventario
-queda en revisión. Conserva los tipos observados por modelos identificados con
-`ok: true`, con `key`, `fuentes` y `estado: "pendiente_de_inventario"`. `fuentes` cuenta modelos
-distintos, no contenedores ni intentos. Las lecturas anuladas no se incluyen.
-Estas observaciones no confirman tipos ni pasan a `elementos_detectados`.
-La lista puede estar incompleta; una lista vacía tampoco demuestra ausencia.
-La ausencia comprobada se expresa con `estado: "confirmado"` y `tipos: []`.
-
-La página muestra las observaciones como pendientes, junto al aviso de revisión,
-y conserva los reclamos respaldados de daño, desborde o vaciado. El detalle
-reutiliza las lecturas existentes y no agrega llamadas ni consumo. Los modos
-sin especialista mantienen su contrato y no agregan este inventario.
-
-Los fallos de transporte no se cachean. Una respuesta valida pero incierta
-puede cachearse y sigue siendo revision, nunca ausencia. La interfaz muestra
-ese estado y el CSV agrega `contenedores_estado` y `contenedores_motivo`.
-
-La pasada realiza un solo intento, con un plazo de 40 segundos, y suma su costo
-al procesamiento existente. La API conserva `costo_api` para contabilizar el
-consumo, pero la pagina no muestra ese importe. El promedio observado en 100 fotos fue USD0.0038
-adicionales por foto; no representa el costo de las otras categorias. Tras la
-revision humana de cuatro referencias, hubo 98 respuestas automaticas correctas,
-un tipo omitido y una revision. Ese resultado no garantiza la exactitud en otras
-fotos ni evalua el conteo de contenedores.
-
-### Evaluación de la foto y observaciones de higiene
-
-La API separa la correspondencia con el comentario (`foto_valida`) de la posibilidad de aceptar la imagen. Una foto puede corresponder al objeto mencionado y, aun así, no servir para un reclamo por estar dentro de una vivienda.
-
-- `evaluacion_foto.rechazada`: rechazo por interior o calidad insuficiente corroborada. En ese caso no hay servicios confirmados, posibles ni elementos detectados. La respuesta conserva el consumo y el estado del análisis.
-- `evaluacion_foto.requiere_revision`: devuelve `true` cuando el estado es `senal_negativa_no_corroborada` o `calidad_contradictoria`. También se activa en `indeterminada` si una lectura válida informa ámbito `mixto` o `indeterminado`; la indicación pide aclarar la ubicación mediante contexto o una foto, sin afirmar que sea interior. Conserva los hallazgos. Si hay un rechazo o un encuadre insuficiente corroborado, prevalece ese estado. La falta de evaluación, por sí sola, no activa esta bandera ni demuestra que la foto sea válida. La `indicacion` puede ser una nota para quien revisa; para exigir otra foto, usá `requiere_nueva_foto` o `requiere_foto_complementaria`, que no se activan por una duda de ámbito.
-  En ese caso, aportar contexto y adjuntar una foto son alternativas para aclarar la ubicación; la API no exige ambas ni impone una nueva foto.
-- `contexto_visual.suficiente`: `true`, `false` o `null`. Una toma demasiado cerrada puede necesitar una foto complementaria aunque permita reconocer un daño. No borra hallazgos visibles ni demuestra que la escena sea interior. `contexto_visual.estado` distingue `evaluado` de `indeterminado` y `no_evaluado`; con `false`, `motivos` trae códigos estables (`encuadre_demasiado_cerrado`, `entorno_no_visible`, `situacion_cortada`) e `indicacion` dice qué mostrar en la nueva foto.
-- `evaluacion_foto.calidad_suficiente`: `true`, `false` o `null`, con `estado_calidad` y `motivos` (`desenfoque`, `movimiento`, `oscuridad`, `sobreexposicion`, `detalle_insuficiente`). Un `false` corroborado rechaza la foto y pide otra; un fallo técnico o una evaluación sin acuerdo deja `null`, nunca un rechazo.
-- Cómo se decide: el ámbito exige que todos los lectores coincidan. La calidad y el encuadre se deciden por mayoría de lectores distintos: en Completo, dos votos iguales alcanzan aunque el tercero opine lo contrario; en Equilibrado hacen falta los dos; Económico no evalúa estos campos. Un lector que falló no cuenta a favor ni en contra y un `false` sin motivo no es un voto. Cada entrada de `modelos` publica la lectura `evaluacion_foto` de ese lector para auditar la decisión.
-- `problema_principal`: selecciona una categoría ya confirmada. Con varios problemas necesita acuerdo entre los lectores de Completo. Si no coinciden, Completo hace una comparación dirigida de esas categorías finales; no suma un cuarto verificador ni cambia la clasificación. Económico y Equilibrado no hacen esa llamada. Si la comparación falla, se abstiene o elige una categoría que ya no está confirmada, el campo queda indeterminado o no evaluado. Los demás problemas permanecen en la respuesta.
-- `observaciones_higiene.materiales`: observaciones de material, ubicación y presentación, con estado de corroboración. La cantidad es relativa; no estima kilos ni metros cúbicos. El material no determina por sí solo el servicio.
-  La interfaz muestra ese detalle en "Materiales informados", con cantidad relativa,
-  estado y número de fuentes. Una lista vacía no prueba ausencia de residuos. En
-  fotos rechazadas no se muestra esta sección.
-  Si una lectura usa la ubicación general `vereda`, sus materiales se conservan
-  con `ubicacion=indeterminada`, sin atribuirlos al frente de un inmueble.
-  `normalizacion_parcial=true` identifica esa recuperación. Todos los materiales
-  de ese resultado quedan pendientes de corroboración y con cantidad indeterminada;
-  la interfaz explica que faltan ubicaciones precisas. Esa lectura parcial no entra
-  en el consenso de bolsones ni de orientación de limpieza. Los demás errores de
-  formato no se corrigen por suposición. El cambio no agrega consultas a modelos.
-  El estado general `parcial` describe los materiales disponibles; bolsones y
-  orientación conservan sus propios estados y pueden seguir en `no_evaluado`.
-  La agrupación actual usa material, ubicación y presentación; no identifica un
-  objeto único ni distingue dos focos que compartan esos atributos.
-  Si una lectura incluye `materiales_contexto`, esos materiales se publican aparte
-  con `estado=aportado_por_texto` y no entran al resumen visual de ese lector.
-  Un material citado en el comentario y también listado como visible en la misma
-  lectura se conserva solo como texto: la cita no demuestra el contenido de una
-  bolsa opaca. Sin esa clave, `origen` sigue en `no_evaluado`; no se infiere el
-  origen a partir del número de fuentes. Identificar cada foco sigue pendiente
-  en #56.
-  `detalle_materiales` conserva las descripciones individuales que devolvieron los
-  modelos, disponibles en "Qué describió cada modelo". Cada lectura incluye modelo,
-  material, ubicación, presentación, cantidad y evidencia, con `estado=lectura_individual`
-  y `origen` `visual`, `texto` o `no_evaluado`. Su `referencia` identifica una fila dentro de esta respuesta;
-  no es un identificador de objeto ni se mantiene entre reanálisis. Dos descripciones
-  del mismo material se conservan aunque el resumen las agrupe. La evidencia usa
-  el saneado de texto de la API y se limita a 500 caracteres;
-  `evidencia_truncada` indica el recorte. `normalizacion_parcial`
-  mantiene la limitación de ubicación de la lectura. El detalle tiene estado
-  `disponible`, `no_evaluado` si no hay descripciones conservadas (también en respuestas
-  anteriores), o `no_aplica` con lista vacía si la foto fue rechazada. Estas lecturas
-  no suman votos ni cambian servicios, bolsones u orientación; tampoco agregan consultas.
-- `observaciones_higiene.bolsones`: distingue presencia (`true`, `false`, `null`) de exclusión del retiro por presentación. No pide otra foto únicamente porque el material esté en un bolsón excluido.
-
-- `observaciones_higiene.orientacion_limpieza`: orientación informativa, sin anular recolección, otros retiros ni reclamos independientes. La limpieza cotidiana de la vereda requiere un encuadre claro frente a un inmueble. Las hojas caídas en esa vereda alcanzan aunque los lectores no acuerden si están acumuladas o dispersas, aunque la cantidad sea abundante, y aunque no marquen el indicador interno de limpieza cotidiana. Un rechazo explícito de esa limpieza deja indeterminada la escena de solo suciedad cotidiana. Si las hojas en esa vereda están corroboradas, papel, plástico o polvo dispersos sobre la misma vereda no apagan esa orientación, aunque no estén aislados, no acuerden cantidad o algún lector marque el rechazo. Si esos livianos están en cantidad significativa, la orientación queda indeterminada. Un envoltorio liviano sin hojas sigue pidiendo presentación dispersa, cantidad aislada y acuerdo. Bolsas, acumulaciones de basura, poda cortada, muebles y materiales de obra quedan fuera de esa orientación. Las hojas caídas naturalmente no se convierten en residuos domiciliarios por su cantidad.
-  El estado es `no_evaluado` cuando no quedó ninguna lectura de observaciones disponible (incluidos errores o verificación desactivada); `indeterminada` cuando hay lecturas pero no alcanzan para dar orientación; `orientacion_disponible` cuando se cumplen las condiciones; y `no_aplica` cuando la foto fue rechazada. Una lectura válida sin materiales sigue siendo una evaluación, no prueba ausencia de suciedad ni se convierte en `no_evaluado`. Una sola fuente o fuentes duplicadas no producen acuerdo.
-  Todos los estados incluyen `es_informativa=true` e identifican `jurisdiccion=CABA`, `politica=limpieza_veredas_y_deyecciones_caba`, `version_politica` y `fuentes_consultadas_el`. La versión identifica la regla del sistema, no la fecha de vigencia de una norma. La fecha de consulta se actualiza al volver a comprobar las fuentes; no es la fecha de análisis de cada foto. `fuente`, `tarea`, `responsable_orientativo` e `indicacion` solo se agregan cuando hay orientación disponible. Las revisiones de alcance de escombros pueden informar un bolsón, pero no reemplazan las lecturas de orientación de limpieza. Las fuentes consultadas el 13/09/2026 son la [guía de limpieza de veredas de CABA](https://buenosaires.gob.ar/gcaba_historico/noticias/buenos-aires-limpia-todo-lo-que-necesitas-saber-para-cuidar-tu-barrio) y el [artículo 29 inciso c de la Ordenanza 41.831](https://boletinoficialpdf.buenosaires.gob.ar/util/imagen.php?idf=1&idn=30564), para deyecciones de animales.
-
-En `bolsones`, `estado` diferencia `corroborado`, `contradictorio`,
-`indeterminado`, `no_evaluado` y `no_aplica`. La falta de evaluación no equivale
-a ausencia. El campo `retiro_caba` conserva su contrato: una presencia
-corroborada no basta para excluir un servicio.
-
-Cuando el alcance ya excluyó el retiro por presentación, el resumen informa
-`jurisdiccion: "CABA"`, `politica: "bolsones_obra_caba"`,
-`servicio: "retiro_escombros"`, `motivo: "presentacion_no_admitida"`,
-`accion: "consultar_servicio"` y una `indicacion` para consultar al 147.
-Sin esa exclusión, servicio, motivo, acción e indicación son `null`.
-Jurisdicción y política identifican la configuración aplicada incluso cuando
-el retiro queda sin evaluar; no representan un hallazgo de material.
-La política identifica el criterio operativo existente del proyecto; no
-determina el material o peso ni se aplica como regla nacional.
-
-La [información municipal de recolección programada](https://buenosaires.gob.ar/gcaba_historico/jefatura-de-gabinete/higiene/recoleccion-programada),
-consultada el 13/09/2026, indica el 147 como canal del servicio. Describe
-condiciones de retiro, pero no expresa una prohibición universal de bolsones.
-La orientación no prescribe fraccionar o trasladar material a partir de una foto.
-
-La interfaz distingue la presentación no admitida de una foto insuficiente y
-conserva los otros problemas confirmados. `requiere_cambio_presentacion` no
-anula una solicitud de foto por calidad o contexto: en esos casos
-`verificacion_escombros.requiere_nueva_foto` sigue en `true`.
-
-La guía del Gobierno de la Ciudad indica barrer desde el cordón hacia el frente, juntar los residuos y embolsarlos. No indica barrerlos a la calzada. Las deyecciones de animales tienen una obligación de recolección para quien lleva al animal; una foto no identifica a esa persona. Las fuentes de estas orientaciones se incluyen en el objeto de respuesta cuando corresponde:
-
-- https://buenosaires.gob.ar/gcaba_historico/noticias/buenos-aires-limpia-todo-lo-que-necesitas-saber-para-cuidar-tu-barrio
-- https://boletinoficialpdf.buenosaires.gob.ar/util/imagen.php?idf=1&idn=30564
-
-Un valor `null` o un estado indeterminado no significa ausencia. Las evaluaciones incompletas tampoco cuentan como acuerdo. Si hay evidencia corroborada de un problema y a la vez los lectores dicen que la calidad impide evaluarlo, se conserva el problema y se publica `calidad_contradictoria` para revisión.

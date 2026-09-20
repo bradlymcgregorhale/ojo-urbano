@@ -202,7 +202,7 @@ MODELO_PRIORIDAD_COMPARACION = os.environ.get(
 # verificador reporta retiro_muebles con evidencia de "estructura metálica" y
 # hay un contenedor en la escena, se re-pregunta SOLO por ese objeto. Medido
 # antes del fix (foto real, contenedor corrido de su base, de noche): en 1 de
-# 5 corridas DOS modelos leían la base como chatarra y retiro_muebles se
+# 5 ejecuciones DOS modelos leían la base como chatarra y retiro_muebles se
 # confirmaba al reporte público. El requisito del dueño es que la base no
 # salga NUNCA como voluminoso, y la rúbrica sola no puede garantizar un
 # fallo correlacionado de dos modelos.
@@ -517,18 +517,31 @@ _tokens_foto = contextvars.ContextVar("tokens_foto", default=None)
 
 def tokens_reset():
     """Abre un conteo propio de la foto, compartido por sus llamadas paralelas."""
-    _tokens_foto.set({"total": 0, "completos": True, "lock": threading.Lock()})
+    _tokens_foto.set({"total": 0, "completos": True, "entrada": 0, "salida": 0,
+                      "desglose_completo": True, "lock": threading.Lock()})
 
 
-def tokens_total():
-    """Devuelve el uso conocido y señala si algún intento no informó tokens."""
+def tokens_total(desglose=False):
+    """Devuelve el uso conocido y señala si algún intento no informó tokens.
+
+    Con ``desglose`` agrega la entrada (prompt) y la salida (completion) sumadas
+    por separado; ``tokens_desglose_completo`` es falso si algún intento no
+    informó esos dos conteos, aunque su total sí se haya sumado.
+    """
     estado = _tokens_foto.get()
     _tokens_foto.set(None)
     if estado is None:
-        return {"tokens_api": 0, "tokens_api_completos": True}
+        r = {"tokens_api": 0, "tokens_api_completos": True}
+        if desglose:
+            r.update(tokens_entrada=0, tokens_salida=0, tokens_desglose_completo=True)
+        return r
     with estado["lock"]:
-        return {"tokens_api": estado["total"],
-                "tokens_api_completos": estado["completos"]}
+        r = {"tokens_api": estado["total"],
+             "tokens_api_completos": estado["completos"]}
+        if desglose:
+            r.update(tokens_entrada=estado["entrada"], tokens_salida=estado["salida"],
+                     tokens_desglose_completo=estado["desglose_completo"])
+        return r
 
 
 def _tokens_sumar(data):
@@ -542,12 +555,20 @@ def _tokens_sumar(data):
         entrada, salida = uso.get("prompt_tokens"), uso.get("completion_tokens")
         total = (entrada + salida if type(entrada) is int and entrada >= 0
                  and type(salida) is int and salida >= 0 else None)
+    entrada, salida = uso.get("prompt_tokens"), uso.get("completion_tokens")
+    desglose = (type(entrada) is int and entrada >= 0
+                and type(salida) is int and salida >= 0)
     # Razonamiento y caché son detalles del total, no consumos adicionales.
     with estado["lock"]:
         if total is None:
             estado["completos"] = False
         else:
             estado["total"] += total
+        if desglose:
+            estado["entrada"] += entrada
+            estado["salida"] += salida
+        else:
+            estado["desglose_completo"] = False
 
 
 def _map_con_contexto(pool, fn, valores):
@@ -1042,7 +1063,7 @@ def _leer_patente(img):
     # Publica con al menos DOS lectores leyendo la misma cadena y NINGUNO
     # leyendo una distinta: la nula no es discrepancia (chapa chica,
     # reflejo, un modelo conservador), la lectura válida distinta sí, y
-    # una sola lectura válida no se puede verificar. Los tres corren en
+    # una sola lectura válida no se puede verificar. Los tres se ejecutan en
     # paralelo: el desempate secuencial dependía de que el tercero llegara
     # justo cuando uno de los dos primeros ya no había llegado.
     if len(validas) >= 2 and len(set(validas)) == 1:
@@ -2248,7 +2269,7 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
 
         # Voto válido = a lo sumo una decisión por categoría, con veredicto
         # legible. Una vuelta malformada se descarta entera en vez de aportar
-        # medio voto: si no, un JSON raro corre el umbral sin que se note.
+        # medio voto: si no, un JSON raro mueve el umbral sin que se note.
         def _boletas(d):
             vistas, salida = set(), {}
             for x in d.get("decisiones", []):
@@ -2407,7 +2428,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             # Se juntan TODOS los votos de gravedad y se resuelven abajo con
             # la mediana. Antes se publicaba el máximo, que es un veto de una
             # sola mano hacia arriba: con tres muestras ruidosas el máximo
-            # corre siempre por encima del valor central, y así el 58% de las
+            # queda siempre por encima del valor central, y así el 58% de las
             # fotos terminaba en 4 y el 88% en 3 o 4.
             try:
                 grav_votos.setdefault(k, []).append(
@@ -2633,7 +2654,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     presencia_dudosa = disputadas & PRESENCIA
     disputadas -= presencia_dudosa
 
-    # SEGUNDA MIRADA (solo escombros): corre ANTES del árbitro para que
+    # SEGUNDA MIRADA (solo escombros): se ejecuta ANTES del árbitro para que
     # posibles y descripción no queden contradiciendo una confirmación.
     # Confirma únicamente una nueva evidencia concreta SIN ninguna negativa
     # dirigida en contra.
@@ -2649,7 +2670,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # otros se les pregunta dirigido por ESE objeto. Pueden habérselo perdido
     # en la primera lectura, así que la pregunta puede confirmar (2 de 3 y se
     # publica) o negar (y entonces no se publica). Los chequeos genéricos solo
-    # corren cuando NO hay un objeto nombrable que preguntar: preguntar por el
+    # se ejecutan cuando NO hay un objeto nombrable que preguntar: preguntar por el
     # objeto concreto es mejor en las dos direcciones (medido: 7 de 7 objetos
     # reales encontrados, 0 de 9 plantados aceptados).
     def _objeto_de_un_solo_vlm(key):
@@ -2673,7 +2694,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     segunda_mirada = None
     _obj_escombros, _ = (_objeto_de_un_solo_vlm("retiro_escombros")
                          if _hay_cruzada else (None, None))
-    # Además del caso en disputa (el histórico), corre con los escombros
+    # Además del caso en disputa (el histórico), se ejecuta con los escombros
     # CONFIRMADOS por un solo VLM más el modelo local y evidencia dudosa: sin
     # esto, un "posibles escombros" con respaldo del local se publicaba sin
     # pasar por ningún control (hallazgo de codex).
@@ -2751,7 +2772,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         for m in [m for m, c in metalicos.items()
                   if _PATRON_MUEBLE.search(_norm_texto(c.get("evidencia") or ""))]:
             del metalicos[m]
-        # La pasada también corre cuando UN solo modelo vio la base y quedó en
+        # La pasada también se ejecuta cuando UN solo modelo vio la base y quedó en
         # disputa (sin nadie leyéndola como chatarra): igual que la segunda
         # mirada de escombros, la re-pregunta dirigida puede juntar el segundo
         # voto que la confirmación necesita, en vez de dejar morir el hallazgo
@@ -2826,7 +2847,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
 
     # SEGUNDA MIRADA (daño del contenedor): las tapas dadas vuelta para el
     # cirujeo + fierros ajenos en el piso producen "tapas rotas y
-    # desprendidas" en DOS modelos a la vez (foto real: 3 de 6 corridas
+    # desprendidas" en DOS modelos a la vez (foto real: 3 de 6 ejecuciones
     # confirmaban reparacion_contenedor sobre un contenedor entero, con la
     # rúbrica ya advertida). Mismo remedio que la base: re-pregunta dirigida
     # con poder de veto. Los votos cuya evidencia es la BASE no se tocan (esa
@@ -2837,7 +2858,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # concreta junta con la pasada dirigida el segundo voto que la
     # confirmación necesita, en vez de morir como posible por la varianza del
     # voto principal (M006: dos modelos ven la barra, pero no siempre los dos
-    # en la misma corrida). NO corre en cada voto suelto de reparación: solo
+    # en la misma ejecución). NO se ejecuta en cada voto suelto de reparación: solo
     # el confirmado o el disputado-con-barra, así la pasada extra sigue acotada.
     segunda_mirada_dano = None
     barra_disputada = ("reparacion_contenedor" in disputadas and any(
@@ -2882,7 +2903,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                             _norm_texto(c.get("evidencia") or ""))):
                     tapas[v["modelo"]] = c
         # La barra/riel en diagonal se nombra a veces con "riel"/"guía", que
-        # _PATRON_BASE se lleva a `tapas` vacío; por eso el audit también corre
+        # _PATRON_BASE se lleva a `tapas` vacío; por eso el audit también se ejecuta
         # cuando barra_disputada, aunque el voto haya quedado clasificado como
         # base (su evidencia cita la barra, no una plataforma).
         if tapas or barra_disputada or barra_hint:
@@ -2904,7 +2925,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                               if _PATRON_BARRA_IZADO.search(_norm_texto(_e)))
             _mayoria_barra = _barra_dano >= 2 and len(dano_sm) > len(sin_dano_sm)
             # El veto SOLO retira votos que están en `tapas` (reparación sin
-            # evidencia de base). Si la pasada corrió por barra_hint pero no
+            # evidencia de base). Si la pasada se ejecutó por barra_hint pero no
             # hay ningún voto en `tapas` (p.ej. la única evidencia decía
             # "riel"/"guía" y _PATRON_BASE se la llevó, o no hubo voto de
             # reparación), no hay nada que retirar: exigir tapas evita un veto
@@ -3034,7 +3055,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
 
     # SEGUNDA MIRADA (volcado): el techo en pendiente de los laterales, de
     # esquina y de noche, produce "contenedor volcado" en dos modelos a la
-    # vez sobre un contenedor parado (medido: 2 de 3 corridas con la rúbrica
+    # vez sobre un contenedor parado (medido: 2 de 3 ejecuciones con la rúbrica
     # ya advertida). Mismo esquema de veto que el daño; la señal decisiva
     # (postes verticales = parado) va en la pregunta dirigida.
     segunda_mirada_volcado = None
@@ -3185,7 +3206,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     contrastes_secos = set()
     # La medición previa (7/7 y 0/9) se hizo con TRES verificadores; con dos,
     # el "ausente" que bloquea solo puede venir del único repreguntado y el
-    # chequeo cruzado deja de ser independiente. La repregunta corre solo
+    # chequeo cruzado deja de ser independiente. La repregunta se ejecuta solo
     # con la configuración medida (hallazgo de la revisión de Opus).
     if _hay_cruzada:
         pendientes = []
@@ -3441,7 +3462,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # publican uno, se pregunta dirigido si existe; mayoría de "ausente"
     # baja la presencia a en_duda (no se publica como elemento). El caso
     # del recortado real (S003, local 0.17) queda por ENCIMA del piso y la
-    # pasada ni corre. Las presencias confirmadas por la repregunta no se
+    # pasada ni se ejecuta. Las presencias confirmadas por la repregunta no se
     # re-vetan: ya traen ubicación dirigida.
     segunda_mirada_presencia = None
     pres_conf = (confirmadas & PRESENCIA) - repregunta_confirmadas
@@ -3479,7 +3500,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # VETO DE PRESENCIA POR CLAVE: el fantasma que se publica AL LADO de un
     # contenedor real (la bolsa verde leída como contenedor de reciclables en
     # T035/T109/T130). Ahí el veto de arriba no salta nunca, porque el máximo
-    # local está altísimo por el contenedor que SÍ está. Solo corre para las
+    # local está altísimo por el contenedor que SÍ está. Solo se ejecuta para las
     # claves donde el local demostró ser detector confiable (ver el comentario
     # de PRESENCIA_POR_CLAVE) y, como todas las pasadas hermanas, no decide
     # sola: pregunta dirigido por ESE contenedor y necesita mayoría de
@@ -3510,7 +3531,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                       - set(subtipos_firmes))
         for k in sorted(candidatas):
             # Sin puntaje del local para ESA clave no hay señal que contradiga
-            # a los VLM: la puerta no abre (si el modelo local no corrió, su
+            # a los VLM: la puerta no abre (si el modelo local no se ejecutó, su
             # silencio no es un "no hay").
             if not (0.0 <= _locales.get(k, 1.0) <= PRESENCIA_LOCAL_PISO):
                 continue
@@ -3839,7 +3860,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # Si la pasada dirigida CONFIRMÓ que la estructura metálica es la base del
     # contenedor y la descripción elegida no lo dice, se lo agrega: publicar la
     # categoría sin explicarla dejaría al vecino sin saber qué se reportó. Vale
-    # también para la descripción del árbitro (el bloque corre después de ambas
+    # también para la descripción del árbitro (el bloque se ejecuta después de ambas
     # ramas) y para el caso en que TODAS las descripciones venían de modelos
     # desautorizados y una quedó igual como último recurso.
     if segunda_mirada_base and descripcion:
@@ -4175,13 +4196,13 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         # consumidor NO debe leer null como "la foto está bien".
         "foto_valida_estado": foto_estado,
         "por_contexto": por_contexto,
-        # El encaminamiento del reclamo por texto no pudo correr: la respuesta
+        # El encaminamiento del reclamo por texto no pudo ejecutar: la respuesta
         # NO es estable y no se debe cachear.
         "ruteo_contexto_fallo": ruteo_fallo,
         "posibles": posibles,
         "verificadores": veredictos,
         "arbitro": arbitro,
-        # Metadata de la segunda mirada de escombros (None si no corrió):
+        # Metadata de la segunda mirada de escombros (None si no se ejecutó):
         # el cache la mira para no congelar un "no" hecho con fallos de red.
         "segunda_mirada": segunda_mirada,
         # Ídem para la segunda mirada de la base del contenedor.
@@ -4191,20 +4212,20 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         "segunda_mirada_relacion": segunda_mirada_relacion,
         # Ídem para la del volcado (techo en pendiente leído como tumbado).
         "segunda_mirada_volcado": segunda_mirada_volcado,
-        # Repreguntas dirigidas entre modelos (None si no corrió ninguna).
+        # Repreguntas dirigidas entre modelos (None si no se ejecutó ninguna).
         "repreguntas": repreguntas,
-        # Mirada dirigida del subtipo (None si no corrió).
+        # Mirada dirigida del subtipo (None si no se ejecutó).
         "segunda_mirada_subtipo": segunda_mirada_subtipo,
         "segunda_mirada_secos": segunda_mirada_secos,
-        # Chequeo de los postes citados (None si no corrió).
+        # Chequeo de los postes citados (None si no se ejecutó).
         "segunda_mirada_postes": segunda_mirada_postes,
-        # Firma de identidad del voluminoso marginal (None si no corrió).
+        # Firma de identidad del voluminoso marginal (None si no se ejecutó).
         "segunda_mirada_voluminoso": segunda_mirada_voluminoso,
-        # Mirada dirigida del desborde (None si no corrió).
+        # Mirada dirigida del desborde (None si no se ejecutó).
         "segunda_mirada_desborde": segunda_mirada_desborde,
-        # Veto de presencia del contenedor (None si no corrió).
+        # Veto de presencia del contenedor (None si no se ejecutó).
         "segunda_mirada_presencia": segunda_mirada_presencia,
-        # Veto de presencia POR CLAVE: {clave: {...}}, vacío si no corrió.
+        # Veto de presencia POR CLAVE: {clave: {...}}, vacío si no se ejecutó.
         "segunda_mirada_presencia_clave": segunda_mirada_presencia_clave,
         # Claves que una pasada dirigida ya adjudicó (bajó o corrigió). Interno:
         # ninguna capa de más arriba puede volver a inyectarlas (la fusión de

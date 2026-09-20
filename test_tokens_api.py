@@ -44,6 +44,37 @@ class TokensApi(unittest.TestCase):
         V.tokens_reset()
         self.assertEqual(V.tokens_total(), {'tokens_api': 0, 'tokens_api_completos': True})
 
+    def test_desglose_entrada_y_salida_por_foto(self):
+        V._tokens_sumar(respuesta({'total_tokens': 120, 'prompt_tokens': 100, 'completion_tokens': 20,
+                                  'completion_tokens_details': {'reasoning_tokens': 10}}))
+        V._tokens_sumar(respuesta({'prompt_tokens': 50, 'completion_tokens': 7}))
+        self.assertEqual(V.tokens_total(desglose=True), {
+            'tokens_api': 177, 'tokens_api_completos': True,
+            'tokens_entrada': 150, 'tokens_salida': 27, 'tokens_desglose_completo': True})
+        V.tokens_reset()
+        self.assertEqual(V.tokens_total(desglose=True), {
+            'tokens_api': 0, 'tokens_api_completos': True,
+            'tokens_entrada': 0, 'tokens_salida': 0, 'tokens_desglose_completo': True})
+        self.assertEqual(V.tokens_total(desglose=True), {
+            'tokens_api': 0, 'tokens_api_completos': True,
+            'tokens_entrada': 0, 'tokens_salida': 0, 'tokens_desglose_completo': True})
+
+    def test_total_sin_desglose_no_inventa_entrada_ni_salida(self):
+        for uso in ({'total_tokens': 13}, {'total_tokens': 13, 'prompt_tokens': 10},
+                    {'total_tokens': 13, 'prompt_tokens': 10, 'completion_tokens': -1},
+                    {'total_tokens': 13, 'prompt_tokens': 10.0, 'completion_tokens': 3}):
+            with self.subTest(uso=uso):
+                V.tokens_reset()
+                V._tokens_sumar(respuesta({'prompt_tokens': 4, 'completion_tokens': 1}))
+                V._tokens_sumar(respuesta(uso))
+                self.assertEqual(V.tokens_total(desglose=True), {
+                    'tokens_api': 18, 'tokens_api_completos': True,
+                    'tokens_entrada': 4, 'tokens_salida': 1, 'tokens_desglose_completo': False})
+        # Sin desglose pedido, la salida conserva las dos claves de siempre.
+        V.tokens_reset()
+        V._tokens_sumar(respuesta({'prompt_tokens': 4, 'completion_tokens': 1}))
+        self.assertEqual(V.tokens_total(), {'tokens_api': 5, 'tokens_api_completos': True})
+
     def test_faltantes_y_valores_invalidos_no_inventan_consumo(self):
         for uso in (None, {}, {'total_tokens': True}, {'total_tokens': -1},
                     {'total_tokens': '12'}, {'total_tokens': 1.5},
@@ -176,6 +207,30 @@ class TokensApi(unittest.TestCase):
                                       {'tokens_api': 201, 'tokens_api_completos': True}])
         self.assertEqual(V.tokens_total(), {'tokens_api': 0, 'tokens_api_completos': True})
 
+    def test_fotos_simultaneas_no_mezclan_el_desglose(self):
+        barrera = threading.Barrier(2)
+
+        def foto(base):
+            V.tokens_reset()
+            barrera.wait(timeout=5)
+            V._map_modelos([str(base), str(base + 1)], lambda m: V._llamar(m, []))
+            return V.tokens_total(desglose=True)
+
+        def http(req, *args):
+            n = int(json.loads(req.data)['model'])
+            # La foto 100 tiene un intento con total pero sin desglose.
+            if n == 101:
+                return respuesta({'total_tokens': n})
+            return respuesta({'prompt_tokens': n, 'completion_tokens': 1})
+
+        with patch.object(V, '_pedir_http', side_effect=http), concurrent.futures.ThreadPoolExecutor(2) as pool:
+            resultados = list(pool.map(foto, [10, 100]))
+        self.assertEqual(resultados, [
+            {'tokens_api': 23, 'tokens_api_completos': True,
+             'tokens_entrada': 21, 'tokens_salida': 2, 'tokens_desglose_completo': True},
+            {'tokens_api': 202, 'tokens_api_completos': True,
+             'tokens_entrada': 100, 'tokens_salida': 1, 'tokens_desglose_completo': False}])
+
     def test_costos_superpuestos_y_aporte_tardio(self):
         import contextvars
         a, b = contextvars.Context(), contextvars.Context()
@@ -306,12 +361,18 @@ class TokensApi(unittest.TestCase):
                 publica = r.json()
                 self.assertEqual(publica['tokens_api'], 90)
                 self.assertTrue(publica['tokens_api_completos'])
+                # Las respuestas simuladas solo traen el total: el desglose queda en cero e incompleto.
+                self.assertEqual((publica['tokens_entrada'], publica['tokens_salida'],
+                                  publica['tokens_desglose_completo']), (0, 0, False))
                 self.assertEqual(publica['costo_api'], .009)
                 self.assertEqual(len(enviados), 9)
                 self.assertEqual(publica['contenedores']['tipos'], [])
                 repetida = cliente.post('/clasificar', files={'file': ('otra.jpg', b.getvalue(), 'image/jpeg')})
                 self.assertEqual(repetida.status_code, 200, repetida.text)
                 self.assertEqual(repetida.json()['tokens_api'], 90)
+                self.assertEqual((repetida.json()['tokens_entrada'], repetida.json()['tokens_salida'],
+                                  repetida.json()['tokens_desglose_completo']), (0, 0, False))
+                self.assertEqual(repetida.json()['costo_api'], .009)
                 self.assertEqual(len(enviados), 9)
             # Las revisiones no se activan en esta variante sin llamadas.
             with patch.object(S.politica_escombros, 'requiere_revision', return_value=False), patch.object(
@@ -319,4 +380,6 @@ class TokensApi(unittest.TestCase):
                 sin_verificar = S._publica(S.procesar(b.getvalue(), '', '0'))
                 self.assertEqual(sin_verificar['tokens_api'], 0)
                 self.assertTrue(sin_verificar['tokens_api_completos'])
+                self.assertEqual((sin_verificar['tokens_entrada'], sin_verificar['tokens_salida'],
+                                  sin_verificar['tokens_desglose_completo']), (0, 0, True))
                 self.assertEqual(len(enviados), 9)

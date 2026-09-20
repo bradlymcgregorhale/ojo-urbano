@@ -80,7 +80,7 @@ La rúbrica actual se edita en [`prompts/rubrica/`](../prompts/rubrica/).
 confianza**. Las notas de una frase que escribieron los jueces **no
 sobrevivieron a la consolidación**: se perdieron al unir los lotes, y
 prefiero decirlo a dejar el documento afirmando algo que el archivo no tiene.
-Para re-adjudicar hace falta volver a correr la consigna de arriba.
+Para re-adjudicar hace falta volver a ejecutar la consigna de arriba.
 
 **Las fotos no se versionan y tampoco sus URLs.** La primera versión de este
 eval publicaba la URL del CDN de cada foto para que se pudieran rebajar. Eso

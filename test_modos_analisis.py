@@ -278,6 +278,74 @@ class ApiModos(unittest.TestCase):
                 self.assertEqual(final['modo_version'], d['modo_version'])
         self.assertEqual(self.llamadas, [])
 
+    def test_economico_publica_conclusion_preliminar_sin_confirmar(self):
+        # #122: el voto único de Económico se presenta como lectura preliminar.
+        with M.usar(self.ps['bajo']), patch.object(self.S, 'PERFILES', self.ps):
+            r = M.completar({'hay_problema': False, 'hay_reclamo': False, 'gravedad_maxima': None,
+                'predominante': None, 'problemas': [], 'elementos_detectados': [], 'categorias_contexto': [],
+                'posibles': [{'key': 'recoleccion', 'nombre': 'Recolección de residuos', 'gravedad': 3,
+                              'origen': 'foto', 'arbitro': None, 'motivo': None, 'fuentes': ['t/a']},
+                             {'key': 'retiro_escombros', 'nombre': 'Retiro de escombros', 'gravedad': 3,
+                              'origen': 'foto', 'arbitro': None, 'motivo': None, 'fuentes': ['t/a']}],
+                'en_duda': ['recoleccion', 'retiro_escombros'], 'detalle': {'verificacion': {'activa': True}}})
+            d = self.S._publica(r)
+        self.assertFalse(d['hay_problema'])
+        self.assertFalse(d['hay_reclamo'])
+        self.assertEqual(d['problemas'], [])
+        self.assertEqual(d['conclusion']['estado'], 'preliminar')
+        self.assertTrue(d['conclusion']['requiere_revision'])
+        self.assertEqual([c['key'] for c in d['conclusion']['categorias']], ['recoleccion', 'retiro_escombros'])
+        self.assertEqual(d['conclusion']['texto'],
+                         'Lectura preliminar: se detectaron indicios de recolección de residuos y retiro de escombros. Requieren corroboración.')
+        self.assertEqual(d['descripcion'], d['conclusion']['texto'])
+
+    def test_economico_sin_votos_queda_sin_indicios(self):
+        with M.usar(self.ps['bajo']), patch.object(self.S, 'PERFILES', self.ps):
+            r = M.completar({'hay_problema': False, 'hay_reclamo': False, 'gravedad_maxima': None,
+                'predominante': None, 'problemas': [], 'elementos_detectados': [], 'categorias_contexto': [],
+                'posibles': [], 'en_duda': [], 'detalle': {'verificacion': {'activa': True}}})
+            d = self.S._publica(r)
+        self.assertEqual(d['conclusion'], {'estado': 'sin_indicios', 'categorias': [], 'requiere_revision': False,
+                                           'texto': 'No se confirmaron problemas con la evidencia disponible.'})
+        self.assertNotIn('Lectura preliminar', d['descripcion'])
+
+    def test_modos_con_arbitro_no_publican_preliminar(self):
+        # En Equilibrado y Completo los posibles pasaron por el árbitro: sin_indicios o confirmada.
+        for modo in ('medio', 'alto'):
+            with self.subTest(modo=modo), M.usar(self.ps[modo]), patch.object(self.S, 'PERFILES', self.ps):
+                r = M.completar({'hay_problema': False, 'hay_reclamo': False, 'gravedad_maxima': None,
+                    'predominante': None, 'problemas': [], 'elementos_detectados': [], 'categorias_contexto': [],
+                    'posibles': [{'key': 'retiro_escombros', 'nombre': 'Retiro de escombros', 'gravedad': 3,
+                                  'origen': 'foto', 'arbitro': 'rechazar', 'motivo': 'x', 'fuentes': ['t/a']},
+                                 {'key': 'recoleccion', 'nombre': 'Recolección', 'gravedad': 3,
+                                  'origen': 'foto', 'arbitro': None, 'motivo': None, 'fuentes': ['t/a']}],
+                    'en_duda': [], 'detalle': {'verificacion': {'activa': True}}})
+                d = self.S._publica(r)
+            self.assertEqual(d['conclusion']['estado'], 'sin_indicios')
+            self.assertFalse(d['conclusion']['requiere_revision'])
+        # Un Completo o Equilibrado sin árbitro configurado tampoco publica preliminar.
+        with patch.multiple(V, ARBITRO='', ARBITRO_VE_FOTO=False, ARBITRO_CONFIRMA=False):
+            sin_arbitro = M.cargar(V, {'CONTENEDORES_ESPECIALISTA': True}, {
+                'VERIFICADORES_BAJO': 't/a', 'VERIFICADORES_MEDIO': 't/a,t/b', 'VERIFICADORES_ALTO': 't/a,t/b,t/c'})
+        for modo in ('medio', 'alto'):
+            self.assertFalse(sin_arbitro[modo].arbitro)
+            with self.subTest(modo=modo, arbitro=''), M.usar(sin_arbitro[modo]), patch.object(self.S, 'PERFILES', sin_arbitro):
+                r = M.completar({'hay_problema': False, 'hay_reclamo': False, 'gravedad_maxima': None,
+                    'predominante': None, 'problemas': [], 'elementos_detectados': [], 'categorias_contexto': [],
+                    'posibles': [{'key': 'recoleccion', 'nombre': 'Recolección', 'gravedad': 3,
+                                  'origen': 'foto', 'arbitro': None, 'motivo': None, 'fuentes': ['t/a']}],
+                    'en_duda': [], 'detalle': {'verificacion': {'activa': True}}})
+                d = self.S._publica(r)
+            self.assertEqual(d['conclusion']['estado'], 'sin_indicios')
+        with M.usar(self.ps['alto']), patch.object(self.S, 'PERFILES', self.ps):
+            r = M.completar({'hay_problema': True, 'hay_reclamo': True, 'gravedad_maxima': 3,
+                'predominante': 'recoleccion', 'categorias_contexto': [],
+                'problemas': [{'key': 'recoleccion', 'nombre': 'Recolección', 'gravedad': 3, 'fuentes': ['t/a', 't/b']}],
+                'elementos_detectados': [], 'posibles': [], 'en_duda': [], 'detalle': {'verificacion': {'activa': True}}})
+            d = self.S._publica(r)
+        self.assertEqual(d['conclusion']['estado'], 'confirmada')
+        self.assertEqual(d['conclusion']['categorias'], [{'key': 'recoleccion', 'nombre': 'Recolección'}])
+
     def test_serializacion_recalcula_agregados_despues_de_dejar_pendiente(self):
         with M.usar(self.ps['bajo']):
             M.omitir('alcance_escombros', ('retiro_escombros',))

@@ -73,7 +73,7 @@ GRAV_MAX = 5
 # confirmar hallazgos de una sola fuente. v3: la respuesta viene resumida (los
 # modelos de visión en "modelos", sin el ranking completo del modelo local ni
 # los campos repetidos); el volcado entero se pide con ?detalle=1. v4: el
-# modelo local desaparece de la respuesta (sigue corriendo y contando como
+# modelo local desaparece de la respuesta (sigue ejecutándose y contando como
 # fuente del consenso, pero su voto no se publica); no hay más ?detalle=1;
 # "fuentes" pasa a ser un conteo; hay_problema vuelve a significar problema
 # CONFIRMADO (hay_problema == bool(problemas)) y hay_reclamo expresa "el
@@ -238,7 +238,7 @@ def siglip_vec(img):
 def _liberar_transitorio():
     """Libera los tensores intermedios de MPS y fuerza gc tras cada foto. No
     descarga el modelo (eso lo cuida guard_modelo); baja el PICO de memoria por
-    request, que es lo que apretaba la Mac en corridas batch."""
+    request, que es lo que apretaba la memoria en ejecuciones por lotes."""
     import gc
     gc.collect()
     t = _siglip.get("torch") or _dino.get("torch")
@@ -328,7 +328,7 @@ _cupos = threading.BoundedSemaphore(CONCURRENCIA)
 # la reserva sin que hubiera fallado nada.
 TECHO_TRABAJO = max(120, int(os.environ.get("TECHO_TRABAJO", "600")))
 # Los hilos perdidos no pueden quedarse con los workers, o el próximo pedido
-# esperaría por uno libre en vez de correr. Se deja lugar para unos cuantos.
+# esperaría por uno libre en vez de ejecutar. Se deja lugar para unos cuantos.
 ABANDONO_MAX = max(1, int(os.environ.get("ABANDONO_MAX", "4")))
 _perdidos = {"vivos": 0, "total": 0, "lock": threading.Lock()}
 # Tantos hilos como cupos: con el semáforo de admisión, un trabajo aceptado
@@ -417,7 +417,7 @@ def _abrir_imagen(datos):
     ANTES del convert(), que es el que materializa la imagen entera en RAM.
     El corte es en el mismo umbral en el que Pillow apenas avisaría, así que
     el warning queda cubierto sin tocar el filtro global de warnings (que no
-    sería seguro de mutar ahora que esto corre en un hilo aparte).
+    sería seguro de mutar ahora que esto se ejecuta en un hilo aparte).
     """
     demasiado = f"la foto supera los {MAX_PIXELES // 1_000_000} megapíxeles"
     try:
@@ -901,7 +901,7 @@ def procesar(datos, contexto, verificar):
             detalle["verificacion"] = veri_actual
             salida["detalle"] = detalle
     salida["costo_api"] = verificador.costo_total()
-    salida.update(verificador.tokens_total())
+    salida.update(verificador.tokens_total(desglose=True))
     return modos.completar(salida)
 
 
@@ -1068,7 +1068,47 @@ def _publica(r):
         comparacion=prioridad.desde_guardada(veri))
     pub['hay_problema'] = bool(pub.get('problemas'))
     pub['hay_reclamo'] = bool(pub.get('problemas')) or bool(pub.get('categorias_contexto'))
+    pub['conclusion'] = _conclusion(pub)
+    if pub['conclusion']['estado'] == 'preliminar':
+        pub['descripcion'] = pub['conclusion']['texto']
     return pub
+
+
+def _conclusion(pub):
+    """Conclusión legible sobre lo PUBLICADO (#122).
+
+    No cambia problemas ni las invariantes: en un modo sin árbitro (Económico),
+    los posibles de la foto que nadie arbitró se presentan como lectura
+    preliminar que requiere corroboración, en vez de "sin problemas".
+    """
+    if (pub.get('evaluacion_foto') or {}).get('rechazada'):
+        return {'estado': 'rechazada', 'categorias': [], 'requiere_revision': False,
+                'texto': (pub.get('evaluacion_foto') or {}).get('indicacion')}
+    if pub.get('problemas'):
+        cats = [{'key': c.get('key'), 'nombre': c.get('nombre')} for c in pub['problemas']]
+        return {'estado': 'confirmada', 'categorias': cats, 'requiere_revision': False,
+                'texto': 'Incidencias confirmadas: ' + ', '.join(c['nombre'] or c['key'] or '' for c in cats) + '.'}
+    if pub.get('categorias_contexto'):
+        cats = [{'key': c.get('key'), 'nombre': c.get('nombre')} for c in pub['categorias_contexto']]
+        return {'estado': 'por_texto', 'categorias': cats, 'requiere_revision': False,
+                'texto': 'Reclamo según tu texto, sin confirmación en la foto.'}
+    perfil = PERFILES.get(pub.get('modo')) if hasattr(PERFILES, 'get') else None
+    # Solo Económico: un Completo o Equilibrado sin árbitro configurado es una
+    # degradación, no un modo de lectura única.
+    sin_arbitro = pub.get('modo') == 'bajo' and perfil is not None and not perfil.arbitro
+    preliminares = [c for c in pub.get('posibles') or []
+                    if isinstance(c, dict) and c.get('key') and c.get('origen') == 'foto'
+                    and not c.get('arbitro')] if sin_arbitro else []
+    if preliminares:
+        cats = [{'key': c['key'], 'nombre': c.get('nombre') or nombre_de(c['key'])} for c in preliminares]
+        # Los nombres del catálogo empiezan en mayúscula; dentro de la frase van en minúscula
+        # (salvo siglas o nombres propios, que no tenemos en el catálogo).
+        nombres = [c['nombre'][0].lower() + c['nombre'][1:] if c['nombre'] else c['key'] for c in cats]
+        lista = nombres[0] if len(nombres) == 1 else ', '.join(nombres[:-1]) + ' y ' + nombres[-1]
+        return {'estado': 'preliminar', 'categorias': cats, 'requiere_revision': True,
+                'texto': 'Lectura preliminar: se detectaron indicios de ' + lista + '. Requieren corroboración.'}
+    return {'estado': 'sin_indicios', 'categorias': [], 'requiere_revision': False,
+            'texto': 'No se confirmaron problemas con la evidencia disponible.'}
 
 
 app = FastAPI(title="Ojo Urbano")
@@ -1322,10 +1362,10 @@ async def _correr_con_cupo(datos, contexto, verificar, huella, perfil=None):
                     _perdidos["vivos"] = max(0, _perdidos["vivos"] - 1)
 
     # El pipeline es sincrónico y tarda 25-60 s: fuera del event loop, o
-    # bloquea /salud, la portada y cualquier otro pedido mientras corre.
+    # bloquea /salud, la portada y cualquier otro pedido mientras se ejecuta.
     # Se usa el pool propio (y no asyncio.to_thread) para poder preguntarle al
     # future si el trabajo llegó a arrancar: si se cancela mientras todavía
-    # estaba encolado, el finally de trabajo() nunca corre y el cupo se
+    # estaba encolado, el finally de trabajo() nunca se ejecuta y el cupo se
     # perdería para siempre.
     def ejecutar():
         with modos.usar(perfil):
@@ -1341,7 +1381,7 @@ async def _correr_con_cupo(datos, contexto, verificar, huella, perfil=None):
         return await asyncio.wrap_future(tarea)
     except asyncio.CancelledError:
         # cancel() devuelve True solo si seguía en la cola: ahí es seguro
-        # soltar, porque trabajo() no va a correr nunca. Si devuelve False ya
+        # soltar, porque trabajo() no va a ejecutar nunca. Si devuelve False ya
         # arrancó y lo suelta su propio finally.
         if tarea.cancel():
             techo.cancel()
@@ -1393,7 +1433,7 @@ def _posicion_trabajo(t):
 
 
 async def _correr_trabajo(t):
-    """Vida completa de un trabajo: espera su turno, corre el pipeline y deja
+    """Vida completa de un trabajo: espera su turno, se ejecuta el pipeline y deja
     el resultado (o el error) en el registro. Nunca levanta hacia afuera salvo
     la cancelación del apagado."""
     try:
@@ -1762,7 +1802,7 @@ select{max-width:100%;padding:8px;font:inherit;border:1px solid #aaa;border-radi
     <option value="medio" disabled>Equilibrado (no disponible)</option>
     <option value="alto" selected>Completo</option>
   </select>
-  <p id="modo-ayuda">Completo mantiene todas las verificaciones. Económico y Equilibrado usan menos y pueden dejar más casos pendientes. La elección se aplica a las fotos que agregues después.</p>
+  <p id="modo-ayuda">Completo mantiene todas las verificaciones. Económico y Equilibrado usan menos y pueden dejar más casos pendientes. Se aplica a las fotos en espera y a las que agregues después; las ya enviadas conservan su modo. La elección queda guardada en este navegador.</p>
   <p id="modo-estado" role="status" aria-live="polite"></p>
 
   <div id="drop" role="button" tabindex="0" aria-label="Elegir fotos para analizar">
@@ -1880,6 +1920,13 @@ document.querySelectorAll('.ruta').forEach(el=>{el.textContent=RUTAS[el.dataset.
 const GRAV={1:'registro',2:'leve',3:'típico',4:'grave',5:'crítico'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const nombresModos={bajo:'Económico',medio:'Equilibrado',alto:'Completo'};
+// La elección general vale para las tarjetas en espera (#129); las enviadas ya
+// mandaron su modo y no se tocan. Se recuerda en este navegador.
+const CLAVE_MODO='ojo-urbano-modo-general';
+function modoRecordado(actual){
+  try{const v=localStorage.getItem(CLAVE_MODO);return v&&nombresModos[v]?v:null;}catch(e){return null;}
+}
+function guardarModo(v){try{localStorage.setItem(CLAVE_MODO,v);}catch(e){}}
 let perfilesModos={};
 const modoBloqueado=modo=>perfilesModos[modo]?.disponible===false;
 function opcionesModos(valor){
@@ -1897,7 +1944,10 @@ async function actualizarModos(){
   }catch(e){
     $('#modo-estado').textContent='No pude actualizar los modos disponibles. El servidor comprobará el modo al enviar la foto.';
   }
-  const general=$('#modo-general'), seleccionado=general.value||'alto';
+  const general=$('#modo-general');
+  let seleccionado=modoRecordado(general.value)||general.value||'alto';
+  // Un modo recordado que el servidor ya no ofrece vuelve a Completo, sin dejar la elección vieja guardada.
+  if(modoBloqueado(seleccionado)&&modoRecordado(general.value)===seleccionado){seleccionado='alto';guardarModo('alto');}
   general.innerHTML=opcionesModos(seleccionado);general.value=seleccionado;
   document.querySelectorAll('select[data-modo]').forEach(el=>{
     const valor=el.value;el.innerHTML=opcionesModos(valor);el.value=valor;
@@ -1909,7 +1959,10 @@ async function actualizarModos(){
 actualizarModos();
 window.addEventListener('focus',actualizarModos);
 $('#modo-general').onchange=()=>{
-  $('#modo-estado').textContent=modoBloqueado($('#modo-general').value)?'El modo elegido no está disponible.':'';
+  const v=$('#modo-general').value;
+  $('#modo-estado').textContent=modoBloqueado(v)?'El modo elegido no está disponible.':'';
+  guardarModo(v);
+  for(const it of items){if(!it.modoFijo&&it.estado==='espera'){it.modo=v;pintar(it);}}
 };
 
 const SNIP={
@@ -2274,11 +2327,29 @@ function pintar(it){
   actualizarBarra();
 }
 
+const fmtNum=n=>Number(n).toLocaleString('es-AR');
+function lineaCosto(d){
+  // Texto de una línea: importe, tokens (entrada y salida) y costo por millón de tokens.
+  let t='Costo de procesamiento (API): US$ '+d.costo_api.toLocaleString('es-AR',{minimumFractionDigits:4,maximumFractionDigits:4});
+  const tok=typeof d.tokens_api==='number'&&d.tokens_api>0?d.tokens_api:null;
+  if(tok){
+    t+=' · '+fmtNum(tok)+' tokens';
+    const desglose=typeof d.tokens_entrada==='number'&&typeof d.tokens_salida==='number';
+    if(desglose&&d.tokens_desglose_completo!==false)
+      t+=' (entrada '+fmtNum(d.tokens_entrada)+', salida '+fmtNum(d.tokens_salida)+')';
+    else if(desglose&&d.tokens_entrada+d.tokens_salida>0)
+      t+=' (entrada '+fmtNum(d.tokens_entrada)+', salida '+fmtNum(d.tokens_salida)+', desglose incompleto)';
+    t+=' · US$ '+(d.costo_api/tok*1e6).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})+' por millón de tokens';
+    if(d.tokens_api_completos===false)t+=' · conteo de tokens incompleto';
+  }
+  return t;
+}
 function renderResultado(d){
   if(d.evaluacion_foto?.rechazada){
     return `<div class="tarconcl">Foto rechazada: ${d.evaluacion_foto.ambito==='interior'?'interior':'calidad insuficiente'}</div>`+
       `<div class="tardesc">${esc(d.evaluacion_foto.indicacion||'Necesitamos otra foto para evaluar el reclamo.')}</div>`+
-      `<div class="modo-nota">Modo: ${esc(nombresModos[d.modo]||d.modo||'Sin informar')} · Análisis: ${esc(d.analisis_estado||'Sin informar')}</div>`;
+      `<div class="modo-nota">Modo: ${esc(nombresModos[d.modo]||d.modo||'Sin informar')} · Análisis: ${esc(d.analisis_estado||'Sin informar')}</div>`+
+      (typeof d.costo_api==='number'&&d.costo_api>0?`<div class="tarcosto">${esc(lineaCosto(d))}</div>`:'');
   }
   const probs=d.problemas||[];
   const aviso=(d.foto_valida===false&&d.hay_problema)
@@ -2289,9 +2360,11 @@ function renderResultado(d){
       +(d.gravedad_maxima?` · gravedad ${d.gravedad_maxima}/5 (${GRAV[d.gravedad_maxima]||''})`:'')
     :d.hay_reclamo?'Reclamo por texto, sin confirmación en la foto'
     :revisionMaterial?'Requiere revisión del tipo de residuos'
+    :d.conclusion?.estado==='preliminar'?'Lectura preliminar: requiere corroboración'
     :'No se confirmaron problemas')
     +(revisionMaterial&&(d.hay_problema||d.hay_reclamo)?' · tipo de residuos pendiente de revisión':'');
   let h=`<div class="tarconcl">${esc(concl+aviso)}</div>`;
+  if(typeof d.costo_api==='number'&&d.costo_api>0)h+=`<div class="tarcosto">${esc(lineaCosto(d))}</div>`;
   const bolsones=d.observaciones_higiene?.bolsones;
   if(bolsones?.retiro_caba==='excluido_por_presentacion'){
     h+=`<div class="tardesc"><strong>Retiro de escombros: presentación no admitida (CABA).</strong> ${esc(bolsones.indicacion||'Consultá al servicio de recolección cómo gestionar este bolsón.')}</div>`;
@@ -2487,7 +2560,8 @@ $('#csvbtn').onclick=()=>{
   const cab=['archivo','contexto','estado','hay_problema','gravedad_maxima','predominante','problemas',
     'patente','elementos_detectados','posibles','en_duda','hay_reclamo','foto_valida_estado',
     'verificacion_activa','verificacion_motivo','descripcion','error','trabajo',
-    'contenedores_estado','contenedores_motivo','modo','modo_version','analisis_estado','analisis_limitaciones'];
+    'contenedores_estado','contenedores_motivo','modo','modo_version','analisis_estado','analisis_limitaciones',
+    'costo_api','tokens_api','tokens_entrada','tokens_salida','tokens_api_completos','tokens_desglose_completo','conclusion_estado'];
   const filas=[cab];
   for(const it of items){
     const d=it.resultado||{};
@@ -2500,7 +2574,8 @@ $('#csvbtn').onclick=()=>{
       d.hay_reclamo??'',d.foto_valida_estado??'',d.verificacion_activa??'',
       d.verificacion_motivo??'',d.descripcion??'',it.estado==='error'?it.detalle:'',it.trabajo||'',
       d.contenedores?.estado??'',d.contenedores?.motivo??'',d.modo||it.modoFijo||it.modo,
-      d.modo_version||'',d.analisis_estado||'',(d.analisis_limitaciones||[]).join(' | ')]);
+      d.modo_version||'',d.analisis_estado||'',(d.analisis_limitaciones||[]).join(' | '),
+      d.costo_api??'',d.tokens_api??'',d.tokens_entrada??'',d.tokens_salida??'',d.tokens_api_completos??'',d.tokens_desglose_completo??'',d.conclusion?.estado??'']);
   }
   // comillas para separadores y saltos; el apóstrofo inicial neutraliza
   // fórmulas (=, +, -, @) si el CSV se abre en una planilla
