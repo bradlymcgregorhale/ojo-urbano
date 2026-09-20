@@ -788,6 +788,33 @@ check("registra tokens, caché, razonamiento y costo reales por llamada",
 check("no registra foto, contexto, clave de API ni campos extra de usage",
       "PRIVAD" not in _cache_log.getvalue() and '{"ok":true}' not in _cache_log.getvalue())
 
+# #134: la exclusión de proveedores viaja como provider.ignore y solo cuando
+# hay lista; el resto del cuerpo no cambia.
+_prov_payloads = []
+
+
+def _prov_http(req, *args):
+    _prov_payloads.append(json.loads(req.data))
+    return _cache_respuesta
+
+
+with patch.object(V, "_pedir_http", _prov_http), \
+        patch.object(V, "api_key", lambda: "CLAVE_PRIVADA"), \
+        patch.object(V, "OPENROUTER_LOG_USO", False):
+    with patch.object(V, "OPENROUTER_PROVEEDORES_EXCLUIDOS", ""):
+        V._llamar("modelo/x", _cache_ms, etapa="prueba")
+    with patch.object(V, "OPENROUTER_PROVEEDORES_EXCLUIDOS", "OpenInference,Venice"):
+        V._llamar("modelo/x", _cache_ms, etapa="prueba")
+    with patch.object(V, "OPENROUTER_PROVEEDORES_EXCLUIDOS", "OpenInference"), \
+            patch.object(V, "PROVEEDOR_FIJO", True):
+        V._llamar("modelo/x", _cache_ms, etapa="prueba")
+check("sin lista de proveedores excluidos el pedido no lleva provider",
+      "provider" not in _prov_payloads[0])
+check("con lista, el pedido lleva provider.ignore con cada proveedor y nada más cambia",
+      _prov_payloads[1] == dict(_prov_payloads[0], provider={"ignore": ["OpenInference", "Venice"]}))
+check("la exclusión convive con PROVEEDOR_FIJO en el mismo objeto provider",
+      _prov_payloads[2]["provider"] == {"allow_fallbacks": False, "ignore": ["OpenInference"]})
+
 _sin_json_cache = dict(_cache_respuesta, choices=[
     {"finish_reason": "length", "message": {"content": "sin JSON"}}])
 _cache_log = io.StringIO()

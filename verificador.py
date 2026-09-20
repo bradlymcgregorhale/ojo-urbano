@@ -30,6 +30,8 @@ Config por variables de entorno (ver .env.example):
                          solo con el modelo local.
     VERIFICADORES        lista separada por comas de modelos de visión.
     ARBITRO              modelo de texto para desempates ("" lo desactiva).
+    OPENROUTER_PROVEEDORES_EXCLUIDOS  proveedores que OpenRouter no debe usar
+                         (lista separada por comas; vacío no restringe).
     VERIFICADOR_TIMEOUT  segundos por llamada (default 120).
 """
 import base64
@@ -346,6 +348,14 @@ SEMILLA = (int(os.environ["SEMILLA"]) if os.environ.get("SEMILLA", "").strip()
 # significativa (12,6% -> 9,1%, p=0,147).
 PROVEEDOR_FIJO = os.environ.get("PROVEEDOR_FIJO", "").strip().lower() not in (
     "", "0", "false", "no")
+# Proveedores de OpenRouter que no se usan para ningún modelo (lista separada
+# por comas, nombres tal como los informa OpenRouter en `provider`). Se manda
+# como provider.ignore. Motivo: el 2026-09-20 OpenInference ignoró el esfuerzo
+# de razonamiento pedido y el árbitro agotó su plazo en la mayoría de las
+# fotos del lote (#134). Vacío no agrega nada al pedido.
+OPENROUTER_PROVEEDORES_EXCLUIDOS = ",".join(
+    p.strip() for p in os.environ.get("OPENROUTER_PROVEEDORES_EXCLUIDOS", "").split(",")
+    if p.strip())
 # Afinidad por prefijo, sin recortar mensajes ni contratar caché explícita.
 # Opt-in: la medición pareada no demostró un ahorro consistente.
 OPENROUTER_CACHE_PROMPTS = os.environ.get("OPENROUTER_CACHE_PROMPTS", "0").strip().lower() not in (
@@ -725,6 +735,8 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa")
         # otra cuantización y otros kernels. Esto solo apaga el failover; no
         # elige el backend. Ver la nota en PROVEEDOR_FIJO.
         cuerpo["provider"] = {"allow_fallbacks": False}
+    if OPENROUTER_PROVEEDORES_EXCLUIDOS:
+        cuerpo.setdefault("provider", {})["ignore"] = OPENROUTER_PROVEEDORES_EXCLUIDOS.split(",")
     body = json.dumps(cuerpo).encode()
     req = urllib.request.Request(OPENROUTER_URL, data=body, headers={
         "Authorization": "Bearer " + api_key(),
