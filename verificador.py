@@ -63,6 +63,7 @@ from prompts import (
     _RUBRICA_KEYS,
     _RUBRICA,
     _PROMPT_PATENTE,
+    _PROMPT_ENCUADRE_HIGIENE,
     _PROMPT_ALCANCE_ESCOMBROS,
     _PROMPT_OBRA_SERVICIOS_CONTEXTO,
     PRIORIDAD_COMPARACION as _PROMPT_PRIORIDAD_COMPARACION,
@@ -208,6 +209,13 @@ MODELO_PRIORIDAD_COMPARACION = os.environ.get(
 # fallo correlacionado de dos modelos.
 SEGUNDA_MIRADA_BASE = os.environ.get(
     "SEGUNDA_MIRADA_BASE", "1").strip().lower() not in ("0", "false", "no")
+# Pregunta separada de encuadre (#114): la rúbrica completa diluye el criterio
+# de la cuadrilla de Higiene (medido: H0174 y H0185 quedan suficientes 2 a 1
+# con el párrafo nuevo dentro de la rúbrica, e insuficientes 3 a 0 con la
+# pregunta corta). Corre con dos o más lectores; en Económico no hay mayoría
+# posible y no se paga.
+PREGUNTA_ENCUADRE = os.environ.get(
+    "PREGUNTA_ENCUADRE", "1").strip().lower() not in ("0", "false", "no")
 # Segunda mirada dirigida para el DAÑO del contenedor (tapas dadas vuelta
 # leídas como rotas, fierros ajenos atribuidos al contenedor).
 SEGUNDA_MIRADA_DANO = os.environ.get(
@@ -1543,6 +1551,68 @@ def _segunda_mirada_dano(img):
     return dano, sin_dano, fallo
 
 
+def _pregunta_encuadre(data_url):
+    """Pregunta corta de encuadre a todos los lectores activos (#114).
+
+    Misma imagen que la primera pasada. Devuelve {modelo: lectura} solo con las
+    respuestas válidas: un bool en contexto_suficiente y, si es false, un motivo
+    de evaluacion_foto.MOTIVOS_CONTEXTO. Una salida cortada, un JSON ajeno o un
+    motivo inventado no votan (el lector queda fuera del dict).
+    """
+    def _uno(modelo):
+        contenido = _llamar(modelo, [
+            {"role": "system", "content": _PROMPT_ENCUADRE_HIGIENE},
+            {"role": "user", "content": [
+                {"type": "text", "text": "La foto:"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]},
+        ], max_tokens=400, etapa="pregunta_encuadre")
+        v = _extraer_json(contenido)
+        suficiente = v.get("contexto_suficiente")
+        if type(suficiente) is not bool:
+            raise ValueError("sin voto de encuadre")
+        motivo = v.get("motivo")
+        motivos = []
+        if suficiente is False:
+            if motivo not in evaluacion_foto.MOTIVOS_CONTEXTO:
+                raise ValueError("motivo de encuadre desconocido")
+            motivos = [motivo]
+        return {"contexto_suficiente": suficiente, "motivos_contexto": motivos,
+                "evidencia": _texto_limpio(v.get("evidencia"), EVID_MAX)}
+
+    lecturas = {}
+    for modelo, r in zip(modelos_activos(), _map_modelos(modelos_activos(), _uno)):
+        if r is not _FALLO_MODELO:
+            lecturas[modelo] = r
+    return lecturas
+
+
+def _aplicar_encuadre(veredictos, lecturas):
+    """La pregunta separada decide el encuadre de cada lector que respondió.
+
+    Reemplaza contexto_suficiente y motivos_contexto de su evaluacion_foto (la
+    respuesta principal deja de decidir ese campo) y deja constancia en
+    encuadre_higiene. Un lector sin lectura válida conserva lo que dijo en la
+    primera pasada: el fallo de la pregunta corta no inventa un voto ni lo
+    borra. Ámbito y calidad no se tocan.
+    """
+    for v in veredictos:
+        if not isinstance(v, dict) or v.get("ok") is not True:
+            continue
+        lectura = lecturas.get(v.get("modelo"))
+        if lectura is None:
+            v["encuadre_higiene"] = {"estado": "sin_lectura"}
+            continue
+        ef = v.get("evaluacion_foto")
+        if not isinstance(ef, dict):
+            ef = evaluacion_foto.normalizar({})
+        ef["contexto_suficiente"] = lectura["contexto_suficiente"]
+        ef["motivos_contexto"] = list(lectura["motivos_contexto"])
+        v["evaluacion_foto"] = ef
+        v["encuadre_higiene"] = {"estado": "evaluado", **lectura}
+    return veredictos
+
+
 # Objetos CONCRETOS que una descripción puede nombrar. Se usan para el saneo
 # de la prosa: si el objeto lo nombra una sola fuente, no se afirma. Son
 # nombres de cosas identificables, no palabras genéricas ("residuos",
@@ -2405,6 +2475,11 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     with concurrent.futures.ThreadPoolExecutor(len(modelos_activos())) as pool:
         veredictos = _map_con_contexto(
             pool, lambda m: _verificar_uno(m, data_url, categorias, contexto), modelos_activos())
+    # El encuadre lo decide la pregunta corta de Higiene (#114), no la rúbrica.
+    # Con un solo lector no hay mayoría que formar y no se gasta la llamada.
+    if PREGUNTA_ENCUADRE and len(set(modelos_activos())) >= 2 \
+            and any(v.get("ok") for v in veredictos):
+        _aplicar_encuadre(veredictos, _pregunta_encuadre(data_url))
 
     grav_votos = {}  # key -> [gravedad de cada verificador que la reportó]
     fuentes = {}   # key -> lista de fuentes que la reportan
