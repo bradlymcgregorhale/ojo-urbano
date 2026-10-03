@@ -28,7 +28,7 @@ const pp=require(process.env.OJO_PUPPETEER||'puppeteer'),sha=b=>crypto.createHas
   assert(!(await p.$eval('#correccion-guardada',e=>e.hidden)));assert((await p.$eval('#correccion-guardada',e=>e.textContent)).includes('guardada'));assert.deepEqual(fs.readFileSync(path.join(a,'R0001-alto.json')),original);
   await p.reload();assert(!(await p.$eval('#correccion-guardada',e=>e.hidden)));const saved=await p.evaluate(()=>JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k=>k.startsWith('ojo-lote-v2:')))));assert.equal(saved.revisiones.R0001.estado,'corregido');assert.equal(saved.revisiones.R0001.categorias.recoleccion,'no');assert.equal(saved.revisiones.R0001.categorias.retiro_muebles,'confirmado');assert.equal(calls,1);
   await p.click('[data-filtro="todas"]');await p.type('#buscar-foto','inexistente');assert.equal(await p.$$eval('.photo-row',e=>e.length),0);assert(!(await p.$eval('#bandeja-vacia',e=>e.hidden)));
-  await p.setViewport({width:390,height:844});assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  assert.deepEqual(errors,[]);console.log(JSON.stringify({sin_pedidos_al_abrir:true,primer_analisis_unico:true,resultado_persistido:true,confirmacion_recuperada:true,filtros_y_busqueda:true,celular:true,sin_inferencias_reales:true,evidencia:base}));
+  await p.setViewport({width:390,height:844});await p.click('#editar');assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  assert.deepEqual(errors,[]);console.log(JSON.stringify({sin_pedidos_al_abrir:true,primer_analisis_unico:true,resultado_persistido:true,confirmacion_recuperada:true,filtros_y_busqueda:true,correccion_visible_y_persistida:true,original_intacto:true,editor_celular_sin_desborde:true,celular:true,sin_inferencias_reales:true,evidencia:base}));
  }finally{await b.close();s.server.closeAllConnections();await new Promise(r=>s.server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1});
