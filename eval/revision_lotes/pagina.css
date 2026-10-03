@@ -5,3 +5,5 @@
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 
 .result-column>#resultado{order:1}.result-column>#acciones{order:2}.result-column>#reanalisar-panel{order:3}.result-column>#comparacion-anterior{order:4}
+
+.correction-button{width:100%;background:#fff7ec;border-color:#e6c79b;color:#855619;font-weight:650;margin:4px 0 16px}.editor-help{font-size:13px;color:var(--muted);margin:12px 0}#editor{border-top:2px solid #d4e3d2;padding-top:20px;margin-top:20px;scroll-margin-top:20px}#correcciones-principales:empty::after{content:"No hay categorías sugeridas. Agregá lo que se ve en la foto.";display:block;color:var(--muted);font-size:12px;margin:12px 0}

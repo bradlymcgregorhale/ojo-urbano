@@ -186,3 +186,6 @@ Pruebas del flujo manual, sin inferencias pagas:
 python3 -m unittest discover -s eval/revision_lotes -p test_recientes.py
 node eval/revision_lotes/pruebas_recientes_navegador.cjs
 ```
+
+
+Para corregir un resultado, usá **El análisis está mal** junto a la respuesta. El editor muestra primero las categorías sugeridas. Marcá `No corresponde` para quitar una clasificación incorrecta, o elegí una categoría en `Agregar una categoría que falta` y marcala `Confirmado`. Revisá la decisión del reclamo, calidad y ámbito; después usá `Guardar corrección y seguir`. La tarjeta muestra la corrección guardada por separado del análisis original. No vuelve a llamar a la API.
