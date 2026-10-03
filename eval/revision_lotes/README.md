@@ -155,3 +155,34 @@ node eval/revision_lotes/pruebas_reanalizar.cjs
 ```
 
 `pruebas_interfaz.cjs` verifica el guardado, importación, rechazo por interior y pedidos de fotos complementarias en un navegador aislado. Nunca uses los guardados reales del usuario como datos de prueba.
+
+
+## Bandeja de fotos recientes y análisis manual
+
+La mesa de revisión muestra miniaturas y filtros de pendientes, fotos sin analizar, revisadas y todas. La búsqueda admite el identificador neutro o la fecha. Podés navegar con las flechas del teclado cuando el foco no está en un formulario. En celular, la bandeja se desplaza horizontalmente.
+
+Prepará una carpeta nueva desde un archivo SQLite privado que contenga `message_history(photo_path, created_at)`. El preparador abre la base en lectura, comprueba que cada foto esté dentro de la carpeta permitida, elimina duplicados por bytes y puede excluir las huellas del lote anterior. Conserva la fecha de recepción, que no demuestra cuándo se tomó la foto. Las fotos recientes se destinan a desarrollo; no reemplazan la partición reservada del conjunto anterior.
+
+```sh
+python3 eval/revision_lotes/preparar_recientes.py \
+  --db /ruta/privada/archivo.sqlite \
+  --fotos /ruta/privada/fotos \
+  --destino /ruta/privada/bandeja-nueva \
+  --limite 50 --dias 14 \
+  --excluir-manifest /ruta/privada/lote-anterior/entrega/manifest.json
+```
+
+La preparación no hace inferencias. Las rutas originales solo se incluyen en `manifest-privado.json`. Conservá toda la carpeta fuera de git. Las imágenes enviadas se normalizan con orientación EXIF, hasta 2048 píxeles, sin metadatos EXIF.
+
+Agregá `analisis/reanalisis-config.json` con la configuración individual documentada arriba y `python`, la ruta del intérprete. Iniciá `node eval/revision_lotes/reanalizar.cjs BASE`. La página de la bandeja está en la raíz local del servicio, detrás de su token. No publiques ese token ni expongas el servicio. Abrir o navegar no envía fotos: solamente el botón Analizar registra un pedido.
+
+El primer resultado se guarda en `analisis/R####-alto.json` con su huella; sigue disponible después de recargar. Los reanálisis conservan ese original y se revisan por separado. La aprobación requiere indicar calidad y ámbito; una respuesta parcial conserva su confirmación adicional. El archivo de exportación sigue siendo v2 y mantiene el historial. Exportá al terminar cada tanda, porque las decisiones pertenecen al navegador.
+
+El lote automático anterior conserva el modo Completo y su intervalo mínimo de 61 segundos, correspondiente al límite público de 60 pedidos por hora. La bandeja manual no lo reanuda. Tener más crédito no aumenta ese límite ni elimina las verificaciones que requiere cada foto.
+
+Pruebas del flujo manual, sin inferencias pagas:
+
+```sh
+python3 -m unittest discover -s eval/revision_lotes -p test_recientes.py
+node eval/revision_lotes/pruebas_recientes_navegador.cjs
+```
