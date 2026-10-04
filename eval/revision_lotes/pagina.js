@@ -92,7 +92,14 @@ function explicarRevisionPendiente(){
  for(const p of a.posibles||[])pendientes.set(p.key||p.codigo,p);
  for(const k of a.en_duda||[])if(!pendientes.has(k))pendientes.set(k,{key:k});
  const agregar=texto=>{const p=document.createElement('p');p.textContent=texto;box.append(p);};
- for(const k of limites)if(motivos[k])agregar(motivos[k]);
+ const lectores=a.modelos||[],fallidos=lectores.filter(m=>m.ok===false),confirmados=(a.problemas||[]).map(p=>p.key||p.codigo);
+ const coincidentes=lectores.filter(m=>m.ok===true&&confirmados.length&&confirmados.every(k=>(m.categorias||[]).some(c=>(c.key||c.codigo)===k)));
+ for(const k of limites){
+  if(k==='etapa_fallida'&&fallidos.length){
+   agregar(fallidos.length===1?'Uno de los lectores automáticos no devolvió una respuesta válida.':fallidos.length+' lectores automáticos no devolvieron una respuesta válida.');
+   if(!pendientes.size&&coincidentes.length>=2)agregar(coincidentes.length+' lectores coinciden en los problemas confirmados. No hay hallazgos pendientes de confirmar. Podés revisar la foto y guardar tu decisión.');
+  }else if(motivos[k])agregar(motivos[k]);
+ }
  for(const [k,p] of pendientes)agregar('Sin confirmar: '+(p.nombre||cats[k]?.nombre||k)+'.'+(p.motivo?' '+p.motivo:''));
  if(!box.children.length&&a.analisis_estado!=='completo')agregar('La API devolvió una respuesta parcial sin detallar el motivo. Revisá la foto antes de decidir.');
  box.hidden=!box.children.length;
