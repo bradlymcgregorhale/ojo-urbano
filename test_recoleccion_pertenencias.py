@@ -45,6 +45,7 @@ class RecoleccionPertenenciasTest(unittest.TestCase):
         def llamar(m, mensajes, **kwargs):
             calls.append(m)
             self.assertEqual(mensajes[0]['content'], V._PROMPT_RECOLECCION_PERTENENCIAS)
+            self.assertEqual(kwargs['max_tokens'], 2000)
             r = respuestas.get(m, {})
             if isinstance(r, Exception):
                 raise r
@@ -64,6 +65,13 @@ class RecoleccionPertenenciasTest(unittest.TestCase):
 
     def claves(self, r):
         return {c['key'] for c in r['confirmadas']}
+
+    def test_pregunta_habitual_conserva_su_limite(self):
+        with patch.object(V, '_llamar', return_value=json.dumps({
+                'veredicto': 'identificado', 'que_es': 'bolsas', 'ubicacion': 'cordón'})) as llamar:
+            V._pregunta_abierta(Image.new('RGB', (20, 20)), ['m1'])
+        self.assertEqual(llamar.call_args.kwargs['max_tokens'], 400)
+        self.assertEqual(llamar.call_args.args[1][0]['content'], V._PROMPT_PREGUNTA_ABIERTA)
 
     def test_carton_y_mantas_en_uso_no_confirman(self):
         r, calls = self.correr({m: lectura('ausente', objeto=None,

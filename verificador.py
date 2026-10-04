@@ -1758,7 +1758,8 @@ def _pregunta_abierta(img, modelos, *, descarte_independiente=False):
                 {"type": "text", "text": "La foto:"},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ]},
-        ], max_tokens=400, etapa="pregunta_abierta")
+        ], max_tokens=2000 if descarte_independiente else 400,
+           etapa="pregunta_abierta")
         v = _extraer_json(contenido)
         veredicto = str(v.get("veredicto", "")).strip().lower()
         que_es = _texto_limpio(v.get("que_es"), EVID_MAX)
