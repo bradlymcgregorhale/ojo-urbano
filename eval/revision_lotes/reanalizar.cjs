@@ -105,6 +105,10 @@ function pagina(id){
     if(build.status!==0)throw Error('No se pudo actualizar la página de revisión.');
     const html=fs.readFileSync(path.join(base,'entrega/revision.html'),'utf8');
     const D=JSON.parse(html.match(/id="datos">(.*?)<\/script>/s)[1]);
+    D.originales=structuredClone(D.resultados);
+    for(const a of ledger.intentos.filter(a=>a.estado==='listo')){
+     const v=intento(a.id);D.resultados[a.foto]={respuesta:v.resultado,huella:a.huella,fecha:a.fecha,intento:a.id};
+    }
     D.fotos=D.fotos.map(row=>({...row,archivo:'/'+config.token+'/foto/'+row.foto,entrada_api:'/'+config.token+'/entrada/'+row.foto}));
     return respond(200,html.replace(/(id="datos">).*?(<\/script>)/s,(_,start,end)=>start+JSON.stringify(D).replaceAll('<','\\u003c')+end),'text/html');
    }
