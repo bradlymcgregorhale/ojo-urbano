@@ -80,7 +80,7 @@ function mostrarAvanzado(){
  $('opciones-avanzadas').setAttribute('aria-expanded',String(advanced));
  $('lista-simple').hidden=advanced;$('guardar-simple').hidden=advanced;
 }
-$('opciones-avanzadas').onclick=()=>{advanced=!advanced;mostrarAvanzado();};
+$('opciones-avanzadas').onclick=()=>{advanced=!advanced;mostrarAvanzado();if(draft)fillExtra();};
 const normalizarBusqueda=s=>s.toLocaleLowerCase('es-AR').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 function clavesSimples(){const a=original(state.actual);return [...new Set([...(a?.problemas||[]),...(a?.posibles||[]),...(a?.elementos_detectados||[])].map(x=>x.key||x.codigo).concat(a?.en_duda||[],[...categoriasAgregadas],keys.filter(k=>['confirmado','posible'].includes(draft?.categorias[k]))))].filter(k=>keys.includes(k));}
 function decisionSimple(){if(keys.some(k=>!presence.has(k)&&draft.categorias[k]==='confirmado'))return'aceptar';if(clavesSimples().some(k=>!presence.has(k)&&['posible','sin_revisar'].includes(draft.categorias[k])))return'revision';return'rechazar';}
@@ -160,7 +160,20 @@ function scope(value){
 function fillExtra(){
  const tech=technical(draft);$('revision-tecnica').hidden=!tech;
  $('revision-tecnica-texto').textContent=tech?(draft.revision_tecnica==='contexto'?'Falta contexto: hace falta una foto más abierta que ubique el problema en la vía pública.':'La calidad no alcanza'+(draft.motivo_calidad?' ('+motiveNames[draft.motivo_calidad]+')':'')+': hace falta otra foto. No es que el problema no exista.'):'';
- $('prioridad-humana').hidden=tech||excluded(draft);
+ const candidatos=keys.filter(k=>!presence.has(k)&&draft.categorias[k]==='confirmado');
+ $('prioridad-humana').hidden=tech||excluded(draft)||(!advanced&&candidatos.length<2);
+ if(!advanced)$('editor').insertBefore($('prioridad-humana'),$('lista-simple'));
+ else $('revision-avanzada').append($('prioridad-humana'));
+ const principal=original(state.actual)?.problema_principal;
+ const elegido=principal?.estado==='seleccionado'&&original(state.actual)?.problemas?.some(c=>c.key===principal.key)?principal.key:null;
+ const humano=draft.principal_humano;
+ $('principal-original').textContent=humano&&humano!=='sin_revisar'?'Tu prioridad: '+(humano==='indeterminado'?'Sin determinar':cats[humano]?.nombre||humano):elegido?'Problema principal del análisis: '+(cats[elegido]?.nombre||elegido):'Problema principal: sin determinar';
+ const a=original(state.actual),texto=a?.descripcion||'';
+ const origenes=(a?.modelos||[]).filter(v=>v.ok&&typeof v.descripcion==='string'&&(v.descripcion===texto||(texto.length>40&&/[.!?]$/.test(texto)&&v.descripcion.startsWith(texto+' '))));
+ const omitido=elegido&&origenes.length&&!origenes.some(v=>v.categorias?.some(c=>c.key===elegido));
+ const evidencia=(a?.modelos||[]).filter(v=>v.ok).flatMap(v=>(v.categorias||[]).filter(c=>c.key===elegido&&typeof c.evidencia==='string').map(c=>c.evidencia));
+ $('descripcion-aviso').hidden=!omitido;
+ $('descripcion-aviso').textContent=omitido?'La descripción de la API omite el problema principal. Los lectores que lo reconocieron informaron: '+[...new Set(evidencia)].join('; ')+'.':'';
  const select=$('principal-humano');select.replaceChildren(option('sin_revisar','Sin revisar'),option('indeterminado','No se distingue una prioridad'));
  for(const k of keys)if(!presence.has(k)&&draft.categorias[k]==='confirmado')select.append(option(k,cats[k].nombre));
  select.value=draft.principal_humano||'sin_revisar';
@@ -192,6 +205,7 @@ $('guardar-prioridad').onclick=()=>{
  draft.principal_humano=$('principal-humano').value;draft.fecha=stamp();
  draft.historial.push({accion:'Revisión de prioridad sin aprobar categorías',fecha:draft.fecha});
  state.revisiones[state.actual]=structuredClone(draft);
+ fillExtra();
  if(save())$('mensaje').textContent='Prioridad guardada. No se aprobaron ni cambiaron las categorías.';else $('mensaje').textContent='No se pudo guardar la prioridad. Exportá una copia antes de seguir.';
 };
 $('ambito').onchange=()=>scope($('ambito').value);$('interior').onclick=()=>{scope('interior');finish('corregido');};$('aprobar').onclick=()=>finish('aprobado');$('aprobar-publica').onclick=()=>{scope('via_publica');finish('aprobado');};$('editar').onclick=()=>{$('editor').hidden=false;fillEditor();$('simple-start').hidden=true;$('editor').scrollIntoView({block:'start',behavior:'smooth'});};$('guardar').onclick=()=>finish('corregido');$('decision').onchange=()=>{draft.decision=$('decision').value;checkpoint('Cambio de decisión');};$('parcial').onchange=()=>{draft.parcial_revisada=$('parcial').checked;checkpoint('Revisión de respuesta parcial');};for(const[id,key]of [['nota','nota'],['explicacion','explicacion']])$(id).oninput=()=>{draft[key]=$(id).value;checkpoint('Cambio de texto');};

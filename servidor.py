@@ -1066,6 +1066,7 @@ def _publica(r):
     pub['problema_principal'] = prioridad.seleccionar(
         pub, veri.get('verificadores') or [],
         comparacion=prioridad.desde_guardada(veri))
+    prioridad.ajustar_descripcion(pub, veri.get('verificadores') or [])
     pub['hay_problema'] = bool(pub.get('problemas'))
     pub['hay_reclamo'] = bool(pub.get('problemas')) or bool(pub.get('categorias_contexto'))
     pub['conclusion'] = _conclusion(pub)
