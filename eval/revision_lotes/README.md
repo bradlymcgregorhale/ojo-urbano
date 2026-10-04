@@ -188,4 +188,8 @@ node eval/revision_lotes/pruebas_recientes_navegador.cjs
 ```
 
 
-Para corregir un resultado, usá **El análisis está mal** junto a la respuesta. El editor muestra primero las categorías sugeridas. Marcá `No corresponde` para quitar una clasificación incorrecta, o elegí una categoría en `Agregar una categoría que falta` y marcala `Confirmado`. Revisá la decisión del reclamo, calidad y ámbito; después usá `Guardar corrección y seguir`. La tarjeta muestra la corrección guardada por separado del análisis original. No vuelve a llamar a la API.
+La revisión principal tiene dos acciones: **Está bien** y **Corregir**. Confirmar indica expresamente que la foto se puede evaluar y muestra una situación en la vía pública. Una respuesta parcial sigue requiriendo una confirmación adicional visible.
+
+Para corregir, usá **Quitar** junto a lo que no se ve. Buscá un problema faltante por su nombre y agregalo. La decisión del reclamo se deriva de esos cambios; no requiere otro selector. La nota es opcional y los materiales no revisados quedan como `sin_revisar`. Al guardar, la pantalla identifica tu corrección por separado de la respuesta original. El análisis no se vuelve a ejecutar.
+
+**Interior o foto insuficiente** abre las alternativas de interior, falta de entorno o falta de detalle. Estos pedidos no convierten las categorías en negativos. **Opciones avanzadas** conserva los controles de ámbito, calidad, materiales, prioridad y explicación para una revisión detallada, junto con el formato de exportación v2 y su historial.

@@ -2,6 +2,8 @@
 'use strict';
 const {crearServicio}=require('./reanalizar.cjs'),fs=require('fs'),path=require('path'),os=require('os'),crypto=require('crypto'),assert=require('assert'),{spawnSync}=require('child_process');
 const pp=require(process.env.OJO_PUPPETEER||'puppeteer'),sha=b=>crypto.createHash('sha256').update(b).digest('hex');
+
+async function paginaAvanzada(context){const page=await context.newPage();await page.evaluateOnNewDocument(()=>document.addEventListener('DOMContentLoaded',()=>document.getElementById('opciones-avanzadas')?.click()));return page;}
 (async()=>{
  const base=fs.mkdtempSync(path.join(os.tmpdir(),'ojo-reanalisis-browser-')),a=path.join(base,'analisis'),e=path.join(base,'entrega');fs.mkdirSync(a);fs.mkdirSync(e);
  const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=','base64');fs.writeFileSync(path.join(e,'foto.jpg'),bytes);
@@ -13,11 +15,11 @@ const pp=require(process.env.OJO_PUPPETEER||'puppeteer'),sha=b=>crypto.createHas
  await new Promise(r=>s.server.listen(0,'127.0.0.1',r));cfg.puerto=s.server.address().port;fs.writeFileSync(path.join(a,'reanalisis-config.json'),JSON.stringify(cfg));
  const build=spawnSync(process.env.OJO_PYTHON||'python3',[path.join(__dirname,'generar.py'),base],{encoding:'utf8'});assert.equal(build.status,0,build.stderr);
  const b=await pp.launch({headless:true,protocolTimeout:15000});try{
-  console.log('navegador iniciado');const page=await b.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('file://'+path.join(e,'revision.html'));
+  console.log('navegador iniciado');const page=await paginaAvanzada(b),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('file://'+path.join(e,'revision.html'));
   console.log('página cargada');await page.click('#aprobar-publica');const saved=await page.evaluate(()=>localStorage.getItem(Object.keys(localStorage).find(k=>k.startsWith('ojo-lote-v2:'))));
   console.log('esperando servicio',await page.$eval('#reanalisar-estado',e=>e.textContent));await page.waitForFunction(()=>!document.getElementById('reanalisar-foto').disabled,{polling:100,timeout:5000});assert((await page.$eval('#reanalisar-ayuda',e=>e.textContent)).includes('Reservas: USD 1.0000'));await page.click('#reanalisar-foto');
   console.log('pedido enviado');await page.waitForSelector('#reanalisar-intentos a',{timeout:15000});const link=await page.$eval('#reanalisar-intentos a',e=>e.href);
-  console.log('resultado disponible');const next=await b.newPage();next.on('pageerror',e=>errors.push(e.message));await next.goto(link);assert.equal(await next.$eval('#descripcion-original',e=>e.textContent),'Respuesta nueva $& <b>texto</b>');assert((await next.$eval('#comparacion-resumen',e=>e.textContent)).includes('Recolección'));
+  console.log('resultado disponible');const next=await paginaAvanzada(b);next.on('pageerror',e=>errors.push(e.message));await next.goto(link);assert.equal(await next.$eval('#descripcion-original',e=>e.textContent),'Respuesta nueva $& <b>texto</b>');assert((await next.$eval('#comparacion-resumen',e=>e.textContent)).includes('Recolección'));
   await next.click('#aprobar-publica');const newSaved=await next.evaluate(()=>JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k=>k.startsWith('ojo-lote-v2:')))));assert.notEqual(newSaved.conjunto,JSON.parse(saved).conjunto);assert.equal(newSaved.revisiones.H0001.categorias.retiro_poda,'confirmado');
   assert.equal(await page.evaluate(()=>localStorage.getItem(Object.keys(localStorage).find(k=>k.startsWith('ojo-lote-v2:')))),saved);
   await page.bringToFront();await page.reload();console.log('esperando servicio',await page.$eval('#reanalisar-estado',e=>e.textContent));await page.waitForFunction(()=>!document.getElementById('reanalisar-foto').disabled,{polling:100,timeout:5000});await page.click('#reanalisar-foto');await new Promise(r=>setTimeout(r,100));assert.equal(calls,1);
