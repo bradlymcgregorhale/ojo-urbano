@@ -91,3 +91,20 @@ Ciudad 1641314335507, "Buzón eléctrico en mal estado o abandonado". Ese códig
 queda en `categorias.json` como metadato interno (`prestacion`); la API pública
 sigue publicando solo `key` y `nombre`. La categoría no tiene clase en el modelo
 local: se confirma con dos lectores, como las demás sin voto local.
+
+
+`dirigidos/recoleccion_pertenencias.txt` se usa cuando la primera pasada confirma
+`situacion_calle` y propone `recoleccion`. Separa residuos descartados de cartón,
+textiles u otros objetos usados por una persona. La confirmación de recolección
+exige dos lectores distintos que identifiquen un descarte independiente, con
+objeto, ubicación y evidencia. Datos incompletos o una lectura incierta dejan la
+categoría pendiente. Dos lecturas que solo ven pertenencias retiran esa propuesta.
+Esta auditoría reemplaza la repregunta de recolección marginal en esas escenas;
+si la recolección ya tenía consenso, agrega esa comprobación. No se activa en
+escenas sin una persona confirmada. No modifica el reconocimiento de la persona.
+
+La prueba `test_recoleccion_pertenencias.py`, incluida en `pruebas.py`, reproduce
+la confusión y protege escenas mixtas, recolección sin persona, modos con dos
+lectores, fallos y datos incompletos, sin inferencias ni pesos. Los cambios de este
+prompt también requieren una comprobación con fotos de desarrollo; las pruebas
+sintéticas no miden exactitud visual.
