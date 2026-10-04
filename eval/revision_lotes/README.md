@@ -217,3 +217,11 @@ node eval/revision_lotes/pruebas_cloudflare_navegador.cjs
 ```
 
 La primera prueba verifica JWT, cuentas, rutas, origen de POST y eliminación del token local. La segunda ejecuta analizar, confirmar, reanalizar, corregir y recargar en un navegador aislado, con respuestas sintéticas. Su adaptador de loopback representa las cabeceras del terminador TLS; no reemplaza la comprobación del acceso público real.
+
+
+Las respuestas parciales muestran el motivo del aviso: una comprobación que no
+pudo completarse, falta de verificación o hallazgos sin resolver. Los posibles
+problemas aparecen como "Sin confirmar", con el motivo informado por la API.
+La casilla "Revisé la foto y puedo decidir con la información disponible" indica
+una decisión humana; no completa ni cambia el análisis automático. Una respuesta
+completa no exige esa casilla, aunque conserve posibilidades sin corroborar.
