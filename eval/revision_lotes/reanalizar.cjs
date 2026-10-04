@@ -129,10 +129,36 @@ function pagina(id){
  }
  return {server,estado,iniciar,pagina,intento};
 }
-async function transportePublico(config){
- const pp=require(config.puppeteer),browser=await pp.launch({headless:true}),page=await browser.newPage();await page.goto(config.url,{waitUntil:'domcontentloaded'});
- async function fetchPublic(method,url,raw){return page.evaluate(async({method,url,raw})=>{const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);try{const options={method,signal:controller.signal};if(raw){const f=new FormData();f.append('file',new File([Uint8Array.from(atob(raw),c=>c.charCodeAt(0))],'foto.jpg',{type:'image/jpeg'}));f.append('modo','alto');f.append('contexto','');f.append('verificar','1');options.body=f;}const r=await fetch(url,options),d=await r.json();if(!r.ok)throw Error('HTTP '+r.status+': '+(d.detail||'Error del servicio'));return d;}finally{clearTimeout(timer);}}, {method,url,raw:raw?.toString('base64')});}
- return {cerrar:()=>browser.close(),version:async()=>{const s=await fetchPublic('GET','./salud/');return s.modos_analisis.find(m=>m.modo==='alto'&&m.disponible)?.modo_version;},enviar:raw=>fetchPublic('POST','./trabajos/',raw),consultar:id=>fetchPublic('GET','./trabajos/?id='+encodeURIComponent(id))};
+async function transportePublico(config,pp=require(config.puppeteer)){
+ let browser,page,cerrado=false,conexion;
+ async function conectar(renovar=false){
+  if(cerrado)throw Error('La conexión está cerrada.');
+  if(conexion)return conexion;
+  conexion=(async()=>{
+   if(!browser?.isConnected())browser=await pp.launch({headless:true});
+   if(renovar||!page||page.isClosed()){
+    if(page&&!page.isClosed())await page.close().catch(()=>{});
+    page=await browser.newPage();
+    try{await page.goto(config.url,{waitUntil:'domcontentloaded'});}
+    catch(e){await page.close().catch(()=>{});page=null;throw e;}
+   }
+  })();
+  try{await conexion;}finally{conexion=null;}
+ }
+ async function fetchPublic(method,url,raw){
+  for(let intento=0;intento<2;intento++){
+   try{
+    await conectar(intento>0);
+    return await page.evaluate(async({method,url,raw})=>{const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);try{const options={method,signal:controller.signal};if(raw){const f=new FormData();f.append('file',new File([Uint8Array.from(atob(raw),c=>c.charCodeAt(0))],'foto.jpg',{type:'image/jpeg'}));f.append('modo','alto');f.append('contexto','');f.append('verificar','1');options.body=f;}const r=await fetch(url,options),d=await r.json();if(!r.ok)throw Error('HTTP '+r.status+': '+(d.detail||'Error del servicio'));return d;}finally{clearTimeout(timer);}}, {method,url,raw:raw?.toString('base64')});
+   }catch(e){
+    // Solo las consultas se repiten: un POST puede haberse recibido sin respuesta.
+    const sesionPerdida=/detached|Execution context|Target closed|Session closed|Connection closed|Protocol error/i.test(e.message);
+    if(method!=='GET'||intento||!sesionPerdida)throw e;
+   }
+  }
+ }
+ await conectar();
+ return {cerrar:async()=>{cerrado=true;await browser?.close();},version:async()=>{const s=await fetchPublic('GET','./salud/');return s.modos_analisis.find(m=>m.modo==='alto'&&m.disponible)?.modo_version;},enviar:raw=>fetchPublic('POST','./trabajos/',raw),consultar:id=>fetchPublic('GET','./trabajos/?id='+encodeURIComponent(id))};
 }
 module.exports={crearServicio,transportePublico};
 if(require.main===module){(async()=>{const base=path.resolve(process.argv[2]||''),config=json(path.join(base,'analisis/reanalisis-config.json')),transport=await transportePublico(config),service=crearServicio(base,config,transport);service.server.listen(config.puerto,'127.0.0.1',()=>console.log('Reanálisis local disponible.'));const close=()=>service.server.close(async()=>{await transport.cerrar();process.exit(0)});process.on('SIGTERM',close);process.on('SIGINT',close);})().catch(e=>{console.error(e.message);process.exitCode=1});}

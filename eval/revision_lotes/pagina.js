@@ -231,7 +231,9 @@ $('reanalisar-ayuda').textContent='Modo Completo · Versión '+v.modo_version+'.
    const p=document.createElement('p');p.textContent=a.inicio+' · '+a.estado+(a.modo_version?' · versión '+a.modo_version:'')+(a.cache?' · Respuesta de caché':'')+(a.error?' · '+a.error:'')+' ';
    if(a.url){const ver=document.createElement('button');ver.type='button';ver.textContent=intentoVisible?.intento===a.id?'Mostrando abajo':'Ver acá';ver.disabled=intentoVisible?.intento===a.id;ver.onclick=()=>mostrarIntento(a.id);p.append(ver);const link=document.createElement('a');link.href=new URL(a.url,D.reanalisis.url).href;link.target='_blank';link.rel='noopener';link.textContent='Abrir en otra pestaña';p.append(link);}box.append(p);
   }
-  $('reanalisar-estado').textContent=v.bloqueo||(v.reserva_incierta_usd?'Hay consumo incierto pendiente de conciliación.':v.activo?'Hay un pedido en curso. Podés seguir revisando otras fotos.':sinPresupuesto?'Se alcanzó el tope del reanálisis.':'Listo para reanalizar.');
+  const ultimo=v.intentos.filter(a=>a.foto===id).at(-1);
+  const falloPrevio=ultimo?.estado==='no_enviado';
+  $('reanalisar-estado').textContent=v.bloqueo||(v.reserva_incierta_usd?'Hay consumo incierto pendiente de conciliación.':v.activo?'Hay un pedido en curso. Podés seguir revisando otras fotos.':sinPresupuesto?'Se alcanzó el tope del reanálisis.':falloPrevio?'La foto no se envió. Podés volver a pulsar Analizar. Detalle: '+ultimo.error:'Listo para analizar esta foto.');
  }catch(e){$('reanalisar-estado').textContent='El servicio local no responde. No se enviará otra foto automáticamente. '+e.message;$('reanalisar-foto').disabled=true;}
  finally{consultaReanalisis=false;}
 }
