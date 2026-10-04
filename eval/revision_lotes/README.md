@@ -140,7 +140,9 @@ python3 -m unittest discover -s eval/revision_lotes -p 'test_regresiones.py' -q
 
 `reanalizar.cjs` mantiene un servicio en `127.0.0.1`. Usa el navegador para enviar una foto a la API pública en modo Completo, con nombre neutro y sin la revisión humana en el pedido. Requiere `analisis/reanalisis-config.json` privado con `url`, `puppeteer`, `puerto`, un `token` aleatorio de al menos 48 caracteres hexadecimales, `modo_version` comprobada después del despliegue y `tope_usd` mayor a cero y menor a cinco.
 
-El botón del informe conserva el original y abre otra página para comparar y revisar la nueva respuesta. Cada intento usa otro identificador de conjunto para que sus decisiones no reemplacen las anteriores. La exportación incluye las huellas de ambas respuestas y de la foto. La aprobación no cambia la API ni entrena automáticamente.
+La bandeja muestra automáticamente el último intento terminado como resultado actual y deja la foto pendiente de confirmar o corregir. Respalda la revisión anterior en el historial del navegador antes de reiniciarla; la exportación incluye `historial_revisiones`. Los JSON de los intentos y del primer análisis permanecen intactos. Cada clic deliberado después de terminar crea otro pedido; una respuesta incierta conserva su identificador y no se reenvía sola. Un intento fallido conserva el último resultado terminado y su revisión.
+
+Desde Consumo e historial también podés abrir una comparación independiente del intento. Esa página usa otro identificador de conjunto; sus decisiones quedan separadas. La aprobación no cambia la API ni entrena automáticamente. La revisión actual se identifica con la huella de su intento: no la relaciones con el JSON del primer análisis.
 
 Antes de enviar, el servicio comprueba las huellas, la versión desplegada, el presupuesto y que no haya otro intento pendiente. Reserva un dólar por pedido, cuenta el costo conocido y detiene nuevos envíos si falta información de consumo. Una respuesta perdida no provoca otro POST. Un trabajo con identificador puede recuperarse con consultas al reiniciar. Si no hay identificador, hay que conciliarlo antes de continuar. El importe reservado no es un cargo observado.
 
@@ -176,7 +178,7 @@ La preparación no hace inferencias. Las rutas originales solo se incluyen en `m
 
 Agregá `analisis/reanalisis-config.json` con la configuración individual documentada arriba y `python`, la ruta del intérprete. Iniciá `node eval/revision_lotes/reanalizar.cjs BASE`. La página de la bandeja está en la raíz local del servicio, detrás de su token. No publiques ese token ni expongas el servicio. Abrir o navegar no envía fotos: solamente el botón Analizar registra un pedido.
 
-El primer resultado se guarda en `analisis/R####-alto.json` con su huella; sigue disponible después de recargar. Los reanálisis conservan ese original y se revisan por separado. La aprobación requiere indicar calidad y ámbito; una respuesta parcial conserva su confirmación adicional. El archivo de exportación sigue siendo v2 y mantiene el historial. Exportá al terminar cada tanda, porque las decisiones pertenecen al navegador.
+El primer resultado se guarda en `analisis/R####-alto.json` con su huella; sigue disponible después de recargar. Los reanálisis conservan ese original, pasan a ser el resultado visible y reinician la revisión de la foto. Las decisiones anteriores quedan respaldadas en el historial. La aprobación requiere indicar calidad y ámbito; una respuesta parcial conserva su confirmación adicional. El archivo de exportación sigue siendo v2 y mantiene el historial. Exportá al terminar cada tanda, porque las decisiones pertenecen al navegador.
 
 El lote automático anterior conserva el modo Completo y su intervalo mínimo de 61 segundos, correspondiente al límite público de 60 pedidos por hora. La bandeja manual no lo reanuda. Tener más crédito no aumenta ese límite ni elimina las verificaciones que requiere cada foto.
 
