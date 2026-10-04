@@ -108,3 +108,13 @@ la confusión y protege escenas mixtas, recolección sin persona, modos con dos
 lectores, fallos y datos incompletos, sin inferencias ni pesos. Los cambios de este
 prompt también requieren una comprobación con fotos de desarrollo; las pruebas
 sintéticas no miden exactitud visual.
+
+`dirigidos/voluminosos_pertenencias.txt` aplica la misma exigencia a
+`retiro_muebles` cuando `situacion_calle` está confirmada. Dos lectores deben
+identificar un objeto voluminoso descartado aparte de la persona, su cama y sus
+pertenencias, con identidad, ubicación y evidencia visible de descarte. Un objeto
+cubierto sin identidad distinguible queda sin confirmar. La ubicación en la
+vereda no demuestra abandono. Esta auditoría se realiza aun cuando el retiro ya
+tenía consenso; si falta un lector o no alcanza la evidencia, no publica el retiro.
+No agrega pasadas a escenas sin persona confirmada. Las pruebas del mismo módulo
+protegen también escenas mixtas, ambos retiros simultáneos y errores de lectura.

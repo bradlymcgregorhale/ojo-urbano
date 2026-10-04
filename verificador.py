@@ -80,6 +80,7 @@ from prompts import (
     _CONTRASTE_CONTENEDOR_SECOS,
     _PROMPT_PREGUNTA_ABIERTA,
     _PROMPT_RECOLECCION_PERTENENCIAS,
+    _PROMPT_VOLUMINOSOS_PERTENENCIAS,
     _PROMPT_SEGUNDA_MIRADA_VOLUMINOSO,
     _PROMPT_SEGUNDA_MIRADA_DESBORDE,
     _CONTRASTE_CUERPO_DESTRUIDO,
@@ -1736,7 +1737,8 @@ def _objeto_de_evidencia(texto):
     return limpio if len(limpio) >= 8 else None
 
 
-def _pregunta_abierta(img, modelos, *, descarte_independiente=False):
+def _pregunta_abierta(img, modelos, *, descarte_independiente=False,
+                      categoria_descarte="recoleccion"):
     """Pregunta ABIERTA: qué hay en el piso, sin nombrar nada.
 
     La repregunta dirigida nombra el objeto, y eso se midió sugestionable: en
@@ -1748,10 +1750,13 @@ def _pregunta_abierta(img, modelos, *, descarte_independiente=False):
     se parten.
     """
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+    prompt_pertenencias = (_PROMPT_VOLUMINOSOS_PERTENENCIAS
+                          if categoria_descarte == "retiro_muebles"
+                          else _PROMPT_RECOLECCION_PERTENENCIAS)
 
     def _uno(modelo):
         contenido = _llamar(modelo, [
-            {"role": "system", "content": (_PROMPT_RECOLECCION_PERTENENCIAS
+            {"role": "system", "content": (prompt_pertenencias
                                           if descarte_independiente
                                           else _PROMPT_PREGUNTA_ABIERTA)},
             {"role": "user", "content": [
@@ -3241,15 +3246,15 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # el "ausente" que bloquea solo puede venir del único repreguntado y el
     # chequeo cruzado deja de ser independiente. La repregunta se ejecuta solo
     # con la configuración medida (hallazgo de la revisión de Opus).
-    recoleccion_con_persona = (
-        "situacion_calle" in confirmadas
-        and "recoleccion" in (confirmadas | disputadas))
-    if recoleccion_con_persona:
+    retiros_con_persona = ({"recoleccion", "retiro_muebles"}
+                          & (confirmadas | disputadas)
+                          if "situacion_calle" in confirmadas else set())
+    for retiro in retiros_con_persona:
         # Falta de jurado, cupo o respuesta nunca deja pasar el consenso previo.
-        confirmadas.discard("recoleccion")
-        disputadas.add("recoleccion")
-        adjudicadas_dirigidas.add("recoleccion")
-    if _hay_cruzada or recoleccion_con_persona:
+        confirmadas.discard(retiro)
+        disputadas.add(retiro)
+        adjudicadas_dirigidas.add(retiro)
+    if _hay_cruzada or retiros_con_persona:
         pendientes = []
         # Los dos reclamos de CAMIÓN: el voluminoso y los escombros. Da igual
         # que el reclamo haya quedado confirmado (un VLM más el modelo local
@@ -3263,7 +3268,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         # ve ninguna bolsa y lo que hay parece poda. La regla es la misma: si
         # lo vio uno solo, se le pregunta a los otros.
         for _k in ("retiro_muebles", "retiro_escombros", "recoleccion"):
-            if _k == "recoleccion" and recoleccion_con_persona:
+            if _k in retiros_con_persona:
                 # También audita el consenso inicial y los modos de dos lectores.
                 # Reutiliza la repregunta marginal: no agrega otra pasada.
                 pendientes.insert(0, (_k, "", None, False))
@@ -3327,7 +3332,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
 
         pendientes = [p for p in pendientes if _hay_jurado(p[2])]
         repreguntas = []
-        cupo = max(1, REPREGUNTA_MAX) if recoleccion_con_persona else REPREGUNTA_MAX
+        cupo = max(len(retiros_con_persona), REPREGUNTA_MAX)
         for k, objeto, votante, con_estado in pendientes[:cupo]:
             # si el reclamo ya estaba confirmado, la pregunta lo VALIDA: si
             # ningún otro modelo ve el objeto, no se publica
@@ -3356,10 +3361,10 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             _esperado = _ESPERADO_ABIERTA.get(k)
             _incompat = _INCOMPATIBLE_ABIERTA.get(k)
             _abierta = _esperado is not None
-            audita_pertenencias = k == "recoleccion" and recoleccion_con_persona
-            if _abierta and audita_pertenencias:
+            audita_pertenencias = k in retiros_con_persona
+            if audita_pertenencias:
                 resultados, fallo_r = _pregunta_abierta(
-                    img, otros, descarte_independiente=True)
+                    img, otros, descarte_independiente=True, categoria_descarte=k)
                 con_estado = False
             elif _abierta:
                 resultados, fallo_r = _pregunta_abierta(img, otros)

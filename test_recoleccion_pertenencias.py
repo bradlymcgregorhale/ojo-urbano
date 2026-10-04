@@ -26,17 +26,22 @@ def lectura(estado, **cambios):
 
 
 class RecoleccionPertenenciasTest(unittest.TestCase):
-    def correr(self, respuestas, *, consenso=False, dos=False, persona=True, arbitro=False):
+    def correr(self, respuestas, *, consenso=False, dos=False, persona=True, arbitro=False, retiro="recoleccion",
+               ambos=False, figura=False):
         modelos = ['m1', 'm2'] if dos else ['m1', 'm2', 'm3']
         votos = {}
         for m in modelos:
             cats = []
-            if persona and (m != 'm3' or dos):
+            if persona and ((m == 'm2') if figura else (m != 'm3' or dos)):
                 cats.append({'key': 'situacion_calle', 'gravedad': 3,
                              'evidencia': 'persona durmiendo sobre cartón y frazada'})
-            if consenso or m == modelos[-1]:
-                cats.append({'key': 'recoleccion', 'gravedad': 2,
+            retiro_propuesto = (m != 'm2') if figura else (consenso or m == modelos[-1])
+            if retiro_propuesto:
+                cats.append({'key': retiro, 'gravedad': 2,
                              'evidencia': 'textiles plegados y cartón sobre la vereda'})
+            if ambos:
+                cats.append({'key': 'recoleccion', 'gravedad': 2,
+                             'evidencia': 'cartones y textiles junto a la persona'})
             votos[m] = {'modelo': m, 'ok': True, 'categorias': cats,
                         'sin_problema': False, 'foto_corresponde': None,
                         'categorias_contexto': [], 'descripcion': 'Cartones bajo la persona.'}
@@ -44,7 +49,12 @@ class RecoleccionPertenenciasTest(unittest.TestCase):
 
         def llamar(m, mensajes, **kwargs):
             calls.append(m)
-            self.assertEqual(mensajes[0]['content'], V._PROMPT_RECOLECCION_PERTENENCIAS)
+            self.assertIn(mensajes[0]['content'], (V._PROMPT_RECOLECCION_PERTENENCIAS,
+                                                   V._PROMPT_VOLUMINOSOS_PERTENENCIAS))
+            if not ambos:
+                self.assertEqual(mensajes[0]['content'],
+                                 V._PROMPT_VOLUMINOSOS_PERTENENCIAS if retiro == 'retiro_muebles'
+                                 else V._PROMPT_RECOLECCION_PERTENENCIAS)
             self.assertEqual(kwargs['max_tokens'], 2000)
             r = respuestas.get(m, {})
             if isinstance(r, Exception):
@@ -59,7 +69,7 @@ class RecoleccionPertenenciasTest(unittest.TestCase):
                 patch.object(V, '_verificar_uno', side_effect=lambda m, *a: copy.deepcopy(votos[m])), \
                 patch.object(V, '_llamar', side_effect=llamar), \
                 patch.object(V, '_arbitrar', return_value={'ok': True, 'decisiones': [
-                    {'key': 'recoleccion', 'veredicto': 'confirmar'}], 'descripcion': ''}):
+                    {'key': retiro, 'veredicto': 'confirmar'}], 'descripcion': ''}):
             r = V.verificar(Image.new('RGB', (20, 20)), CATS, local)
         return r, calls
 
@@ -124,6 +134,56 @@ class RecoleccionPertenenciasTest(unittest.TestCase):
             r, calls = self.correr({}, consenso=True)
         self.assertNotIn('recoleccion', self.claves(r))
         self.assertEqual(len(calls), 2)
+
+
+    def test_voluminoso_cubierto_no_se_confirma_por_consenso(self):
+        for dos in (False, True):
+            for estado in ('ausente', 'indeterminado'):
+                with self.subTest(dos=dos, estado=estado):
+                    r, calls = self.correr({m: lectura(estado, objeto=None,
+                        evidencia='figura humana acostada cubierta con una manta')
+                        for m in ('m1', 'm2')}, consenso=True, dos=dos,
+                        retiro='retiro_muebles', arbitro=True)
+                    self.assertEqual(self.claves(r), {'situacion_calle'})
+                    self.assertEqual(len(calls), 2)
+                    self.assertTrue(r['repreguntas'][0]['descarte_independiente'])
+
+    def test_dos_lectores_confunden_figura_y_otro_reconoce_persona(self):
+        r, calls = self.correr({m: lectura('ausente', objeto=None,
+            evidencia='persona cubierta por una manta, sin otro objeto descartado')
+            for m in ('m1', 'm2')}, figura=True, retiro='retiro_muebles', arbitro=True)
+        self.assertEqual(self.claves(r), {'situacion_calle'})
+        self.assertEqual(len(calls), 2)
+
+    def test_mueble_descartado_separado_conserva_escena_mixta(self):
+        r, calls = self.correr({m: lectura('visible', objeto='sillón roto',
+            ubicacion='al lado del contenedor, separado de la persona',
+            evidencia='sillón con patas rotas y relleno desprendido fuera del lugar de descanso')
+            for m in ('m1', 'm2')}, consenso=True, retiro='retiro_muebles')
+        self.assertEqual(self.claves(r), {'situacion_calle', 'retiro_muebles'})
+        self.assertEqual(len(calls), 2)
+
+    def test_voluminoso_sin_jurado_completo_no_se_confirma(self):
+        for segundo in ({}, RuntimeError('sin respuesta'), lectura('indeterminado'),
+                        lectura('visible', objeto=None), lectura('visible', evidencia=None)):
+            with self.subTest(segundo=segundo):
+                r, _ = self.correr({'m1': lectura('visible'), 'm2': segundo},
+                    consenso=True, retiro='retiro_muebles', arbitro=True)
+                self.assertNotIn('retiro_muebles', self.claves(r))
+                self.assertIn('situacion_calle', self.claves(r))
+
+    def test_voluminoso_sin_persona_conserva_consenso_sin_auditoria(self):
+        r, calls = self.correr({}, consenso=True, persona=False, retiro='retiro_muebles')
+        self.assertEqual(self.claves(r), {'retiro_muebles'})
+        self.assertEqual(calls, [])
+
+    def test_dos_retiros_no_saltan_auditoria_por_cupo(self):
+        with patch.object(V, 'REPREGUNTA_MAX', 0):
+            r, calls = self.correr({m: lectura('indeterminado') for m in ('m1', 'm2')},
+                consenso=True, retiro='retiro_muebles', ambos=True)
+        self.assertEqual(self.claves(r), {'situacion_calle'})
+        self.assertEqual(len(calls), 4)
+        self.assertEqual({p['key'] for p in r['repreguntas']}, {'retiro_muebles', 'recoleccion'})
 
 
 if __name__ == '__main__':

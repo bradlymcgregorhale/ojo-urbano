@@ -101,6 +101,7 @@ _CONTRASTE_CONTENEDOR_SECOS = cargar_prompt('dirigidos/contraste_contenedor_seco
 
 _PROMPT_PREGUNTA_ABIERTA = cargar_prompt('dirigidos/pregunta_abierta')
 _PROMPT_RECOLECCION_PERTENENCIAS = cargar_prompt('dirigidos/recoleccion_pertenencias')
+_PROMPT_VOLUMINOSOS_PERTENENCIAS = cargar_prompt('dirigidos/voluminosos_pertenencias')
 
 _PROMPT_SEGUNDA_MIRADA_VOLUMINOSO = cargar_prompt('segundas_miradas/voluminoso')
 
