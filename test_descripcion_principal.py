@@ -114,6 +114,24 @@ class DescripcionPrincipalTest(unittest.TestCase):
         self.assertEqual(final['posibles'][0]['verificacion_descarte_independiente'], 'sin_corroborar')
         self.assertEqual(r, antes)
 
+    @unittest.skipUnless("servidor" in sys.modules, "Publicación se prueba en pruebas.py sin cargar pesos")
+    def test_escombros_excluidos_describen_persona_sin_ocultar_fallo(self):
+        import servidor as S
+        pub, lectores = self.caso()
+        lectores[-1] = {'modelo': 'c', 'ok': False, 'categorias': [], 'descripcion': None}
+        r = {'problemas': [dict(pub['problemas'][0], fuentes=['a', 'b', 'modelo_local'])],
+            'posibles': [], 'en_duda': [], 'descripcion': 'Falta acuerdo sobre escombros. Otros hallazgos: Personas en situación de calle.',
+            'analisis_estado': 'parcial', 'analisis_limitaciones': ['etapa_fallida'],
+            'detalle': {'verificacion': {'activa': True, 'verificadores': lectores,
+                'escombros_excluidos_por_material': True}}}
+        final = S._publica(r)
+        self.assertNotIn('escombros', final['descripcion'])
+        self.assertIn('persona acostada', final['descripcion'])
+        self.assertEqual(final['analisis_estado'], 'parcial')
+        self.assertEqual(final['analisis_limitaciones'], ['etapa_fallida'])
+        self.assertIs(final['modelos'][-1]['ok'], False)
+        self.assertEqual(final['problemas'][0]['fuentes'], 3)
+
     def test_objeto_descartado_no_es_motivo_para_personas(self):
         pub, lectores = self.caso()
         for v in lectores:

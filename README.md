@@ -719,3 +719,11 @@ Las descripciones de los modelos forman parte de la respuesta y pueden transcrib
 ## Licencia
 
 [MIT](LICENSE)
+
+Cuando una persona está confirmada, una propuesta local de escombros no basta
+para mantener una duda después de dos revisiones de material visible incompatible.
+La exclusión exige revisores distintos, evidencia y ausencia de bolsas opacas
+y de una lectura de escombros visibles. Una lectura sin pila puede ser neutral.
+Fallas, contenido oculto, afirmación vecinal o conflicto conservan la revisión.
+La descripción respalda a la persona confirmada; los fallos técnicos siguen
+publicados aunque se haya resuelto la categoría de residuos.
