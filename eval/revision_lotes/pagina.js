@@ -244,7 +244,7 @@ $('reanalisar-ayuda').textContent='Modo Completo · Versión '+v.modo_version+'.
   if(id!==state.actual)return;
   for(const a of v.intentos.filter(a=>a.foto===id)){
    const p=document.createElement('p');p.textContent=a.inicio+' · '+a.estado+(a.modo_version?' · versión '+a.modo_version:'')+(a.cache?' · Respuesta de caché':'')+(a.error?' · '+a.error:'')+' ';
-   if(a.url){const ver=document.createElement('button');ver.type='button';ver.textContent=intentoVisible?.intento===a.id?'Mostrando abajo':'Ver acá';ver.disabled=intentoVisible?.intento===a.id;ver.onclick=()=>mostrarIntento(a.id);p.append(ver);const link=document.createElement('a');link.href=new URL(a.url,D.reanalisis.url).href;link.target='_blank';link.rel='noopener';link.textContent='Abrir en otra pestaña';p.append(link);}box.append(p);
+   if(a.url){const ver=document.createElement('button');ver.type='button';ver.textContent=intentoVisible?.intento===a.id?'Mostrando abajo':'Ver acá';ver.disabled=intentoVisible?.intento===a.id;ver.onclick=()=>mostrarIntento(a.id);p.append(ver);const link=document.createElement('a');link.href=new URL(a.url,new URL(D.reanalisis.url,location.href)).href;link.target='_blank';link.rel='noopener';link.textContent='Abrir en otra pestaña';p.append(link);}box.append(p);
   }
   const revisionesPrevias=JSON.parse(localStorage.getItem('ojo-historial-v1:'+D.conjunto)||'[]');
   for(const previa of revisionesPrevias.filter(x=>x.foto===id)){const p=document.createElement('p');p.textContent='Revisión anterior: '+previa.revision.estado+' · '+(previa.revision.fecha||previa.archivada_en)+'. Se conserva en la exportación del historial.';box.append(p);}

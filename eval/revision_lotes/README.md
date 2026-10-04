@@ -148,7 +148,7 @@ Antes de enviar, el servicio comprueba las huellas, la versión desplegada, el p
 
 Una conciliación externa puede registrar una cota documentada en `reserva_acotada_usd` cuando se conoce el único pedido fallido, sus límites y las tarifas aplicables. Esa reserva sigue descontándose del presupuesto y se muestra separada del consumo conocido. No se libera por el mero paso del tiempo ni convierte un costo desconocido en cero. La interfaz mantiene disponible el reanálisis mientras el consumo conocido, la reserva acotada y la reserva de USD 1 para el pedido nuevo no superen el tope, igual que el servicio local.
 
-La configuración y los intentos son privados. No publiques el token ni expongas este servicio mediante un túnel. El reanálisis no modifica `analisis/estado.json` ni reanuda la cola de fotos. Después de otro despliegue, actualizá la versión de la configuración y regenerá el HTML. Si se abrió desde otro equipo, el servicio loopback de este equipo no estará disponible.
+La configuración y los intentos son privados. No publiques el token ni expongas directamente este servicio mediante un túnel. Para acceso remoto, usá la puerta protegida documentada abajo. El reanálisis no modifica `analisis/estado.json` ni reanuda la cola de fotos. Después de otro despliegue, actualizá la versión de la configuración y regenerá el HTML. La página local usa loopback; para otro equipo, abrí la ruta publicada por la puerta protegida.
 
 Pruebas sin llamadas pagas:
 
@@ -176,7 +176,7 @@ python3 eval/revision_lotes/preparar_recientes.py \
 
 La preparación no hace inferencias. Las rutas originales solo se incluyen en `manifest-privado.json`. Conservá toda la carpeta fuera de git. Las imágenes enviadas se normalizan con orientación EXIF, hasta 2048 píxeles, sin metadatos EXIF.
 
-Agregá `analisis/reanalisis-config.json` con la configuración individual documentada arriba y `python`, la ruta del intérprete. Iniciá `node eval/revision_lotes/reanalizar.cjs BASE`. La página de la bandeja está en la raíz local del servicio, detrás de su token. No publiques ese token ni expongas el servicio. Abrir o navegar no envía fotos: solamente el botón Analizar registra un pedido.
+Agregá `analisis/reanalisis-config.json` con la configuración individual documentada arriba y `python`, la ruta del intérprete. Iniciá `node eval/revision_lotes/reanalizar.cjs BASE`. La página de la bandeja está en la raíz local del servicio, detrás de su token. No publiques ese token ni expongas directamente el servicio. Abrir o navegar no envía fotos: solamente el botón Analizar registra un pedido.
 
 El primer resultado se guarda en `analisis/R####-alto.json` con su huella; sigue disponible después de recargar. Los reanálisis conservan ese original, pasan a ser el resultado visible y reinician la revisión de la foto. Las decisiones anteriores quedan respaldadas en el historial. La aprobación requiere indicar calidad y ámbito; una respuesta parcial conserva su confirmación adicional. El archivo de exportación sigue siendo v2 y mantiene el historial. Exportá al terminar cada tanda, porque las decisiones pertenecen al navegador.
 
@@ -195,3 +195,25 @@ La revisión principal tiene dos acciones: **Está bien** y **Corregir**. Confir
 Para corregir, usá **Quitar** junto a lo que no se ve. Buscá un problema faltante por su nombre y agregalo. La decisión del reclamo se deriva de esos cambios; no requiere otro selector. La nota es opcional y los materiales no revisados quedan como `sin_revisar`. Al guardar, la pantalla identifica tu corrección por separado de la respuesta original. El análisis no se vuelve a ejecutar.
 
 **Interior o foto insuficiente** abre las alternativas de interior, falta de entorno o falta de detalle. Estos pedidos no convierten las categorías en negativos. **Opciones avanzadas** conserva los controles de ámbito, calidad, materiales, prioridad y explicación para una revisión detallada, junto con el formato de exportación v2 y su historial.
+
+
+## Acceso privado desde el celular por Cloudflare
+
+`cloudflare.cjs BASE` agrega una puerta en loopback delante del servicio local. La ruta del túnel debe llegar a esa puerta, dentro de un hostname protegido por Cloudflare Access. El servicio de reanálisis permanece en loopback y su token no se incluye en el enlace público ni en las respuestas de la puerta.
+
+La configuración privada `analisis/cloudflare-config.json` requiere `origin` (origen HTTPS del hostname), `path` (por ejemplo `/ojo`), `issuer` (equipo de Access), `audience` (aplicación de Access), `emails` (cuentas permitidas) y `puerto` (puerto local de la puerta). No publiques configuraciones personales ni credenciales del túnel. La puerta comprueba firma RSA, emisor, audiencia, vencimiento y correo del JWT de Access. No confía solamente en la cabecera de correo. Los POST requieren el origen HTTPS configurado y JSON; se permiten únicamente las rutas de la revisión.
+
+El HTML, el estado y los enlaces de los intentos usan la ruta pública relativa. Los enlaces del historial se resuelven contra el origen de la página, incluso cuando la base es relativa. El gateway no reenvía automáticamente un POST que perdió su respuesta.
+
+En pantallas de hasta 720 píxeles, los controles principales tienen al menos 44 píxeles de alto y los campos de texto usan 16 píxeles. La bandeja conserva las miniaturas horizontales y no desborda a 360 o 390 píxeles.
+
+El túnel, la puerta y el servicio pueden iniciarse como agentes de sesión de macOS. El equipo anfitrión tiene que estar encendido, conectado y activo para revisar desde el teléfono. Las respuestas de la API quedan en el servicio compartido; las confirmaciones y correcciones se guardan en el navegador de cada dispositivo. Exportá la revisión para conservar o transferir esas decisiones.
+
+Pruebas sin inferencias pagas:
+
+```sh
+node eval/revision_lotes/pruebas_cloudflare.cjs
+node eval/revision_lotes/pruebas_cloudflare_navegador.cjs
+```
+
+La primera prueba verifica JWT, cuentas, rutas, origen de POST y eliminación del token local. La segunda ejecuta analizar, confirmar, reanalizar, corregir y recargar en un navegador aislado, con respuestas sintéticas. Su adaptador de loopback representa las cabeceras del terminador TLS; no reemplaza la comprobación del acceso público real.
