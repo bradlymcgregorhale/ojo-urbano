@@ -188,7 +188,7 @@ def seleccionar(publica, verificadores, comparacion=None):
     return {'key': elegido['key'], 'estado': 'seleccionado', 'criterio': 'escena', 'motivo': motivo}
 
 
-def ajustar_descripcion(publica, verificadores):
+def ajustar_descripcion(publica, verificadores, auditorias=()):
     """Evita que una lectura secundaria sustituya el principal confirmado (#142).
 
     No vuelve a adjudicar la foto ni copia descripciones completas de lectores:
@@ -197,13 +197,21 @@ def ajustar_descripcion(publica, verificadores):
     principal = publica.get('problema_principal') or {}
     key = principal.get('key')
     confirmados = {c.get('key'): c for c in publica.get('problemas') or []}
-    if (principal.get('estado') != 'seleccionado' or key not in confirmados
+    descarte_sin_confirmar = any(q.get('descarte_independiente') is True
+        and not q.get('confirmo') and q.get('key') not in confirmados
+        for q in auditorias or [])
+    principal_seleccionado = principal.get('estado') == 'seleccionado' and key in confirmados
+    if not principal_seleccionado and descarte_sin_confirmar and 'situacion_calle' in confirmados:
+        key = 'situacion_calle'
+    if ((not principal_seleccionado and not (descarte_sin_confirmar and key in confirmados))
             or (publica.get('evaluacion_foto') or {}).get('rechazada')
             or (publica.get('contexto_visual') or {}).get('suficiente') is False):
         return
     descripcion = publica.get('descripcion')
     if not isinstance(descripcion, str) or not descripcion.strip():
-        return
+        if not descarte_sin_confirmar:
+            return
+        descripcion = ''
     lectores = [v for v in verificadores or [] if v.get('ok') is True]
     def corresponde(v):
         texto = v.get('descripcion')
@@ -211,10 +219,11 @@ def ajustar_descripcion(publica, verificadores):
             len(descripcion) > 40 and descripcion.endswith(('.', '!', '?'))
             and texto.startswith(descripcion + ' ')))
     origenes = [v for v in lectores if corresponde(v)]
-    # Una descripción del árbitro, saneada o sin procedencia reconocible se
-    # conserva. Tampoco se reemplaza una lectura que ya respalda el principal.
-    if not origenes or any(any(c.get('key') == key for c in v.get('categorias') or [])
-                           for v in origenes):
+    # Conserva prosa sin procedencia reconocible salvo que una auditoría de
+    # descarte posterior impida afirmar el objeto como residuo.
+    if not descarte_sin_confirmar and (not origenes or any(
+            any(c.get('key') == key for c in v.get('categorias') or [])
+            for v in origenes)):
         return
     evidencias = []
     fuentes = set()
@@ -229,10 +238,14 @@ def ajustar_descripcion(publica, verificadores):
         return
     evidencia = min(set(evidencias), key=lambda t: (len(t), t.casefold(), t))
     nombre = confirmados[key].get('nombre') or key
-    texto = 'Problema principal: ' + nombre + '. Evidencia: ' + evidencia.rstrip('.') + '.'
+    etiqueta = 'Problema principal: ' if principal_seleccionado else 'Hallazgo confirmado: '
+    texto = etiqueta + nombre + '. Evidencia: ' + evidencia.rstrip('.') + '.'
     secundarios = [c.get('nombre') or k for k, c in confirmados.items() if k != key]
     if secundarios:
         texto += ' Otros hallazgos confirmados: ' + ', '.join(secundarios) + '.'
+    if texto == descripcion:
+        return
     publica['descripcion'] = texto
-    publica['detalle_descripcion'] = {'estado': 'alineada_al_principal',
+    publica['detalle_descripcion'] = {'estado': ('alineada_a_descarte' if descarte_sin_confirmar
+                                               else 'alineada_al_principal'),
         'descripcion_anterior': descripcion, 'fuentes_evidencia': sorted(fuentes)}

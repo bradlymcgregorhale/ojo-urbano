@@ -1066,7 +1066,17 @@ def _publica(r):
     pub['problema_principal'] = prioridad.seleccionar(
         pub, veri.get('verificadores') or [],
         comparacion=prioridad.desde_guardada(veri))
-    prioridad.ajustar_descripcion(pub, veri.get('verificadores') or [])
+    auditorias = veri.get('repreguntas') or []
+    prioridad.ajustar_descripcion(pub, veri.get('verificadores') or [], auditorias)
+    sin_descarte = {q.get('key') for q in auditorias
+                   if q.get('descarte_independiente') is True and not q.get('confirmo')}
+    for c in pub.get('posibles') or []:
+        if c.get('key') in sin_descarte:
+            c['motivo'] = ('No se corroboró un objeto voluminoso descartado aparte de la persona '
+                           'y sus pertenencias.' if c['key'] == 'retiro_muebles' else
+                           'No se corroboraron residuos descartados aparte de la persona '
+                           'y sus pertenencias.')
+            c['verificacion_descarte_independiente'] = 'sin_corroborar'
     pub['hay_problema'] = bool(pub.get('problemas'))
     pub['hay_reclamo'] = bool(pub.get('problemas')) or bool(pub.get('categorias_contexto'))
     pub['conclusion'] = _conclusion(pub)

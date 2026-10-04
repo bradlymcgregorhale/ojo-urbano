@@ -118,3 +118,10 @@ vereda no demuestra abandono. Esta auditoría se realiza aun cuando el retiro ya
 tenía consenso; si falta un lector o no alcanza la evidencia, no publica el retiro.
 No agrega pasadas a escenas sin persona confirmada. Las pruebas del mismo módulo
 protegen también escenas mixtas, ambos retiros simultáneos y errores de lectura.
+
+Cuando esta auditoría no corrobora un descarte, la descripción pública se arma
+con evidencia de una categoría confirmada y nombres de los otros confirmados.
+Conserva la descripción anterior en `detalle_descripcion`; las lecturas crudas
+siguen disponibles. El motivo de un retiro posible explica la falta de descarte
+independiente, aun si el árbitro había recomendado confirmarlo. No modifica
+clasificación, prioridad, costo ni cantidad de inferencias.
