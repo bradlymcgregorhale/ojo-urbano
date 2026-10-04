@@ -178,7 +178,7 @@ La preparación no hace inferencias. Las rutas originales solo se incluyen en `m
 
 Agregá `analisis/reanalisis-config.json` con la configuración individual documentada arriba y `python`, la ruta del intérprete. Iniciá `node eval/revision_lotes/reanalizar.cjs BASE`. La página de la bandeja está en la raíz local del servicio, detrás de su token. No publiques ese token ni expongas directamente el servicio. Abrir o navegar no envía fotos: solamente el botón Analizar registra un pedido.
 
-El primer resultado se guarda en `analisis/R####-alto.json` con su huella; sigue disponible después de recargar. Los reanálisis conservan ese original, pasan a ser el resultado visible y reinician la revisión de la foto. Las decisiones anteriores quedan respaldadas en el historial. La aprobación requiere indicar calidad y ámbito; una respuesta parcial conserva su confirmación adicional. El archivo de exportación sigue siendo v2 y mantiene el historial. Exportá al terminar cada tanda, porque las decisiones pertenecen al navegador.
+El primer resultado se guarda en `analisis/R####-alto.json` con su huella; sigue disponible después de recargar. Los reanálisis conservan ese original, pasan a ser el resultado visible y reinician la revisión de la foto. Las decisiones anteriores quedan respaldadas en el historial. La aprobación requiere indicar calidad y ámbito; una respuesta parcial se revisa con las mismas acciones. El archivo de exportación sigue siendo v2 y mantiene el historial. Exportá al terminar cada tanda, porque las decisiones pertenecen al navegador.
 
 El lote automático anterior conserva el modo Completo y su intervalo mínimo de 61 segundos, correspondiente al límite público de 60 pedidos por hora. La bandeja manual no lo reanuda. Tener más crédito no aumenta ese límite ni elimina las verificaciones que requiere cada foto.
 
@@ -190,7 +190,7 @@ node eval/revision_lotes/pruebas_recientes_navegador.cjs
 ```
 
 
-La revisión principal tiene dos acciones: **Está bien** y **Corregir**. Confirmar indica expresamente que la foto se puede evaluar y muestra una situación en la vía pública. Una respuesta parcial sigue requiriendo una confirmación adicional visible.
+La revisión principal tiene dos acciones: **Está bien** y **Corregir**. Confirmar indica expresamente que la foto se puede evaluar y muestra una situación en la vía pública. La descripción y las categorías se muestran tal como llegan de la API, sin avisos añadidos ni casillas adicionales para respuestas parciales. El estado técnico y el JSON original siguen disponibles en Detalles del análisis.
 
 Para corregir, usá **Quitar** junto a lo que no se ve. Buscá un problema faltante por su nombre y agregalo. La decisión del reclamo se deriva de esos cambios; no requiere otro selector. La nota es opcional y los materiales no revisados quedan como `sin_revisar`. Al guardar, la pantalla identifica tu corrección por separado de la respuesta original. El análisis no se vuelve a ejecutar.
 
@@ -219,9 +219,6 @@ node eval/revision_lotes/pruebas_cloudflare_navegador.cjs
 La primera prueba verifica JWT, cuentas, rutas, origen de POST y eliminación del token local. La segunda ejecuta analizar, confirmar, reanalizar, corregir y recargar en un navegador aislado, con respuestas sintéticas. Su adaptador de loopback representa las cabeceras del terminador TLS; no reemplaza la comprobación del acceso público real.
 
 
-Las respuestas parciales muestran el motivo del aviso: una comprobación que no
-pudo completarse, falta de verificación o hallazgos sin resolver. Los posibles
-problemas aparecen como "Sin confirmar", con el motivo informado por la API.
-La casilla "Revisé la foto y puedo decidir con la información disponible" indica
-una decisión humana; no completa ni cambia el análisis automático. Una respuesta
-completa no exige esa casilla, aunque conserve posibilidades sin corroborar.
+Las respuestas parciales se confirman o corrigen con las mismas acciones que las completas.
+Guardar la decisión registra la revisión humana; no convierte el estado de la API en completo.
+El JSON original conserva las limitaciones y los lectores fallidos para su consulta en los detalles.
