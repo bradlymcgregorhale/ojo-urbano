@@ -973,3 +973,53 @@ class ObraServiciosTest(unittest.TestCase):
             r = V.validar_contexto_obra_servicios("obra")
             self.assertFalse(r["aceptado"])
             self.assertTrue(r["fallo"])
+
+class ObjetosJuntoABolsonesTest(unittest.TestCase):
+    """Clasificación por objeto: la bolsa vecina no borra una placa independiente."""
+    def evaluar(self, lecturas):
+        modelos = list(lecturas)
+        with patch.object(V, 'modelos_activos', return_value=modelos), \
+                patch.object(V, '_imagen_data_url', return_value='sin_red'), \
+                patch.object(V, '_llamar', side_effect=lambda modelo, *a, **k: json.dumps(lecturas[modelo])):
+            revision = V.validar_alcance_escombros(None)
+        entrada = salida([categoria(), categoria('retiro_muebles')])
+        antes = copy.deepcopy(entrada)
+        resultado = P.aplicar(entrada, revision, {P.KEY: {'nombre': 'Escombros'}})
+        self.assertEqual(entrada, antes)
+        return resultado, revision
+
+    def objetos(self, **cambios):
+        return respuesta(afirmacion_vecinal='no_menciona', cita_vecinal='',
+            otros_retiros_independientes=['retiro_muebles'],
+            evidencia_presentacion='Bolsón separado de placa grande y recipientes en la vereda',
+            evidencia_material='Placa grande de revestimiento; contenido del bolsón no identificable', **cambios)
+
+    def test_placa_independiente_no_se_borra_por_bolson_opaco(self):
+        lecturas = {m: self.objetos(presentacion='solo_bolson') for m in ['m1', 'm2', 'm3']}
+        r, revision = self.evaluar(lecturas)
+        self.assertEqual(revision['otros_retiros_independientes'], ['retiro_muebles'])
+        self.assertEqual([c['key'] for c in r['problemas']], ['retiro_muebles'])
+        self.assertFalse(any(c['key'] == 'retiro_muebles' for c in r['descartados_por_foto']))
+        self.assertEqual(r['problemas'][0]['fuentes'], ['m1', 'm2'])
+
+    def test_bolson_vacio_y_placa_sin_pila_no_confirman_escombros(self):
+        r, _ = self.evaluar({m: self.objetos(presentacion='sin_pila',
+            material='incompatible_visible', hay_bolsas_opacas_o_parciales='no') for m in ['m1', 'm2', 'm3']})
+        self.assertEqual([c['key'] for c in r['problemas']], ['retiro_muebles'])
+        self.assertNotIn(P.KEY, r['en_duda'])
+
+    def test_cascote_real_y_objeto_independiente_conservan_ambos(self):
+        r, revision = self.evaluar({m: self.objetos(material='escombros_visible') for m in ['m1', 'm2', 'm3']})
+        self.assertEqual(revision['estado'], 'apto')
+        self.assertEqual({c['key'] for c in r['problemas']}, {P.KEY, 'retiro_muebles'})
+
+    def test_envase_generico_o_pertenencias_sin_retiro_independiente(self):
+        lecturas = {m: dict(self.objetos(presentacion='solo_bolson'), otros_retiros_independientes=[]) for m in ['m1', 'm2', 'm3']}
+        r, _ = self.evaluar(lecturas)
+        self.assertFalse(any(c['key'] == 'retiro_muebles' for c in r['problemas']))
+
+    def test_un_solo_lector_no_corrobora_objeto_independiente(self):
+        lecturas = {m: dict(self.objetos(presentacion='solo_bolson'), otros_retiros_independientes=[] if m != 'm1' else ['retiro_muebles']) for m in ['m1', 'm2', 'm3']}
+        r, revision = self.evaluar(lecturas)
+        self.assertEqual(revision['otros_retiros_independientes'], [])
+        self.assertFalse(any(c['key'] == 'retiro_muebles' for c in r['problemas']))
