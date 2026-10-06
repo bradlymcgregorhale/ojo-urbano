@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('assert'),crypto=require('crypto'),http=require('http');
 const {crearValidador,crearPuerta}=require('./cloudflare.cjs');
-function request(url,options={}){return new Promise((resolve,reject)=>{const r=http.request(url,options,res=>{let body='';res.on('data',c=>body+=c);res.on('end',()=>resolve({status:res.statusCode,text:async()=>body}));});r.on('error',reject);r.end(options.body);});}
+function request(url,options={}){return new Promise((resolve,reject)=>{const r=http.request(url,options,res=>{let body='';res.on('data',c=>body+=c);res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,text:async()=>body}));});r.on('error',reject);r.end(options.body);});}
 (async()=>{
  const {privateKey,publicKey}=crypto.generateKeyPairSync('rsa',{modulusLength:2048}),jwk={...publicKey.export({format:'jwk'}),kid:'prueba'};
  const cfg={issuer:'https://prueba.cloudflareaccess.com',audience:'audiencia',emails:['persona@example.com'],origin:'https://revision.example.com',path:'/ojo'};
@@ -24,6 +24,14 @@ function request(url,options={}){return new Promise((resolve,reject)=>{const r=h
   assert.equal((await request(url+'/ojo/manifest.json',{headers})).status,404);
   assert.equal((await request(url+'/ojo/reanalizar',{method:'POST',headers:{...headers,'Content-Type':'application/json',Origin:'https://ajeno.example.com'},body:'{}'})).status,403);assert.equal(posts,0);
   assert.equal((await request(url+'/ojo/reanalizar',{method:'POST',headers:{...headers,'Content-Type':'application/json',Origin:cfg.origin},body:'{}'})).status,200);assert.equal(posts,1);
-  console.log('Access: firma/emisor/audiencia/cuenta/vencimiento, rutas, origen y clave privada verificados.');
+  // El atajo con la clave local salta el JWT, fija una cookie HttpOnly y no divulga la clave ni el loopback.
+  const salto=await request(url+'/ojo?bypass='+secreto,{headers:{Host:headers.Host}});
+  assert.equal(salto.status,302);assert.equal(salto.headers.location,'/ojo/');
+  assert((salto.headers['set-cookie']||[]).some(c=>c.startsWith('ojo_bypass=')&&c.includes('HttpOnly')),JSON.stringify(salto.headers['set-cookie']));
+  const conCookie=await request(url+'/ojo/estado',{headers:{Host:headers.Host,Cookie:'ojo_bypass='+secreto}});
+  assert.equal(conCookie.status,200);assert(!(await conCookie.text()).includes(secreto));
+  assert.equal((await request(url+'/ojo/estado',{headers:{Host:headers.Host,Cookie:'ojo_bypass=clave-equivocada'}})).status,403);
+  assert.equal((await request(url+'/ojo/reanalizar',{method:'POST',headers:{Host:headers.Host,Cookie:'ojo_bypass='+secreto,'Content-Type':'application/json',Origin:'https://ajeno.example.com'},body:'{}'})).status,403);assert.equal(posts,1);
+  console.log('Access: firma/emisor/audiencia/cuenta/vencimiento, rutas, origen, clave privada y atajo con cookie verificados.');
  }finally{puerta.closeAllConnections();up.closeAllConnections();await Promise.all([new Promise(r=>puerta.close(r)),new Promise(r=>up.close(r))]);}
 })().catch(e=>{console.error(e);process.exitCode=1});
