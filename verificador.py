@@ -30,6 +30,8 @@ Config por variables de entorno (ver .env.example):
                          solo con el modelo local.
     VERIFICADORES        lista separada por comas de modelos de visión.
     ARBITRO              modelo de texto para desempates ("" lo desactiva).
+    OPENROUTER_PROVEEDORES_EXCLUIDOS  proveedores que OpenRouter no debe usar
+                         (lista separada por comas; vacío no restringe).
     VERIFICADOR_TIMEOUT  segundos por llamada (default 120).
 """
 import base64
@@ -78,6 +80,8 @@ from prompts import (
     _PROMPT_REPREGUNTA_ESTADO,
     _CONTRASTE_CONTENEDOR_SECOS,
     _PROMPT_PREGUNTA_ABIERTA,
+    _PROMPT_RECOLECCION_PERTENENCIAS,
+    _PROMPT_VOLUMINOSOS_PERTENENCIAS,
     _PROMPT_SEGUNDA_MIRADA_VOLUMINOSO,
     _PROMPT_SEGUNDA_MIRADA_DESBORDE,
     _CONTRASTE_CUERPO_DESTRUIDO,
@@ -354,6 +358,14 @@ SEMILLA = (int(os.environ["SEMILLA"]) if os.environ.get("SEMILLA", "").strip()
 # significativa (12,6% -> 9,1%, p=0,147).
 PROVEEDOR_FIJO = os.environ.get("PROVEEDOR_FIJO", "").strip().lower() not in (
     "", "0", "false", "no")
+# Proveedores de OpenRouter que no se usan para ningún modelo (lista separada
+# por comas, nombres tal como los informa OpenRouter en `provider`). Se manda
+# como provider.ignore. Motivo: el 2026-09-20 OpenInference ignoró el esfuerzo
+# de razonamiento pedido y el árbitro agotó su plazo en la mayoría de las
+# fotos del lote (#134). Vacío no agrega nada al pedido.
+OPENROUTER_PROVEEDORES_EXCLUIDOS = ",".join(
+    p.strip() for p in os.environ.get("OPENROUTER_PROVEEDORES_EXCLUIDOS", "").split(",")
+    if p.strip())
 # Afinidad por prefijo, sin recortar mensajes ni contratar caché explícita.
 # Opt-in: la medición pareada no demostró un ahorro consistente.
 OPENROUTER_CACHE_PROMPTS = os.environ.get("OPENROUTER_CACHE_PROMPTS", "0").strip().lower() not in (
@@ -733,6 +745,8 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa")
         # otra cuantización y otros kernels. Esto solo apaga el failover; no
         # elige el backend. Ver la nota en PROVEEDOR_FIJO.
         cuerpo["provider"] = {"allow_fallbacks": False}
+    if OPENROUTER_PROVEEDORES_EXCLUIDOS:
+        cuerpo.setdefault("provider", {})["ignore"] = OPENROUTER_PROVEEDORES_EXCLUIDOS.split(",")
     body = json.dumps(cuerpo).encode()
     req = urllib.request.Request(OPENROUTER_URL, data=body, headers={
         "Authorization": "Bearer " + api_key(),
@@ -1796,7 +1810,8 @@ def _objeto_de_evidencia(texto):
     return limpio if len(limpio) >= 8 else None
 
 
-def _pregunta_abierta(img, modelos):
+def _pregunta_abierta(img, modelos, *, descarte_independiente=False,
+                      categoria_descarte="recoleccion"):
     """Pregunta ABIERTA: qué hay en el piso, sin nombrar nada.
 
     La repregunta dirigida nombra el objeto, y eso se midió sugestionable: en
@@ -1808,24 +1823,47 @@ def _pregunta_abierta(img, modelos):
     se parten.
     """
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
+    prompt_pertenencias = (_PROMPT_VOLUMINOSOS_PERTENENCIAS
+                          if categoria_descarte == "retiro_muebles"
+                          else _PROMPT_RECOLECCION_PERTENENCIAS)
 
     def _uno(modelo):
         contenido = _llamar(modelo, [
-            {"role": "system", "content": _PROMPT_PREGUNTA_ABIERTA},
+            {"role": "system", "content": (prompt_pertenencias
+                                          if descarte_independiente
+                                          else _PROMPT_PREGUNTA_ABIERTA)},
             {"role": "user", "content": [
                 {"type": "text", "text": "La foto:"},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ]},
-        ], max_tokens=400, etapa="pregunta_abierta")
+        ], max_tokens=2000 if descarte_independiente else 400,
+           etapa="pregunta_abierta")
         v = _extraer_json(contenido)
         veredicto = str(v.get("veredicto", "")).strip().lower()
         que_es = _texto_limpio(v.get("que_es"), EVID_MAX)
         ubicacion = _texto_limpio(v.get("ubicacion"), EVID_MAX)
         if veredicto == "identificado" and not (que_es and ubicacion):
             veredicto = "no_identificable"
-        return {"modelo": modelo, "veredicto": veredicto,
-                "que_es": que_es, "ubicacion": ubicacion,
-                "evidencia": _texto_limpio(v.get("evidencia"), EVID_MAX)}
+        resultado = {"modelo": modelo, "veredicto": veredicto,
+                     "que_es": que_es, "ubicacion": ubicacion,
+                     "evidencia": _texto_limpio(v.get("evidencia"), EVID_MAX)}
+        if descarte_independiente:
+            d = v.get("descarte_independiente")
+            d = d if isinstance(d, dict) else {}
+            estado = d.get("estado")
+            campos = {k: (_texto_limpio(d[k], EVID_MAX)
+                          if isinstance(d.get(k), str) else "")
+                      for k in ("objeto", "ubicacion", "evidencia")}
+            # Presencia del material no alcanza: se exige descarte separado.
+            if (veredicto == "identificado" and estado == "visible"
+                    and all(campos.values())):
+                resultado["veredicto"] = "presente"
+            elif estado == "ausente" and campos["evidencia"]:
+                resultado["veredicto"] = "ausente"
+            else:
+                resultado["veredicto"] = "no_se_distingue"
+            resultado["descarte_independiente"] = {"estado": estado, **campos}
+        return resultado
 
     resultados, fallo = [], False
     for r in _map_modelos(modelos, _uno):
@@ -3286,7 +3324,15 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # el "ausente" que bloquea solo puede venir del único repreguntado y el
     # chequeo cruzado deja de ser independiente. La repregunta se ejecuta solo
     # con la configuración medida (hallazgo de la revisión de Opus).
-    if _hay_cruzada:
+    retiros_con_persona = ({"recoleccion", "retiro_muebles"}
+                          & (confirmadas | disputadas)
+                          if "situacion_calle" in confirmadas else set())
+    for retiro in retiros_con_persona:
+        # Falta de jurado, cupo o respuesta nunca deja pasar el consenso previo.
+        confirmadas.discard(retiro)
+        disputadas.add(retiro)
+        adjudicadas_dirigidas.add(retiro)
+    if _hay_cruzada or retiros_con_persona:
         pendientes = []
         # Los dos reclamos de CAMIÓN: el voluminoso y los escombros. Da igual
         # que el reclamo haya quedado confirmado (un VLM más el modelo local
@@ -3300,7 +3346,12 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         # ve ninguna bolsa y lo que hay parece poda. La regla es la misma: si
         # lo vio uno solo, se le pregunta a los otros.
         for _k in ("retiro_muebles", "retiro_escombros", "recoleccion"):
-            if _k in adjudicadas_dirigidas:
+            if _k in retiros_con_persona:
+                # También audita el consenso inicial y los modos de dos lectores.
+                # Reutiliza la repregunta marginal: no agrega otra pasada.
+                pendientes.insert(0, (_k, "", None, False))
+                continue
+            if not _hay_cruzada or _k in adjudicadas_dirigidas:
                 continue
             if _k == "retiro_muebles" and (
                     (segunda_mirada_base or {}).get("retiro_votos")
@@ -3338,7 +3389,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         # codex). Una sola copia: DESCRIPTOR_CONTENEDOR. El dict duplicado
         # `_desc_cont` quedó con el texto pre-#14 (gris oscuro = lateral) y
         # volvió a publicar un bilateral nocturno como lateral.
-        for k in sorted(presencia_dudosa & CONTENEDOR_KEYS):
+        for k in sorted(presencia_dudosa & CONTENEDOR_KEYS) if _hay_cruzada else []:
             vlm_p = [f for f in fuentes.get(k, []) if f != "modelo_local"]
             if len(vlm_p) == 1 and k in DESCRIPTOR_CONTENEDOR:
                 objeto = ("un contenedor municipal de basura "
@@ -3359,7 +3410,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
 
         pendientes = [p for p in pendientes if _hay_jurado(p[2])]
         repreguntas = []
-        for k, objeto, votante, con_estado in pendientes[:REPREGUNTA_MAX]:
+        cupo = max(len(retiros_con_persona), REPREGUNTA_MAX)
+        for k, objeto, votante, con_estado in pendientes[:cupo]:
             # si el reclamo ya estaba confirmado, la pregunta lo VALIDA: si
             # ningún otro modelo ve el objeto, no se publica
             era_confirmada = k in confirmadas
@@ -3387,7 +3439,12 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             _esperado = _ESPERADO_ABIERTA.get(k)
             _incompat = _INCOMPATIBLE_ABIERTA.get(k)
             _abierta = _esperado is not None
-            if _abierta:
+            audita_pertenencias = k in retiros_con_persona
+            if audita_pertenencias:
+                resultados, fallo_r = _pregunta_abierta(
+                    img, otros, descarte_independiente=True, categoria_descarte=k)
+                con_estado = False
+            elif _abierta:
                 resultados, fallo_r = _pregunta_abierta(img, otros)
                 carton_mixto = (k == "recoleccion" and "retiro_muebles" in confirmadas
                                 and _carton_mixto_corroborado(resultados, fallo_r))
@@ -3447,6 +3504,13 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             # primera lectura". El "está EN USO" bloquea aparte: ahí no se
             # discute la existencia sino que sea un descarte.
             confirmo = bool(presentes) and not ausentes and not en_uso
+            if audita_pertenencias:
+                # Dos lecturas de descarte independiente; nunca una palabra suelta.
+                confirmo = len({r["modelo"] for r in presentes}) >= 2 and not fallo_r
+                if not confirmo:
+                    confirmadas.discard(k)
+                    disputadas.add(k)
+                    adjudicadas_dirigidas.add(k)
             # La regla de fuentes correlacionadas se respeta TAMBIÉN acá:
             # con CONSENSO_VLM_SOLO=arbitro, una confirmación sin respaldo
             # del modelo local no se publica directo (queda en disputa para
@@ -3459,7 +3523,9 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                 # UNA fuente dirigida alcanza para el consenso de dos; no se
                 # suman más para no inflar "confianza" con síes dirigidos.
                 r = presentes[0]
-                if r["modelo"] not in fuentes[k]:
+                if audita_pertenencias:
+                    fuentes[k] = list(dict.fromkeys(r["modelo"] for r in presentes))
+                elif r["modelo"] not in fuentes[k]:
                     fuentes[k].append(r["modelo"])
                 # La gravedad queda con el único voto libre: se topea en 3
                 # (típico) porque la mediana anti-inflación necesita votos
@@ -3528,6 +3594,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             repreguntas.append({"key": k, "objeto": objeto,
                                 "respuestas": resultados,
                                 "confirmo": confirmo, "fallo": fallo_r})
+            if audita_pertenencias:
+                repreguntas[-1]["descarte_independiente"] = True
             if k in contrastes_secos:
                 repreguntas[-1]["contraste_secos"] = True
         if not repreguntas:

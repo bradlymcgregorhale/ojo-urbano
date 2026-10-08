@@ -13,6 +13,10 @@ del vecino NO puede cambiar esta evaluación visual.
 PRESENTACIÓN: un bolsón grande de construcción de rafia/polipropileno con asas
 de izado queda fuera del servicio aunque esté abierto, roto o muestre cascote.
 "solo_bolson" significa que TODO el material candidato está en esos bolsones.
+Un bolsón aparentemente vacío no demuestra que contenga material de obra.
+No inventes relleno: si el interior no se ve, su contenido sigue sin identificar.
+Separá los bolsones de los objetos apoyados afuera. La mera presencia del
+embalaje no convierte esos objetos en una pila de escombros.
 Si también hay sacos chicos cargables a mano o una pila suelta INDEPENDIENTE,
 evaluá esos residuos por separado: "bolsas_chicas_o_suelto", con su ubicación.
 No confundas bolsas chicas impresas, blancas o de rafia con un big-bag. Si no
@@ -25,7 +29,14 @@ a los lados también es parcial. "no" exige poder identificar el contenido
 de TODAS las bolsas candidatas; "indeterminado" si el encuadre no alcanza.
 
 MATERIAL: mirá lo que se ve DENTRO de las bolsas/pila candidata.
-"escombros_visible": cascote, ladrillo, revoque, mezcla o cerámicos de obra.
+"escombros_visible": cascote, ladrillo, revoque, mezcla o cerámicos fragmentados
+que forman una acumulación de restos sueltos. Distinguí la forma y presentación:
+una placa grande o pieza mayormente entera de cerámica/revestimiento descartada
+como objeto no se vuelve cascote por su material ni por tener un borde roto.
+Evaluála entre los voluminosos. El polvo alrededor, fragmentos pequeños aislados
+y bolsones cercanos no bastan para convertir esos objetos en una pila de obra.
+Si hay una acumulación independiente de cascotes, identificála aunque también
+haya placas, recipientes o bolsones: ambos componentes pueden coexistir.
 "oculto_o_ambiguo": bolsas opacas o contenido que no puede identificarse.
 "incompatible_visible": su contenido se ve y es basura doméstica, reciclables,
 vegetación, ropa u otro material incompatible, SIN otras bolsas ambiguas o con
@@ -51,6 +62,15 @@ hay muebles/voluminosos o restos vegetales descartados en ESPACIO PÚBLICO
 independientes de las bolsas/pila candidata. El mismo bolsón y su contenido
 no son un retiro de muebles; las bolsas en propiedad privada tampoco. [] si
 no hay otros objetos públicos identificables para esos retiros.
+Incluí placas grandes removidas, paneles rígidos, piezas sanitarias y otros
+objetos voluminosos descartados FUERA de los bolsones; no exijas que sean muebles
+hogareños. También latas de pintura o envases químicos si se reconocen como tales.
+Si no distinguís un recipiente, llamalo "recipiente" o "envase": no inventes
+que sea un matafuego, garrafa, tanque, lata de pintura ni su contenido. Un envase
+pequeño genérico no basta para confirmar voluminosos, pero tampoco anula una
+placa grande independiente. Las pertenencias o camas en uso no son descarte.
+La duda sobre el contenido de un bolsón no debe borrar un objeto público
+independiente que sí podés identificar. Describí ese objeto en la evidencia.
 
 Respondé sólo JSON. Cada evidencia visual tiene como máximo 20 palabras:
 {"ubicacion":"publica|privada|indeterminada",

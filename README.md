@@ -618,6 +618,7 @@ La configuración se lee desde variables de entorno o `.env`. La lista completa 
 | `HOST` / `PORT` | `127.0.0.1` / `8080` | Dirección y puerto de la API. |
 | `VERIFICADOR_TIMEOUT` | `120` | Segundos por llamada a OpenRouter. |
 | `VERIFICADOR_DEADLINE` | `180` | Tiempo máximo total de reintentos por modelo. |
+| `OPENROUTER_PROVEEDORES_EXCLUIDOS` | vacío | Proveedores de OpenRouter que no se usan para ningún modelo, separados por comas con el nombre que informa OpenRouter (por ejemplo `OpenInference`). Se manda como `provider.ignore`. |
 | `OPENROUTER_CACHE_PROMPTS` | `0` | Prueba opcional de afinidad por modelo y prefijo de sistema. Apagada hasta demostrar ahorro consistente. |
 | `OPENROUTER_LOG_USO` | `1` | Registra tokens, caché y costo por intento en stderr. `0` lo apaga. |
 
@@ -718,3 +719,18 @@ Las descripciones de los modelos forman parte de la respuesta y pueden transcrib
 ## Licencia
 
 [MIT](LICENSE)
+
+Cuando una persona está confirmada, una propuesta local de escombros no basta
+para mantener una duda después de dos revisiones de material visible incompatible.
+La exclusión exige revisores distintos, evidencia y ausencia de bolsas opacas
+y de una lectura de escombros visibles. Una lectura sin pila puede ser neutral.
+Fallas, contenido oculto, afirmación vecinal o conflicto conservan la revisión.
+La descripción respalda a la persona confirmada; los fallos técnicos siguen
+publicados aunque se haya resuelto la categoría de residuos.
+
+La revisión dirigida de escombros distingue piezas grandes de cerámica o
+revestimiento descartadas como objetos de una acumulación de cascote. Evalúa
+por separado paneles y recipientes fuera de los bolsones; la duda sobre el
+contenido de estos últimos no borra un retiro independiente corroborado.
+Un bolsón aparentemente vacío no demuestra contenido de obra, y un recipiente
+ambiguo no recibe una identidad ni un contenido inventados.
