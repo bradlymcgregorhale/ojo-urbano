@@ -212,6 +212,14 @@ def ajustar_descripcion(publica, verificadores, auditorias=()):
         if not descarte_sin_confirmar:
             return
         descripcion = ''
+    revision_escombros = publica.get('verificacion_escombros') or {}
+    motivo_escombros = revision_escombros.get('motivo')
+    duda_encabeza = (principal_seleccionado and key != 'retiro_escombros'
+        and 'retiro_escombros' not in confirmados
+        and any(c.get('key') == 'retiro_escombros' for c in publica.get('posibles') or [])
+        and isinstance(motivo_escombros, str) and bool(motivo_escombros.strip())
+        and (descripcion == motivo_escombros
+             or descripcion.startswith(motivo_escombros + ' Otros hallazgos: ')))
     lectores = [v for v in verificadores or [] if v.get('ok') is True]
     def corresponde(v):
         texto = v.get('descripcion')
@@ -221,7 +229,7 @@ def ajustar_descripcion(publica, verificadores, auditorias=()):
     origenes = [v for v in lectores if corresponde(v)]
     # Conserva prosa sin procedencia reconocible salvo que una auditoría de
     # descarte posterior impida afirmar el objeto como residuo.
-    if not descarte_sin_confirmar and (not origenes or any(
+    if not descarte_sin_confirmar and not duda_encabeza and (not origenes or any(
             any(c.get('key') == key for c in v.get('categorias') or [])
             for v in origenes)):
         return
@@ -243,9 +251,11 @@ def ajustar_descripcion(publica, verificadores, auditorias=()):
     secundarios = [c.get('nombre') or k for k, c in confirmados.items() if k != key]
     if secundarios:
         texto += ' Otros hallazgos confirmados: ' + ', '.join(secundarios) + '.'
+    if duda_encabeza:
+        texto += ' Sin confirmar: ' + motivo_escombros
     if texto == descripcion:
         return
     publica['descripcion'] = texto
     publica['detalle_descripcion'] = {'estado': ('alineada_a_descarte' if descarte_sin_confirmar
-                                               else 'alineada_al_principal'),
+                                               else 'confirmado_antes_de_duda' if duda_encabeza else 'alineada_al_principal'),
         'descripcion_anterior': descripcion, 'fuentes_evidencia': sorted(fuentes)}
