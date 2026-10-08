@@ -4496,6 +4496,12 @@ check("  un motivo inventado o una salida cortada no votan; un true sin motivo s
       set(_lect) == {"lector/uno"} and _lect["lector/uno"] == {"contexto_suficiente": True, "motivos_contexto": [],
                                                               "evidencia": "ramas sobre la vereda"}, str(_lect))
 
+for _evidencia_invalida in (None, "", "   ", 42, []):
+    with patch.object(V, "VERIFICADORES", ["lector/uno"]), \
+            patch.object(V, "_llamar", return_value=_resp_encuadre(False, "entorno_no_visible", _evidencia_invalida)):
+        _lect = V._pregunta_encuadre("data:image/jpeg;base64,PRUEBA")
+    check("  una respuesta sin evidencia visual no vota: " + repr(_evidencia_invalida), not _lect)
+
 def _veredicto_114(modelo, contexto=True, ef=True, ok=True):
     v = {"modelo": modelo, "ok": ok, "categorias": [{"key": "retiro_poda", "gravedad": 2, "evidencia": "ramas"}],
          "descripcion": "Ramas apiladas."}

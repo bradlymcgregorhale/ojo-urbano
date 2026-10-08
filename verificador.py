@@ -1577,8 +1577,11 @@ def _pregunta_encuadre(data_url):
             if motivo not in evaluacion_foto.MOTIVOS_CONTEXTO:
                 raise ValueError("motivo de encuadre desconocido")
             motivos = [motivo]
+        evidencia = v.get("evidencia")
+        if not isinstance(evidencia, str) or not evidencia.strip():
+            raise ValueError("encuadre sin evidencia visual")
         return {"contexto_suficiente": suficiente, "motivos_contexto": motivos,
-                "evidencia": _texto_limpio(v.get("evidencia"), EVID_MAX)}
+                "evidencia": _texto_limpio(evidencia, EVID_MAX)}
 
     lecturas = {}
     for modelo, r in zip(modelos_activos(), _map_modelos(modelos_activos(), _uno)):
