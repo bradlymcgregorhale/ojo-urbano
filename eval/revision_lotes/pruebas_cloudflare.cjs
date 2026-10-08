@@ -20,6 +20,8 @@ function request(url,options={}){return new Promise((resolve,reject)=>{const r=h
   assert.equal((await request(url+'/ojo/estado',{headers:{Host:headers.Host}})).status,403);
   assert.equal((await request(url+'/ojo/estado',{headers:{...headers,'Cf-Access-Jwt-Assertion':'falso'}})).status,403);
   assert.equal((await request(url+'/ojo/estado',{headers:{...headers,Host:'otro.example.com'}})).status,403);
+  assert.equal((await request(url+'/ojo/estado',{headers:{Host:headers.Host,Cookie:'ojo_bypass=%ZZ'}})).status,403);
+  assert.equal((await request(url+'/ojo/estado',{headers:{...headers,Cookie:'ojo_bypass=%ZZ'}})).status,200);
   const good=await(await request(url+'/ojo/estado',{headers})).text();assert(!good.includes(secreto));assert(!good.includes('127.0.0.1'));assert(good.includes('/ojo/foto/R0001'),good);
   assert.equal((await request(url+'/ojo/manifest.json',{headers})).status,404);
   assert.equal((await request(url+'/ojo/reanalizar',{method:'POST',headers:{...headers,'Content-Type':'application/json',Origin:'https://ajeno.example.com'},body:'{}'})).status,403);assert.equal(posts,0);

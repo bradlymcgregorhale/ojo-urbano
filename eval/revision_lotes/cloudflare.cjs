@@ -28,11 +28,11 @@ function crearPuerta(config,local,validador=crearValidador(config)){
   const responder=(codigo,texto)=>{res.writeHead(codigo,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer'});res.end(texto);};
   if(req.headers.host!==origen.host)return responder(403,'Destino no permitido.');
   const u=new URL(req.url,origen);
-  const leerCookie=(cabecera,nombre)=>{if(typeof cabecera!=='string')return null;for(const parte of cabecera.split(';')){const i=parte.indexOf('=');if(i<0)continue;if(parte.slice(0,i).trim()===nombre)return decodeURIComponent(parte.slice(i+1).trim());}return null;};
+  const leerCookie=(cabecera,nombre)=>{if(typeof cabecera!=='string')return null;for(const parte of cabecera.split(';')){const i=parte.indexOf('=');if(i<0)continue;if(parte.slice(0,i).trim()===nombre){try{return decodeURIComponent(parte.slice(i+1).trim());}catch{return null;}}}return null;};
   const bypass=u.searchParams.get('bypass');
   const cookieBypass=leerCookie(req.headers.cookie,'ojo_bypass');
   const bypassValido=bypass===local.token||req.headers['x-bypass']===local.token||cookieBypass===local.token;
-  if(!bypassValido){try{await validador(req.headers['cf-access-jwt-assertion']);}catch(e){debug('AUTH-FAIL',req.url,req.headers['cf-access-jwt-assertion']?.slice(0,80),e.message);return responder(403,'Iniciá sesión con una cuenta permitida en Cloudflare Access.');}}
+  if(!bypassValido){try{await validador(req.headers['cf-access-jwt-assertion']);}catch(e){debug('AUTH-FAIL',e.message);return responder(403,'Iniciá sesión con una cuenta permitida en Cloudflare Access.');}}
   const fijarCookie=(bypass===local.token||req.headers['x-bypass']===local.token)&&cookieBypass!==local.token;
   const cookieCabecera='ojo_bypass='+encodeURIComponent(local.token)+'; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400';
   if(bypass){u.searchParams.delete('bypass');req.url=req.url.replace(/[?&]bypass=[^&]*/,'');}
