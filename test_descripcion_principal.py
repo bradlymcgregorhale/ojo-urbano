@@ -132,6 +132,39 @@ class DescripcionPrincipalTest(unittest.TestCase):
         self.assertIs(final['modelos'][-1]['ok'], False)
         self.assertEqual(final['problemas'][0]['fuentes'], 3)
 
+    def test_duda_de_escombros_no_encabeza_el_hallazgo_confirmado(self):
+        pub, lectores = self.caso()
+        motivo = 'No se pudo identificar el contenido de las bolsas.'
+        pub['descripcion'] = motivo + ' Otros hallazgos: Personas en situación de calle.'
+        pub['verificacion_escombros'] = {'estado': 'indeterminado', 'motivo': motivo}
+        pub['posibles'] = [{'key': 'retiro_escombros', 'motivo': motivo}]
+        antes = copy.deepcopy(pub)
+        P.ajustar_descripcion(pub, lectores)
+        self.assertTrue(pub['descripcion'].startswith('Problema principal: Personas'))
+        self.assertIn('Sin confirmar: ' + motivo, pub['descripcion'])
+        self.assertEqual(pub['detalle_descripcion']['descripcion_anterior'], antes['descripcion'])
+        for k in antes:
+            if k != 'descripcion': self.assertEqual(pub[k], antes[k])
+        repetido = copy.deepcopy(pub)
+        P.ajustar_descripcion(pub, lectores)
+        self.assertEqual(pub, repetido)
+
+    def test_duda_no_reescribe_prosa_ajena_ni_inventa_evidencia(self):
+        for variante in ('prosa_ajena', 'sin_evidencia', 'sin_principal', 'escombros_confirmado'):
+            with self.subTest(variante=variante):
+                pub, lectores = self.caso()
+                motivo = 'El material sigue sin identificar.'
+                pub['descripcion'] = motivo
+                pub['verificacion_escombros'] = {'estado': 'indeterminado', 'motivo': motivo}
+                pub['posibles'] = [{'key': 'retiro_escombros', 'motivo': motivo}]
+                if variante == 'prosa_ajena': pub['descripcion'] = 'Otra descripción consolidada.'
+                if variante == 'sin_evidencia': lectores = []
+                if variante == 'sin_principal': pub['problema_principal'] = {'estado': 'indeterminado'}
+                if variante == 'escombros_confirmado': pub['problemas'].append({'key': 'retiro_escombros'})
+                antes = copy.deepcopy(pub)
+                P.ajustar_descripcion(pub, lectores)
+                self.assertEqual(pub, antes)
+
     def test_objeto_descartado_no_es_motivo_para_personas(self):
         pub, lectores = self.caso()
         for v in lectores:
