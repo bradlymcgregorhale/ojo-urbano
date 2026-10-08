@@ -245,6 +245,31 @@ def _retiros_visibles_publicos(salida, revision):
     return conservados
 
 
+def _persona_sin_escombros_visibles(salida, revision):
+    """Dos negativas de material, sin ocultos ni un testigo de escombros."""
+    if (revision.get('fallo') or revision.get('afirmacion_explicita')
+            or not any(c.get('key') == 'situacion_calle' for c in salida.get('problemas') or [])
+            or any(es_escombros(c) for c in salida.get('categorias_contexto') or [])
+            or salida.get('foto_valida') is False):
+        return False
+    negativos = set()
+    for v in revision.get('revisiones') or []:
+        if (not v.get('modelo') or v.get('ubicacion') != 'publica'
+                or v.get('afirmacion_vecinal') != 'no_menciona'
+                or not isinstance(v.get('evidencia_material'), str)
+                or not v['evidencia_material'].strip()):
+            return False
+        if (v.get('material') == 'incompatible_visible'
+                and v.get('hay_bolsas_opacas_o_parciales') == 'no'
+                and v.get('presentacion') in {'bolsas_chicas_o_suelto', 'sin_pila'}):
+            negativos.add(v['modelo'])
+        elif not (v.get('presentacion') == 'sin_pila'
+                  and v.get('material') == 'indeterminado'
+                  and v.get('hay_bolsas_opacas_o_parciales') in {'no', 'indeterminado'}):
+            return False
+    return len(negativos) >= 2
+
+
 def aplicar(salida, revision, categorias):
     """Aplica el veto después de fusión y ruteo textual, sin crear votos visuales."""
     r = copy.deepcopy(salida)
@@ -253,6 +278,24 @@ def aplicar(salida, revision, categorias):
                                 for c in salida.get(campo) or [] if es_escombros(c) and c.get("key")}
     veri = r["detalle"]["verificacion"]
     veri["alcance_escombros"] = revision
+    if _persona_sin_escombros_visibles(salida, revision):
+        # La ubicación pública no convierte mantas en una pila de obra.
+        diagnostico.anotar('escombros_excluidos_por_material', claves_escombros)
+        r['problemas'] = [c for c in r['problemas'] if not es_escombros(c)]
+        r['posibles'] = [c for c in r['posibles'] if not es_escombros(c)]
+        r['en_duda'] = [k for k in r['en_duda'] if k not in claves_escombros]
+        for k in claves_escombros:
+            veri.setdefault('fuentes_en_duda', {}).pop(k, None)
+        veri['escombros_excluidos_por_material'] = True
+        r['verificacion_escombros'] = {
+            'estado': 'excluido', 'basado_en_contexto': False, 'requiere_nueva_foto': False,
+            'motivo': 'Las revisiones identifican materiales incompatibles con escombros, '
+                      'sin contenido oculto ni restos de obra corroborados.'}
+        r['hay_problema'] = bool(r['problemas'])
+        r['hay_reclamo'] = bool(r['problemas'] or r['categorias_contexto'])
+        r['gravedad_maxima'] = max((c.get('gravedad') or 0 for c in r['problemas']), default=0) or None
+        veri['decision_alcance'] = diagnostico.terminar(r)
+        return r
     apto = revision.get("estado") == "apto"
     contradiccion = revision.get("material_contradictorio") is True
     contextual = apto and not contradiccion and revision.get("contexto_resuelve") is True

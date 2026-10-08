@@ -91,3 +91,37 @@ Ciudad 1641314335507, "Buzón eléctrico en mal estado o abandonado". Ese códig
 queda en `categorias.json` como metadato interno (`prestacion`); la API pública
 sigue publicando solo `key` y `nombre`. La categoría no tiene clase en el modelo
 local: se confirma con dos lectores, como las demás sin voto local.
+
+
+`dirigidos/recoleccion_pertenencias.txt` se usa cuando la primera pasada confirma
+`situacion_calle` y propone `recoleccion`. Separa residuos descartados de cartón,
+textiles u otros objetos usados por una persona. La confirmación de recolección
+exige dos lectores distintos que identifiquen un descarte independiente, con
+objeto, ubicación y evidencia. Datos incompletos o una lectura incierta dejan la
+categoría pendiente. Dos lecturas que solo ven pertenencias retiran esa propuesta.
+Esta auditoría reemplaza la repregunta de recolección marginal en esas escenas;
+si la recolección ya tenía consenso, agrega esa comprobación. No se activa en
+escenas sin una persona confirmada. No modifica el reconocimiento de la persona.
+
+La prueba `test_recoleccion_pertenencias.py`, incluida en `pruebas.py`, reproduce
+la confusión y protege escenas mixtas, recolección sin persona, modos con dos
+lectores, fallos y datos incompletos, sin inferencias ni pesos. Los cambios de este
+prompt también requieren una comprobación con fotos de desarrollo; las pruebas
+sintéticas no miden exactitud visual.
+
+`dirigidos/voluminosos_pertenencias.txt` aplica la misma exigencia a
+`retiro_muebles` cuando `situacion_calle` está confirmada. Dos lectores deben
+identificar un objeto voluminoso descartado aparte de la persona, su cama y sus
+pertenencias, con identidad, ubicación y evidencia visible de descarte. Un objeto
+cubierto sin identidad distinguible queda sin confirmar. La ubicación en la
+vereda no demuestra abandono. Esta auditoría se realiza aun cuando el retiro ya
+tenía consenso; si falta un lector o no alcanza la evidencia, no publica el retiro.
+No agrega pasadas a escenas sin persona confirmada. Las pruebas del mismo módulo
+protegen también escenas mixtas, ambos retiros simultáneos y errores de lectura.
+
+Cuando esta auditoría no corrobora un descarte, la descripción pública se arma
+con evidencia de una categoría confirmada y nombres de los otros confirmados.
+Conserva la descripción anterior en `detalle_descripcion`; las lecturas crudas
+siguen disponibles. El motivo de un retiro posible explica la falta de descarte
+independiente, aun si el árbitro había recomendado confirmarlo. No modifica
+clasificación, prioridad, costo ni cantidad de inferencias.

@@ -10,12 +10,13 @@ async function termina(s){for(let i=0;i<100&&s.estado().activo;i++)await wait(10
  const s=crearServicio(base,config,transport),old=fs.readFileSync(path.join(base,'analisis/H0001-alto.json')),batch=fs.readFileSync(path.join(base,'analisis/estado.json'));
  const key=crypto.randomUUID(),first=s.iniciar('H0001',key);assert.equal(s.iniciar('H0001',key).id,first.id);assert.throws(()=>s.iniciar('H0001',crypto.randomUUID()),/curso/);
  await wait(10);assert.equal(calls,1);release();await termina(s);assert.equal(s.estado().intentos[0].estado,'listo');assert.equal(s.estado().gasto_usd,.020001);assert.deepEqual(fs.readFileSync(path.join(base,'analisis/H0001-alto.json')),old);assert.deepEqual(fs.readFileSync(path.join(base,'analisis/estado.json')),batch);
- assert(s.pagina(first.id).includes('Resultado anterior, conservado'));assert(s.pagina(first.id).includes('"version_nueva":"nueva"'));assert.throws(()=>s.iniciar('H9999',crypto.randomUUID()),/ajena/);
+ assert(s.pagina(first.id).includes('id="comparacion-anterior"'));assert(s.pagina(first.id).includes('"version_nueva":"nueva"'));assert.throws(()=>s.iniciar('H9999',crypto.randomUUID()),/ajena/);
  await new Promise(r=>s.server.listen(0,'127.0.0.1',r));const url='http://127.0.0.1:'+s.server.address().port;
  assert.equal((await fetch(url+'/incorrecto/estado')).status,403);assert.equal((await fetch(url+'/'+config.token+'/estado',{headers:{Origin:'https://ajeno.example'}})).status,403);
  assert.equal((await fetch(url+'/'+config.token+'/estado',{headers:{Origin:'null'}})).status,200);
  assert.equal((await fetch(url+'/'+config.token+'/reanalizar',{method:'POST',headers:{'Content-Type':'text/plain'},body:'{}'})).status,415);
  const page=await(await fetch(url+'/'+config.token+'/revision/'+first.id)).text();assert(page.includes('"nueva_huella"'));
+ const detalle=await(await fetch(url+'/'+config.token+'/intento/'+first.id)).json();assert.equal(detalle.foto,'H0001');assert.equal(detalle.modo_version,'nueva');assert.equal(detalle.version_original,'anterior');assert.equal(detalle.resultado.costo_api,.02);assert.equal((await fetch(url+'/'+config.token+'/intento/inexistente')).status,409);
  await new Promise(r=>s.server.close(r));
  // Respuesta perdida: un solo POST, consumo incierto y ningún reenvío al reiniciar.
  const failBase=preparar();let failedCalls=0;

@@ -1,5 +1,12 @@
 """Intervención principal sin cambiar clasificación, gravedad ni predominante (#48)."""
 
+CATEGORIAS_OBJETO = {'retiro_muebles', 'retiro_poda', 'retiro_escombros', 'recoleccion'}
+
+
+def _fundamento_compatible(fundamento, key):
+    return fundamento != 'objeto_principal' or key in CATEGORIAS_OBJETO
+
+
 FUNDAMENTOS = {
     'acumulacion_principal': 'La mayor acumulación de residuos corresponde a esta intervención; los demás residuos son secundarios.',
     'objeto_principal': 'El objeto descartado que motiva el retiro es el hallazgo principal de la escena.',
@@ -159,7 +166,8 @@ def seleccionar(publica, verificadores, comparacion=None):
                   'Es la intervención principal de la escena; los demás hallazgos siguen registrados.')
         if criterio == 'escena':
             for fundamento, texto in FUNDAMENTOS.items():
-                if sum(p.get('fundamento') == fundamento for p in propuestas) >= 2:
+                if (_fundamento_compatible(fundamento, key)
+                        and sum(p.get('fundamento') == fundamento for p in propuestas) >= 2):
                     motivo = texto
                     break
         return {'key': key, 'estado': 'seleccionado', 'criterio': criterio, 'motivo': motivo}
@@ -172,6 +180,72 @@ def seleccionar(publica, verificadores, comparacion=None):
     elegido = interpretar_comparacion(valor, confirmados)
     if elegido is None:
         return pendiente
-    motivo = FUNDAMENTOS.get(elegido.get('fundamento'),
+    fundamento = elegido.get('fundamento')
+    if not _fundamento_compatible(fundamento, elegido['key']):
+        fundamento = None
+    motivo = FUNDAMENTOS.get(fundamento,
                              'Es la intervención principal de la escena; los demás hallazgos siguen registrados.')
     return {'key': elegido['key'], 'estado': 'seleccionado', 'criterio': 'escena', 'motivo': motivo}
+
+
+def ajustar_descripcion(publica, verificadores, auditorias=()):
+    """Evita que una lectura secundaria sustituya el principal confirmado (#142).
+
+    No vuelve a adjudicar la foto ni copia descripciones completas de lectores:
+    conserva la explicación anterior y usa solo evidencia del principal.
+    """
+    principal = publica.get('problema_principal') or {}
+    key = principal.get('key')
+    confirmados = {c.get('key'): c for c in publica.get('problemas') or []}
+    descarte_sin_confirmar = any(q.get('descarte_independiente') is True
+        and not q.get('confirmo') and q.get('key') not in confirmados
+        for q in auditorias or [])
+    principal_seleccionado = principal.get('estado') == 'seleccionado' and key in confirmados
+    if not principal_seleccionado and descarte_sin_confirmar and 'situacion_calle' in confirmados:
+        key = 'situacion_calle'
+    if ((not principal_seleccionado and not (descarte_sin_confirmar and key in confirmados))
+            or (publica.get('evaluacion_foto') or {}).get('rechazada')
+            or (publica.get('contexto_visual') or {}).get('suficiente') is False):
+        return
+    descripcion = publica.get('descripcion')
+    if not isinstance(descripcion, str) or not descripcion.strip():
+        if not descarte_sin_confirmar:
+            return
+        descripcion = ''
+    lectores = [v for v in verificadores or [] if v.get('ok') is True]
+    def corresponde(v):
+        texto = v.get('descripcion')
+        return isinstance(texto, str) and (texto == descripcion or (
+            len(descripcion) > 40 and descripcion.endswith(('.', '!', '?'))
+            and texto.startswith(descripcion + ' ')))
+    origenes = [v for v in lectores if corresponde(v)]
+    # Conserva prosa sin procedencia reconocible salvo que una auditoría de
+    # descarte posterior impida afirmar el objeto como residuo.
+    if not descarte_sin_confirmar and (not origenes or any(
+            any(c.get('key') == key for c in v.get('categorias') or [])
+            for v in origenes)):
+        return
+    evidencias = []
+    fuentes = set()
+    for v in lectores:
+        for c in v.get('categorias') or []:
+            evidencia = c.get('evidencia')
+            if c.get('key') == key and isinstance(evidencia, str) and evidencia.strip():
+                evidencias.append(' '.join(evidencia.split())[:500])
+                if v.get('modelo'):
+                    fuentes.add(v['modelo'])
+    if not evidencias:
+        return
+    evidencia = min(set(evidencias), key=lambda t: (len(t), t.casefold(), t))
+    nombre = confirmados[key].get('nombre') or key
+    etiqueta = 'Problema principal: ' if principal_seleccionado else 'Hallazgo confirmado: '
+    texto = etiqueta + nombre + '. Evidencia: ' + evidencia.rstrip('.') + '.'
+    secundarios = [c.get('nombre') or k for k, c in confirmados.items() if k != key]
+    if secundarios:
+        texto += ' Otros hallazgos confirmados: ' + ', '.join(secundarios) + '.'
+    if texto == descripcion:
+        return
+    publica['descripcion'] = texto
+    publica['detalle_descripcion'] = {'estado': ('alineada_a_descarte' if descarte_sin_confirmar
+                                               else 'alineada_al_principal'),
+        'descripcion_anterior': descripcion, 'fuentes_evidencia': sorted(fuentes)}
