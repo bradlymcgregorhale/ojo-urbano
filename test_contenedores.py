@@ -111,7 +111,7 @@ class ContenedoresTest(unittest.TestCase):
             local, votes = self.oscuro()
             by_model = {v['modelo']: v for v in votes}
             with self.subTest(first=first, second=second), \
-                    patch.multiple(V, VERIFICADORES=list(by_model), CONSENSO_VLM_SOLO='confirma',
+                    patch.multiple(V, PREGUNTA_ENCUADRE=False, VERIFICADORES=list(by_model), CONSENSO_VLM_SOLO='confirma',
                                    ARBITRO_CONFIRMA=False, ARBITRO='arbitro'), \
                     patch.object(V, '_verificar_uno', side_effect=lambda m, *a: copy.deepcopy(by_model[m])), \
                     patch.object(V, '_segunda_mirada_presencia', side_effect=[first, second]) as review, \
@@ -140,7 +140,7 @@ class ContenedoresTest(unittest.TestCase):
                  'gravedad': {'value': 3, 'raw': 3}}
         rows = [dict(modelo=m, objeto='somier', ubicacion='delante', rasgos='resortes y listones',
                      relacion='descarte_independiente', otro_dano_contenedor='no') for m in models]
-        with patch.multiple(V, VERIFICADORES=models, CONSENSO_VLM_SOLO='confirma',
+        with patch.multiple(V, PREGUNTA_ENCUADRE=False, VERIFICADORES=models, CONSENSO_VLM_SOLO='confirma',
                             ARBITRO_CONFIRMA=False, ARBITRO='arbitro'), \
                 patch.object(V, '_verificar_uno', side_effect=lambda m, *a: copy.deepcopy(votes[m])), \
                 patch.object(V, '_segunda_mirada_relacion', return_value=(rows, False)), \
@@ -223,7 +223,7 @@ class ContenedoresTest(unittest.TestCase):
         votos = {v['modelo']: v for v in VOTOS}
         cats = json.loads((Path(__file__).parent / 'categorias.json').read_text())
         arbitro = {'ok': True, 'decisiones': [], 'descripcion': DESCRIPCION}
-        with patch.multiple(V, VERIFICADORES=list(votos), REPREGUNTA_OBJETOS=True,
+        with patch.multiple(V, PREGUNTA_ENCUADRE=False, VERIFICADORES=list(votos), REPREGUNTA_OBJETOS=True,
                             REPREGUNTA_MAX=2, CONSENSO_VLM_SOLO='confirma',
                             ARBITRO_CONFIRMA=False, ARBITRO='arbitro'), \
                 patch.object(V, '_verificar_uno', side_effect=lambda m, *a: copy.deepcopy(votos[m])), \

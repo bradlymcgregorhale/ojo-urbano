@@ -150,6 +150,8 @@ class ApiModos(unittest.TestCase):
             contenido = {'categorias': [], 'descripcion': '', 'sin_problema': True}
             if datos['model'] == __import__('especialista_contenedores').MODELO:
                 contenido = {'types': [], 'uncertain': False, 'evidence': ''}
+            elif datos['messages'][0].get('content') == V._PROMPT_ENCUADRE_HIGIENE:
+                contenido = {'contexto_suficiente': True, 'motivo': None, 'evidencia': 'vereda'}
             return {'model': datos['model'], 'usage': {'total_tokens': 10, 'cost': .001},
                     'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps(contenido)}}]}
         self.pila.enter_context(patch.object(V, '_pedir_http', side_effect=http))
@@ -165,7 +167,9 @@ class ApiModos(unittest.TestCase):
                                  data={} if modo is None else {'modo': modo}, **kw)
 
     def test_perfiles_reales_llamadas_y_cache_por_modo(self):
-        for modo, cantidad in [('bajo', 1), ('medio', 2), ('alto', 4)]:
+        # Económico: un lector. Medio: dos lectores y la pregunta de encuadre a
+        # cada uno (#114). Completo: tres lectores, encuadre a cada uno y árbitro.
+        for modo, cantidad in [('bajo', 1), ('medio', 4), ('alto', 7)]:
             with self.subTest(modo=modo):
                 self.llamadas.clear()
                 r = self.post(modo)
@@ -235,6 +239,7 @@ class ApiModos(unittest.TestCase):
                     'choices': [{'finish_reason': 'length',
                                  'message': {'content': None, 'reasoning': contenido}}]}
         with patch.object(V, '_pedir_http', side_effect=http):
+            # Sin ninguna primera pasada válida tampoco se paga la pregunta de encuadre (#114).
             for modo, cantidad in [('bajo', 1), ('medio', 2), ('alto', 4)]:
                 with self.subTest(modo=modo):
                     self.llamadas.clear()
