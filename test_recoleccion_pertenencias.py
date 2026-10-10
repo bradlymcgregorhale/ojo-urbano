@@ -46,8 +46,18 @@ class RecoleccionPertenenciasTest(unittest.TestCase):
                         'sin_problema': False, 'foto_corresponde': None,
                         'categorias_contexto': [], 'descripcion': 'Cartones bajo la persona.'}
         calls = []
+        encuadre_calls = []
 
         def llamar(m, mensajes, **kwargs):
+            if kwargs.get('etapa') == 'pregunta_encuadre':
+                encuadre_calls.append(m)
+                self.assertEqual(mensajes[0]['content'], V._PROMPT_ENCUADRE_HIGIENE)
+                return json.dumps({'contexto_suficiente': True, 'motivo': None,
+                                   'evidencia': 'persona y residuos separados en la vereda'})
+            if kwargs.get('etapa') == 'pregunta_aptitud':
+                return json.dumps({'calidad_suficiente': True, 'motivo_calidad': None,
+                    'evidencia_calidad': 'Objetos nítidos.', 'ambito': 'publica',
+                    'evidencia_ambito': 'Vereda y cordón.'})
             calls.append(m)
             self.assertIn(mensajes[0]['content'], (V._PROMPT_RECOLECCION_PERTENENCIAS,
                                                    V._PROMPT_VOLUMINOSOS_PERTENENCIAS))
@@ -71,6 +81,7 @@ class RecoleccionPertenenciasTest(unittest.TestCase):
                 patch.object(V, '_arbitrar', return_value={'ok': True, 'decisiones': [
                     {'key': retiro, 'veredicto': 'confirmar'}], 'descripcion': ''}):
             r = V.verificar(Image.new('RGB', (20, 20)), CATS, local)
+        self.assertCountEqual(encuadre_calls, modelos)
         return r, calls
 
     def claves(self, r):

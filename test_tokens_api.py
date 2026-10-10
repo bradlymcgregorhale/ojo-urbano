@@ -96,6 +96,29 @@ class TokensApi(unittest.TestCase):
             self.assertEqual(V.tokens_total(), {'tokens_api': 23, 'tokens_api_completos': False})
             self.assertEqual(V.costo_total(), .002)
 
+    def test_arbitro_directo_y_salida_corta_conservan_json(self):
+        casos = [
+            ('deepseek/deepseek-v4-flash', 'arbitrar', 6000, 6000, {'enabled': False}),
+            ('openai/gpt-5-mini', 'pregunta_abierta', 400, 1000, {'effort': 'low'}),
+            ('openai/gpt-5-mini', 'verificar_uno', 6000, 6000, {'effort': 'low'}),
+            ('otro', 'pregunta_abierta', 400, 400, {'effort': 'low'}),
+        ]
+        for modelo, etapa, limite, esperado, razonamiento in casos:
+            with self.subTest(modelo=modelo, etapa=etapa), \
+                    patch.object(V.modos, 'perfil_actual', return_value=None), \
+                    patch.object(V, '_pedir_http', return_value=respuesta(
+                        {'total_tokens': 23, 'cost': .002})) as http:
+                self.assertEqual(V._llamar(modelo, [], max_tokens=limite,
+                                          etapa=etapa), '{"ok":true}')
+                cuerpo = json.loads(http.call_args.args[0].data)
+                self.assertEqual(cuerpo['max_tokens'], esperado)
+                self.assertEqual(cuerpo['reasoning'], razonamiento)
+                if modelo == 'deepseek/deepseek-v4-flash':
+                    self.assertEqual(cuerpo['response_format'], {'type': 'json_object'})
+                else:
+                    self.assertNotIn('response_format', cuerpo)
+                self.assertEqual(http.call_count, 1)
+
     def test_respuesta_inutilizable_no_reenvia_y_conserva_consumo(self):
         for finish, content, reasoning in [
                 ('length', '{"ok":true}', None),

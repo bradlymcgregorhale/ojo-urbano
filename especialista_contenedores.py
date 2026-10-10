@@ -57,6 +57,59 @@ def revision(*, fallo=False):
                         'No se distinguen todos los tipos de contenedor con seguridad.'))
 
 
+def requiere_presencia(inventario):
+    return (isinstance(inventario, dict) and inventario.get('estado') == 'revision'
+            and inventario.get('fallo') is False and inventario.get('tipos') is None)
+
+
+def solicitud_presencia(datos, modelo):
+    """Pregunta independiente de presencia, sin el inventario ni votos anteriores."""
+    prompt = (Path(__file__).parent / 'prompts/inventario/presencia.txt').read_text(encoding='utf-8')
+    with Image.open(io.BytesIO(datos)) as fuente:
+        imagen = ImageOps.exif_transpose(fuente).convert('RGB')
+    return {'model': modelo, 'temperature': 0, 'max_tokens': 700,
+            'messages': [{'role': 'system', 'content': prompt},
+                         {'role': 'user', 'content': [
+                             {'type': 'text', 'text': 'Evaluá la foto.'}, _imagen_url(imagen)]}]}
+
+
+def interpretar_presencia(data, modelo):
+    """Una duda, respuesta truncada o formato inválido nunca acredita ausencia."""
+    try:
+        choices = data['choices']
+        if data.get('model') != modelo or len(choices) != 1 or choices[0]['finish_reason'] != 'stop':
+            raise ValueError('Respuesta de presencia incompleta')
+        mensaje = choices[0]['message']
+        if mensaje.get('refusal'):
+            raise ValueError('Respuesta de presencia rechazada')
+        contenido = mensaje['content'].strip()
+        bloque = re.fullmatch(r'```(?:json)?\s*\n(.*?)\n```', contenido, re.DOTALL)
+        r = json.loads(bloque.group(1) if bloque else contenido, object_pairs_hook=_unico)
+        if (not isinstance(r, dict) or set(r) != {'presente', 'evidencia'}
+                or (r['presente'] is not None and type(r['presente']) is not bool)
+                or not isinstance(r['evidencia'], str) or not r['evidencia'].strip()):
+            raise ValueError('Presencia sin decisión o evidencia válida')
+        return dict(modelo=modelo, presente=r['presente'], evidencia=r['evidencia'])
+    except (KeyError, TypeError, AttributeError, IndexError) as exc:
+        raise ValueError('Respuesta de presencia inválida') from exc
+
+
+def resolver_ausencia(inventario, lecturas):
+    """Solo resuelve ausencia unánime; nunca propone tipos ni reemplaza un acierto."""
+    if (requiere_presencia(inventario) and len(lecturas) == 3
+            and all(isinstance(v, dict) and isinstance(v.get('modelo'), str) and v['modelo']
+                    and v.get('presente') is False and isinstance(v.get('evidencia'), str)
+                    and v['evidencia'].strip() for v in lecturas)
+            and len({v['modelo'] for v in lecturas}) == 3):
+        return dict(estado='confirmado', tipos=[], fallo=False,
+                    motivo='Tres verificadores coinciden en que no se ven contenedores municipales.',
+                    revision_presencia={
+                        'motivo_previo': str(inventario.get('motivo') or '')[:280],
+                        'lecturas': [dict(modelo=v['modelo'], presente=False,
+                                         evidencia=v['evidencia'].strip()[:280]) for v in lecturas]})
+    return copy.deepcopy(inventario)
+
+
 def _unico(pares):
     resultado = {}
     for clave, valor in pares:
@@ -124,6 +177,8 @@ def aplicar(publica, resultado, categorias):
         salida['contenedores']['observaciones_tipos'] = [
             dict(key=k, fuentes=len(observaciones[k]), estado='pendiente_de_inventario')
             for k in TIPOS if k in observaciones]
+    if isinstance(resultado, dict) and isinstance(resultado.get('revision_presencia'), dict):
+        salida['contenedores']['revision_presencia'] = copy.deepcopy(resultado['revision_presencia'])
     # La prosa del consenso anterior no puede contradecir el inventario. Una
     # frase mixta se reconstruye desde los reclamos que siguen confirmados.
     descripcion = salida.get('descripcion')

@@ -4,13 +4,19 @@ import copy
 MOTIVOS_CALIDAD = {
     'desenfoque', 'movimiento', 'oscuridad', 'sobreexposicion', 'detalle_insuficiente',
 }
-MOTIVOS_CONTEXTO = {'encuadre_demasiado_cerrado', 'entorno_no_visible', 'situacion_cortada'}
+MOTIVOS_CONTEXTO = {'encuadre_demasiado_cerrado', 'entorno_no_visible', 'situacion_cortada',
+                    'demasiado_lejos_o_borrosa'}
 INDICACION_INTERIOR = ('Necesitamos una foto del objeto o problema en la vía pública. '
                       'Una foto dentro de una vivienda o espacio privado no sirve para este reclamo.')
 INDICACION_CALIDAD = ('Sacá otra foto con el objeto o problema enfocado, buena iluminación '
                      'y suficiente detalle para evaluarlo.')
 INDICACION_CONTEXTO = ('Sacá una foto complementaria desde más lejos, mostrando el objeto '
                       'o problema y su relación con la vereda o la calle.')
+# Encuadre de Higiene (#114): la toma tan lejana o borrosa que no deja ver de qué material
+# es el problema pide acercarse, no alejarse. Si además hay un motivo de cierre, prima el
+# pedido general de una foto más abierta.
+INDICACION_CONTEXTO_LEJOS = ('Sacá una foto complementaria más cerca y enfocada, que muestre '
+                            'de qué material es el problema y dónde está.')
 INDICACION_REVISION = ('Hay una observación sobre la ubicación, calidad o encuadre que requiere '
                       'revisión. La foto no se rechazó automáticamente.')
 INDICACION_AMBITO = ('La ubicación del objeto o problema requiere revisión. Agregá contexto '
@@ -99,6 +105,8 @@ def resumir(verificadores):
                               for m in x.get('motivos_calidad', [])}) if calidad is False else []
     motivos_contexto = sorted({m for x in elegibles if x.get('contexto_suficiente') is False
                                for m in x.get('motivos_contexto', [])}) if contexto is False else []
+    indicacion_contexto = (INDICACION_CONTEXTO_LEJOS if contexto is False
+                           and motivos_contexto == ['demasiado_lejos_o_borrosa'] else INDICACION_CONTEXTO)
     interior = ambito == 'interior' and estado_ambito == 'evaluado'
     rechazada = interior or calidad is False
     alguna = any(isinstance(x, dict) for x in lecturas)
@@ -126,12 +134,12 @@ def resumir(verificadores):
                   'requiere_nueva_foto': rechazada,
                   'requiere_foto_complementaria': contexto is False,
                   'indicacion': INDICACION_INTERIOR if interior else INDICACION_CALIDAD if calidad is False
-                  else INDICACION_CONTEXTO if contexto is False
+                  else indicacion_contexto if contexto is False
                   else INDICACION_REVISION if estado == 'senal_negativa_no_corroborada'
                   else INDICACION_AMBITO if revision_ambito else None}
     encuadre = {'suficiente': contexto, 'estado': estado_contexto, 'decision': decision_contexto,
                 'motivos': motivos_contexto,
-                'indicacion': INDICACION_CONTEXTO if contexto is False else None}
+                'indicacion': indicacion_contexto if contexto is False else None}
     return evaluacion, encuadre
 
 
@@ -160,11 +168,10 @@ def _demorar_higiene_sin_via_publica(r, evaluacion, verificadores):
     Hace falta al menos dos lecturas validas y que todas sean publica. Un lector
     que falló no cuenta ni a favor ni en contra. Con una sola fuente el modo
     económico no pierde el hallazgo. Tampoco se rechaza la foto: los retiros
-    pasan a posibles y se pide revisión. El encuadre insuficiente conserva el
-    detalle visible.
+    pasan a posibles y se pide revisión. Un encuadre cerrado conserva el detalle
+    confirmado cuando la ubicación pública está corroborada; no reemplaza esa
+    comprobación si el ámbito también está en duda.
     """
-    if evaluacion.get('estado') == 'contexto_insuficiente':
-        return r
     intentados, validos = _lecturas_ambito(verificadores)
     if intentados < 2 or not validos:
         return r

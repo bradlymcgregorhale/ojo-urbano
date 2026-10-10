@@ -411,16 +411,35 @@ y conserva los reclamos respaldados de daño, desborde o vaciado. El detalle
 reutiliza las lecturas existentes y no agrega llamadas ni consumo. Los modos
 sin especialista mantienen su contrato y no agregan este inventario.
 
-Los fallos de transporte no se guardan en caché. Una respuesta válida pero incierta
-puede guardarse en caché y sigue en `revision`, nunca indica ausencia. La interfaz muestra
-ese estado y el CSV agrega `contenedores_estado` y `contenedores_motivo`.
+Los fallos de transporte no se guardan en caché. En modo Completo, una duda visual
+válida del especialista puede activar una comprobación de presencia con los mismos
+tres verificadores configurados. Cada uno recibe la foto sin inventario ni votos
+previos. Solo tres ausencias explícitas, con evidencia y modelos distintos,
+permiten publicar `tipos=[]`. Una presencia, una duda (`presente=null`), una
+respuesta inválida o una falla mantienen la revisión. Las lecturas no proponen
+tipos ni reemplazan inventarios ya confirmados. Económico y Equilibrado no
+ejecutan esta etapa. La interfaz muestra ese estado y el CSV agrega
+`contenedores_estado` y `contenedores_motivo`.
 
-La pasada realiza un solo intento, con un plazo de 40 segundos, y suma su costo
-al `costo_api` de la foto. El promedio observado en 100 fotos fue USD 0,0038
-adicionales por foto; no representa el costo de las otras categorías. Tras la
-revisión humana de cuatro referencias, hubo 98 respuestas automáticas correctas,
-un tipo omitido y una revisión. Ese resultado no garantiza la exactitud en otras
-fotos ni evalúa el conteo de contenedores.
+Cuando se corrobora ausencia, `contenedores.revision_presencia` conserva
+`motivo_previo` y las tres `lecturas`, con `modelo`, `presente` y `evidencia`.
+El campo principal `contenedores.estado` sigue siendo la decisión final: un
+reclamo confirmado sobre un contenedor puede mantenerlo en revisión aunque esas
+lecturas informen ausencia. La interfaz y el CSV conservan ese estado.
+
+El especialista y la comprobación opcional comparten un plazo de 40 segundos.
+Cada lector adicional hace un solo intento y los tres se consultan en paralelo;
+una foto incierta puede sumar hasta tres solicitudes. Si quedan menos de cinco
+segundos, no se inician esos pedidos. La revisión por falta de tiempo o por un
+fallo de esta etapa no se guarda en caché. Todas las llamadas suman costos y
+tokens, incluidos intentos fallidos con el consumo conocido. Un fallo original
+del especialista no activa nuevos envíos. La API conserva `costo_api`, pero la
+página no muestra importes. El promedio anterior, sin esta comprobación
+opcional, fue USD 0,0038 adicionales por foto en 100 fotos; no representa el
+costo de las otras categorías. Tras la revisión humana de cuatro referencias,
+hubo 98 respuestas automáticas correctas, un tipo omitido y una revisión. Ese
+resultado no garantiza la exactitud en otras fotos ni evalúa el conteo de
+contenedores.
 
 ### Evaluación de la foto y observaciones de higiene
 
@@ -429,7 +448,7 @@ La API separa la correspondencia con el comentario (`foto_valida`) de la posibil
 - `evaluacion_foto.rechazada`: rechazo por interior o calidad insuficiente corroborada. En ese caso no hay servicios confirmados, posibles ni elementos detectados. La respuesta conserva el consumo y el estado del análisis.
 - `evaluacion_foto.requiere_revision`: devuelve `true` cuando el estado es `senal_negativa_no_corroborada` o `calidad_contradictoria`. También se activa en `indeterminada` si una lectura válida informa ámbito `mixto` o `indeterminado`; la indicación pide aclarar la ubicación mediante contexto o una foto, sin afirmar que sea interior. Conserva los hallazgos. Si hay un rechazo o un encuadre insuficiente corroborado, prevalece ese estado. La falta de evaluación, por sí sola, no activa esta bandera ni demuestra que la foto sea válida. La `indicacion` puede ser una nota para quien revisa; para exigir otra foto, usá `requiere_nueva_foto` o `requiere_foto_complementaria`, que no se activan por una duda de ámbito.
   En ese caso, aportar contexto y adjuntar una foto son alternativas para aclarar la ubicación; la API no exige ambas ni impone una nueva foto.
-- `contexto_visual.suficiente`: `true`, `false` o `null`. Una toma demasiado cerrada puede necesitar una foto complementaria aunque permita reconocer un daño. No borra hallazgos visibles ni demuestra que la escena sea interior. `contexto_visual.estado` distingue `evaluado` de `indeterminado` y `no_evaluado`; con `false`, `motivos` trae códigos estables (`encuadre_demasiado_cerrado`, `entorno_no_visible`, `situacion_cortada`) e `indicacion` dice qué mostrar en la nueva foto.
+- `contexto_visual.suficiente`: `true`, `false` o `null`. Lo decide una pregunta separada de encuadre a cada lector (`prompts/dirigidos/encuadre_higiene.txt`, #114), después de la primera pasada, con el criterio de uso de la cuadrilla de Higiene: para material retirable (residuos, escombros, poda, muebles, bolsas) la foto tiene que mostrar la extensión completa del problema y su entorno inmediato para reconocer el lugar y comprobar después que se resolvió; para un objeto fijo dañado (contenedor, cesto, buzón eléctrico, vereda, cordón) alcanza ver el objeto y el daño, aunque sea un primer plano. Corre en Equilibrado y Completo (una llamada corta por lector; en Económico no hay mayoría posible y no se paga; `PREGUNTA_ENCUADRE=0` la apaga). Una toma demasiado cerrada puede necesitar una foto complementaria aunque permita reconocer un daño. No borra hallazgos visibles ni demuestra que la escena sea interior. `contexto_visual.estado` distingue `evaluado` de `indeterminado` y `no_evaluado`; con `false`, `motivos` trae códigos estables (`encuadre_demasiado_cerrado`, `entorno_no_visible`, `situacion_cortada`, `demasiado_lejos_o_borrosa`) e `indicacion` dice qué mostrar en la nueva foto (más abierta, o más cerca y enfocada cuando el único motivo es `demasiado_lejos_o_borrosa`).
 - `evaluacion_foto.calidad_suficiente`: `true`, `false` o `null`, con `estado_calidad` y `motivos` (`desenfoque`, `movimiento`, `oscuridad`, `sobreexposicion`, `detalle_insuficiente`). Un `false` corroborado rechaza la foto y pide otra; un fallo técnico o una evaluación sin acuerdo deja `null`, nunca un rechazo.
 - Cómo se decide: el ámbito exige que todos los lectores coincidan. La calidad y el encuadre se deciden por mayoría de lectores distintos: en Completo, dos votos iguales alcanzan aunque el tercero opine lo contrario; en Equilibrado hacen falta los dos; Económico no evalúa estos campos. Un lector que falló no cuenta a favor ni en contra y un `false` sin motivo no es un voto. Cada entrada de `modelos` publica la lectura `evaluacion_foto` de ese lector para auditar la decisión.
 - `problema_principal`: selecciona una categoría ya confirmada. Con varios problemas necesita acuerdo entre los lectores de Completo. Si no coinciden, Completo hace una comparación dirigida de esas categorías finales; no suma un cuarto verificador ni cambia la clasificación. Económico y Equilibrado no hacen esa llamada. Si la comparación falla, la API se abstiene o elige una categoría que ya no está confirmada, el campo queda indeterminado o no evaluado. Los demás problemas permanecen en la respuesta.
@@ -506,6 +525,59 @@ La guía del Gobierno de la Ciudad indica barrer desde el cordón hacia el frent
 Un valor `null` o un estado indeterminado no significa ausencia. Las evaluaciones incompletas tampoco cuentan como acuerdo. Si hay evidencia corroborada de un problema y a la vez los lectores dicen que la calidad impide evaluarlo, se conserva el problema y se publica `calidad_contradictoria` para revisión.
 
 ## Reglas de clasificación
+
+### Hallazgos y servicios propuestos
+
+`problemas` conserva los hallazgos confirmados. `solicitudes_sugeridas` propone
+los servicios que conviene revisar y tiene siempre `requiere_confirmacion: true`.
+No presenta una solicitud municipal ni guarda una aprobación humana.
+
+La propuesta distingue `propuesta`, `requiere_seleccion`, `requiere_contexto`,
+`sin_confirmados` y `no_aplica`. Incluye `servicios`, `candidatos` y `motivo`.
+Una escena con varios materiales puede proponer varios retiros. Una tapa de
+servicio público confirmada tiene su servicio específico; no exige agregar
+reparación de vereda. Los otros hallazgos siguen disponibles aunque no integren
+los servicios propuestos.
+
+En Completo, las preguntas de encuadre y de aptitud se ejecutan por separado.
+La de aptitud comprueba calidad y ámbito con evidencia; su respuesta de encuadre
+no reemplaza la pregunta específica. Las lecturas faltantes quedan registradas
+como fallas y no se convierten en votos favorables. Si falta encuadre y tampoco
+hay acuerdo sobre la vía pública, los retiros quedan como posibles. El detalle
+visible se conserva cuando la ubicación pública sí está corroborada.
+
+La revisión de omisiones busca envases de pintura, tanques descartados y venta
+ambulante con una vista completa y recortes de la misma foto. Necesita al menos
+dos fuentes distintas que identifiquen el mismo tipo y uso. Una pertenencia en
+uso explícita bloquea el retiro de ese tipo. Esta etapa conserva los hallazgos
+anteriores y deja su evidencia en `revision_omisiones`; no reescribe los votos
+iniciales. Un elemento con formato inválido no acredita ausencia.
+
+La comprobación de cubiertas usa referencias privadas con una huella fija.
+Una lectura de tapa montada o articulada impide confirmar una ausencia nueva.
+El veto previo del daño se conserva. La falta de las referencias se publica como
+falla, sin inventar un resultado. Las fotos de referencia son material de
+calibración y no cuentan como evaluación independiente.
+
+### Revisión consolidada
+
+`eval/revision_lotes/consolidada/generar.py` actualiza la página de una ronda
+privada a partir de su `datos.json`. La opción `--revision` incorpora una
+exportación humana como respaldo para un navegador sin datos guardados; no
+reemplaza una revisión existente. La huella de cada foto y el conjunto deben
+coincidir.
+
+El formulario separa problemas visibles, servicios solicitados y el motivo
+por el que no se eligió un principal. Un campo sin revisar sigue pendiente.
+Una categoría rechazada por el árbitro no se carga como duda ni como un negativo
+humano. Guardar una propuesta sin cambios no se contabiliza como corrección.
+`candidatos.json`, si existe, permite comparar una versión nueva. Sólo ofrece
+aplicar una propuesta marcada como verificada, mediante una acción explícita;
+la revisión y la propuesta anteriores quedan en sus historiales.
+
+El servidor privado debe servir `mapeo.js`, `propuestas.js`, `solicitudes.js`,
+`comparacion.js` y `candidatos.json`, además de la página y sus fotos. El generador
+no publica fotos, revisiones ni resultados en el repositorio.
 
 ### Contexto y foto
 
@@ -661,7 +733,7 @@ y [contabilidad de uso](https://openrouter.ai/docs/cookbook/administration/usage
 
 ## Si publicás la API
 
-Cada foto en Completo usa entre 25 y 60 segundos de CPU y una llamada paga a OpenRouter por verificador, tres por defecto, más las pasadas dirigidas que se activen y, si hay una disputa, la llamada al árbitro. Económico y Equilibrado usan menos llamadas.
+Cada foto en Completo usa entre 25 y 60 segundos de CPU y una llamada paga a OpenRouter por verificador, tres por defecto, más una llamada corta de encuadre por verificador (#114), las pasadas dirigidas que se activen y, si hay una disputa, la llamada al árbitro. Económico y Equilibrado usan menos llamadas.
 
 `/clasificar` incluye estos límites:
 

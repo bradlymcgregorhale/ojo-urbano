@@ -80,6 +80,40 @@ class PoliticaTest(unittest.TestCase):
         self.assertTrue(nuevo['verificacion_escombros']['requiere_revision'])
         self.assertFalse(nuevo['verificacion_escombros']['requiere_nueva_foto'])
 
+    def test_fallo_de_un_lector_no_confirma_escombros_por_fusion_local(self):
+        r, revision = self.opacas([dict(categoria(), reclasificado_por='modelo_local')])
+        r['posibles'] = [categoria('recoleccion')]
+        r['detalle']['verificacion']['confirmadas'] = [categoria('recoleccion')]
+        revision['fallo'] = True
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertEqual([c['key'] for c in nuevo['problemas']], ['recoleccion'])
+        sospecha = next(c for c in nuevo['posibles'] if c['key'] == P.KEY)
+        self.assertNotIn('m1', sospecha['fuentes'])
+        self.assertNotIn('m2', sospecha['fuentes'])
+        self.assertTrue(nuevo['verificacion_escombros']['requiere_revision'])
+
+    def test_dos_lecturas_de_basura_y_una_bolsa_oculta_no_borran_recoleccion(self):
+        r, revision = self.opacas([dict(categoria(), reclasificado_por='modelo_local')])
+        r['posibles'] = [categoria('recoleccion')]
+        r['detalle']['verificacion']['confirmadas'] = [categoria('recoleccion')]
+        for v in revision['revisiones']:
+            v.update(material='incompatible_visible', hay_bolsas_opacas_o_parciales='no')
+        revision['revisiones'].append(dict(respuesta(afirmacion_vecinal='no_menciona',
+            cita_vecinal=''), modelo='m3'))
+        revision['material_contradictorio'] = True
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertEqual([c['key'] for c in nuevo['problemas']], ['recoleccion'])
+        revision['revisiones'][2]['material'] = 'escombros_visible'
+        self.assertFalse(P._basura_publica_visible(r, revision))
+
+    def test_fusion_sin_material_no_recupera_basura_con_ambito_excluido(self):
+        r, revision = self.opacas([dict(categoria(), reclasificado_por='modelo_local')])
+        r['posibles'] = [categoria('recoleccion')]
+        r['detalle']['verificacion']['confirmadas'] = [categoria('recoleccion')]
+        for estado in ('excluido', 'indeterminado'):
+            revision['estado'] = estado
+            self.assertFalse(P.aplicar(r, revision, self.cats)['problemas'])
+
     def test_publico_conserva_confirmacion_visual_y_no_muta(self):
         r = salida()
         antes = copy.deepcopy(r)
@@ -840,7 +874,7 @@ class PipelineTest(unittest.TestCase):
                 opciones = dict(fusion=True, reco_local=.99,
                                 revision_material="escombros-preservacion-20260906")
                 opciones.update(cambios)
-                _, pub = self.procesar(alcance(), **opciones)
+                _, pub = self.procesar(alcance(material_visible_confirmado=True), **opciones)
                 keys = {c["key"] for c in pub["problemas"]}
                 self.assertEqual(P.KEY in keys, esperado)
                 self.assertIn("recoleccion", keys)

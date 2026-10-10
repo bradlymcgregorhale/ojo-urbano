@@ -40,6 +40,7 @@ import contextvars
 import hashlib
 import io
 import json
+import copy
 import os
 import re
 import http.client
@@ -65,6 +66,8 @@ from prompts import (
     _RUBRICA_KEYS,
     _RUBRICA,
     _PROMPT_PATENTE,
+    _PROMPT_ENCUADRE_HIGIENE,
+    _PROMPT_APTITUD_HIGIENE,
     _PROMPT_ALCANCE_ESCOMBROS,
     _PROMPT_OBRA_SERVICIOS_CONTEXTO,
     PRIORIDAD_COMPARACION as _PROMPT_PRIORIDAD_COMPARACION,
@@ -212,6 +215,13 @@ MODELO_PRIORIDAD_COMPARACION = os.environ.get(
 # fallo correlacionado de dos modelos.
 SEGUNDA_MIRADA_BASE = os.environ.get(
     "SEGUNDA_MIRADA_BASE", "1").strip().lower() not in ("0", "false", "no")
+# Pregunta separada de encuadre (#114): la rúbrica completa diluye el criterio
+# de la cuadrilla de Higiene (medido: H0174 y H0185 quedan suficientes 2 a 1
+# con el párrafo nuevo dentro de la rúbrica, e insuficientes 3 a 0 con la
+# pregunta corta). Corre con dos o más lectores; en Económico no hay mayoría
+# posible y no se paga.
+PREGUNTA_ENCUADRE = os.environ.get(
+    "PREGUNTA_ENCUADRE", "1").strip().lower() not in ("0", "false", "no")
 # Segunda mirada dirigida para el DAÑO del contenedor (tapas dadas vuelta
 # leídas como rotas, fierros ajenos atribuidos al contenedor).
 SEGUNDA_MIRADA_DANO = os.environ.get(
@@ -653,31 +663,71 @@ def _registrar_uso(modelo, etapa, clave, intento, inicio, data=None, error=None)
 
 
 def verificar_contenedores(datos):
-    """Una llamada con el inventario fijo; fallo o incertidumbre pide revision."""
+    """Inventario fijo; solo su duda visual puede activar la comprobación de ausencia."""
     perfil = modos.perfil_actual()
     if perfil and not perfil.especialista:
         raise ValueError("El modo no usa especialista de contenedores")
     import especialista_contenedores as especialista
     inicio = time.monotonic()
+    vence = inicio + 40
     data, error = None, None
     enviado = False
     try:
         cuerpo = especialista.solicitud(datos)
         req = urllib.request.Request(OPENROUTER_URL, data=json.dumps(cuerpo).encode(), headers={
             "Authorization": "Bearer " + api_key(), "Content-Type": "application/json"})
-        vence = inicio + 40
         enviado = True
         modos.llamada()
         data = _pedir_http(req, min(TIMEOUT, 40), vence)
         _costo_sumar(data.get("usage"))
-        return especialista.interpretar(data)
+        resultado = especialista.interpretar(data)
     except Exception as exc:
         error = exc
-        return especialista.revision(fallo=True)
+        resultado = especialista.revision(fallo=True)
     finally:
         if enviado:
             _tokens_sumar(data)
         _registrar_uso(especialista.MODELO, "inventario_contenedores", None, 1, inicio, data, error)
+    modelos = list(dict.fromkeys(modelos_activos()))
+    if not especialista.requiere_presencia(resultado) or len(modelos) != 3:
+        return resultado
+    if vence - time.monotonic() < 5:
+        modos.fallo('presencia_contenedores_sin_tiempo')
+        return dict(resultado, fallo=True,
+                    motivo='El inventario requiere revisión y no quedó tiempo para corroborar la ausencia.')
+    lecturas = _map_modelos(modelos, lambda modelo: _verificar_presencia_contenedor(datos, modelo, vence))
+    if any(v is None or v is _FALLO_MODELO for v in lecturas):
+        resultado = dict(resultado, fallo=True)
+    return especialista.resolver_ausencia(resultado, lecturas)
+
+
+def _verificar_presencia_contenedor(datos, modelo, vence):
+    """Un intento por lector, con consumo y fallos separados del especialista."""
+    import especialista_contenedores as especialista
+    inicio = time.monotonic()
+    data, error, enviado = None, None, False
+    try:
+        cuerpo = especialista.solicitud_presencia(datos, modelo)
+        req = urllib.request.Request(OPENROUTER_URL, data=json.dumps(cuerpo).encode(), headers={
+            "Authorization": "Bearer " + api_key(), "Content-Type": "application/json"})
+        resto = vence - time.monotonic()
+        if resto < 5:
+            modos.fallo('presencia_contenedores_sin_tiempo')
+            return None
+        enviado = True
+        modos.llamada()
+        data = _pedir_http(req, min(TIMEOUT, resto), vence)
+        _costo_sumar(data.get('usage'))
+        return especialista.interpretar_presencia(data, modelo)
+    except Exception as exc:
+        error = exc
+        modos.fallo('presencia_contenedores')
+        return None
+    finally:
+        if enviado:
+            _tokens_sumar(data)
+        if enviado or error is not None:
+            _registrar_uso(modelo, 'presencia_contenedores', None, 1, inicio, data, error)
 
 
 class RespuestaNoUtilizableError(ValueError):
@@ -718,6 +768,10 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa")
             raise ValueError("Modelo fuera del modo elegido")
         if etapa == "arbitrar" and perfil.modo == "bajo":
             raise ValueError("Económico no usa árbitro")
+    # Las preguntas cortas también consumen tokens de razonamiento. Con 400,
+    # Mini podía agotar la salida antes de entregar el JSON.
+    if modelo == 'openai/gpt-5-mini' and max_tokens < 1000:
+        max_tokens = 1000
     cuerpo = {"model": modelo, "max_tokens": max_tokens,
               # Pide a OpenRouter el costo real de la llamada (usage.cost, USD).
               "usage": {"include": True},
@@ -727,6 +781,11 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa")
               "temperature": TEMPERATURA,
               "top_p": 1,
               "messages": mensajes}
+    if etapa == 'arbitrar' and modelo == 'deepseek/deepseek-v4-flash':
+        # Este modelo sólo ofrece high/xhigh. Enviarle low no lo limita y puede
+        # gastar toda la salida sin responder. El arbitraje usa su modo directo.
+        cuerpo['reasoning'] = {'enabled': False}
+        cuerpo['response_format'] = {'type': 'json_object'}
     clave = _clave_cache_prompt(modelo, mensajes) if OPENROUTER_CACHE_PROMPTS else None
     if clave:
         cuerpo["prompt_cache_key"] = clave
@@ -1526,10 +1585,18 @@ def _segunda_mirada_subtipo(img):
     return lateral, bilateral, fallo
 
 
-def _segunda_mirada_dano(img):
+def _segunda_mirada_dano(img, *, montaje_cubierta=False):
     """Re-consulta dirigida por el daño del contenedor. Igual que la de la
     base: pregunta a TODOS los verificadores y puede desautorizar votos.
     Devuelve (dano, sin_dano, fallo)."""
+    if montaje_cubierta:
+        import revision_omisiones as revision
+        resultado = revision.consultar_cubierta(img)
+        dano = [(v['modelo'], v['evidencia']) for v in resultado['lecturas']
+                if v['montaje'] in revision.DANO]
+        sin_dano = [(v['modelo'], v['evidencia']) for v in resultado['lecturas']
+                    if v['montaje'] in revision.MONTADO]
+        return dano, sin_dano, resultado['fallo']
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
 
     def _uno(modelo):
@@ -1555,6 +1622,123 @@ def _segunda_mirada_dano(img):
         elif veredicto == "usable" and evidencia:
             sin_dano.append((modelo, evidencia))
     return dano, sin_dano, fallo
+
+
+def _pregunta_encuadre(data_url):
+    """Pregunta corta de encuadre a todos los lectores activos (#114).
+
+    Misma imagen que la primera pasada. Devuelve {modelo: lectura} solo con las
+    respuestas válidas: un bool en contexto_suficiente y, si es false, un motivo
+    de evaluacion_foto.MOTIVOS_CONTEXTO. Una salida cortada, un JSON ajeno o un
+    motivo inventado no votan (el lector queda fuera del dict).
+    """
+    def _uno(modelo):
+        contenido = _llamar(modelo, [
+            {"role": "system", "content": _PROMPT_ENCUADRE_HIGIENE},
+            {"role": "user", "content": [
+                {"type": "text", "text": "La foto:"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]},
+        ], max_tokens=400, etapa="pregunta_encuadre")
+        v = _extraer_json(contenido)
+        suficiente = v.get("contexto_suficiente")
+        if type(suficiente) is not bool:
+            raise ValueError("sin voto de encuadre")
+        motivo = v.get("motivo")
+        motivos = []
+        if suficiente is False:
+            if motivo not in evaluacion_foto.MOTIVOS_CONTEXTO:
+                raise ValueError("motivo de encuadre desconocido")
+            motivos = [motivo]
+        evidencia = v.get("evidencia")
+        if not isinstance(evidencia, str) or not evidencia.strip():
+            raise ValueError("encuadre sin evidencia visual")
+        return {"contexto_suficiente": suficiente, "motivos_contexto": motivos,
+                "evidencia": _texto_limpio(evidencia, EVID_MAX)}
+
+    lecturas = {}
+    for modelo, r in zip(modelos_activos(), _map_modelos(modelos_activos(), _uno)):
+        if r is not _FALLO_MODELO:
+            lecturas[modelo] = r
+    return lecturas
+
+
+def _pregunta_aptitud(data_url):
+    """Revisa calidad y ubicación; el encuadre de esta respuesta no vota.
+
+    Explicitar el uso de la foto ayuda a juzgar el detalle necesario. El encuadre
+    lo decide su pregunta independiente, medida con controles de tomas cerradas.
+    """
+    def _uno(modelo):
+        valor = _extraer_json(_llamar(modelo, [
+            {"role": "system", "content": _PROMPT_APTITUD_HIGIENE},
+            {"role": "user", "content": [
+                {"type": "text", "text": "La foto:"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]},
+        ], max_tokens=1200, etapa="pregunta_aptitud"))
+        calidad, motivo = valor.get('calidad_suficiente'), valor.get('motivo_calidad')
+        ambito = valor.get('ambito')
+        evidencias = [valor.get('evidencia_calidad'), valor.get('evidencia_ambito')]
+        if (type(calidad) is not bool
+                or (calidad is False and motivo not in evaluacion_foto.MOTIVOS_CALIDAD)
+                or ambito not in {'publica', 'interior', 'mixto', 'indeterminado'}
+                or any(not isinstance(e, str) or not e.strip() for e in evidencias)):
+            raise ValueError('lectura de aptitud incompleta')
+        return {
+            'calidad_suficiente': calidad, 'motivos_calidad': [] if calidad else [motivo],
+            'ambito': ambito, 'evidencia_calidad': _texto_limpio(evidencias[0], EVID_MAX),
+            'evidencia_ambito': _texto_limpio(evidencias[1], EVID_MAX),
+        }
+
+    modelos = modelos_activos()
+    return {modelo: r for modelo, r in zip(modelos, _map_modelos(modelos, _uno))
+            if r is not _FALLO_MODELO}
+
+
+def _aplicar_aptitud(veredictos, lecturas):
+    """Conserva el encuadre y los hallazgos; una lectura fallida no inventa votos."""
+    for v in veredictos:
+        if not isinstance(v, dict) or v.get('ok') is not True:
+            continue
+        lectura = lecturas.get(v.get('modelo'))
+        v.setdefault('evaluacion_foto_inicial', copy.deepcopy(v.get('evaluacion_foto')))
+        if lectura is None:
+            v['aptitud_higiene'] = {'estado': 'sin_lectura', 'fallo': True}
+            continue
+        ef = dict(v.get('evaluacion_foto') or evaluacion_foto.normalizar({}))
+        for campo in ('calidad_suficiente', 'motivos_calidad', 'ambito'):
+            ef[campo] = lectura[campo]
+        v['evaluacion_foto'] = ef
+        v['aptitud_higiene'] = {'estado': 'evaluado', **lectura}
+    return veredictos
+
+
+def _aplicar_encuadre(veredictos, lecturas):
+    """La pregunta separada decide el encuadre de cada lector que respondió.
+
+    Reemplaza contexto_suficiente y motivos_contexto de su evaluacion_foto (la
+    respuesta principal deja de decidir ese campo) y deja constancia en
+    encuadre_higiene. Un lector sin lectura válida conserva lo que dijo en la
+    primera pasada: el fallo de la pregunta corta no inventa un voto ni lo
+    borra. Ámbito y calidad no se tocan.
+    """
+    for v in veredictos:
+        if not isinstance(v, dict) or v.get("ok") is not True:
+            continue
+        lectura = lecturas.get(v.get("modelo"))
+        v.setdefault('evaluacion_foto_inicial', copy.deepcopy(v.get('evaluacion_foto')))
+        if lectura is None:
+            v["encuadre_higiene"] = {"estado": "sin_lectura", "fallo": True}
+            continue
+        ef = v.get("evaluacion_foto")
+        if not isinstance(ef, dict):
+            ef = evaluacion_foto.normalizar({})
+        ef["contexto_suficiente"] = lectura["contexto_suficiente"]
+        ef["motivos_contexto"] = list(lectura["motivos_contexto"])
+        v["evaluacion_foto"] = ef
+        v["encuadre_higiene"] = {"estado": "evaluado", **lectura}
+    return veredictos
 
 
 # Objetos CONCRETOS que una descripción puede nombrar. Se usan para el saneo
@@ -2443,6 +2627,16 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     with concurrent.futures.ThreadPoolExecutor(len(modelos_activos())) as pool:
         veredictos = _map_con_contexto(
             pool, lambda m: _verificar_uno(m, data_url, categorias, contexto), modelos_activos())
+    # El encuadre lo decide la pregunta corta de Higiene (#114), no la rúbrica.
+    # Con un solo lector no hay mayoría que formar y no se gasta la llamada.
+    if PREGUNTA_ENCUADRE and len(set(modelos_activos())) >= 2 \
+            and any(v.get("ok") for v in veredictos):
+        with concurrent.futures.ThreadPoolExecutor(2) as pool:
+            encuadre, aptitud = _map_con_contexto(
+                pool, lambda pregunta: pregunta(data_url),
+                [_pregunta_encuadre, _pregunta_aptitud])
+        _aplicar_encuadre(veredictos, encuadre)
+        _aplicar_aptitud(veredictos, aptitud)
 
     grav_votos = {}  # key -> [gravedad de cada verificador que la reportó]
     fuentes = {}   # key -> lista de fuentes que la reportan
@@ -2945,7 +3139,14 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         # cuando barra_disputada, aunque el voto haya quedado clasificado como
         # base (su evidencia cita la barra, no una plataforma).
         if tapas or barra_disputada or barra_hint:
-            dano_sm, sin_dano_sm, fallo_sd = _segunda_mirada_dano(img)
+            textos_tapas = [_norm_texto(c.get('evidencia') or '') for c in tapas.values()]
+            montaje_cubierta = not barra_hint and bool(textos_tapas) and all(
+                re.search(r'\b(tapa|cabezal|capota|cubierta)\b', texto)
+                and re.search(r'ausent|falt|desprendid|separad|suelta?|adentro|caid', texto)
+                and not re.search(r'pedal|quemad|derretid|agujero.*cuerpo', texto)
+                for texto in textos_tapas)
+            dano_sm, sin_dano_sm, fallo_sd = _segunda_mirada_dano(
+                img, montaje_cubierta=montaje_cubierta)
             # VETO ESTRICTO: un solo 'usable' enfocado tumba el reclamo,
             # digan lo que digan los demás. Medido: los fantasmas de
             # reparación (4 en la ronda 4, todos falsos según el dueño)
@@ -2971,6 +3172,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             retira_dano = (len(sin_dano_sm) >= 1 and not _mayoria_barra
                            and bool(tapas))
             segunda_mirada_dano = {
+                "tipo_pregunta": "montaje_cubierta" if montaje_cubierta else "uso_normal",
                 "dano": [{"modelo": m, "evidencia": e} for m, e in dano_sm],
                 "sin_dano": [{"modelo": m, "evidencia": e}
                              for m, e in sin_dano_sm],

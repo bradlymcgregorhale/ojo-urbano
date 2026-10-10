@@ -55,6 +55,7 @@ from typing import Any
 import revision_escombros_publica as revision_publica
 import politica_escombros
 import evaluacion_foto
+import revision_omisiones
 import observaciones_higiene
 import prioridad
 import especialista_contenedores
@@ -887,6 +888,7 @@ def procesar(datos, contexto, verificar):
         salida = politica_escombros.aplicar_obra_servicios(salida, revision_obra)
     perfil = modos.perfil_actual()
     if perfil and perfil.modo == "alto":
+        salida = revision_omisiones.revisar(img, salida, CATEGORIAS)
         veri_actual = dict((salida.get("detalle") or {}).get("verificacion") or {})
         lecturas = veri_actual.get("verificadores") or []
         previa = evaluacion_foto.aplicar({"problemas": list(salida.get("problemas") or [])}, lecturas)
@@ -1039,7 +1041,13 @@ def _publica(r):
          "descripcion": v.get("descripcion"),
          # Lectura de ámbito, calidad y encuadre de cada lector (#97, #102), para
          # auditar la mayoría publicada en evaluacion_foto y contexto_visual.
-         "evaluacion_foto": evaluacion_foto.normalizar(v.get("evaluacion_foto"))}
+         # Ya está normalizada. Normalizarla otra vez borraba el ámbito porque
+         # la primera normalización no conserva evidencia_ambito.
+         "evaluacion_foto": ({k: valor for k, valor in v['evaluacion_foto'].items()
+                              if k in {'ambito', 'calidad_suficiente', 'motivos_calidad',
+                                       'contexto_suficiente', 'motivos_contexto'}}
+                             if isinstance(v.get('evaluacion_foto'), dict) else None),
+         **{k: v[k] for k in ('encuadre_higiene', 'aptitud_higiene', 'evaluacion_foto_inicial') if k in v}}
         for v in (veri.get("verificadores") or [])]
     local = (r.get("detalle") or {}).get("modelo_local") or {}
     if local.get("probabilidades"):
@@ -1055,6 +1063,8 @@ def _publica(r):
                 pub["modelo_local"][campo] = local[campo]
     if veri.get("inventario_contenedores") is not None:
         pub = especialista_contenedores.aplicar(pub, veri["inventario_contenedores"], CATEGORIAS)
+    if veri.get('revision_omisiones') is not None:
+        pub['revision_omisiones'] = veri['revision_omisiones']
     if isinstance(pub.get("verificacion_escombros"), dict):
         pub["verificacion_escombros"] = dict(pub["verificacion_escombros"], **revision_publica.publicar(
             veri.get("alcance_escombros"), veri.get("decision_alcance"),
@@ -1066,6 +1076,7 @@ def _publica(r):
     pub['problema_principal'] = prioridad.seleccionar(
         pub, veri.get('verificadores') or [],
         comparacion=prioridad.desde_guardada(veri))
+    pub['solicitudes_sugeridas'] = prioridad.proponer_solicitudes(pub)
     auditorias = list(veri.get('repreguntas') or [])
     if veri.get('escombros_excluidos_por_material') is True:
         auditorias.append({'key': 'retiro_escombros', 'descarte_independiente': True, 'confirmo': False})

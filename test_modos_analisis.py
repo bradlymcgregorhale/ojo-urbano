@@ -150,6 +150,14 @@ class ApiModos(unittest.TestCase):
             contenido = {'categorias': [], 'descripcion': '', 'sin_problema': True}
             if datos['model'] == __import__('especialista_contenedores').MODELO:
                 contenido = {'types': [], 'uncertain': False, 'evidence': ''}
+            elif datos['messages'][0].get('content') == V._PROMPT_ENCUADRE_HIGIENE:
+                contenido = {'contexto_suficiente': True, 'motivo': None, 'evidencia': 'vereda'}
+            elif datos['messages'][0].get('content') == V._PROMPT_APTITUD_HIGIENE:
+                contenido = {'calidad_suficiente': True, 'motivo_calidad': None,
+                    'evidencia_calidad': 'Objetos nítidos.', 'ambito': 'publica',
+                    'evidencia_ambito': 'Vereda y cordón.'}
+            elif datos['messages'][0].get('content') == __import__('revision_omisiones').OBJETOS:
+                contenido = {'hallazgos': []}
             return {'model': datos['model'], 'usage': {'total_tokens': 10, 'cost': .001},
                     'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps(contenido)}}]}
         self.pila.enter_context(patch.object(V, '_pedir_http', side_effect=http))
@@ -165,7 +173,9 @@ class ApiModos(unittest.TestCase):
                                  data={} if modo is None else {'modo': modo}, **kw)
 
     def test_perfiles_reales_llamadas_y_cache_por_modo(self):
-        for modo, cantidad in [('bajo', 1), ('medio', 2), ('alto', 4)]:
+        # Económico: un lector. Medio y Completo agregan encuadre y aptitud
+        # por lector; Completo también ejecuta el especialista de contenedores.
+        for modo, cantidad in [('bajo', 1), ('medio', 6), ('alto', 13)]:
             with self.subTest(modo=modo):
                 self.llamadas.clear()
                 r = self.post(modo)
@@ -176,7 +186,7 @@ class ApiModos(unittest.TestCase):
                 self.assertEqual(d['analisis_estado'], 'completo', d)
                 self.assertEqual(len(self.llamadas), cantidad, self.llamadas)
                 self.assertEqual(d['tokens_api'], 10 * cantidad)
-                self.assertEqual(d['costo_api'], .001 * cantidad)
+                self.assertAlmostEqual(d['costo_api'], .001 * cantidad, places=6)
                 cache = self.post(modo, '/trabajos').json()
                 self.assertIsNone(cache['trabajo'])
                 self.assertEqual(cache['resultado'], d)
@@ -235,6 +245,7 @@ class ApiModos(unittest.TestCase):
                     'choices': [{'finish_reason': 'length',
                                  'message': {'content': None, 'reasoning': contenido}}]}
         with patch.object(V, '_pedir_http', side_effect=http):
+            # Sin ninguna primera pasada válida tampoco se paga la pregunta de encuadre (#114).
             for modo, cantidad in [('bajo', 1), ('medio', 2), ('alto', 4)]:
                 with self.subTest(modo=modo):
                     self.llamadas.clear()

@@ -70,6 +70,21 @@ class EvaluacionFotoTest(unittest.TestCase):
         self.assertTrue(r['evaluacion_foto']['requiere_foto_complementaria'])
         for k in original: self.assertEqual(r[k], original[k])
 
+    def test_encuadre_cerrado_no_habilita_retiros_en_ambito_desconocido(self):
+        original = salida()
+        for ambitos in [('publica', 'indeterminado', 'indeterminado'),
+                        ('interior', 'interior', 'indeterminado')]:
+            with self.subTest(ambitos=ambitos):
+                votos = [voto(str(i), ambito=ambito, contexto_suficiente=False,
+                              motivos_contexto=['entorno_no_visible'])
+                         for i, ambito in enumerate(ambitos)]
+                r = E.aplicar(original, votos)
+                self.assertEqual(r['problemas'], [])
+                self.assertIn('retiro_muebles', {p['key'] for p in r['posibles']})
+                self.assertTrue(r['evaluacion_foto']['requiere_revision'])
+                self.assertTrue(r['evaluacion_foto']['requiere_foto_complementaria'])
+                self.assertFalse(r['evaluacion_foto']['rechazada'])
+
     def test_calidad_contradictoria_conserva_evidencia_y_exige_fuentes_reales(self):
         votos = [voto(m, calidad_suficiente=False, motivos_calidad=['desenfoque']) for m in ['a','b']]
         for v in votos:
@@ -194,7 +209,7 @@ class EvaluacionFotoTest(unittest.TestCase):
                          'motivos_'+campo: [motivo]}) for m in ('a', 'b')]
                 e = E.aplicar(salida(), votos)['evaluacion_foto']
                 self.assertEqual(e['estado'], estado)
-                self.assertFalse(e['requiere_revision'])
+                self.assertEqual(e['requiere_revision'], campo == 'contexto')
                 self.assertNotEqual(e['indicacion'], E.INDICACION_AMBITO)
         for otro in (voto('b', ambito='interior'),
                      voto('b', calidad_suficiente=False, motivos_calidad=['oscuridad'])):

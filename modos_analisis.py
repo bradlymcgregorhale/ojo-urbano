@@ -41,7 +41,7 @@ def cargar(verificador, opciones_servidor, entorno=None):
     raiz = Path(__file__).parent
     archivos = sorted((raiz / 'prompts').rglob('*.txt')) + [
         raiz / n for n in ('verificador.py', 'politica_escombros.py',
-                          'revision_escombros_publica.py', 'modos_analisis.py',
+                          'revision_escombros_publica.py', 'revision_omisiones.py', 'modos_analisis.py',
                           'servidor.py', 'especialista_contenedores.py', 'categorias.json', 'evaluacion_foto.py', 'prioridad.py', 'observaciones_higiene.py')]
     base = hashlib.sha256()
     for archivo in archivos:
