@@ -109,12 +109,13 @@ def _basura_publica_visible(salida, revision):
     revisiones = revision.get('revisiones') or []
     if len({r.get('modelo') for r in revisiones if r.get('modelo')}) < 2:
         return False
+    negativos = set()
     for r in revisiones:
         if (r.get('ubicacion') != 'publica'
                 or r.get('afirmacion_vecinal') != 'no_menciona'
                 or r.get('presentacion') not in {'bolsas_chicas_o_suelto', 'sin_pila'}
-                or r.get('hay_bolsas_opacas_o_parciales') == 'si'
-                or r.get('material') not in {'incompatible_visible', 'indeterminado'}):
+                or r.get('material') not in {
+                    'incompatible_visible', 'indeterminado', 'oculto_o_ambiguo'}):
             return False
         # Un material indeterminado solo es neutro si el revisor descarta
         # una pila candidata. No extrapolar el cartón a otras bolsas cerradas.
@@ -122,7 +123,13 @@ def _basura_publica_visible(salida, revision):
             return False
         if r.get('material') == 'incompatible_visible' and r.get('hay_bolsas_opacas_o_parciales') != 'no':
             return False
-    return _recoleccion_previa(salida) is not None
+        if r.get('material') == 'incompatible_visible' and r.get('modelo'):
+            negativos.add(r['modelo'])
+    # Un lector que no ve dentro de una bolsa no contradice dos lecturas
+    # explícitas de residuos comunes. Un voto de escombros sí lo haría.
+    hay_ocultos = any(r.get('material') == 'oculto_o_ambiguo' for r in revisiones)
+    return (bool(negativos) and (not hay_ocultos or len(negativos) >= 2)
+            and _recoleccion_previa(salida) is not None)
 
 
 def _material_publico_disputado(salida, revision):
@@ -431,7 +438,8 @@ def aplicar(salida, revision, categorias):
                 veri.setdefault('fuentes_en_duda', {})['recoleccion'] = list(reco[0]['fuentes'])
         otros = [c['nombre'] for c in r['problemas']]
         r['descripcion'] = motivo + (" Otros hallazgos: " + "; ".join(otros) + "." if otros else "")
-    material_oculto = (candidato and _bolsas_opacas_sin_material(revision) and any(
+    material_oculto = (candidato and not contextual
+        and revision.get('material_visible_confirmado') is not True and any(
         es_escombros(c) and c.get('reclasificado_por') == 'modelo_local'
         for c in r['problemas']))
     if material_oculto:
@@ -457,7 +465,11 @@ def aplicar(salida, revision, categorias):
             if key not in r['en_duda']: r['en_duda'].append(key)
             veri.setdefault('fuentes_en_duda', {})[key] = pendiente['fuentes']
         previa = _recoleccion_previa(salida)
-        if (candidatos_ocultos and previa and len(_respaldo_visual(salida, 'recoleccion')) >= 2
+        if (candidatos_ocultos and previa and salida.get('foto_valida') is not False
+                and revision.get('estado') == 'apto'
+                and not revision.get('afirmacion_explicita')
+                and not revision.get('material_contradictorio')
+                and len(_respaldo_visual(salida, 'recoleccion')) >= 2
                 and not any(c.get('key') == 'recoleccion' for c in r['problemas'])):
             r['problemas'].append(copy.deepcopy(previa))
             r['posibles'] = [c for c in r['posibles'] if c.get('key') != 'recoleccion']

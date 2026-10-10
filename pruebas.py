@@ -1983,24 +1983,22 @@ else:
               "escombros de obra" not in (_r["descripcion"] or ""),
               str(_r["descripcion"])[:90])
 
-        # camino original intacto: los verificadores no vieron escombros y
-        # el local lo agrega reclasificando
+        # Sin corroboración del material, el rescate local queda como duda.
+        # Los votos por recolección no son testigos de escombros.
         servidor.clasificar_local = lambda img: _local_con(0.99, 0.0)
         V._verificar_uno = _mock(["recoleccion"], [], None)
         _r = _pedir(_bytes, "", "1")
         _esc = next((p for p in _r["problemas"]
                      if p["key"] == "retiro_escombros"), None)
-        check("verificadores sin escombros: el local lo agrega reclasificando",
-              _esc is not None
-              and _esc.get("reclasificado_por") == "modelo_local",
+        check("verificadores sin escombros: el local no confirma el material",
+              _esc is None and "retiro_escombros" in _r["en_duda"],
               str(_r["problemas"])[:140])
-        check("  y recoleccion también baja",
-              "recoleccion" not in {p["key"] for p in _r["problemas"]})
-        # la nota no puede AFIRMAR lo que nadie ve en la foto (caso U035):
-        # dice que las bolsas PARECEN de obra y que hay que confirmarlo
+        check("  y conserva recoleccion corroborada",
+              "recoleccion" in {p["key"] for p in _r["problemas"]})
+        # La descripción explica qué información falta del material.
         check("  la nota de la fusión no afirma, propone confirmar",
-              "parecen contener escombros" in (_r.get("descripcion") or "")
-              and "conviene confirmarlo en el lugar" in (_r.get("descripcion") or "")
+              "No se pudo identificar el contenido" in (_r.get("descripcion") or "")
+              and "Indicá qué contienen" in (_r.get("descripcion") or "")
               and "análisis del material indica" not in (_r.get("descripcion") or ""),
               str(_r.get("descripcion"))[:160])
 
@@ -2023,8 +2021,9 @@ else:
         servidor.clasificar_local = lambda img: _local_con(0.75, 0.05)
         V._verificar_uno = _mock(["recoleccion"], [], None)
         _r = _pedir(_bytes, "", "1")
-        check("rescate: escombros 0.75 + reco 0.05 + pila confirmada -> se inyecta",
-              "retiro_escombros" in {p["key"] for p in _r["problemas"]},
+        check("rescate: la puntuación local sin material corroborado queda dudosa",
+              "retiro_escombros" not in {p["key"] for p in _r["problemas"]}
+              and "retiro_escombros" in _r["en_duda"],
               str(_r["problemas"])[:140])
 
         # el rescate exige reco MÁS estricta: reco 0.15 (>0.1) y esc 0.75 (<0.95)
@@ -2040,8 +2039,9 @@ else:
         servidor.clasificar_local = lambda img: _local_con(0.97, 0.15)
         V._verificar_uno = _mock(["recoleccion"], [], None)
         _r = _pedir(_bytes, "", "1")
-        check("confiado: escombros 0.97 + reco 0.15 (<=0.2) se inyecta",
-              "retiro_escombros" in {p["key"] for p in _r["problemas"]},
+        check("confiado: la puntuación local sin material corroborado queda dudosa",
+              "retiro_escombros" not in {p["key"] for p in _r["problemas"]}
+              and "retiro_escombros" in _r["en_duda"],
               str(_r["problemas"])[:140])
 
         # PILA VOLUMINOSA (V154): una pila que los VLM leen como retiro_muebles
@@ -2052,8 +2052,9 @@ else:
         V._verificar_uno = _mock(["retiro_muebles"], [], None)
         _r = _pedir(_bytes, "", "1")
         _keys = {p["key"] for p in _r["problemas"]}
-        check("pila de muebles + escombros local confiado -> inyecta escombros (V154)",
-              "retiro_escombros" in _keys and "retiro_muebles" in _keys, str(_keys))
+        check("pila de muebles sin escombros corroborados conserva muebles y duda de material",
+              "retiro_escombros" not in _keys and "retiro_muebles" in _keys
+              and "retiro_escombros" in _r["en_duda"], str(_keys))
         # pero SIN pila (ni recoleccion ni muebles) el local solo NO inyecta
         servidor.clasificar_local = lambda img: _local_con(0.99, 0.02)
         V._verificar_uno = _mock(["barrido"], [], None)
@@ -2094,13 +2095,12 @@ else:
         check("  confiado + recoleccion + adjudicado: NO reinyecta (protección FP)",
               "retiro_escombros" not in {p["key"] for p in _r["problemas"]},
               str([p["key"] for p in _r["problemas"]]))
-        # (c) EXCEPCIÓN ACOTADA V154: CONFIADO + pila SOLO de muebles (rec None)
-        # + rechazo dirigido -> SÍ inyecta (el "no" dirigido no es informativo).
+        # La excepción local de muebles tampoco confirma material sin respaldo.
         servidor.clasificar_local = lambda img: _local_con(0.99, 0.02)
         V._verificar_uno = _mock(["retiro_muebles"], [], None)
         _r = _pedir(_bytes, "", "1")
-        check("  excepción V154: confiado + muebles-only + adjudicado -> inyecta",
-              "retiro_escombros" in {p["key"] for p in _r["problemas"]},
+        check("  muebles con rechazo dirigido no confirma material por puntuación local",
+              "retiro_escombros" not in {p["key"] for p in _r["problemas"]},
               str([p["key"] for p in _r["problemas"]]))
         V.verificar = _verificar_orig
 
