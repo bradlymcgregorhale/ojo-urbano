@@ -1066,6 +1066,7 @@ def _publica(r):
     pub['problema_principal'] = prioridad.seleccionar(
         pub, veri.get('verificadores') or [],
         comparacion=prioridad.desde_guardada(veri))
+    pub['solicitudes_sugeridas'] = prioridad.proponer_solicitudes(pub)
     auditorias = list(veri.get('repreguntas') or [])
     if veri.get('escombros_excluidos_por_material') is True:
         auditorias.append({'key': 'retiro_escombros', 'descarte_independiente': True, 'confirmo': False})

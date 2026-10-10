@@ -5,6 +5,45 @@ import prioridad as P
 
 
 class PrioridadTest(unittest.TestCase):
+    def test_solicitudes_multiples_sin_cambiar_hallazgos(self):
+        r = {'problemas': [{'key': k} for k in ['retiro_escombros', 'retiro_muebles', 'recoleccion']],
+             'problema_principal': {'key': 'retiro_muebles', 'estado': 'seleccionado', 'criterio': 'escena'}}
+        antes = copy.deepcopy(r)
+        p = P.proponer_solicitudes(r)
+        self.assertEqual(p['servicios'], ['retiro_escombros', 'retiro_muebles', 'recoleccion'])
+        self.assertTrue(p['requiere_confirmacion'])
+        self.assertEqual(r, antes)
+        r['problema_principal']['criterio'] = 'pedido_explicito'
+        self.assertEqual(P.proponer_solicitudes(r)['servicios'], ['retiro_muebles'])
+
+    def test_detalles_accesorios_no_proponen_otro_servicio(self):
+        for key in ('volquete_mal_dispuesto', 'situacion_calle'):
+            r = {'problemas': [{'key': key}, {'key': 'recoleccion'}],
+                 'problema_principal': {'key': key, 'estado': 'seleccionado'}}
+            p = P.proponer_solicitudes(r)
+            self.assertEqual(p['servicios'], [key])
+            self.assertIn('recoleccion', p['candidatos'])
+
+    def test_tapa_especifica_no_borra_vereda_independiente(self):
+        r = {'problemas': [{'key': 'tapa_vereda'}, {'key': 'reparacion_vereda'}],
+             'problema_principal': {'key': 'reparacion_vereda', 'estado': 'seleccionado'}}
+        p = P.proponer_solicitudes(r)
+        self.assertEqual(p['servicios'], ['tapa_vereda'])
+        self.assertIn('reparacion_vereda', p['candidatos'])
+        r['problema_principal']['criterio'] = 'pedido_explicito'
+        self.assertEqual(P.proponer_solicitudes(r)['servicios'], ['reparacion_vereda'])
+
+    def test_solicitudes_no_completan_rechazo_o_contexto_faltante(self):
+        r = {'problemas': [{'key': 'retiro_muebles'}]}
+        for evaluacion, estado in [({'rechazada': True}, 'no_aplica'),
+                ({'requiere_foto_complementaria': True}, 'requiere_contexto'),
+                ({'ambito': 'indeterminado'}, 'requiere_contexto')]:
+            p = P.proponer_solicitudes(dict(r, evaluacion_foto=evaluacion))
+            self.assertEqual(p['estado'], estado)
+            self.assertEqual(p['servicios'], [])
+        r['problemas'].append({'key': 'reparacion_cordon'})
+        self.assertEqual(P.proponer_solicitudes(r)['estado'], 'pendiente')
+
     def test_cero_uno_y_rechazo(self):
         self.assertEqual(P.seleccionar({'problemas': []}, [])['estado'], 'sin_problemas_confirmados')
         r = {'problemas': [{'key': 'retiro_poda'}]}

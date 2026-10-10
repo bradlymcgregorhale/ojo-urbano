@@ -188,6 +188,47 @@ def seleccionar(publica, verificadores, comparacion=None):
     return {'key': elegido['key'], 'estado': 'seleccionado', 'criterio': 'escena', 'motivo': motivo}
 
 
+def proponer_solicitudes(publica):
+    """Propone servicios revisables; no envía reclamos ni altera hallazgos."""
+    candidatos = _confirmados(publica)
+    principal = publica.get('problema_principal') or {}
+    elegido = principal.get('key') if principal.get('estado') == 'seleccionado' else None
+    evaluacion = publica.get('evaluacion_foto') or {}
+    resultado = {'estado': 'pendiente', 'servicios': [], 'candidatos': candidatos,
+                 'requiere_confirmacion': True, 'motivo': None}
+    if evaluacion.get('rechazada'):
+        return dict(resultado, estado='no_aplica', motivo='La foto requiere reemplazo.')
+    if not candidatos:
+        return dict(resultado, estado='sin_confirmados',
+                    motivo='No hay problemas confirmados para proponer un servicio.')
+    if (evaluacion.get('requiere_foto_complementaria')
+            or evaluacion.get('ambito') in {'mixto', 'indeterminado'}
+            or (publica.get('contexto_visual') or {}).get('suficiente') is False):
+        return dict(resultado, estado='requiere_contexto',
+                    motivo='Falta confirmar la ubicación o el alcance antes de elegir servicios.')
+    if elegido not in candidatos:
+        elegido = None
+    if elegido and principal.get('criterio') == 'pedido_explicito':
+        servicios, motivo = [elegido], 'El servicio corresponde al pedido explícito respaldado por la foto.'
+    elif elegido in {'volquete_mal_dispuesto', 'situacion_calle'}:
+        servicios, motivo = [elegido], 'Se propone atender el problema principal; los demás hallazgos siguen disponibles.'
+    elif elegido == 'reparacion_vereda' and 'tapa_vereda' in candidatos:
+        servicios, motivo = ['tapa_vereda'], ('La tapa tiene un servicio específico. Revisá si hay '
+            'además una rotura independiente de la vereda antes de agregar otra solicitud.')
+    else:
+        retiros = [k for k in candidatos if k in CATEGORIAS_OBJETO]
+        if len(retiros) >= 2 and (elegido is None or elegido in CATEGORIAS_OBJETO):
+            servicios, motivo = retiros, ('La escena tiene varios materiales confirmados. '
+                'Revisá los servicios de retiro que corresponden a cada uno.')
+        elif elegido:
+            servicios, motivo = [elegido], 'Se propone el servicio del problema principal.'
+        elif len(candidatos) == 1:
+            servicios, motivo = candidatos, 'Es el único servicio confirmado.'
+        else:
+            return dict(resultado, motivo='Hay varios hallazgos; falta elegir qué servicios solicitar.')
+    return dict(resultado, estado='propuesta', servicios=servicios, motivo=motivo)
+
+
 def ajustar_descripcion(publica, verificadores, auditorias=()):
     """Evita que una lectura secundaria sustituya el principal confirmado (#142).
 
