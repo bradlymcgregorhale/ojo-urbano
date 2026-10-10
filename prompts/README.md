@@ -18,6 +18,7 @@ mirar las bolsas está en [segundas_miradas/escombros.txt](segundas_miradas/esco
 | `dirigidos/encuadre_higiene.txt` | Pregunta separada de encuadre a cada lector, después de la primera pasada (#114): criterio de la cuadrilla de Higiene, extensión completa del material retirable y entorno inmediato; un objeto fijo dañado (contenedor, cesto, buzón eléctrico, vereda, cordón) alcanza con el objeto y el daño. Reemplaza `contexto_suficiente` y `motivos_contexto` de cada lector; sin lectura válida se conserva la primera pasada. Corre con dos o más lectores; `PREGUNTA_ENCUADRE=0` la apaga. Medida dentro de la rúbrica el criterio se diluía (H0174 y H0185 quedaban suficientes 2 a 1), por eso va aparte. |
 | `compartidos/prioridad.txt` | Pedido de `prioridad_propuesta` en la primera pasada de cada verificador. |
 | `compartidos/prioridad_comparacion.txt` | Comparación dirigida, solo en Completo, cuando esas propuestas no coinciden. No agrega un cuarto verificador ni cambia la clasificación. |
+| `inventario/presencia.txt` | Comprobación de presencia de contenedores, solo en Completo y solo cuando el especialista deja una duda visual válida. Cada lector recibe la foto sin inventario ni votos previos; tres `presente=false` con evidencia confirman `tipos=[]`, y un `null` conserva la revisión. `especialista_contenedores.py` lo lee tal cual, sin continuaciones ni inserciones. |
 
 `verificador.py` decide cuándo usar cada prompt, arma los datos del caso y
 procesa las respuestas. Los umbrales, vetos y reglas de consenso están ahí.
