@@ -168,11 +168,10 @@ def _demorar_higiene_sin_via_publica(r, evaluacion, verificadores):
     Hace falta al menos dos lecturas validas y que todas sean publica. Un lector
     que falló no cuenta ni a favor ni en contra. Con una sola fuente el modo
     económico no pierde el hallazgo. Tampoco se rechaza la foto: los retiros
-    pasan a posibles y se pide revisión. El encuadre insuficiente conserva el
-    detalle visible.
+    pasan a posibles y se pide revisión. Un encuadre cerrado conserva el detalle
+    confirmado cuando la ubicación pública está corroborada; no reemplaza esa
+    comprobación si el ámbito también está en duda.
     """
-    if evaluacion.get('estado') == 'contexto_insuficiente':
-        return r
     intentados, validos = _lecturas_ambito(verificadores)
     if intentados < 2 or not validos:
         return r

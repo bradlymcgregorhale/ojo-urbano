@@ -2228,6 +2228,8 @@ _cats_prompt = {"recoleccion": {"nombre": "Basura"},
 _textos_prompt = {k: getattr(V, k) for k in _huellas if k.startswith("_")
                   or k == "REGLA_SUBTIPO_HUMEDOS"}
 _textos_prompt["sistema_con_restantes"] = V._prompt_sistema(_cats_prompt)
+_textos_prompt["objetos_omitidos"] = __import__("revision_omisiones").OBJETOS
+_textos_prompt["cubierta_contenedor"] = __import__("revision_omisiones").CUBIERTA
 _textos_prompt["inventario_presencia"] = (
     AQUI / "prompts" / "inventario" / "presencia.txt").read_text(encoding="utf-8")
 _textos_prompt["usuario_sin_contexto"] = V._prompt_usuario()
@@ -4574,7 +4576,7 @@ check("  tres suficiente conservan el contexto y no piden foto complementaria",
 _vs = [_veredicto_114("lector/uno"), _veredicto_114("lector/dos", ef=False), _veredicto_114("lector/tres", ok=False)]
 V._aplicar_encuadre(_vs, {"lector/dos": {"contexto_suficiente": False, "motivos_contexto": ["demasiado_lejos_o_borrosa"], "evidencia": "e"}})
 check("  sin lectura válida el lector conserva la rúbrica; un fallo de la primera pasada no se toca",
-      _vs[0]["evaluacion_foto"]["contexto_suficiente"] is True and _vs[0]["encuadre_higiene"] == {"estado": "sin_lectura"}
+      _vs[0]["evaluacion_foto"]["contexto_suficiente"] is True and _vs[0]["encuadre_higiene"] == {"estado": "sin_lectura", "fallo": True}
       and _vs[1]["evaluacion_foto"] == {"ambito": None, "calidad_suficiente": None, "motivos_calidad": [],
                                         "contexto_suficiente": False, "motivos_contexto": ["demasiado_lejos_o_borrosa"]}
       and "encuadre_higiene" not in _vs[2] and _vs[2]["evaluacion_foto"]["contexto_suficiente"] is True, str(_vs))
@@ -4599,7 +4601,7 @@ try:
                                   "lector/tres": _resp_encuadre(True, None)})
     _r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
     check("en verificar la pregunta corre una vez por lector y decide el encuadre publicado",
-          len(_capturas_114) == 3
+          len([c for c in _capturas_114 if c[2].get("etapa") == "pregunta_encuadre"]) == 3
           and [v["evaluacion_foto"]["contexto_suficiente"] for v in _r["verificadores"]] == [False, False, True]
           and _EF.resumir(_r["verificadores"])[1]["suficiente"] is False
           and {c["key"] for c in _r["confirmadas"]} == {"retiro_poda"}, str(_capturas_114[:1])[:120])
@@ -4938,6 +4940,8 @@ import test_recoleccion_pertenencias
 import test_descripcion_principal
 import test_especialista_contenedores
 import test_presencia_contenedores
+import test_aptitud_higiene
+import test_revision_omisiones
 import test_evaluacion_foto
 import test_prioridad
 import test_observaciones_higiene
@@ -4949,6 +4953,8 @@ _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_reco
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_descripcion_principal))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_especialista_contenedores))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_presencia_contenedores))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_aptitud_higiene))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_revision_omisiones))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_evaluacion_foto))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_prioridad))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_observaciones_higiene))

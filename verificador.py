@@ -40,6 +40,7 @@ import contextvars
 import hashlib
 import io
 import json
+import copy
 import os
 import re
 import http.client
@@ -66,6 +67,7 @@ from prompts import (
     _RUBRICA,
     _PROMPT_PATENTE,
     _PROMPT_ENCUADRE_HIGIENE,
+    _PROMPT_APTITUD_HIGIENE,
     _PROMPT_ALCANCE_ESCOMBROS,
     _PROMPT_OBRA_SERVICIOS_CONTEXTO,
     PRIORIDAD_COMPARACION as _PROMPT_PRIORIDAD_COMPARACION,
@@ -766,6 +768,10 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa")
             raise ValueError("Modelo fuera del modo elegido")
         if etapa == "arbitrar" and perfil.modo == "bajo":
             raise ValueError("Económico no usa árbitro")
+    # Las preguntas cortas también consumen tokens de razonamiento. Con 400,
+    # Mini podía agotar la salida antes de entregar el JSON.
+    if modelo == 'openai/gpt-5-mini' and max_tokens < 1000:
+        max_tokens = 1000
     cuerpo = {"model": modelo, "max_tokens": max_tokens,
               # Pide a OpenRouter el costo real de la llamada (usage.cost, USD).
               "usage": {"include": True},
@@ -775,6 +781,11 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa")
               "temperature": TEMPERATURA,
               "top_p": 1,
               "messages": mensajes}
+    if etapa == 'arbitrar' and modelo == 'deepseek/deepseek-v4-flash':
+        # Este modelo sólo ofrece high/xhigh. Enviarle low no lo limita y puede
+        # gastar toda la salida sin responder. El arbitraje usa su modo directo.
+        cuerpo['reasoning'] = {'enabled': False}
+        cuerpo['response_format'] = {'type': 'json_object'}
     clave = _clave_cache_prompt(modelo, mensajes) if OPENROUTER_CACHE_PROMPTS else None
     if clave:
         cuerpo["prompt_cache_key"] = clave
@@ -1574,10 +1585,18 @@ def _segunda_mirada_subtipo(img):
     return lateral, bilateral, fallo
 
 
-def _segunda_mirada_dano(img):
+def _segunda_mirada_dano(img, *, montaje_cubierta=False):
     """Re-consulta dirigida por el daño del contenedor. Igual que la de la
     base: pregunta a TODOS los verificadores y puede desautorizar votos.
     Devuelve (dano, sin_dano, fallo)."""
+    if montaje_cubierta:
+        import revision_omisiones as revision
+        resultado = revision.consultar_cubierta(img)
+        dano = [(v['modelo'], v['evidencia']) for v in resultado['lecturas']
+                if v['montaje'] in revision.DANO]
+        sin_dano = [(v['modelo'], v['evidencia']) for v in resultado['lecturas']
+                    if v['montaje'] in revision.MONTADO]
+        return dano, sin_dano, resultado['fallo']
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
 
     def _uno(modelo):
@@ -1644,6 +1663,57 @@ def _pregunta_encuadre(data_url):
     return lecturas
 
 
+def _pregunta_aptitud(data_url):
+    """Revisa calidad y ubicación; el encuadre de esta respuesta no vota.
+
+    Explicitar el uso de la foto ayuda a juzgar el detalle necesario. El encuadre
+    lo decide su pregunta independiente, medida con controles de tomas cerradas.
+    """
+    def _uno(modelo):
+        valor = _extraer_json(_llamar(modelo, [
+            {"role": "system", "content": _PROMPT_APTITUD_HIGIENE},
+            {"role": "user", "content": [
+                {"type": "text", "text": "La foto:"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]},
+        ], max_tokens=1200, etapa="pregunta_aptitud"))
+        calidad, motivo = valor.get('calidad_suficiente'), valor.get('motivo_calidad')
+        ambito = valor.get('ambito')
+        evidencias = [valor.get('evidencia_calidad'), valor.get('evidencia_ambito')]
+        if (type(calidad) is not bool
+                or (calidad is False and motivo not in evaluacion_foto.MOTIVOS_CALIDAD)
+                or ambito not in {'publica', 'interior', 'mixto', 'indeterminado'}
+                or any(not isinstance(e, str) or not e.strip() for e in evidencias)):
+            raise ValueError('lectura de aptitud incompleta')
+        return {
+            'calidad_suficiente': calidad, 'motivos_calidad': [] if calidad else [motivo],
+            'ambito': ambito, 'evidencia_calidad': _texto_limpio(evidencias[0], EVID_MAX),
+            'evidencia_ambito': _texto_limpio(evidencias[1], EVID_MAX),
+        }
+
+    modelos = modelos_activos()
+    return {modelo: r for modelo, r in zip(modelos, _map_modelos(modelos, _uno))
+            if r is not _FALLO_MODELO}
+
+
+def _aplicar_aptitud(veredictos, lecturas):
+    """Conserva el encuadre y los hallazgos; una lectura fallida no inventa votos."""
+    for v in veredictos:
+        if not isinstance(v, dict) or v.get('ok') is not True:
+            continue
+        lectura = lecturas.get(v.get('modelo'))
+        v.setdefault('evaluacion_foto_inicial', copy.deepcopy(v.get('evaluacion_foto')))
+        if lectura is None:
+            v['aptitud_higiene'] = {'estado': 'sin_lectura', 'fallo': True}
+            continue
+        ef = dict(v.get('evaluacion_foto') or evaluacion_foto.normalizar({}))
+        for campo in ('calidad_suficiente', 'motivos_calidad', 'ambito'):
+            ef[campo] = lectura[campo]
+        v['evaluacion_foto'] = ef
+        v['aptitud_higiene'] = {'estado': 'evaluado', **lectura}
+    return veredictos
+
+
 def _aplicar_encuadre(veredictos, lecturas):
     """La pregunta separada decide el encuadre de cada lector que respondió.
 
@@ -1657,8 +1727,9 @@ def _aplicar_encuadre(veredictos, lecturas):
         if not isinstance(v, dict) or v.get("ok") is not True:
             continue
         lectura = lecturas.get(v.get("modelo"))
+        v.setdefault('evaluacion_foto_inicial', copy.deepcopy(v.get('evaluacion_foto')))
         if lectura is None:
-            v["encuadre_higiene"] = {"estado": "sin_lectura"}
+            v["encuadre_higiene"] = {"estado": "sin_lectura", "fallo": True}
             continue
         ef = v.get("evaluacion_foto")
         if not isinstance(ef, dict):
@@ -2560,7 +2631,12 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     # Con un solo lector no hay mayoría que formar y no se gasta la llamada.
     if PREGUNTA_ENCUADRE and len(set(modelos_activos())) >= 2 \
             and any(v.get("ok") for v in veredictos):
-        _aplicar_encuadre(veredictos, _pregunta_encuadre(data_url))
+        with concurrent.futures.ThreadPoolExecutor(2) as pool:
+            encuadre, aptitud = _map_con_contexto(
+                pool, lambda pregunta: pregunta(data_url),
+                [_pregunta_encuadre, _pregunta_aptitud])
+        _aplicar_encuadre(veredictos, encuadre)
+        _aplicar_aptitud(veredictos, aptitud)
 
     grav_votos = {}  # key -> [gravedad de cada verificador que la reportó]
     fuentes = {}   # key -> lista de fuentes que la reportan
@@ -3063,7 +3139,14 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         # cuando barra_disputada, aunque el voto haya quedado clasificado como
         # base (su evidencia cita la barra, no una plataforma).
         if tapas or barra_disputada or barra_hint:
-            dano_sm, sin_dano_sm, fallo_sd = _segunda_mirada_dano(img)
+            textos_tapas = [_norm_texto(c.get('evidencia') or '') for c in tapas.values()]
+            montaje_cubierta = not barra_hint and bool(textos_tapas) and all(
+                re.search(r'\b(tapa|cabezal|capota|cubierta)\b', texto)
+                and re.search(r'ausent|falt|desprendid|separad|suelta?|adentro|caid', texto)
+                and not re.search(r'pedal|quemad|derretid|agujero.*cuerpo', texto)
+                for texto in textos_tapas)
+            dano_sm, sin_dano_sm, fallo_sd = _segunda_mirada_dano(
+                img, montaje_cubierta=montaje_cubierta)
             # VETO ESTRICTO: un solo 'usable' enfocado tumba el reclamo,
             # digan lo que digan los demás. Medido: los fantasmas de
             # reparación (4 en la ronda 4, todos falsos según el dueño)
@@ -3089,6 +3172,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             retira_dano = (len(sin_dano_sm) >= 1 and not _mayoria_barra
                            and bool(tapas))
             segunda_mirada_dano = {
+                "tipo_pregunta": "montaje_cubierta" if montaje_cubierta else "uso_normal",
                 "dano": [{"modelo": m, "evidencia": e} for m, e in dano_sm],
                 "sin_dano": [{"modelo": m, "evidencia": e}
                              for m, e in sin_dano_sm],

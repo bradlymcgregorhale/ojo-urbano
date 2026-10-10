@@ -526,6 +526,59 @@ Un valor `null` o un estado indeterminado no significa ausencia. Las evaluacione
 
 ## Reglas de clasificación
 
+### Hallazgos y servicios propuestos
+
+`problemas` conserva los hallazgos confirmados. `solicitudes_sugeridas` propone
+los servicios que conviene revisar y tiene siempre `requiere_confirmacion: true`.
+No presenta una solicitud municipal ni guarda una aprobación humana.
+
+La propuesta distingue `propuesta`, `requiere_seleccion`, `requiere_contexto`,
+`sin_confirmados` y `no_aplica`. Incluye `servicios`, `candidatos` y `motivo`.
+Una escena con varios materiales puede proponer varios retiros. Una tapa de
+servicio público confirmada tiene su servicio específico; no exige agregar
+reparación de vereda. Los otros hallazgos siguen disponibles aunque no integren
+los servicios propuestos.
+
+En Completo, las preguntas de encuadre y de aptitud se ejecutan por separado.
+La de aptitud comprueba calidad y ámbito con evidencia; su respuesta de encuadre
+no reemplaza la pregunta específica. Las lecturas faltantes quedan registradas
+como fallas y no se convierten en votos favorables. Si falta encuadre y tampoco
+hay acuerdo sobre la vía pública, los retiros quedan como posibles. El detalle
+visible se conserva cuando la ubicación pública sí está corroborada.
+
+La revisión de omisiones busca envases de pintura, tanques descartados y venta
+ambulante con una vista completa y recortes de la misma foto. Necesita al menos
+dos fuentes distintas que identifiquen el mismo tipo y uso. Una pertenencia en
+uso explícita bloquea el retiro de ese tipo. Esta etapa conserva los hallazgos
+anteriores y deja su evidencia en `revision_omisiones`; no reescribe los votos
+iniciales. Un elemento con formato inválido no acredita ausencia.
+
+La comprobación de cubiertas usa referencias privadas con una huella fija.
+Una lectura de tapa montada o articulada impide confirmar una ausencia nueva.
+El veto previo del daño se conserva. La falta de las referencias se publica como
+falla, sin inventar un resultado. Las fotos de referencia son material de
+calibración y no cuentan como evaluación independiente.
+
+### Revisión consolidada
+
+`eval/revision_lotes/consolidada/generar.py` actualiza la página de una ronda
+privada a partir de su `datos.json`. La opción `--revision` incorpora una
+exportación humana como respaldo para un navegador sin datos guardados; no
+reemplaza una revisión existente. La huella de cada foto y el conjunto deben
+coincidir.
+
+El formulario separa problemas visibles, servicios solicitados y el motivo
+por el que no se eligió un principal. Un campo sin revisar sigue pendiente.
+Una categoría rechazada por el árbitro no se carga como duda ni como un negativo
+humano. Guardar una propuesta sin cambios no se contabiliza como corrección.
+`candidatos.json`, si existe, permite comparar una versión nueva. Sólo ofrece
+aplicar una propuesta marcada como verificada, mediante una acción explícita;
+la revisión y la propuesta anteriores quedan en sus historiales.
+
+El servidor privado debe servir `mapeo.js`, `propuestas.js`, `solicitudes.js`,
+`comparacion.js` y `candidatos.json`, además de la página y sus fotos. El generador
+no publica fotos, revisiones ni resultados en el repositorio.
+
 ### Contexto y foto
 
 | Situación | Resultado |

@@ -201,7 +201,8 @@ def proponer_solicitudes(publica):
     if not candidatos:
         return dict(resultado, estado='sin_confirmados',
                     motivo='No hay problemas confirmados para proponer un servicio.')
-    if (evaluacion.get('requiere_foto_complementaria')
+    if (evaluacion.get('requiere_revision')
+            or evaluacion.get('requiere_foto_complementaria')
             or evaluacion.get('ambito') in {'mixto', 'indeterminado'}
             or (publica.get('contexto_visual') or {}).get('suficiente') is False):
         return dict(resultado, estado='requiere_contexto',

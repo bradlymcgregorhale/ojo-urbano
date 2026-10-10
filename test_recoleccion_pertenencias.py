@@ -54,6 +54,10 @@ class RecoleccionPertenenciasTest(unittest.TestCase):
                 self.assertEqual(mensajes[0]['content'], V._PROMPT_ENCUADRE_HIGIENE)
                 return json.dumps({'contexto_suficiente': True, 'motivo': None,
                                    'evidencia': 'persona y residuos separados en la vereda'})
+            if kwargs.get('etapa') == 'pregunta_aptitud':
+                return json.dumps({'calidad_suficiente': True, 'motivo_calidad': None,
+                    'evidencia_calidad': 'Objetos nítidos.', 'ambito': 'publica',
+                    'evidencia_ambito': 'Vereda y cordón.'})
             calls.append(m)
             self.assertIn(mensajes[0]['content'], (V._PROMPT_RECOLECCION_PERTENENCIAS,
                                                    V._PROMPT_VOLUMINOSOS_PERTENENCIAS))
