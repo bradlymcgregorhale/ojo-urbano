@@ -569,6 +569,8 @@ coincidir.
 
 El formulario separa problemas visibles, servicios solicitados y el motivo
 por el que no se eligió un principal. Un campo sin revisar sigue pendiente.
+Si hay un único servicio propuesto, lo usa como principal en el formulario;
+los hallazgos generales y la prioridad original siguen en la respuesta guardada.
 Una categoría rechazada por el árbitro no se carga como duda ni como un negativo
 humano. Guardar una propuesta sin cambios no se contabiliza como corrección.
 `candidatos.json`, si existe, permite comparar una versión nueva. Sólo ofrece
