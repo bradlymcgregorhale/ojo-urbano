@@ -21,6 +21,16 @@ test('servicios propuestos tienen que estar confirmados y dentro del catálogo',
   const p = mapearPropuesta({problemas:[{key:'tapa_vereda'}], solicitudes_sugeridas:{servicios:['tapa_vereda','inventado','retiro_escombros','tapa_vereda']}}, keys);
   assert.deepEqual(p.servicios,['tapa_vereda']);
 });
+test('el formulario usa el servicio específico sin borrar el hallazgo general', () => {
+  const p = mapearPropuesta({
+    problemas:[{key:'tapa_vereda'},{key:'reparacion_vereda'}],
+    problema_principal:{estado:'seleccionado',key:'reparacion_vereda'},
+    solicitudes_sugeridas:{servicios:['tapa_vereda']},
+  }, keys);
+  assert.equal(p.principal,'tapa_vereda');
+  assert.equal(p.campos.reparacion_vereda,'si');
+  assert.equal(p.campos.tapa_vereda,'si');
+});
 test('varios servicios y falta de contexto conservan motivos diferentes', () => {
   const r = {problemas:[{key:'retiro_muebles'},{key:'retiro_escombros'}],solicitudes_sugeridas:{servicios:['retiro_muebles','retiro_escombros']}};
   assert.equal(mapearPropuesta(r,keys).principal_estado,'varios_servicios');

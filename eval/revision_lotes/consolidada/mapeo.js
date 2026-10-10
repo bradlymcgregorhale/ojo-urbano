@@ -24,8 +24,11 @@ function mapearPropuesta(r, keys) {
     for (const k of t.tipos) if (known.has(k)) campos[k] = 'si';
   }
   const pp = r.problema_principal;
-  const principal = pp?.estado === 'seleccionado' && confirmed.has(pp.key) ? pp.key : '';
   const servicios = [...new Set(r.solicitudes_sugeridas?.servicios || [])].filter(k => confirmed.has(k) && known.has(k));
+  // El servicio específico puede precisar un hallazgo genérico de la escena,
+  // por ejemplo tapa de servicios en vez de reparación general de vereda.
+  const principal = servicios.length === 1 ? servicios[0] :
+    pp?.estado === 'seleccionado' && confirmed.has(pp.key) ? pp.key : '';
   const principal_estado = principal ? 'seleccionado' : e.rechazada ? 'foto_invalida' :
     c.suficiente === false || r.solicitudes_sugeridas?.estado === 'requiere_contexto' ? 'necesita_contexto' :
     servicios.length > 1 ? 'varios_servicios' : 'pendiente';
