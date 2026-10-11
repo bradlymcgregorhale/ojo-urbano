@@ -16,6 +16,34 @@ import urllib.request
 
 
 class IntermediarioTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('php'), 'La prueba necesita PHP')
+    def test_origenes_confiables_y_limites_cidr(self):
+        original = (Path(__file__).resolve().parents[1] / 'deploy/ojourbano.php').read_text()
+        funciones = original.split("$backend =", 1)[0]
+        casos = [
+            ('173.245.48.0', '203.0.113.8', '203.0.113.8'),
+            ('173.245.63.255', '2001:db8::8', '2001:db8::8'),
+            ('173.245.47.255', '203.0.113.8', '173.245.47.255'),
+            ('173.245.64.0', '203.0.113.8', '173.245.64.0'),
+            ('104.23.255.255', '203.0.113.8', '203.0.113.8'),
+            ('104.28.0.0', '203.0.113.8', '104.28.0.0'),
+            ('2606:4700::1', '203.0.113.8', '203.0.113.8'),
+            ('2606:4701::1', '203.0.113.8', '2606:4701::1'),
+            ('2a06:98c7:ffff::1', '203.0.113.8', '203.0.113.8'),
+            ('2a06:98c8::1', '203.0.113.8', '2a06:98c8::1'),
+            ('127.0.0.1', '203.0.113.8', '127.0.0.1'),
+            ('173.245.48.1', '203.0.113.8, 1.2.3.4', '173.245.48.1'),
+            ('173.245.48.1', '', '173.245.48.1'),
+            ('invalida', '203.0.113.8', '127.0.0.1'),
+        ]
+        codigo = funciones + "\n$cases = json_decode('" + json.dumps(casos) + "', true);\n"
+        codigo += "foreach ($cases as $case) { echo ojo_proxy_client_ip($case[0], $case[1]) . PHP_EOL; }"
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp) / 'ip.php'
+            script.write_text(codigo)
+            salida = subprocess.check_output(['php', str(script)], text=True).splitlines()
+        self.assertEqual(salida, [c[2] for c in casos])
+
     @unittest.skipUnless(shutil.which('php'), 'La prueba del intermediario necesita PHP con cURL')
     def test_modos_en_cuerpo_crudo_y_reconstruido(self):
         recibidos = []
@@ -31,7 +59,7 @@ class IntermediarioTests(unittest.TestCase):
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
-                self.wfile.write(json.dumps({'campos': [(k, v.decode()) for k, v in campos]}).encode())
+                self.wfile.write(json.dumps({'campos': [(k, v.decode()) for k, v in campos], 'ip': self.headers.get('X-Forwarded-For')}).encode())
 
             def log_message(self, *args):
                 pass
@@ -81,7 +109,7 @@ class IntermediarioTests(unittest.TestCase):
                                     cuerpo += b'--separador--\r\n'
                                     antes = len(recibidos)
                                     req = urllib.request.Request(f'http://127.0.0.1:{puerto}/ojourbano/{ruta}/',
-                                                                 data=cuerpo, headers={'Content-Type': 'multipart/form-data; boundary=separador'})
+                                                                 data=cuerpo, headers={'Content-Type': 'multipart/form-data; boundary=separador', 'CF-Connecting-IP': '203.0.113.55', 'X-Forwarded-For': '198.51.100.11'})
                                     try:
                                         with urllib.request.urlopen(req, timeout=5) as response:
                                             estado, data = response.status, json.load(response)
@@ -96,6 +124,7 @@ class IntermediarioTests(unittest.TestCase):
                                     else:
                                         self.assertEqual(estado, 200, (ruta, campos))
                                         self.assertEqual(len(recibidos), antes + 1)
+                                        self.assertEqual(data['ip'], '127.0.0.1')
                                         recibo = data['campos']
                                         self.assertIn(['file', 'foto_de_prueba'], recibo)
                                         if not lectura_php:

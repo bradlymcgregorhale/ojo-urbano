@@ -23,3 +23,16 @@ Antes de instalar, compará la huella de la copia vigente y guardá un respaldo 
 directorio privado del servicio. Instalá el archivo de forma atómica y verificá la
 página y ambos endpoints. Esta actualización de PHP no necesita reiniciar Python.
 Para revertir, restaurá la copia respaldada y repetí esas comprobaciones.
+
+### IP del visitante
+
+El intermediario acepta `CF-Connecting-IP` solamente cuando `REMOTE_ADDR`
+pertenece a los rangos oficiales de Cloudflare. Una conexión directa conserva
+su IP del socket aunque mande ese encabezado o `X-Forwarded-For`.
+Los rangos IPv4 e IPv6 están en `ojo_proxy_client_ip` y se comparan como CIDR.
+Antes de cambiar el proveedor o su configuración, comprobar
+https://www.cloudflare.com/ips/ y actualizar los rangos si cambiaron.
+`CONFIAR_PROXY=1` en Python requiere que la API siga escuchando sólo en loopback.
+
+Prueba del intermediario y de los límites IPv4/IPv6:
+`python -m unittest discover -s tests -p test_intermediario.py`.
