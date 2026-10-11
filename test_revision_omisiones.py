@@ -25,6 +25,59 @@ class OmisionesTest(unittest.TestCase):
                 'en_duda': ['retiro_muebles'], 'descripcion': 'No hay voluminosos.',
                 'detalle': {'verificacion': {'activa': True, 'verificadores': []}}}
 
+    def test_residuos_exigen_misma_clase_expuesta_y_fuentes_distintas(self):
+        def lector(m, clase='carton'):
+            return dict(modelo=m, residuos_comunes=True, descartado_publico=True,
+                        clases=[clase], componente='caja abierta', ubicacion='junto al cordón',
+                        evidencia='Cartón expuesto sobre la vereda.')
+        a, b = lector('a'), lector('b')
+        self.assertFalse(R.decidir_residuos({'lecturas': [a, a]}))
+        self.assertFalse(R.decidir_residuos({'lecturas': [a, lector('b', 'envase')]}))
+        r = R.decidir_residuos({'lecturas': [a, b]})
+        self.assertEqual(r[0]['key'], 'recoleccion')
+        self.assertEqual(r[0]['clases'], ['carton'])
+        self.assertFalse(R.decidir_residuos({'lecturas': [a, b], 'fallo': True}))
+        privado = dict(lector('c'), descartado_publico=False)
+        self.assertFalse(R.decidir_residuos({'lecturas': [a, b, privado]}))
+        originales = self.salida(); originales['problemas'] = [
+            dict(key='retiro_muebles', gravedad=2, fuentes=['x', 'y'])]
+        anteriores = copy.deepcopy(originales)
+        publicado = R.aplicar(originales, {'residuos': {'lecturas': [a, b]}}, CATS)
+        self.assertEqual(originales, anteriores)
+        self.assertEqual({p['key'] for p in publicado['problemas']},
+                         {'recoleccion', 'retiro_muebles'})
+        originales['foto_valida'] = False
+        self.assertEqual(R.aplicar(originales, {'residuos': {'lecturas': [a, b]}}, CATS)
+                         ['problemas'], originales['problemas'])
+
+    def test_bolsas_opacas_y_respuestas_incompletas_no_crean_corroboracion(self):
+        for v in ({}, {'residuos_comunes': 'true', 'descartado_publico': True,
+                       'clases': ['carton'], 'evidencia': 'caja'},
+                  {'residuos_comunes': True, 'descartado_publico': True,
+                   'clases': [], 'componente': 'bolsa cerrada', 'ubicacion': 'vereda',
+                   'evidencia': 'Contenido oculto.'}):
+            with self.assertRaises(ValueError):
+                R.interpretar_residuos(v)
+
+    def test_geometria_de_cubierta_conserva_pieza_y_union(self):
+        r = R.interpretar_cubierta(dict(montaje='suelto_adentro',
+            evidencia='Panel hundido bajo el borde.', pieza='panel curvo', union='desprendido'))
+        self.assertEqual(r['pieza'], 'panel curvo')
+        self.assertEqual(r['union'], 'desprendido')
+        with self.assertRaises(ValueError):
+            R.interpretar_cubierta(dict(montaje='ausente', evidencia='Sin panel.', union=''))
+
+    def test_situacion_calle_conserva_el_recorrido_de_pertenencias(self):
+        original = self.salida(); original['problemas'] = []
+        original['detalle']['verificacion']['verificadores'] = [dict(
+            ok=True, modelo='a', categorias=[dict(key='situacion_calle'), dict(key='recoleccion')])]
+        with patch('evaluacion_foto.resumir', return_value=({'rechazada': False}, [])), \
+                patch.object(R, 'consultar_objetos', return_value={'lecturas': []}), \
+                patch.object(R, 'consultar_residuos') as residuos:
+            r = R.revisar(Image.new('RGB', (20, 20)), original, CATS)
+        residuos.assert_not_called()
+        self.assertEqual(r['problemas'], [])
+
     def test_modelo_duplicado_y_tipos_distintos_no_alcanzan(self):
         self.assertFalse(R.decidir_objetos({'lecturas': [objeto('a'), objeto('a')]}))
         self.assertFalse(R.decidir_objetos({'lecturas': [objeto('a'), objeto('b', 'tanque_descartado')]}))
