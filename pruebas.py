@@ -2231,6 +2231,7 @@ _textos_prompt["sistema_con_restantes"] = V._prompt_sistema(_cats_prompt)
 _textos_prompt["objetos_omitidos"] = __import__("revision_omisiones").OBJETOS
 _textos_prompt["cubierta_contenedor"] = __import__("revision_omisiones").CUBIERTA
 _textos_prompt["residuos_independientes"] = __import__("revision_omisiones").RESIDUOS
+_textos_prompt["vereda_geometria"] = __import__("revision_vereda").PROMPT
 _textos_prompt["inventario_presencia"] = (
     AQUI / "prompts" / "inventario" / "presencia.txt").read_text(encoding="utf-8")
 _textos_prompt["usuario_sin_contexto"] = V._prompt_usuario()

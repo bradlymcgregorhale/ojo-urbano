@@ -873,9 +873,11 @@ o una declaración vecinal validada conservan sus recorridos anteriores. La
 ubicación y el porte de una bolsa no suman un testigo del material oculto.
 
 La candidata de comprobación de vereda separa el plano peatonal de la tapa,
-el cordón y la base de un poste. En Completo, una reparación visual de vereda
+el cordón y el asiento puntual de un poste. Ubica el paso por sus límites y
+continuidad, incluso cuando cambia de baldosas a adoquines. Un registro puede
+tener brocal de mampostería y no requiere un marco metálico. En Completo, una reparación visual de vereda
 necesita dos lecturas de hueco o desnivel franco propio. Dos negativas sin una
 lectura estructural dejan esa reparación sin corroborar; un desacuerdo o fallo
 la deja para revisión. Conserva otros servicios, declaraciones vecinales y la
-traza anterior. La candidata sigue sin publicar: falta validar las fotos
-originales y controles visuales de rotura propia antes de promoverla.
+traza anterior. La candidata sigue sin publicar: falta completar su comprobación visual y
+repetir el recorrido publicado con las fotos originales recuperadas.

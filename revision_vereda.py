@@ -6,7 +6,8 @@ from prompts import cargar_prompt
 KEY = 'reparacion_vereda'
 PROMPT = cargar_prompt('dirigidos/vereda_geometria')
 MODELOS = ('anthropic/claude-sonnet-4.6', 'google/gemini-3.8-flash', 'openai/gpt-5.6-luna')
-NEGATIVOS = {'fisura_menor', 'hueco_servicio', 'dano_cordon', 'sin_rotura'}
+NEGATIVOS = {'fisura_menor', 'hueco_servicio', 'dano_cordon',
+             'afectacion_puntual_elemento', 'sin_rotura'}
 ESTADOS = NEGATIVOS | {'rotura_estructural', 'indeterminado'}
 
 

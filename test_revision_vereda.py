@@ -49,6 +49,16 @@ class PlanoPeatonal(unittest.TestCase):
         self.assertIn(R.KEY, publicado['en_duda'])
         self.assertIsNone(publicado['posibles'][0]['arbitro'])
 
+    def test_afectacion_puntual_no_borra_cordon_y_no_veta_una_rotura_independiente(self):
+        original = self.salida()
+        r = R.aplicar(original, revision(['afectacion_puntual_elemento',
+                                         'dano_cordon', 'indeterminado']))
+        self.assertEqual([c['key'] for c in r['problemas']], ['reparacion_cordon'])
+        self.assertEqual(r['posibles'][0]['arbitro'], 'rechazar')
+        propia = revision(['afectacion_puntual_elemento',
+                           'rotura_estructural', 'rotura_estructural'])
+        self.assertEqual(R.aplicar(original, propia)['problemas'], original['problemas'])
+
     def test_fallos_duplicados_y_evidencia_vacia_no_son_negativas(self):
         for cambio in ('fallo', 'duplicado', 'evidencia', 'ausente'):
             r = revision(['sin_rotura'] * 3)
