@@ -127,7 +127,8 @@ def aplicar(salida, revision):
 def revisar(img, salida):
     import modos_analisis as modos
     perfil = modos.perfil_actual()
-    if (not perfil or perfil.modo != 'alto' or salida.get('foto_valida') is False
+    veri = (salida.get('detalle') or {}).get('verificacion') or {}
+    if (veri.get('activa') is not True or not perfil or perfil.modo != 'alto' or salida.get('foto_valida') is False
             or not any(c.get('key') == KEY and c.get('origen') != 'contexto_vecinal'
                        for c in (salida.get('problemas') or [])
                        + (salida.get('posibles') or []))):
