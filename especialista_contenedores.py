@@ -68,6 +68,7 @@ def solicitud_presencia(datos, modelo):
     with Image.open(io.BytesIO(datos)) as fuente:
         imagen = ImageOps.exif_transpose(fuente).convert('RGB')
     return {'model': modelo, 'temperature': 0, 'max_tokens': 1000,
+            'top_p': 1, 'reasoning': {'effort': 'low'}, 'usage': {'include': True},
             'messages': [{'role': 'system', 'content': prompt},
                          {'role': 'user', 'content': [
                              {'type': 'text', 'text': 'Evaluá la foto.'}, _imagen_url(imagen)]}]}

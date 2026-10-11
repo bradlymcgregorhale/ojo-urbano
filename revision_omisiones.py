@@ -89,10 +89,10 @@ def consultar_cubierta(img):
                       {'type': 'image_url', 'image_url': {'url': V._imagen_data_url(img, lado=1400)}}])
     modelos = list(V.modelos_activos())
     perfil = modos.perfil_actual()
-    if (perfil is None or perfil.modo == 'alto') and 'google/gemini-3.8-flash' not in modelos:
-        # El lector de inventario también distingue el montaje. Los modos
-        # reducidos conservan sus lectores y su límite de consultas.
-        modelos = ['google/gemini-3.8-flash' if m == 'openai/gpt-5-mini' else m for m in modelos]
+    if (perfil is None or perfil.modo == 'alto') and 'anthropic/claude-sonnet-4.6' not in modelos:
+        # La revisión del montaje usa otro lector visual. Los modos reducidos
+        # conservan sus lectores y su límite de consultas.
+        modelos = ['anthropic/claude-sonnet-4.6' if m == 'openai/gpt-5-mini' else m for m in modelos]
     return _consultar(img, CUBIERTA, contenido, 'cubierta_contenedor', interpretar_cubierta, modelos)
 
 
