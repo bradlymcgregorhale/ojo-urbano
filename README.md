@@ -880,6 +880,10 @@ necesita dos lecturas de hueco o desnivel franco propio. Dos negativas sin una
 lectura estructural dejan esa reparación sin corroborar; un desacuerdo o fallo
 la deja para revisión. Una candidata pendiente también puede recuperarse con
 dos lecturas estructurales nuevas, sin repetir votos locales ni borrar una
-persona u otro servicio confirmado. Las fotos rechazadas no se recuperan. Conserva otros servicios, declaraciones vecinales y la
+persona u otro servicio confirmado. Las fotos rechazadas no se recuperan.
+Si hay un registro de servicio corroborado y un lector atribuye el hueco a ese
+registro, la reparación genérica queda para revisión aunque dos lectores
+digan rotura: falta acuerdo sobre si es otro objeto. La rotura independiente
+concordante se conserva junto con el registro. Conserva otros servicios, declaraciones vecinales y la
 traza anterior. La candidata sigue sin publicar: falta completar su comprobación visual y
 repetir el recorrido publicado con las fotos originales recuperadas.
