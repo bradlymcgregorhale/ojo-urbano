@@ -235,3 +235,20 @@ navegador aislado que la cookie se envía por HTTPS y no por HTTP. Usa un domini
 certificado y credencial sintéticos, con todos los servidores en loopback.
 Necesita Puppeteer y OpenSSL; `OJO_PUPPETEER` permite indicar la instalación.
 No consulta lectores ni cambia la bandeja real.
+
+
+### Recuperar la ronda consolidada
+
+`python3 tools/servidor_consolidada.py <carpeta> 8772` sirve una ronda en
+`http://127.0.0.1:8772/revision.html`. La carpeta persistente contiene `datos.json`,
+`revision_original.json`, la página generada y sus fotos. Generá la página con
+`python3 eval/revision_lotes/consolidada/generar.py <carpeta> --revision <exportacion>`.
+Conservá la exportación original por separado. El servicio comprueba las huellas
+de las fotos y sus revisiones antes de arrancar.
+
+Una foto pendiente lleva `foto_recuperada: false` en sus datos. Su revisión y
+resultado guardado se pueden consultar, pero no modificar hasta recuperar el
+original. Los resultados preparados se sirven sin nuevas llamadas a proveedores.
+Este servicio de recuperación rechaza todos los POST de análisis. Las correcciones
+se guardan en el navegador; exportalas para tener una copia independiente.
+Usá una ubicación persistente fuera de Descargas y la Papelera.
