@@ -58,8 +58,20 @@ def decidir(revision):
 def aplicar(salida, revision):
     r = copy.deepcopy(salida)
     estado = decidir(revision)
+    consenso = estado
+    conflicto_registro = (estado == 'confirmado'
+        and any(c.get('key') == 'tapa_vereda' for c in r.get('problemas') or [])
+        and any(v.get('estado') == 'hueco_servicio'
+                for v in revision.get('lecturas') or []))
+    if conflicto_registro:
+        estado = 'revision'
     veri = r.setdefault('detalle', {}).setdefault('verificacion', {})
     veri['revision_vereda'] = dict(copy.deepcopy(revision), estado=estado)
+    if conflicto_registro:
+        veri['revision_vereda'].update(estado_consenso=consenso,
+            conflicto_servicio='tapa_vereda',
+            motivo_conflicto='Un lector atribuye el hueco al registro ya corroborado. '
+            'Falta acuerdo sobre una rotura peatonal independiente de ese objeto.')
     if estado == 'confirmado':
         if any(c.get('key') == KEY for c in r.get('problemas') or []):
             return r
@@ -92,6 +104,9 @@ def aplicar(salida, revision):
     motivo = ('No se corroboró una rotura propia del plano peatonal; las lecturas distinguen '
               'fisuras menores, una tapa o el cordón.' if estado == 'sin_rotura' else
               'La geometría del plano peatonal no reúne dos lecturas estructurales. Requiere revisión.')
+    if conflicto_registro:
+        motivo = ('El registro de servicio está corroborado, pero las lecturas discrepan '
+                  'sobre una rotura independiente de vereda. Requiere revisión.')
     r['problemas'] = [c for c in r['problemas'] if c not in anteriores]
     r['posibles'] = [c for c in r.get('posibles') or [] if c.get('key') != KEY]
     r['en_duda'] = [k for k in r.get('en_duda') or [] if k != KEY]

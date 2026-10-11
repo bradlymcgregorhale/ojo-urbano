@@ -86,7 +86,27 @@ class PlanoPeatonal(unittest.TestCase):
         r = R.aplicar(original, revision(['rotura_estructural', 'sin_rotura',
                                          'indeterminado']))
         self.assertEqual(r['problemas'], original['problemas'])
+
         original['foto_valida'] = False
+        r = R.aplicar(original, revision(['rotura_estructural'] * 3))
+        self.assertEqual(r['problemas'], original['problemas'])
+
+    def test_registro_corroborado_y_objeto_disputado_no_duplican_reparacion(self):
+        original = self.salida()
+        original['problemas'].append(dict(key='tapa_vereda', nombre='Tapa',
+                                         gravedad=4, fuentes=['a', 'b']))
+        r = R.aplicar(original, revision(['hueco_servicio', 'rotura_estructural',
+                                         'rotura_estructural']))
+        self.assertEqual({c['key'] for c in r['problemas']}, {'tapa_vereda', 'reparacion_cordon'})
+        self.assertIn(R.KEY, r['en_duda'])
+        self.assertIsNone(r['posibles'][0]['arbitro'])
+        self.assertEqual(r['detalle']['verificacion']['revision_vereda']
+                         ['estado_consenso'], 'confirmado')
+
+    def test_registro_no_impide_rotura_independiente_concordante(self):
+        original = self.salida()
+        original['problemas'].append(dict(key='tapa_vereda', nombre='Tapa',
+                                         gravedad=4, fuentes=['a', 'b']))
         r = R.aplicar(original, revision(['rotura_estructural'] * 3))
         self.assertEqual(r['problemas'], original['problemas'])
 
