@@ -691,6 +691,14 @@ def verificar_contenedores(datos):
     modelos = list(dict.fromkeys(modelos_activos()))
     if not especialista.requiere_presencia(resultado) or len(modelos) != 3:
         return resultado
+    # En esta pregunta Mini se abstiene ante bolsas oscuras aun con la escena
+    # legible. El lector alternativo sólo participa si el especialista duda;
+    # no sustituye el inventario ni se usa en los modos reducidos.
+    reemplazos = {'openai/gpt-5-mini': 'anthropic/claude-sonnet-4.6',
+                  'openai/gpt-5.6-luna': 'openai/gpt-5.6-sol'}
+    candidatos = [reemplazos.get(m, m) for m in modelos]
+    if len(set(candidatos)) == 3:
+        modelos = candidatos
     if vence - time.monotonic() < 5:
         modos.fallo('presencia_contenedores_sin_tiempo')
         return dict(resultado, fallo=True,
@@ -708,6 +716,8 @@ def _verificar_presencia_contenedor(datos, modelo, vence):
     data, error, enviado = None, None, False
     try:
         cuerpo = especialista.solicitud_presencia(datos, modelo)
+        if OPENROUTER_PROVEEDORES_EXCLUIDOS:
+            cuerpo.setdefault('provider', {})['ignore'] = OPENROUTER_PROVEEDORES_EXCLUIDOS.split(',')
         req = urllib.request.Request(OPENROUTER_URL, data=json.dumps(cuerpo).encode(), headers={
             "Authorization": "Bearer " + api_key(), "Content-Type": "application/json"})
         resto = vence - time.monotonic()
@@ -1583,6 +1593,19 @@ def _segunda_mirada_subtipo(img):
         elif veredicto == "bilateral" and evidencia:
             bilateral.append((modelo, evidencia))
     return lateral, bilateral, fallo
+
+
+def _evidencias_de_cubierta(textos, barra_hint=False):
+    """La negación explícita también puede escribirse como 'sin tapa'."""
+    return not barra_hint and bool(textos) and all(
+        (re.search(r'\b(tapa|cabezal|capota|cubierta)\b', texto)
+         or re.search(r'\bsin\s+(?:(?:la|el|las|los|su|sus|ambas|ambos)\s+)?'
+                      r'(?:tapas?|cabezal(?:es)?|capotas?|cubiertas?)\b', texto))
+        and re.search(r'ausent|falt|desprendid|separad|suelta?|adentro|caid|'
+                      r'\bsin\s+(?:(?:la|el|las|los|su|sus|ambas|ambos)\s+)?'
+                      r'(?:tapas?|cabezal(?:es)?|capotas?|cubiertas?)\b', texto)
+        and not re.search(r'pedal|quemad|derretid|agujero.*cuerpo', texto)
+        for texto in textos)
 
 
 def _segunda_mirada_dano(img, *, montaje_cubierta=False):
@@ -3140,11 +3163,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         # base (su evidencia cita la barra, no una plataforma).
         if tapas or barra_disputada or barra_hint:
             textos_tapas = [_norm_texto(c.get('evidencia') or '') for c in tapas.values()]
-            montaje_cubierta = not barra_hint and bool(textos_tapas) and all(
-                re.search(r'\b(tapa|cabezal|capota|cubierta)\b', texto)
-                and re.search(r'ausent|falt|desprendid|separad|suelta?|adentro|caid', texto)
-                and not re.search(r'pedal|quemad|derretid|agujero.*cuerpo', texto)
-                for texto in textos_tapas)
+            montaje_cubierta = _evidencias_de_cubierta(textos_tapas, barra_hint)
             dano_sm, sin_dano_sm, fallo_sd = _segunda_mirada_dano(
                 img, montaje_cubierta=montaje_cubierta)
             # VETO ESTRICTO: un solo 'usable' enfocado tumba el reclamo,

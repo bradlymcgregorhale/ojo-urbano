@@ -572,6 +572,15 @@ La comprobación de presencia conserva sus negativas, positivas y abstenciones
 en `contenedores.revision_presencia`, aunque no logre resolver el inventario.
 Una duda sigue siendo una duda: sólo tres negativas explícitas distintas y con
 evidencia permiten confirmar que no hay contenedores.
+En esa pregunta de Completo, Sonnet 4.6 y GPT-5.6 Sol reemplazan a Mini y Luna.
+Sólo intervienen si el especialista dejó una duda; un inventario ya
+confirmado no dispara estas llamadas. Las lecturas se conservan con sus nombres
+reales y sus consumos.
+La revisión del montaje de cubierta usa Sonnet 4.6 en lugar de Mini, junto a
+los otros dos lectores. La expresión explícita `sin tapa` activa esa pregunta
+específica, igual que `tapa ausente`; un daño del cuerpo o del pedal conserva
+su comprobación propia. Un voto de tapa montada o articulada sigue vetando
+la confirmación de ausencia.
 
 ### Revisión consolidada
 

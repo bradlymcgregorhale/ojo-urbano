@@ -94,6 +94,16 @@ class OmisionesTest(unittest.TestCase):
         self.assertTrue(resultado['fallo'])
         self.assertEqual(resultado['lecturas'], [])
 
+    def test_sin_tapa_activa_montaje_sin_confundir_pedal_cuerpo_o_barra(self):
+        import verificador as V
+        self.assertTrue(V._evidencias_de_cubierta(['contenedor sin tapa', 'cabezal ausente']))
+        self.assertTrue(V._evidencias_de_cubierta(['contenedor sin la cubierta']))
+        self.assertTrue(V._evidencias_de_cubierta(['contenedor sin ambas tapas', 'sin las cubiertas']))
+        for textos in [[], ['tapa cerrada sin daño'], ['pedal roto y tapa ausente'],
+                       ['cuerpo quemado sin tapa'], ['agujero en cuerpo y tapa suelta']]:
+            self.assertFalse(V._evidencias_de_cubierta(textos))
+        self.assertFalse(V._evidencias_de_cubierta(['tapa ausente'], barra_hint=True))
+
 
 if __name__ == '__main__':
     unittest.main()

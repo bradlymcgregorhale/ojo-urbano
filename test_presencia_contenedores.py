@@ -181,6 +181,27 @@ class Presencia(unittest.TestCase):
         r, llamadas = self.ejecutar(duda=False)
         self.assertEqual((r['estado'], r['tipos'], llamadas), ('confirmado', [], 1))
 
+    def test_lector_alternativo_solo_interviene_en_presencia_incierta(self):
+        self.modelos = ['openai/gpt-5-mini', 'google/gemini-3.5-flash-lite', 'openai/gpt-5.6-luna']
+        vistos = []
+        def http(req, *args):
+            cuerpo = json.loads(req.data)
+            vistos.append(cuerpo)
+            modelo = cuerpo['model']
+            if modelo == E.MODELO:
+                return respuesta(modelo, {'types': [], 'uncertain': True, 'evidence': 'Duda'})
+            return respuesta(modelo, {'presente': False, 'evidencia': 'Bolsas sin contenedor'})
+        with patch.object(E, 'solicitud', return_value={'model': E.MODELO}), \
+                patch.object(V, 'modelos_activos', return_value=self.modelos), \
+                patch.object(V, 'OPENROUTER_PROVEEDORES_EXCLUIDOS', 'OpenInference'), \
+                patch.object(V, '_pedir_http', side_effect=http):
+            r = V.verificar_contenedores(self.datos)
+        self.assertEqual((r['estado'], r['tipos']), ('confirmado', []))
+        self.assertEqual({c['model'] for c in vistos[1:]},
+            {'anthropic/claude-sonnet-4.6', 'google/gemini-3.5-flash-lite', 'openai/gpt-5.6-sol'})
+        self.assertTrue(all(c['provider']['ignore'] == ['OpenInference'] for c in vistos[1:]))
+        self.assertTrue(all(c['reasoning'] == {'effort': 'low'} for c in vistos[1:]))
+
     def test_timeout_no_repite_y_conserva_incertidumbre_y_consumo(self):
         with patch.object(M, 'fallo') as fallo:
             r, llamadas = self.ejecutar(fallo_modelo='m2')
