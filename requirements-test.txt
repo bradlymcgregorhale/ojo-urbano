@@ -1,3 +1,4 @@
+-c constraints-security.txt
 # Pruebas sin embeddings, claves ni consultas externas.
 fastapi>=0.110.0
 uvicorn>=0.29.0
