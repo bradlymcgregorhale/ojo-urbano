@@ -865,3 +865,9 @@ separar juntas entre piezas y averías del piso de rotura del cuerpo del cordón
 Conserva la exigencia de tres lecturas estructurales concordantes. Una lectura
 estructural contra dos negativas queda para revisión, sin reparación automática.
 Los ejemplos se usan para calibrar; no se cuentan como validación independiente.
+
+Cuando todos los revisores de material encuentran bolsas opacas, la fusión del
+modelo local con un único lector no confirma escombros. Queda para aclarar el
+contenido y conserva los retiros independientes. Dos lecturas visuales propias
+o una declaración vecinal validada conservan sus recorridos anteriores. La
+ubicación y el porte de una bolsa no suman un testigo del material oculto.
