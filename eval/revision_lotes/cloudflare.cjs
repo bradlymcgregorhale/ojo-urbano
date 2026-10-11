@@ -33,8 +33,9 @@ function crearPuerta(config,local,validador=crearValidador(config)){
   const cookieBypass=leerCookie(req.headers.cookie,'ojo_bypass');
   const bypassValido=bypass===local.token||req.headers['x-bypass']===local.token||cookieBypass===local.token;
   if(!bypassValido){try{await validador(req.headers['cf-access-jwt-assertion']);}catch(e){debug('AUTH-FAIL',e.message);return responder(403,'Iniciá sesión con una cuenta permitida en Cloudflare Access.');}}
-  const fijarCookie=(bypass===local.token||req.headers['x-bypass']===local.token)&&cookieBypass!==local.token;
-  const cookieCabecera='ojo_bypass='+encodeURIComponent(local.token)+'; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400';
+  // Reemitir también una cookie válida para actualizar las sesiones anteriores a Secure.
+  const fijarCookie=bypass===local.token||req.headers['x-bypass']===local.token||cookieBypass===local.token;
+  const cookieCabecera='ojo_bypass='+encodeURIComponent(local.token)+'; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=86400';
   if(bypass){u.searchParams.delete('bypass');req.url=req.url.replace(/[?&]bypass=[^&]*/,'');}
   if(u.pathname===prefijo){res.writeHead(302,{Location:prefijo+'/','Cache-Control':'no-store',...(fijarCookie?{'Set-Cookie':cookieCabecera}:{})});return res.end();}
   if(!u.pathname.startsWith(prefijo+'/')||u.search)return responder(404,'Ruta inexistente.');

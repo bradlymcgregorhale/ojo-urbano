@@ -222,3 +222,16 @@ La primera prueba verifica JWT, cuentas, rutas, origen de POST y eliminación de
 Las respuestas parciales se confirman o corrigen con las mismas acciones que las completas.
 Guardar la decisión registra la revisión humana; no convierte el estado de la API en completo.
 El JSON original conserva las limitaciones y los lectores fallidos para su consulta en los detalles.
+
+### Cookie de acceso y HTTPS
+
+La puerta emite la credencial alternativa con `Secure`, `HttpOnly` y
+`SameSite=Lax`. Una sesión alternativa ya activa recibe de nuevo la cookie
+segura al consultar la puerta. Access sigue validando firma, emisor, audiencia,
+cuenta y vencimiento cuando no hay una credencial alternativa válida.
+
+`node eval/revision_lotes/pruebas_cookie_segura_navegador.cjs` comprueba en un
+navegador aislado que la cookie se envía por HTTPS y no por HTTP. Usa un dominio,
+certificado y credencial sintéticos, con todos los servidores en loopback.
+Necesita Puppeteer y OpenSSL; `OJO_PUPPETEER` permite indicar la instalación.
+No consulta lectores ni cambia la bandeja real.
