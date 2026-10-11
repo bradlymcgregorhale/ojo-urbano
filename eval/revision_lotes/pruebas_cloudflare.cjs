@@ -29,9 +29,9 @@ function request(url,options={}){return new Promise((resolve,reject)=>{const r=h
   // El atajo con la clave local salta el JWT, fija una cookie HttpOnly y no divulga la clave ni el loopback.
   const salto=await request(url+'/ojo?bypass='+secreto,{headers:{Host:headers.Host}});
   assert.equal(salto.status,302);assert.equal(salto.headers.location,'/ojo/');
-  assert((salto.headers['set-cookie']||[]).some(c=>c.startsWith('ojo_bypass=')&&c.includes('HttpOnly')),JSON.stringify(salto.headers['set-cookie']));
+  assert((salto.headers['set-cookie']||[]).some(c=>c.startsWith('ojo_bypass=')&&c.includes('HttpOnly')&&c.includes('Secure')&&c.includes('SameSite=Lax')),JSON.stringify(salto.headers['set-cookie']));
   const conCookie=await request(url+'/ojo/estado',{headers:{Host:headers.Host,Cookie:'ojo_bypass='+secreto}});
-  assert.equal(conCookie.status,200);assert(!(await conCookie.text()).includes(secreto));
+  assert.equal(conCookie.status,200);assert((conCookie.headers['set-cookie']||[]).some(c=>c.includes('Secure')), 'La sesión anterior debe recibir una cookie segura');assert(!(await conCookie.text()).includes(secreto));
   assert.equal((await request(url+'/ojo/estado',{headers:{Host:headers.Host,Cookie:'ojo_bypass=clave-equivocada'}})).status,403);
   assert.equal((await request(url+'/ojo/reanalizar',{method:'POST',headers:{Host:headers.Host,Cookie:'ojo_bypass='+secreto,'Content-Type':'application/json',Origin:'https://ajeno.example.com'},body:'{}'})).status,403);assert.equal(posts,1);
   console.log('Access: firma/emisor/audiencia/cuenta/vencimiento, rutas, origen, clave privada y atajo con cookie verificados.');
