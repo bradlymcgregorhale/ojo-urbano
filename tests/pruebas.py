@@ -4971,6 +4971,7 @@ from tests import test_revision_omisiones
 from tests import test_revision_cordon
 from tests import test_revision_vereda
 from tests import test_herramientas_revision
+from tests import test_extractor_json
 from tests import test_revision_fragmentos
 from tests import test_verificacion_desactivada
 from tests import test_evaluacion_foto
@@ -4991,6 +4992,7 @@ _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_revi
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_herramientas_revision))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_verificacion_desactivada))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_revision_fragmentos))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_extractor_json))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_evaluacion_foto))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_prioridad))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_observaciones_higiene))

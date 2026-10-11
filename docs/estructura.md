@@ -131,6 +131,7 @@ Cada archivo versionado tiene una ubicación y función en el árbol siguiente. 
 - `tests/test_prioridad.py`
 - `tests/test_recoleccion_pertenencias.py`
 - `tests/test_revision_cordon.py`
+- `tests/test_extractor_json.py`
 - `tests/test_revision_fragmentos.py`
 - `tests/test_revision_escombros_publica.py`
 - `tests/test_revision_omisiones.py`

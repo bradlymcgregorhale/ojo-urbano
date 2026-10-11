@@ -1017,19 +1017,12 @@ def _pedir_http(req, timeout, vence):
 
 def _extraer_json(texto):
     """Primer objeto JSON dentro de la respuesta (tolera ```json ... ```)."""
-    texto = re.sub(r"```(?:json)?", "", texto)
     inicio = texto.find("{")
     if inicio == -1:
         raise ValueError("sin JSON en la respuesta")
-    nivel = 0
-    for i, ch in enumerate(texto[inicio:], inicio):
-        if ch == "{":
-            nivel += 1
-        elif ch == "}":
-            nivel -= 1
-            if nivel == 0:
-                return json.loads(texto[inicio:i + 1])
-    raise ValueError("JSON incompleto en la respuesta")
+    valor, _ = json.JSONDecoder().raw_decode(texto[inicio:])
+    return valor
+
 
 
 def _prompt_sistema(categorias):
