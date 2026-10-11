@@ -24,14 +24,15 @@ Las fotos y respuestas privadas de `eval/vision/private/` siguen ignoradas. No s
 - `observaciones_higiene.py`: Publicación de observaciones de higiene. Dependencias internas directas: ninguna.
 - `politica_escombros.py`: Decisiones de material, ámbito y retiro. Dependencias internas directas: `revision_escombros_publica`.
 - `prioridad.py`: Problema principal y solicitudes sugeridas. Dependencias internas directas: ninguna.
+- `revision_fragmentos.py`: Distingue fragmentos del daño y pilas independientes. Dependencias internas directas: `prompts`, `modos_analisis`, `verificador`.
 - `revision_cordon.py`: Corroboración dirigida del cordón. Dependencias internas directas: `prompts`.
 - `revision_escombros_publica.py`: Salida pública de la revisión de material. Dependencias internas directas: ninguna.
 - `revision_omisiones.py`: Recuperación de objetos, residuos y cubierta. Dependencias internas directas: `prompts`.
 - `revision_vereda.py`: Geometría y corroboración de daños en vereda. Dependencias internas directas: `prompts`.
-- `servidor.py`: API, modelo local, cola y página de análisis. Dependencias internas directas: `especialista_contenedores`, `evaluacion_foto`, `modos_analisis`, `observaciones_higiene`, `politica_escombros`, `prioridad`, `revision_cordon`, `revision_escombros_publica`, `revision_omisiones`, `revision_vereda`, `verificador`.
+- `servidor.py`: API, modelo local, cola y página de análisis. Dependencias internas directas: `especialista_contenedores`, `evaluacion_foto`, `modos_analisis`, `observaciones_higiene`, `politica_escombros`, `prioridad`, `revision_cordon`, `revision_fragmentos`, `revision_escombros_publica`, `revision_omisiones`, `revision_vereda`, `verificador`.
 - `verificador.py`: Lectores, transporte, consenso y arbitraje. Dependencias internas directas: `evaluacion_foto`, `modos_analisis`, `observaciones_higiene`, `prioridad`, `prompts`, `revision_escombros_publica`.
 
-Los módulos de producción permanecen juntos en la raíz. `servidor.py`, `verificador.py`, `prompts/` y los evaluadores usan rutas e imports desde esa ubicación. Trasladarlos ahora a un paquete agregaría cambios en arranque, recursos y huellas sin reducir código duplicado. La separación de pruebas y herramientas deja 14 Python en la raíz: 13 de producción y el comando compatible de pruebas. No se eliminó un módulo por su nombre o por la cantidad de archivos.
+Los módulos de producción permanecen juntos en la raíz. `servidor.py`, `verificador.py`, `prompts/` y los evaluadores usan rutas e imports desde esa ubicación. Trasladarlos ahora a un paquete agregaría cambios en arranque, recursos y huellas sin reducir código duplicado. La separación de pruebas y herramientas deja 15 Python en la raíz: 14 de producción y el comando compatible de pruebas. No se eliminó un módulo por su nombre o por la cantidad de archivos.
 
 ## Comandos
 
@@ -111,6 +112,7 @@ Cada archivo versionado tiene una ubicación y función en el árbol siguiente. 
 - `prompts/__init__.py`
 - `tests/pruebas.py`
 - `revision_cordon.py`
+- `revision_fragmentos.py`
 - `revision_escombros_publica.py`
 - `revision_omisiones.py`
 - `revision_vereda.py`
@@ -129,6 +131,7 @@ Cada archivo versionado tiene una ubicación y función en el árbol siguiente. 
 - `tests/test_prioridad.py`
 - `tests/test_recoleccion_pertenencias.py`
 - `tests/test_revision_cordon.py`
+- `tests/test_revision_fragmentos.py`
 - `tests/test_revision_escombros_publica.py`
 - `tests/test_revision_omisiones.py`
 - `tests/test_revision_vereda.py`
@@ -150,3 +153,5 @@ El servidor escucha solo en loopback. Rechaza Host u Origin externos, enlaces fu
 `requirements.txt` y `requirements-test.txt` aplican `constraints-security.txt`. Ese archivo fija las versiones corregidas de Pillow, urllib3 y fsspec verificadas en la auditoría. Las dependencias transitivas reciben la misma restricción, sin instalar el conjunto pesado para ejecutar pruebas.
 
 Una actualización debe contrastar el inventario realmente instalado con avisos del proveedor, resolver compatibilidad, ejecutar las pruebas y comprobar la versión después del reinicio. Conservar un respaldo de las versiones anteriores para revertir. No usar `pip-audit --fix` sobre el entorno productivo sin revisar su selección de cambios.
+
+`revision_fragmentos.py` compara el daño del cordón con restos sueltos, sólo cuando ambos servicios están confirmados en Completo. Tres lecturas concordantes son necesarias para excluir el retiro duplicado.
