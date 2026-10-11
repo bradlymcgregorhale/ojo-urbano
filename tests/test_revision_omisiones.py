@@ -8,7 +8,7 @@ from unittest.mock import patch
 from PIL import Image
 import revision_omisiones as R
 
-CATS = json.loads((Path(__file__).parent / 'categorias.json').read_text())
+CATS = json.loads((Path(__file__).resolve().parents[1] / 'categorias.json').read_text())
 
 
 def objeto(modelo, tipo='envase_pintura', uso='descartado'):

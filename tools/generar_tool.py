@@ -7,9 +7,9 @@ import json
 from pathlib import Path
 
 import sys
-OJO = Path(__file__).resolve().parent
+OJO = Path(__file__).resolve().parents[1]
 if len(sys.argv) < 2:
-    raise SystemExit("uso: generar_tool.py <carpeta_revision> [sufijo]")
+    raise SystemExit("uso: tools/generar_tool.py <carpeta_revision> [sufijo]")
 REV = Path(sys.argv[1])
 
 cats_info = json.load(open(OJO / "categorias.json"))

@@ -9,5 +9,5 @@ pillow>=10.0.0
 fastapi>=0.110.0
 uvicorn>=0.29.0
 python-multipart>=0.0.9
-# Solo para ejemplo.py
+# Cliente examples/ejemplo.py
 requests>=2.31.0

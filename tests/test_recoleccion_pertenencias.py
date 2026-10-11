@@ -8,7 +8,7 @@ from unittest.mock import patch
 from PIL import Image
 import verificador as V
 
-CATS = json.loads((Path(__file__).parent / 'categorias.json').read_text())
+CATS = json.loads((Path(__file__).resolve().parents[1] / 'categorias.json').read_text())
 LOCAL = {'predichas': [{'key': 'situacion_calle', 'score': 1}],
          'probabilidades': [{'key': 'situacion_calle', 'score': 1},
                             {'key': 'recoleccion', 'score': .0001}],

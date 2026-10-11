@@ -42,7 +42,7 @@ class IntermediarioTests(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 proxy = Path(tmp) / 'index.php'
-                original = (Path(__file__).parent / 'deploy/ojourbano.php').read_text()
+                original = (Path(__file__).resolve().parents[1] / 'deploy/ojourbano.php').read_text()
                 self.assertEqual(original.count('http://127.0.0.1:8091'), 1)
                 proxy.write_text(original.replace('http://127.0.0.1:8091',
                                                   'http://127.0.0.1:' + str(backend.server_port)))

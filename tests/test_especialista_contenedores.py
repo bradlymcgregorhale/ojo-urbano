@@ -1,5 +1,8 @@
 """Contrato del inventario, fallos y publicacion con las otras incidencias."""
 import copy
+import hashlib
+import tempfile
+from pathlib import Path
 import base64
 import io
 import json
@@ -21,8 +24,21 @@ class Inventario(unittest.TestCase):
     def test_vistas_mantienen_foto_completa_y_ejemplos_sin_mutar_original(self):
         foto = io.BytesIO(); Image.new('RGB', (100, 200), 'red').save(foto, format='JPEG')
         raw = foto.getvalue()
-        anterior = E.solicitud(raw, vistas=False)
-        nueva = E.solicitud(raw)
+        # La lógica de vistas no depende del contenido de ejemplos privados.
+        plantilla = json.dumps({'messages': [
+            {'role': 'system', 'content': 'Inventario sintético'},
+            {'role': 'user', 'content': [
+                {'type': 'text', 'text': 'Ejemplo sintético'},
+                E._imagen_url(Image.new('RGB', (10, 10), 'blue')),
+                {'type': 'text', 'text': 'Foto a evaluar'},
+                E._imagen_url(Image.new('RGB', (10, 10), 'white'))]}]}).encode()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'plantilla.json'
+            path.write_bytes(plantilla)
+            with patch.object(E, 'PLANTILLA', path), patch.object(
+                    E, 'PLANTILLA_SHA256', hashlib.sha256(plantilla).hexdigest()):
+                anterior = E.solicitud(raw, vistas=False)
+                nueva = E.solicitud(raw)
         a, b = anterior['messages'][1]['content'], nueva['messages'][1]['content']
         self.assertEqual(b[:-10], a[:-2])
         self.assertEqual(b[-9], a[-1])

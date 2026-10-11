@@ -36,10 +36,14 @@ curl -s -F "file=@foto.jpg" -F "contexto=vidrios rotos en la vereda" http://127.
 O usar el cliente de ejemplo:
 
 ```bash
-python ejemplo.py foto.jpg
+python examples/ejemplo.py foto.jpg
 ```
 
 Una clasificación en Completo tarda entre 25 y 60 segundos; los otros modos, menos (ver [Modos de análisis](#modos-de-análisis)).
+
+## Estructura y pruebas
+
+Las pruebas están en `tests/`, las herramientas manuales en `tools/` y el cliente en `examples/`. El mapa, las dependencias internas y los comandos de prueba y despliegue están en [docs/estructura.md](docs/estructura.md). `python pruebas.py` conserva el comando de pruebas sin consultas externas ni pesos.
 
 ## Qué pasa con una foto
 

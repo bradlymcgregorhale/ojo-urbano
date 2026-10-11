@@ -11,7 +11,7 @@ from PIL import Image
 import politica_escombros as P
 import revision_escombros_publica as D
 import verificador as V
-from test_politica_escombros import categoria, respuesta, salida
+from tests.test_politica_escombros import categoria, respuesta, salida
 
 
 def revisar(respuestas, contexto='', modelos=None):

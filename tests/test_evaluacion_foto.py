@@ -505,7 +505,7 @@ class EvaluacionFotoTest(unittest.TestCase):
         self.assertEqual(r['problemas'], salida()['problemas'])
 
     def test_retiros_higiene_existen_en_el_catalogo(self):
-        cats = json.loads(Path(__file__).with_name('categorias.json').read_text())
+        cats = json.loads((Path(__file__).resolve().parents[1] / 'categorias.json').read_text())
         for key in E.RETIROS_HIGIENE:
             self.assertIn(key, cats)
             self.assertEqual(cats[key]['grupo'], 'Residuos')
