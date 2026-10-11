@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Ejemplo mínimo: clasificar una foto contra la API local.
 
-    python ejemplo.py foto.jpg ["contexto vecinal opcional"]
+    python examples/ejemplo.py foto.jpg ["contexto vecinal opcional"]
 """
 import sys
 
 import requests
 
 if len(sys.argv) not in (2, 3):
-    raise SystemExit('uso: python ejemplo.py foto.jpg ["contexto vecinal opcional"]')
+    raise SystemExit('uso: python examples/ejemplo.py foto.jpg ["contexto vecinal opcional"]')
 
 datos = {"contexto": sys.argv[2]} if len(sys.argv) == 3 else {}
 with open(sys.argv[1], "rb") as f:

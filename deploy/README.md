@@ -11,13 +11,13 @@ su validación. El resto de los campos conserva el reenvío existente.
 Para verificar ambas rutas sin ejecutar modelos:
 
 ```sh
-python3 -m unittest test_intermediario -v
+python3 -m unittest tests.test_intermediario -v
 ```
 
 La prueba necesita PHP con cURL y abre dos servidores locales temporales. Comprueba
 ambos endpoints, los modos escalares, el valor omitido, los repetidos y los formatos
 no escalares. La validación de la API para cuerpos crudos está en
-`test_modos_analisis.py`.
+`tests/test_modos_analisis.py`.
 
 Antes de instalar, compará la huella de la copia vigente y guardá un respaldo en el
 directorio privado del servicio. Instalá el archivo de forma atómica y verificá la

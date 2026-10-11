@@ -106,7 +106,7 @@ class ContenedoresTest(unittest.TestCase):
             ((green, [], False), (green, [], False), False),
             ((green, [], False), ([], absent, True), False),
         ]
-        cats = json.loads((Path(__file__).parent / 'categorias.json').read_text())
+        cats = json.loads((Path(__file__).resolve().parents[1] / 'categorias.json').read_text())
         for first, second, expected in cases:
             local, votes = self.oscuro()
             by_model = {v['modelo']: v for v in votes}
@@ -129,7 +129,7 @@ class ContenedoresTest(unittest.TestCase):
 
     def test_relacion_retira_base_falsa_y_promueve_identidad_visual_sin_api(self):
         models = ['m1', 'm2', 'm3']
-        cats = json.loads((Path(__file__).parent / 'categorias.json').read_text())
+        cats = json.loads((Path(__file__).resolve().parents[1] / 'categorias.json').read_text())
         votes = {m: dict(modelo=m, ok=True, sin_problema=False, foto_corresponde=None,
                         categorias_contexto=[], descripcion='Contenedor con base desplazada.',
                         categorias=[{'key': LATERAL, 'gravedad': 1, 'evidencia': 'contenedor lateral'},
@@ -221,7 +221,7 @@ class ContenedoresTest(unittest.TestCase):
 
     def correr(self, respuestas, fallo=False, contraste=True):
         votos = {v['modelo']: v for v in VOTOS}
-        cats = json.loads((Path(__file__).parent / 'categorias.json').read_text())
+        cats = json.loads((Path(__file__).resolve().parents[1] / 'categorias.json').read_text())
         arbitro = {'ok': True, 'decisiones': [], 'descripcion': DESCRIPCION}
         with patch.multiple(V, PREGUNTA_ENCUADRE=False, VERIFICADORES=list(votos), REPREGUNTA_OBJETOS=True,
                             REPREGUNTA_MAX=2, CONSENSO_VLM_SOLO='confirma',

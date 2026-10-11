@@ -8,7 +8,7 @@ entre la compu y el celular. Acá el estado va a un JSON al lado de las fotos:
 se puede revisar desde cualquier dispositivo y el progreso queda del lado de
 la máquina, que es donde después se puntúa.
 
-    python3 servidor_revision.py <carpeta_revision> [puerto]
+    python3 tools/servidor_revision.py <carpeta_revision> [puerto]
 """
 import json
 import sys
