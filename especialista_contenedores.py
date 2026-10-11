@@ -67,7 +67,7 @@ def solicitud_presencia(datos, modelo):
     prompt = (Path(__file__).parent / 'prompts/inventario/presencia.txt').read_text(encoding='utf-8')
     with Image.open(io.BytesIO(datos)) as fuente:
         imagen = ImageOps.exif_transpose(fuente).convert('RGB')
-    return {'model': modelo, 'temperature': 0, 'max_tokens': 700,
+    return {'model': modelo, 'temperature': 0, 'max_tokens': 1000,
             'messages': [{'role': 'system', 'content': prompt},
                          {'role': 'user', 'content': [
                              {'type': 'text', 'text': 'Evaluá la foto.'}, _imagen_url(imagen)]}]}
@@ -107,7 +107,18 @@ def resolver_ausencia(inventario, lecturas):
                         'motivo_previo': str(inventario.get('motivo') or '')[:280],
                         'lecturas': [dict(modelo=v['modelo'], presente=False,
                                          evidencia=v['evidencia'].strip()[:280]) for v in lecturas]})
-    return copy.deepcopy(inventario)
+    salida = copy.deepcopy(inventario)
+    if requiere_presencia(inventario):
+        salida['revision_presencia'] = {
+            'motivo_previo': str(inventario.get('motivo') or '')[:280],
+            'lecturas': [dict(modelo=v['modelo'], presente=v['presente'],
+                              evidencia=v['evidencia'].strip()[:280])
+                         for v in lecturas if isinstance(v, dict)
+                         and isinstance(v.get('modelo'), str) and v['modelo']
+                         and 'presente' in v and (v['presente'] is None or type(v['presente']) is bool)
+                         and isinstance(v.get('evidencia'), str) and v['evidencia'].strip()],
+            'estado': 'revision'}
+    return salida
 
 
 def _unico(pares):

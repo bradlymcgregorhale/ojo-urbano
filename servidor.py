@@ -56,6 +56,7 @@ import revision_escombros_publica as revision_publica
 import politica_escombros
 import evaluacion_foto
 import revision_omisiones
+import revision_cordon
 import observaciones_higiene
 import prioridad
 import especialista_contenedores
@@ -889,6 +890,7 @@ def procesar(datos, contexto, verificar):
     perfil = modos.perfil_actual()
     if perfil and perfil.modo == "alto":
         salida = revision_omisiones.revisar(img, salida, CATEGORIAS)
+        salida = revision_cordon.revisar(img, salida)
         veri_actual = dict((salida.get("detalle") or {}).get("verificacion") or {})
         lecturas = veri_actual.get("verificadores") or []
         previa = evaluacion_foto.aplicar({"problemas": list(salida.get("problemas") or [])}, lecturas)
@@ -1065,6 +1067,8 @@ def _publica(r):
         pub = especialista_contenedores.aplicar(pub, veri["inventario_contenedores"], CATEGORIAS)
     if veri.get('revision_omisiones') is not None:
         pub['revision_omisiones'] = veri['revision_omisiones']
+    if veri.get('revision_cordon') is not None:
+        pub['revision_cordon'] = veri['revision_cordon']
     if isinstance(pub.get("verificacion_escombros"), dict):
         pub["verificacion_escombros"] = dict(pub["verificacion_escombros"], **revision_publica.publicar(
             veri.get("alcance_escombros"), veri.get("decision_alcance"),

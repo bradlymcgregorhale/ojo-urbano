@@ -43,9 +43,21 @@ class Presencia(unittest.TestCase):
                              ('evidencia', ''), ('evidencia', None), ('modelo', 'm2')]:
             votos = copy.deepcopy(self.lecturas)
             votos[0][campo] = valor
-            self.assertEqual(E.resolver_ausencia(original, votos), original)
+            self.assertEqual({k: v for k, v in E.resolver_ausencia(original, votos).items() if k != 'revision_presencia'}, original)
         for votos in [self.lecturas[:2], self.lecturas + self.lecturas[:1], [None] * 3]:
-            self.assertEqual(E.resolver_ausencia(original, votos), original)
+            self.assertEqual({k: v for k, v in E.resolver_ausencia(original, votos).items() if k != 'revision_presencia'}, original)
+
+    def test_duda_conserva_evidencia_sin_inventar_ausencia(self):
+        votos = copy.deepcopy(self.lecturas)
+        votos[1]['presente'] = None
+        original = E.revision()
+        salida = E.resolver_ausencia(original, votos)
+        self.assertEqual((salida['estado'], salida['tipos']), ('revision', None))
+        self.assertEqual(salida['revision_presencia']['lecturas'][1]['presente'], None)
+        self.assertEqual(salida['revision_presencia']['lecturas'][1]['evidencia'], votos[1]['evidencia'])
+        salida['revision_presencia']['lecturas'][1]['evidencia'] = 'Cambio'
+        self.assertNotEqual(votos[1]['evidencia'], 'Cambio')
+        self.assertNotIn('revision_presencia', original)
 
     def test_conserva_confirmados_y_fallos_del_especialista(self):
         for original in [dict(estado='confirmado', tipos=[E.TIPOS[0]], fallo=False),
@@ -94,7 +106,7 @@ class Presencia(unittest.TestCase):
         original = E.revision()
         lecturas = self._lecturas(pares)
         self.assertEqual([v['presente'] for v in lecturas], [False, False, None])
-        self.assertEqual(E.resolver_ausencia(original, lecturas), original)
+        self.assertEqual({k: v for k, v in E.resolver_ausencia(original, lecturas).items() if k != 'revision_presencia'}, original)
 
     def test_p014_control_20260920_con_dos_null_sigue_en_revision(self):
         # Textos crudos del control integrado del 20/09/2026 (ticket-110). Los
@@ -112,12 +124,12 @@ class Presencia(unittest.TestCase):
         original = E.revision()
         lecturas = self._lecturas(pares)
         self.assertEqual([v['presente'] for v in lecturas], [False, None, None])
-        self.assertEqual(E.resolver_ausencia(original, lecturas), original)
+        self.assertEqual({k: v for k, v in E.resolver_ausencia(original, lecturas).items() if k != 'revision_presencia'}, original)
         # Una sola duda alcanza para conservar la revisión, aunque las otras dos nieguen.
         con_una_duda = [dict(v, presente=False) if v['presente'] is None and i == 2 else v
                         for i, v in enumerate(lecturas)]
         self.assertEqual([v['presente'] for v in con_una_duda], [False, None, False])
-        self.assertEqual(E.resolver_ausencia(original, con_una_duda), original)
+        self.assertEqual({k: v for k, v in E.resolver_ausencia(original, con_una_duda).items() if k != 'revision_presencia'}, original)
 
     def test_parsea_json_y_bloque_sin_relajar_el_contrato(self):
         r = respuesta('m1', {'presente': False, 'evidencia': 'Sin contenedores'})

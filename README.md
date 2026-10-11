@@ -559,6 +559,20 @@ El veto previo del daño se conserva. La falta de las referencias se publica com
 falla, sin inventar un resultado. Las fotos de referencia son material de
 calibración y no cuentan como evaluación independiente.
 
+Antes de publicar una reparación de cordón en Completo, una comprobación
+específica compara su geometría con referencias privadas y revisa la vista
+completa más tres recortes inferiores. Los tres lectores deben coincidir en
+una rotura del cuerpo del cordón. El acuerdo sobre diseño o desgaste descarta
+esa reparación; los desacuerdos y fallos la conservan como posible, con revisión.
+No agrega reparaciones nuevas ni modifica barrido, recolección o los votos
+iniciales. La evidencia y el hallazgo previo quedan en `revision_cordon`.
+Económico y Equilibrado no ejecutan esta etapa.
+
+La comprobación de presencia conserva sus negativas, positivas y abstenciones
+en `contenedores.revision_presencia`, aunque no logre resolver el inventario.
+Una duda sigue siendo una duda: sólo tres negativas explícitas distintas y con
+evidencia permiten confirmar que no hay contenedores.
+
 ### Revisión consolidada
 
 `eval/revision_lotes/consolidada/generar.py` actualiza la página de una ronda
