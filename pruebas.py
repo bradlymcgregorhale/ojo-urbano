@@ -2231,6 +2231,7 @@ _textos_prompt["sistema_con_restantes"] = V._prompt_sistema(_cats_prompt)
 _textos_prompt["objetos_omitidos"] = __import__("revision_omisiones").OBJETOS
 _textos_prompt["cubierta_contenedor"] = __import__("revision_omisiones").CUBIERTA
 _textos_prompt["residuos_independientes"] = __import__("revision_omisiones").RESIDUOS
+_textos_prompt["vereda_geometria"] = __import__("revision_vereda").PROMPT
 _textos_prompt["inventario_presencia"] = (
     AQUI / "prompts" / "inventario" / "presencia.txt").read_text(encoding="utf-8")
 _textos_prompt["usuario_sin_contexto"] = V._prompt_usuario()
@@ -4945,6 +4946,7 @@ import test_presencia_contenedores
 import test_aptitud_higiene
 import test_revision_omisiones
 import test_revision_cordon
+import test_revision_vereda
 import test_evaluacion_foto
 import test_prioridad
 import test_observaciones_higiene
@@ -4959,6 +4961,7 @@ _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_pres
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_aptitud_higiene))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_revision_omisiones))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_revision_cordon))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_revision_vereda))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_evaluacion_foto))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_prioridad))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_observaciones_higiene))
