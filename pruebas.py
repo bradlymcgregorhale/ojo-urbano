@@ -4945,6 +4945,7 @@ import test_presencia_contenedores
 import test_aptitud_higiene
 import test_revision_omisiones
 import test_revision_cordon
+import test_revision_vereda
 import test_evaluacion_foto
 import test_prioridad
 import test_observaciones_higiene
@@ -4959,6 +4960,7 @@ _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_pres
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_aptitud_higiene))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_revision_omisiones))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_revision_cordon))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_revision_vereda))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_evaluacion_foto))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_prioridad))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_observaciones_higiene))
