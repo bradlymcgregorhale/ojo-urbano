@@ -61,10 +61,32 @@ class PoliticaTest(unittest.TestCase):
 
     def test_material_oculto_no_reescribe_confirmacion_visual_sin_fusion_local(self):
         r, revision = self.opacas([categoria()])
+        for v in r['detalle']['verificacion']['verificadores']:
+            v['categorias'].append(dict(key=P.KEY, evidencia='Restos de obra en bolsas.'))
         nuevo = P.aplicar(r, revision, self.cats)
         self.assertEqual(nuevo['descripcion'], r['descripcion'])
         self.assertEqual(nuevo['problemas'], r['problemas'])
         self.assertNotIn('requiere_revision', nuevo['verificacion_escombros'])
+
+    def test_material_opaco_no_confirma_fusion_local_con_un_solo_testigo(self):
+        r, revision = self.opacas([categoria(fuentes=['modelo_local', 'm1']),
+                                  categoria('retiro_muebles')])
+        r['detalle']['verificacion']['verificadores'][0]['categorias'].append(
+            dict(key=P.KEY, evidencia='Bolsa negra grande y densa.'))
+        antes = copy.deepcopy(r)
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertEqual(r, antes)
+        self.assertEqual([c['key'] for c in nuevo['problemas']], ['retiro_muebles'])
+        self.assertIn(P.KEY, nuevo['en_duda'])
+        self.assertTrue(nuevo['verificacion_escombros']['requiere_revision'])
+        self.assertFalse(nuevo['verificacion_escombros']['requiere_nueva_foto'])
+        self.assertNotIn('reclasificado_por', nuevo['posibles'][0])
+        self.assertIn('contenido de las bolsas', nuevo['descripcion'])
+        revision['contexto_resuelve'] = True
+        revision['afirmacion_explicita'] = True
+        revision['revisiones'][0]['afirmacion_vecinal'] = 'afirma'
+        contextual = P.aplicar(r, revision, self.cats)
+        self.assertIn(P.KEY, [c['key'] for c in contextual['problemas']])
 
     def test_bolsas_opacas_no_confirmadas_por_material_no_conservan_promocion_local(self):
         r, revision = self.opacas([dict(categoria(), reclasificado_por='modelo_local')])

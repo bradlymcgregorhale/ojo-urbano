@@ -438,16 +438,19 @@ def aplicar(salida, revision, categorias):
                 veri.setdefault('fuentes_en_duda', {})['recoleccion'] = list(reco[0]['fuentes'])
         otros = [c['nombre'] for c in r['problemas']]
         r['descripcion'] = motivo + (" Otros hallazgos: " + "; ".join(otros) + "." if otros else "")
+    consenso_opaco = _bolsas_opacas_sin_material(revision)
+    def sin_respaldo_material(c):
+        return es_escombros(c) and (c.get('reclasificado_por') == 'modelo_local'
+            or (consenso_opaco and len(_respaldo_visual(salida, c.get('key'))) < 2))
     material_oculto = (candidato and not contextual
-        and revision.get('material_visible_confirmado') is not True and any(
-        es_escombros(c) and c.get('reclasificado_por') == 'modelo_local'
-        for c in r['problemas']))
+        and revision.get('material_visible_confirmado') is not True
+        and any(sin_respaldo_material(c) for c in r['problemas']))
     if material_oculto:
         motivo = ('No se pudo identificar el contenido de las bolsas. Indicá qué contienen '
                   'para evaluar el servicio; la ubicación pública no confirma el material.')
         # No tomar como cuatro testigos de escombros a lectores que solo vieron bolsas.
         candidatos_ocultos = [c for c in r['problemas']
-                               if es_escombros(c) and c.get('reclasificado_por') == 'modelo_local']
+                               if sin_respaldo_material(c)]
         for c in candidatos_ocultos:
             key = c['key']
             diagnostico.anotar('material_oculto_sin_respaldo', [key])
