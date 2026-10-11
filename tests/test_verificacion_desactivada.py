@@ -8,6 +8,7 @@ from unittest.mock import patch
 from PIL import Image
 
 import modos_analisis as M
+import revision_fragmentos as F
 import revision_cordon as C
 import revision_vereda as W
 
@@ -56,7 +57,7 @@ class GuardasDirigidas(unittest.TestCase):
                 consultas = [stack.enter_context(patch.object(module, name)) for module, name in (
                     (V, 'verificar'), (V, 'verificar_contenedores'), (V, 'validar_alcance_escombros'),
                     (V, 'validar_contexto_obra_servicios'), (V, 'comparar_prioridad'),
-                    (C, 'consultar'), (W, 'consultar'), (O, 'consultar_objetos'),
+                    (F, 'consultar'), (C, 'consultar'), (W, 'consultar'), (O, 'consultar_objetos'),
                     (O, 'consultar_residuos'), (O, 'consultar_cubierta'))]
                 result = S.procesar(datos.getvalue(), '', verificar)
                 self.assertFalse(result['detalle']['verificacion']['activa'])

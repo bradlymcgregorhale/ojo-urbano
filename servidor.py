@@ -56,6 +56,7 @@ import revision_escombros_publica as revision_publica
 import politica_escombros
 import evaluacion_foto
 import revision_omisiones
+import revision_fragmentos
 import revision_cordon
 import revision_vereda
 import observaciones_higiene
@@ -893,6 +894,7 @@ def procesar(datos, contexto, verificar):
         salida = revision_omisiones.revisar(img, salida, CATEGORIAS)
         salida = revision_cordon.revisar(img, salida)
         salida = revision_vereda.revisar(img, salida)
+        salida = revision_fragmentos.revisar(img, salida)
         veri_actual = dict((salida.get("detalle") or {}).get("verificacion") or {})
         lecturas = veri_actual.get("verificadores") or []
         previa = evaluacion_foto.aplicar({"problemas": list(salida.get("problemas") or [])}, lecturas)
@@ -1071,6 +1073,8 @@ def _publica(r):
         pub['revision_omisiones'] = veri['revision_omisiones']
     if veri.get('revision_vereda') is not None:
         pub['revision_vereda'] = veri['revision_vereda']
+    if veri.get('revision_fragmentos') is not None:
+        pub['revision_fragmentos'] = veri['revision_fragmentos']
     if veri.get('revision_cordon') is not None:
         pub['revision_cordon'] = veri['revision_cordon']
     if isinstance(pub.get("verificacion_escombros"), dict):
