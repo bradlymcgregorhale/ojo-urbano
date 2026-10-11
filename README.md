@@ -448,7 +448,7 @@ La API separa la correspondencia con el comentario (`foto_valida`) de la posibil
 - `evaluacion_foto.rechazada`: rechazo por interior o calidad insuficiente corroborada. En ese caso no hay servicios confirmados, posibles ni elementos detectados. La respuesta conserva el consumo y el estado del análisis.
 - `evaluacion_foto.requiere_revision`: devuelve `true` cuando el estado es `senal_negativa_no_corroborada` o `calidad_contradictoria`. También se activa en `indeterminada` si una lectura válida informa ámbito `mixto` o `indeterminado`; la indicación pide aclarar la ubicación mediante contexto o una foto, sin afirmar que sea interior. Conserva los hallazgos. Si hay un rechazo o un encuadre insuficiente corroborado, prevalece ese estado. La falta de evaluación, por sí sola, no activa esta bandera ni demuestra que la foto sea válida. La `indicacion` puede ser una nota para quien revisa; para exigir otra foto, usá `requiere_nueva_foto` o `requiere_foto_complementaria`, que no se activan por una duda de ámbito.
   En ese caso, aportar contexto y adjuntar una foto son alternativas para aclarar la ubicación; la API no exige ambas ni impone una nueva foto.
-- `contexto_visual.suficiente`: `true`, `false` o `null`. Lo decide una pregunta separada de encuadre a cada lector (`prompts/dirigidos/encuadre_higiene.txt`, #114), después de la primera pasada, con el criterio de uso de la cuadrilla de Higiene: para material retirable (residuos, escombros, poda, muebles, bolsas) la foto tiene que mostrar la extensión completa del problema y su entorno inmediato para reconocer el lugar y comprobar después que se resolvió; para un objeto fijo dañado (contenedor, cesto, buzón eléctrico, vereda, cordón) alcanza ver el objeto y el daño, aunque sea un primer plano. Corre en Equilibrado y Completo (una llamada corta por lector; en Económico no hay mayoría posible y no se paga; `PREGUNTA_ENCUADRE=0` la apaga). Una toma demasiado cerrada puede necesitar una foto complementaria aunque permita reconocer un daño. No borra hallazgos visibles ni demuestra que la escena sea interior. `contexto_visual.estado` distingue `evaluado` de `indeterminado` y `no_evaluado`; con `false`, `motivos` trae códigos estables (`encuadre_demasiado_cerrado`, `entorno_no_visible`, `situacion_cortada`, `demasiado_lejos_o_borrosa`) e `indicacion` dice qué mostrar en la nueva foto (más abierta, o más cerca y enfocada cuando el único motivo es `demasiado_lejos_o_borrosa`).
+- `contexto_visual.suficiente`: `true`, `false` o `null`. Lo decide una pregunta separada de encuadre a cada lector (`prompts/dirigidos/encuadre_higiene.txt`, #114), después de la primera pasada, con el criterio de uso de la cuadrilla de Higiene: para material retirable (residuos, escombros, poda, muebles, bolsas) la foto tiene que permitir localizar y estimar la intervención con una extensión representativa y un plano de apoyo visible para reconocer el lugar y comprobar después que se resolvió; para un objeto fijo dañado (contenedor, cesto, buzón eléctrico, vereda, cordón) alcanza ver el objeto y el daño, aunque sea un primer plano. Corre en Equilibrado y Completo (una llamada corta por lector; en Económico no hay mayoría posible y no se paga; `PREGUNTA_ENCUADRE=0` la apaga). Una toma demasiado cerrada puede necesitar una foto complementaria aunque permita reconocer un daño. No borra hallazgos visibles ni demuestra que la escena sea interior. `contexto_visual.estado` distingue `evaluado` de `indeterminado` y `no_evaluado`; con `false`, `motivos` trae códigos estables (`encuadre_demasiado_cerrado`, `entorno_no_visible`, `situacion_cortada`, `demasiado_lejos_o_borrosa`) e `indicacion` dice qué mostrar en la nueva foto (más abierta, o más cerca y enfocada cuando el único motivo es `demasiado_lejos_o_borrosa`).
 - `evaluacion_foto.calidad_suficiente`: `true`, `false` o `null`, con `estado_calidad` y `motivos` (`desenfoque`, `movimiento`, `oscuridad`, `sobreexposicion`, `detalle_insuficiente`). Un `false` corroborado rechaza la foto y pide otra; un fallo técnico o una evaluación sin acuerdo deja `null`, nunca un rechazo.
 - Cómo se decide: el ámbito exige que todos los lectores coincidan. La calidad y el encuadre se deciden por mayoría de lectores distintos: en Completo, dos votos iguales alcanzan aunque el tercero opine lo contrario; en Equilibrado hacen falta los dos; Económico no evalúa estos campos. Un lector que falló no cuenta a favor ni en contra y un `false` sin motivo no es un voto. Cada entrada de `modelos` publica la lectura `evaluacion_foto` de ese lector para auditar la decisión.
 - `problema_principal`: selecciona una categoría ya confirmada. Con varios problemas necesita acuerdo entre los lectores de Completo. Si no coinciden, Completo hace una comparación dirigida de esas categorías finales; no suma un cuarto verificador ni cambia la clasificación. Económico y Equilibrado no hacen esa llamada. Si la comparación falla, la API se abstiene o elige una categoría que ya no está confirmada, el campo queda indeterminado o no evaluado. Los demás problemas permanecen en la respuesta.
@@ -831,3 +831,24 @@ por separado paneles y recipientes fuera de los bolsones; la duda sobre el
 contenido de estos últimos no borra un retiro independiente corroborado.
 Un bolsón aparentemente vacío no demuestra contenido de obra, y un recipiente
 ambiguo no recibe una identidad ni un contenido inventados.
+
+La comprobación de encuadre distingue la falta de referencias para ubicar una
+intervención del contenido oculto de una bolsa y del ámbito privado. Algunas
+piezas cortadas no exigen otra foto si se puede estimar la intervención y se ve
+su apoyo. Un detalle sin piso ni entorno sigue necesitando una toma más abierta.
+
+En Completo, si falta recolección y hay candidatos de retiros, una pregunta
+independiente revisa residuos comunes expuestos en la foto completa y sus dos
+mitades. Requiere dos lectores distintos que corroboren la misma clase visible,
+con descarte y ubicación públicos. Si hay un candidato de situación de calle,
+conserva el recorrido específico de pertenencias y no ejecuta esta recuperación.
+Bolsas cerradas, sacos de obra y componentes
+sin coincidencia no crean una solicitud. Un ámbito privado, un fallo de lectura
+o una foto rechazada impiden recuperarla. La decisión conserva los otros
+servicios confirmados y las lecturas anteriores en `revision_omisiones`.
+
+La lectura de montaje identifica el panel y la unión visible con el cuerpo,
+sin inferir una bisagra por su ubicación. Conserva la evidencia de `pieza` y
+`union` cuando el lector la devuelve. La abertura sola no prueba ausencia de
+tapa; las paredes laterales y la barra de izado tampoco sustituyen al panel.
+Se conserva el veto por cualquier lectura montada o articulada.

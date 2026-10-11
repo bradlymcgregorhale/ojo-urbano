@@ -2230,6 +2230,7 @@ _textos_prompt = {k: getattr(V, k) for k in _huellas if k.startswith("_")
 _textos_prompt["sistema_con_restantes"] = V._prompt_sistema(_cats_prompt)
 _textos_prompt["objetos_omitidos"] = __import__("revision_omisiones").OBJETOS
 _textos_prompt["cubierta_contenedor"] = __import__("revision_omisiones").CUBIERTA
+_textos_prompt["residuos_independientes"] = __import__("revision_omisiones").RESIDUOS
 _textos_prompt["inventario_presencia"] = (
     AQUI / "prompts" / "inventario" / "presencia.txt").read_text(encoding="utf-8")
 _textos_prompt["usuario_sin_contexto"] = V._prompt_usuario()
@@ -4467,11 +4468,12 @@ _voluminoso_resp = {}
 print("[#114] encuadre con el criterio de uso de la cuadrilla de Higiene (pregunta separada)")
 import evaluacion_foto as _EF
 _encuadre_114 = V._PROMPT_ENCUADRE_HIGIENE
-check("la pregunta de encuadre pide la extensión completa del material retirable y su entorno inmediato",
-      "Material para retirar o limpiar (residuos, bolsas, escombros, restos de poda, muebles, acopios, suciedad):"
-      " alcanza cuando se ve la extensión completa del problema (todo lo que hay que retirar o limpiar, no un pedazo)"
-      " y su entorno inmediato" in _encuadre_114
-      and "Reconocer qué es el material no reemplaza ver dónde está y cuánto abarca." in _encuadre_114)
+check("la pregunta de encuadre exige ubicar y estimar la intervención, sin inventariar cada bolsa",
+      "extensión representativa que permita localizar y estimar la intervención" in _encuadre_114
+      and "Reconocer qué es el material no reemplaza ver dónde está y cuánto abarca." in _encuadre_114
+      and "no se puede localizar ni estimar su extensión" in _encuadre_114
+      and "El contenido oculto de una bolsa es incertidumbre de material, no de encuadre." in _encuadre_114
+      and "El ámbito privado se decide por separado" in _encuadre_114)
 check("  el objeto fijo dañado se juzga por el objeto y el daño, aunque sea un primer plano",
       "Objeto fijo dañado (contenedor, cesto, buzón o gabinete eléctrico, vereda, cordón, columna, poste, rampa):"
       " alcanza cuando se ve el objeto y el daño con claridad, aunque sea un primer plano del objeto" in _encuadre_114

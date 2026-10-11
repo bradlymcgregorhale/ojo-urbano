@@ -8,6 +8,10 @@ from prompts import cargar_prompt
 
 OBJETOS = cargar_prompt('dirigidos/objetos_omitidos')
 CUBIERTA = cargar_prompt('dirigidos/cubierta_contenedor')
+RESIDUOS = cargar_prompt('dirigidos/residuos_independientes')
+MODELOS_RESIDUOS = ('anthropic/claude-sonnet-4.6', 'google/gemini-3.8-flash',
+                    'openai/gpt-5.6-luna')
+CLASES_RESIDUOS = {'carton', 'papel', 'envase', 'envoltorio', 'restos_domesticos'}
 REFERENCIAS = Path(__file__).parent / 'eval/vision/private/serving-cubierta-111-v2.json'
 REFERENCIAS_SHA256 = 'dd236dbe45d0ed7c979bbd78977ca75c9d359c21b29a1f75196a61a3f87ecda1'
 TIPOS = {
@@ -41,7 +45,13 @@ def interpretar_cubierta(valor):
     if (not isinstance(valor, dict) or valor.get('montaje') not in MONTAJES
             or not isinstance(valor.get('evidencia'), str) or not valor['evidencia'].strip()):
         raise ValueError('montaje sin evidencia válida')
-    return {'montaje': valor['montaje'], 'evidencia': valor['evidencia'].strip()[:500]}
+    resultado = {'montaje': valor['montaje'], 'evidencia': valor['evidencia'].strip()[:500]}
+    for campo in ('pieza', 'union'):
+        if campo in valor:
+            if not isinstance(valor[campo], str) or not valor[campo].strip():
+                raise ValueError('Geometría de cubierta incompleta')
+            resultado[campo] = valor[campo].strip()[:500]
+    return resultado
 
 
 def _consultar(img, prompt, contenido, etapa, interpretar, modelos=None):
@@ -86,7 +96,7 @@ def consultar_cubierta(img):
     except (OSError, ValueError):
         return {'lecturas': [], 'fallo': True, 'motivo': 'Referencias visuales no disponibles.'}
     contenido.extend([{'type': 'text', 'text': 'Ahora evaluá solamente esta foto:'},
-                      {'type': 'image_url', 'image_url': {'url': V._imagen_data_url(img, lado=1400)}}])
+                      {'type': 'image_url', 'image_url': {'url': V._imagen_data_url(img, lado=1600)}}])
     modelos = list(V.modelos_activos())
     perfil = modos.perfil_actual()
     if (perfil is None or perfil.modo == 'alto') and 'anthropic/claude-sonnet-4.6' not in modelos:
@@ -118,6 +128,59 @@ def decidir_objetos(revision):
     return confirmados
 
 
+def interpretar_residuos(valor):
+    if (not isinstance(valor, dict)
+            or any(valor.get(k) is not None and type(valor.get(k)) is not bool
+                   for k in ('residuos_comunes', 'descartado_publico'))
+            or not all(k in valor for k in ('residuos_comunes', 'descartado_publico'))
+            or not isinstance(valor.get('clases'), list)
+            or any(not isinstance(c, str) or c not in CLASES_RESIDUOS
+                   for c in valor['clases'])
+            or not isinstance(valor.get('evidencia'), str) or not valor['evidencia'].strip()):
+        raise ValueError('Residuos independientes sin lectura válida')
+    if valor['residuos_comunes'] is True and (
+            not valor['clases'] or any(not isinstance(valor.get(k), str) or not valor[k].strip()
+                                      for k in ('componente', 'ubicacion'))):
+        raise ValueError('Residuos comunes sin componente visible y ubicación')
+    return {k: copy.deepcopy(valor.get(k)) for k in
+            ('residuos_comunes', 'descartado_publico', 'clases', 'componente',
+             'ubicacion', 'evidencia')}
+
+
+def consultar_residuos(img):
+    import verificador as V
+    ancho, alto = img.size
+    contenido = [{'type': 'text', 'text': 'Foto completa, sin comentario del vecino:'},
+                 {'type': 'image_url', 'image_url': {'url': V._imagen_data_url(img, lado=1600)}}]
+    for nombre, caja in [('izquierda', (0, 0, max(1, int(ancho * .6)), alto)),
+                         ('derecha', (int(ancho * .4), 0, ancho, alto))]:
+        contenido.extend([{'type': 'text', 'text': 'Detalle ' + nombre + ' de la MISMA foto'},
+            {'type': 'image_url', 'image_url': {'url': V._imagen_data_url(img.crop(caja), lado=1600)}}])
+    return _consultar(img, RESIDUOS, contenido, 'residuos_independientes',
+                      interpretar_residuos, MODELOS_RESIDUOS)
+
+
+def decidir_residuos(revision):
+    lecturas = list(_unicas(revision.get('lecturas') or []))
+    if revision.get('fallo') or any(v.get('descartado_publico') is False for v in lecturas):
+        return []
+    corroboradas = {}
+    for clase in CLASES_RESIDUOS:
+        fuentes = [v['modelo'] for v in lecturas
+                   if v.get('residuos_comunes') is True and v.get('descartado_publico') is True
+                   and clase in (v.get('clases') or [])
+                   and all(isinstance(v.get(k), str) and v[k].strip()
+                           for k in ('componente', 'ubicacion', 'evidencia'))]
+        if len(fuentes) >= 2:
+            corroboradas[clase] = fuentes
+    if not corroboradas:
+        return []
+    return [{'key': 'recoleccion',
+             'fuentes': sorted({m for ms in corroboradas.values() for m in ms}),
+             'evidencia': 'Residuos comunes expuestos y descartados en la vía pública.',
+             'clases': sorted(corroboradas)}]
+
+
 def decidir_cubierta(revision):
     lecturas = list(_unicas(revision.get('lecturas') or []))
     fuentes = [v['modelo'] for v in lecturas if v.get('montaje') in DANO]
@@ -136,6 +199,7 @@ def aplicar(salida, revision, categorias):
     if r.get('foto_valida') is False:
         return r
     nuevos = decidir_objetos(revision.get('objetos') or {})
+    nuevos += decidir_residuos(revision.get('residuos') or {})
     cubierta = decidir_cubierta(revision.get('cubierta') or {})
     # Una segunda mirada anterior que encontró el contenedor usable no se revoca.
     if (veri.get('segunda_mirada_dano') or {}).get('sin_dano'):
@@ -180,6 +244,15 @@ def revisar(img, salida, categorias):
             or not veri.get('activa') or not any(v.get('ok') is True for v in lecturas)):
         return salida
     trabajos = [('objetos', consultar_objetos)]
+    claves_retiro = {'recoleccion', 'retiro_escombros', 'retiro_muebles', 'retiro_poda'}
+    candidatos = {c.get('key') for campo in ('problemas', 'posibles', 'descartados_por_foto')
+                  for c in salida.get(campo) or []}
+    candidatos.update(c.get('key') for v in lecturas for c in v.get('categorias') or [])
+    # El recorrido de pertenencias mantiene su propia compuerta de descarte.
+    hay_persona = 'situacion_calle' in candidatos
+    if not hay_persona and (candidatos & claves_retiro or veri.get('alcance_escombros')) and not any(
+            c.get('key') == 'recoleccion' for c in salida.get('problemas') or []):
+        trabajos.append(('residuos', consultar_residuos))
     hay_contenedor = any(c.get('key') in V.CONTENEDOR_KEYS
         for v in lecturas for c in v.get('categorias') or [])
     montaje_ya_revisado = (veri.get('segunda_mirada_dano') or {}).get('tipo_pregunta') == 'montaje_cubierta'
