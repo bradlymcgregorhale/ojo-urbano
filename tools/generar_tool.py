@@ -4,6 +4,7 @@ la API por foto; las categorias seleccionadas se ven como chips y se editan en
 un panel desplegable; Confirmar oculta la tarjeta y salta a la siguiente.
 Exporta CSV con prediccion de la API y veredicto humano."""
 import json
+from pathlib import PurePosixPath
 from pathlib import Path
 
 import sys
@@ -15,6 +16,30 @@ REV = Path(sys.argv[1])
 cats_info = json.load(open(OJO / "categorias.json"))
 canon = json.load(open(REV / "categorias_modelo.json"))
 preds = json.load(open(REV / "predicciones.json"))
+
+
+# Los identificadores se usan como claves de progreso y nunca como código.
+import re
+_ids = set()
+for photo in preds:
+    ident = photo.get("id")
+    if (not isinstance(ident, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", ident)
+            or ident in {"__proto__", "constructor", "prototype"} or ident in _ids):
+        raise SystemExit("El lote contiene un identificador inválido o duplicado")
+    _ids.add(ident)
+    archivo = photo.get("archivo")
+    if (not isinstance(archivo, str) or not archivo or "\\" in archivo
+            or any(ord(c) < 32 for c in archivo)
+            or PurePosixPath(archivo).is_absolute()
+            or any(part in {".", ".."} or part.startswith(".") for part in archivo.split("/"))):
+        raise SystemExit("El lote contiene una ruta de foto inválida")
+
+
+def json_script(value):
+    """JSON para un elemento script: un dato nunca puede cerrarlo."""
+    return (json.dumps(value, ensure_ascii=False).replace("<", "\\u003c")
+            .replace(">", "\\u003e").replace("&", "\\u0026")
+            .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
 
 # clave de localStorage: la ronda 1 conserva su clave historica para no
 # perder el progreso ya hecho; las demas carpetas derivan de su nombre.
@@ -89,7 +114,8 @@ select{background:#262626;color:#eee;border:1px solid #3a3a3a;border-radius:6px;
 <div id="fin">🎉 No quedan fotos pendientes. Exportá el CSV.</div>
 <script>
 const PHOTOS = __PHOTOS__, CATS = __CATS__;
-const KEY = "__KEY__";
+const KEY = __KEY__;
+function esc(v){return String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 const HAY_SERVIDOR = location.protocol.startsWith('http');
 let data = JSON.parse(localStorage.getItem(KEY) || "{}");
 // El disco manda sobre el navegador: es lo que comparten la compu y el
@@ -120,6 +146,7 @@ function _subir(){
     .catch(()=>_marca('sin guardar', true));
 }
 function save(){
+  if(HAY_SERVIDOR) _marca('guardando');
   try{ localStorage.setItem(KEY, JSON.stringify(data)); }catch(e){}
   if(_pend) return;                 // agrupa clicks seguidos en una sola subida
   _pend=true; clearTimeout(_sinc); _sinc=setTimeout(_subir, 400);
@@ -146,7 +173,7 @@ function prog(){
 function verRevisadas(){ document.body.classList.toggle('ocultar'); prog(); }
 function toggle(p,k,on){const d=get(p); d.cats[k]=on; save(); paint(p)}
 function quitar(p,k){toggle(p,k,false);
-  const cb=document.querySelector('#c_'+p.id+' input[data-k="'+k+'"]'); if(cb) cb.checked=false;}
+  const cb=[...document.getElementById('c_'+p.id).querySelectorAll('input[data-k]')].find(e=>e.dataset.k===k); if(cb) cb.checked=false;}
 function setgrav(p,v){const d=get(p); d.grav=v; save(); paint(p)}
 function confirmar(p){
   const d=get(p); d.rev=!d.rev; save(); paint(p); prog();
@@ -160,7 +187,7 @@ function chipsHtml(p){
   const d=get(p);
   const sel=CATS.filter(c=>d.cats[c.key]);
   if(!sel.length) return '<span class="vacio">(sin categorías: tildá en "Editar categorías" o dejá vacío si no hay problema)</span>';
-  return sel.map(c=>`<span class="chip">${c.nombre} <u onclick="quitar(PHOTOS[${p._i}],'${c.key}')" title="quitar">✕</u></span>`).join('');
+  return sel.map(c=>`<span class="chip">${esc(c.nombre)} <u data-quitar="${esc(c.key)}" data-indice="${p._i}" title="quitar">✕</u></span>`).join('');
 }
 function paint(p){
   const el=document.getElementById('c_'+p.id); if(!el) return;
@@ -170,6 +197,8 @@ function paint(p){
   b.className='badge '+(st==='ok'?'b-ok':st==='corr'?'b-corr':'b-pend');
   b.textContent=st==='ok'?'✓ coincide':st==='corr'?'✎ corregido':'pendiente';
   el.querySelector('.chips').innerHTML=chipsHtml(p);
+  el.querySelectorAll('input[data-k]').forEach(cb=>{cb.checked=!!(d.cats&&d.cats[cb.dataset.k]);});
+  el.querySelector('select').value=d.grav==null?'':String(d.grav);
   el.querySelector('button.big').textContent = d.rev ? 'Reabrir' : 'Confirmar';
 }
 function card(p,i){
@@ -178,22 +207,22 @@ function card(p,i){
   const grupos=[...new Set(CATS.map(c=>c.grupo))];
   const cats=grupos.map(g=>{
     const items=CATS.filter(c=>c.grupo===g).map(c=>
-      `<label><input type="checkbox" data-k="${c.key}" ${d.cats[c.key]?'checked':''}
-        onchange="toggle(PHOTOS[${i}],'${c.key}',this.checked)"><span>${c.nombre}</span></label>`).join('');
-    return `<div class="grp">${g}</div><div class="cats">${items}</div>`;
+      `<label><input type="checkbox" data-k="${esc(c.key)}" ${d.cats[c.key]?'checked':''}
+        data-indice="${i}"><span>${esc(c.nombre)}</span></label>`).join('');
+    return `<div class="grp">${esc(g)}</div><div class="cats">${items}</div>`;
   }).join('');
   const gv=[1,2,3,4,5].map(v=>`<option value="${v}" ${String(d.grav)===String(v)?'selected':''}>${v}</option>`).join('');
-  const pos = (p.posibles&&p.posibles.length)?`<div style="font-size:12px;color:#c58a1a;margin-top:4px">Posibles (no confirmados): ${p.posibles.map(k=>NAME[k]||k).join(', ')}</div>`:'';
-  const desc = p.desc?`<div style="font-size:12px;color:#aaa;margin-top:4px;font-style:italic">${p.desc}</div>`:'';
+  const pos = (p.posibles&&p.posibles.length)?`<div style="font-size:12px;color:#c58a1a;margin-top:4px">Posibles (no confirmados): ${esc(p.posibles.map(k=>NAME[k]||k).join(', '))}</div>`:'';
+  const desc = p.desc?`<div style="font-size:12px;color:#aaa;margin-top:4px;font-style:italic">${esc(p.desc)}</div>`:'';
   // en_duda: lo que una mirada dirigida bajó o vio una sola fuente. No viene
   // pre-marcado a propósito; se muestra para poder confirmarlo a mano.
-  const duda = (p.duda&&p.duda.length)?`<div style="font-size:12px;color:#7aa7d9;margin-top:4px">En duda (retirado o de una sola fuente): ${p.duda.map(k=>NAME[k]||k).join(', ')}</div>`:'';
-  const cal = (p.calidad&&p.calidad.definicion==='limitada')?`<div style="font-size:12px;color:#888;margin-top:4px">Foto de definición limitada (${p.calidad.lado_menor}px, nitidez ${p.calidad.nitidez})</div>`:'';
+  const duda = (p.duda&&p.duda.length)?`<div style="font-size:12px;color:#7aa7d9;margin-top:4px">En duda (retirado o de una sola fuente): ${esc(p.duda.map(k=>NAME[k]||k).join(', '))}</div>`:'';
+  const cal = (p.calidad&&p.calidad.definicion==='limitada')?`<div style="font-size:12px;color:#888;margin-top:4px">Foto de definición limitada (${esc(p.calidad.lado_menor)}px, nitidez ${esc(p.calidad.nitidez)})</div>`:'';
   const modelo = p.en_cache
-    ? `<div class="modelo">La API confirma: <b>${p.pred.map(k=>NAME[k]||k).join(', ')||'(nada)'}</b> · gravedad <b>${p.grav||'-'}</b>${desc}${pos}${duda}${cal}</div>`
+    ? `<div class="modelo">La API confirma: <b>${esc(p.pred.map(k=>NAME[k]||k).join(', ')||'(nada)')}</b> · gravedad <b>${esc(p.grav||'-')}</b>${desc}${pos}${duda}${cal}</div>`
     : `<div class="nocache">La API no clasificó esta foto. Etiquetala igual.</div>`;
-  return `<div class="card" id="c_${p.id}">
-    <img loading="lazy" src="fotos/${p.archivo}">
+  return `<div class="card" id="c_${p.id}" data-id="${p.id}">
+    <img loading="lazy" src="fotos/${esc(p.archivo.split('/').map(encodeURIComponent).join('/'))}">
     <div class="body">
       <div class="row"><span class="badge b-pend">pendiente</span>
         <span style="font-size:12px;color:#888">${p.id} · ${i+1}/${PHOTOS.length}</span></div>
@@ -208,6 +237,13 @@ function card(p,i){
     </div></div>`;
 }
 document.getElementById('app').innerHTML = PHOTOS.map(card).join('');
+document.getElementById('app').addEventListener('change',e=>{
+  if(e.target.matches('input[data-k]')) toggle(PHOTOS[Number(e.target.dataset.indice)],e.target.dataset.k,e.target.checked);
+});
+document.getElementById('app').addEventListener('click',e=>{
+  const quitarBoton=e.target.closest('[data-quitar]');
+  if(quitarBoton) quitar(PHOTOS[Number(quitarBoton.dataset.indice)],quitarBoton.dataset.quitar);
+});
 PHOTOS.forEach(paint); prog();
 function exportar(){
   const keys=CATS.map(c=>c.key);
@@ -224,10 +260,10 @@ function exportar(){
   a.download="revision_"+"__DIR__"+".csv"; a.click();
 }
 </script></body></html>"""
-html = (html.replace("__PHOTOS__", json.dumps(PHOTOS, ensure_ascii=False))
-            .replace("__CATS__", json.dumps(CATS, ensure_ascii=False))
-            .replace("__KEY__", KEY)
-            .replace("__DIR__", REV.name))
+_reemplazos = {"__PHOTOS__": json_script(PHOTOS), "__CATS__": json_script(CATS),
+               "__KEY__": json_script(KEY), "__DIR__": REV.name}
+html = re.sub(r"__PHOTOS__|__CATS__|__KEY__|__DIR__",
+              lambda match: _reemplazos[match.group()], html)
 (REV / "index_revision.html").write_text(html, encoding="utf-8")
 (REV / "index.html").write_text(html, encoding="utf-8")
 print("herramienta:", REV / "index.html", "| clave estado:", KEY)
