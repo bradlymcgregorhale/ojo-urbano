@@ -1608,7 +1608,7 @@ def _evidencias_de_cubierta(textos, barra_hint=False):
         for texto in textos)
 
 
-def _segunda_mirada_dano(img, *, montaje_cubierta=False):
+def _segunda_mirada_dano(img, *, montaje_cubierta=False, incluir_revision=False):
     """Re-consulta dirigida por el daño del contenedor. Igual que la de la
     base: pregunta a TODOS los verificadores y puede desautorizar votos.
     Devuelve (dano, sin_dano, fallo)."""
@@ -1619,7 +1619,10 @@ def _segunda_mirada_dano(img, *, montaje_cubierta=False):
                 if v['montaje'] in revision.DANO]
         sin_dano = [(v['modelo'], v['evidencia']) for v in resultado['lecturas']
                     if v['montaje'] in revision.MONTADO]
-        return dano, sin_dano, resultado['fallo']
+        if resultado.get('fallo') or revision.cubierta_fuera_de_encuadre(resultado):
+            dano = []
+        valores = (dano, sin_dano, resultado['fallo'])
+        return (*valores, resultado) if incluir_revision else valores
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
 
     def _uno(modelo):
@@ -3164,8 +3167,12 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         if tapas or barra_disputada or barra_hint:
             textos_tapas = [_norm_texto(c.get('evidencia') or '') for c in tapas.values()]
             montaje_cubierta = _evidencias_de_cubierta(textos_tapas, barra_hint)
-            dano_sm, sin_dano_sm, fallo_sd = _segunda_mirada_dano(
-                img, montaje_cubierta=montaje_cubierta)
+            if montaje_cubierta:
+                dano_sm, sin_dano_sm, fallo_sd, *montaje_revision = _segunda_mirada_dano(
+                    img, montaje_cubierta=True, incluir_revision=True)
+            else:
+                dano_sm, sin_dano_sm, fallo_sd = _segunda_mirada_dano(img)
+                montaje_revision = []
             # VETO ESTRICTO: un solo 'usable' enfocado tumba el reclamo,
             # digan lo que digan los demás. Medido: los fantasmas de
             # reparación (4 en la ronda 4, todos falsos según el dueño)
@@ -3198,6 +3205,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                 "retiro_votos": retira_dano,
                 "fallo": fallo_sd,
             }
+            if montaje_revision:
+                segunda_mirada_dano['revision_cubierta'] = montaje_revision[0]
             # PROMOCIÓN de la barra disputada: dos lecturas dirigidas citan la
             # barra/riel en diagonal -> junta el segundo voto y confirma (como
             # la base disputada). Mutuamente excluyente con el veto: promover

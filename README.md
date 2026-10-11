@@ -852,3 +852,16 @@ sin inferir una bisagra por su ubicación. Conserva la evidencia de `pieza` y
 `union` cuando el lector la devuelve. La abertura sola no prueba ausencia de
 tapa; las paredes laterales y la barra de izado tampoco sustituyen al panel.
 Se conserva el veto por cualquier lectura montada o articulada.
+
+La visibilidad de la zona superior se registra por separado del montaje. Si un
+lector ve que esa zona está fuera de la foto, no se confirma ausencia ni una
+pieza suelta por las otras lecturas. No se convierte esa falta de encuadre en
+una tapa sana. La segunda mirada conserva su lectura completa para que el
+resultado final deje una reparación de cubierta no evaluable para revisión,
+sin borrar daños independientes del cuerpo ni declaraciones vecinales.
+
+La referencia de cordón v2 incorpora un negativo humano de desarrollo para
+separar juntas entre piezas y averías del piso de rotura del cuerpo del cordón.
+Conserva la exigencia de tres lecturas estructurales concordantes. Una lectura
+estructural contra dos negativas queda para revisión, sin reparación automática.
+Los ejemplos se usan para calibrar; no se cuentan como validación independiente.
