@@ -144,3 +144,9 @@ El generador presenta las descripciones y metadatos como texto, neutraliza cierr
 El servidor escucha solo en loopback. Rechaza Host u Origin externos, enlaces fuera de la carpeta, archivos ocultos y listados de directorios. GET y HEAD comparten la restricción de rutas. El guardado admite solo un objeto de decisiones, tiene un límite de 5 MB y no sigue enlaces de estado ni temporales preexistentes. No exponer este servidor directamente a Internet; una bandeja remota requiere su propio control de acceso.
 
 `tests/test_herramientas_revision.py` contiene las regresiones HTTP y del generador, incluidas en `python pruebas.py`.
+
+## Dependencias y seguridad
+
+`requirements.txt` y `requirements-test.txt` aplican `constraints-security.txt`. Ese archivo fija las versiones corregidas de Pillow, urllib3 y fsspec verificadas en la auditoría. Las dependencias transitivas reciben la misma restricción, sin instalar el conjunto pesado para ejecutar pruebas.
+
+Una actualización debe contrastar el inventario realmente instalado con avisos del proveedor, resolver compatibilidad, ejecutar las pruebas y comprobar la versión después del reinicio. Conservar un respaldo de las versiones anteriores para revertir. No usar `pip-audit --fix` sobre el entorno productivo sin revisar su selección de cambios.

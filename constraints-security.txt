@@ -1,0 +1,5 @@
+# Versiones corregidas verificadas en la auditoría del 11/10/2026.
+# Mantener estas restricciones en instalaciones nuevas y actualizaciones.
+pillow==12.3.0
+urllib3==2.8.0
+fsspec==2026.6.0

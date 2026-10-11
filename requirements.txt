@@ -1,3 +1,4 @@
+-c constraints-security.txt
 # Inferencia local (los embeddings se descargan en la primera ejecución)
 sentence-transformers>=3.0.0
 transformers>=4.47.0
