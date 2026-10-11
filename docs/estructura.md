@@ -136,3 +136,11 @@ Cada archivo versionado tiene una ubicación y función en el árbol siguiente. 
 - `verificador.py`
 - `pruebas.py`: entrada compatible.
 - `tests/__init__.py`: paquete de pruebas.
+
+## Protección de las herramientas de revisión
+
+El generador presenta las descripciones y metadatos como texto, neutraliza cierres de script y rechaza IDs o rutas inválidas. Las decisiones recuperadas del disco se aplican a cada tarjeta, y una edición muestra guardando hasta confirmar la escritura.
+
+El servidor escucha solo en loopback. Rechaza Host u Origin externos, enlaces fuera de la carpeta, archivos ocultos y listados de directorios. GET y HEAD comparten la restricción de rutas. El guardado admite solo un objeto de decisiones, tiene un límite de 5 MB y no sigue enlaces de estado ni temporales preexistentes. No exponer este servidor directamente a Internet; una bandeja remota requiere su propio control de acceso.
+
+`tests/test_herramientas_revision.py` contiene las regresiones HTTP y del generador, incluidas en `python pruebas.py`.
