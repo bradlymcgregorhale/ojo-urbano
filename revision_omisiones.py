@@ -23,6 +23,7 @@ MONTAJES = {'montado_cerrado', 'articulado_abierto', 'suelto_adentro',
             'suelto_afuera', 'ausente', 'indeterminado'}
 DANO = {'suelto_adentro', 'suelto_afuera', 'ausente'}
 MONTADO = {'montado_cerrado', 'articulado_abierto'}
+ZONAS = {'visible', 'fuera_del_encuadre', 'oculta', 'indeterminada'}
 
 
 def interpretar_objetos(valor):
@@ -51,6 +52,13 @@ def interpretar_cubierta(valor):
             if not isinstance(valor[campo], str) or not valor[campo].strip():
                 raise ValueError('Geometría de cubierta incompleta')
             resultado[campo] = valor[campo].strip()[:500]
+    zona = valor.get('zona_superior')
+    if not isinstance(zona, str) or zona not in ZONAS:
+        raise ValueError('Visibilidad de la zona superior no evaluada')
+    resultado['zona_superior'] = zona
+    if zona == 'fuera_del_encuadre' and resultado['montaje'] != 'indeterminado':
+        resultado['montaje_original'] = resultado['montaje']
+        resultado['montaje'] = 'indeterminado'
     return resultado
 
 
@@ -97,6 +105,10 @@ def consultar_cubierta(img):
         return {'lecturas': [], 'fallo': True, 'motivo': 'Referencias visuales no disponibles.'}
     contenido.extend([{'type': 'text', 'text': 'Ahora evaluá solamente esta foto:'},
                       {'type': 'image_url', 'image_url': {'url': V._imagen_data_url(img, lado=1600)}}])
+    ancho, alto = img.size
+    contenido.extend([{'type': 'text', 'text': 'Banda inferior de la MISMA foto nueva, no de los ejemplos:'},
+        {'type': 'image_url', 'image_url': {'url': V._imagen_data_url(
+            img.crop((0, int(alto * .45), ancho, alto)), lado=1600)}}])
     modelos = list(V.modelos_activos())
     perfil = modos.perfil_actual()
     if (perfil is None or perfil.modo == 'alto') and 'anthropic/claude-sonnet-4.6' not in modelos:
@@ -181,7 +193,14 @@ def decidir_residuos(revision):
              'clases': sorted(corroboradas)}]
 
 
+def cubierta_fuera_de_encuadre(revision):
+    return any(v.get('zona_superior') == 'fuera_del_encuadre'
+               for v in revision.get('lecturas') or [])
+
+
 def decidir_cubierta(revision):
+    if revision.get('fallo') or cubierta_fuera_de_encuadre(revision):
+        return []
     lecturas = list(_unicas(revision.get('lecturas') or []))
     fuentes = [v['modelo'] for v in lecturas if v.get('montaje') in DANO]
     # Se conserva el veto estricto: una lectura montada impide confirmar rotura.
@@ -198,6 +217,31 @@ def aplicar(salida, revision, categorias):
     veri['revision_omisiones'] = copy.deepcopy(revision)
     if r.get('foto_valida') is False:
         return r
+    mirada = veri.get('segunda_mirada_dano') or {}
+    import verificador as V
+    averia_independiente = any(c.get('key') == 'reparacion_contenedor'
+        and not c.get('anulada_por') and str(c.get('evidencia') or '').strip()
+        and not V._evidencias_de_cubierta([V._norm_texto(c['evidencia'])])
+        for v in veri.get('verificadores') or [] for c in v.get('categorias') or [])
+    if (not averia_independiente and mirada.get('tipo_pregunta') == 'montaje_cubierta'
+            and cubierta_fuera_de_encuadre(mirada.get('revision_cubierta') or {})):
+        anteriores = [p for p in r.get('problemas') or []
+                      if p.get('key') == 'reparacion_contenedor'
+                      and p.get('origen') != 'contexto_vecinal']
+        if anteriores:
+            motivo = 'La zona superior quedó fuera del encuadre; no se puede corroborar la cubierta.'
+            veri['revision_omisiones']['cubierta_no_evaluable'] = copy.deepcopy(anteriores)
+            r['problemas'] = [p for p in r['problemas'] if p not in anteriores]
+            r['posibles'] = [p for p in r.get('posibles') or []
+                             if p.get('key') != 'reparacion_contenedor']
+            r['posibles'].append(dict(anteriores[0], gravedad=None, arbitro=None, motivo=motivo))
+            r['en_duda'] = sorted(set(r.get('en_duda') or []) | {'reparacion_contenedor'})
+            r['hay_problema'] = bool(r['problemas'])
+            r['hay_reclamo'] = bool(r['problemas'] or r.get('categorias_contexto'))
+            r['gravedad_maxima'] = max((p.get('gravedad') or 0 for p in r['problemas']), default=0) or None
+            veri['revision_omisiones']['descripcion_anterior'] = r.get('descripcion')
+            r['descripcion'] = motivo + ' Hallazgos confirmados: ' + ', '.join(
+                p.get('nombre') or p['key'] for p in r['problemas']) + '.'
     nuevos = decidir_objetos(revision.get('objetos') or {})
     nuevos += decidir_residuos(revision.get('residuos') or {})
     cubierta = decidir_cubierta(revision.get('cubierta') or {})

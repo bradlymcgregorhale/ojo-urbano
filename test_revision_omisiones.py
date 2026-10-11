@@ -61,7 +61,8 @@ class OmisionesTest(unittest.TestCase):
 
     def test_geometria_de_cubierta_conserva_pieza_y_union(self):
         r = R.interpretar_cubierta(dict(montaje='suelto_adentro',
-            evidencia='Panel hundido bajo el borde.', pieza='panel curvo', union='desprendido'))
+            evidencia='Panel hundido bajo el borde.', pieza='panel curvo', union='desprendido',
+            zona_superior='visible'))
         self.assertEqual(r['pieza'], 'panel curvo')
         self.assertEqual(r['union'], 'desprendido')
         with self.assertRaises(ValueError):
@@ -77,6 +78,39 @@ class OmisionesTest(unittest.TestCase):
             r = R.revisar(Image.new('RGB', (20, 20)), original, CATS)
         residuos.assert_not_called()
         self.assertEqual(r['problemas'], [])
+
+    def test_cubierta_fuera_de_cuadro_no_es_ausente_ni_montada(self):
+        valor = R.interpretar_cubierta(dict(montaje='ausente', evidencia='Zona cortada.',
+            zona_superior='fuera_del_encuadre'))
+        self.assertEqual(valor['montaje'], 'indeterminado')
+        self.assertEqual(valor['montaje_original'], 'ausente')
+        lecturas = [dict(modelo='a', montaje='ausente', evidencia='sin panel', zona_superior='visible'),
+            dict(modelo='b', montaje='suelto_afuera', evidencia='panel al lado', zona_superior='visible'),
+            dict(modelo='c', **valor)]
+        revision = dict(lecturas=lecturas, fallo=False)
+        self.assertFalse(R.decidir_cubierta(revision))
+        import verificador as V
+        with patch.object(R, 'consultar_cubierta', return_value=revision):
+            dano, usable, fallo, traza = V._segunda_mirada_dano(
+                Image.new('RGB', (20, 20)), montaje_cubierta=True, incluir_revision=True)
+        self.assertEqual(dano, [])
+        self.assertEqual(usable, [])
+        self.assertFalse(fallo)
+        self.assertEqual(traza, revision)
+        original = self.salida()
+        original['problemas'].append(dict(key='reparacion_contenedor', gravedad=3, origen='foto'))
+        original['detalle']['verificacion']['segunda_mirada_dano'] = dict(
+            tipo_pregunta='montaje_cubierta', revision_cubierta=revision)
+        anterior = copy.deepcopy(original)
+        r = R.aplicar(original, {}, CATS)
+        self.assertEqual(original, anterior)
+        self.assertEqual([p['key'] for p in r['problemas']], ['recoleccion'])
+        self.assertIn('reparacion_contenedor', r['en_duda'])
+        self.assertIsNone(next(p for p in r['posibles']
+            if p['key'] == 'reparacion_contenedor')['arbitro'])
+        original['detalle']['verificacion']['verificadores'] = [dict(modelo='d',
+            categorias=[dict(key='reparacion_contenedor', evidencia='rueda y pedal rotos')])]
+        self.assertEqual(R.aplicar(original, {}, CATS)['problemas'], original['problemas'])
 
     def test_modelo_duplicado_y_tipos_distintos_no_alcanzan(self):
         self.assertFalse(R.decidir_objetos({'lecturas': [objeto('a'), objeto('a')]}))
