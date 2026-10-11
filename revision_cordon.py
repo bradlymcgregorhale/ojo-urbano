@@ -8,8 +8,8 @@ from prompts import cargar_prompt
 
 KEY = 'reparacion_cordon'
 PROMPT = cargar_prompt('dirigidos/cordon_geometria')
-REFERENCIAS = Path(__file__).parent / 'eval/vision/private/serving-cordon-103-v2.json'
-REFERENCIAS_SHA256 = '0e39b40952efb6b90d28cc4891e10fe87b9c57b83b5a92542001ca7af4f20f8c'
+REFERENCIAS = Path(__file__).parent / 'eval/vision/private/serving-cordon-103-v1.json'
+REFERENCIAS_SHA256 = '9446c6dc9e8b7ffa456e48adf4afb9922ff27374efa5bfae16083491731dcf20'
 MODELOS = ('google/gemini-3.8-flash', 'google/gemini-3.5-flash', 'openai/gpt-5.6-luna')
 ESTADOS = {'rotura_estructural', 'diseno_funcional', 'desgaste_superficial', 'sano', 'indeterminado'}
 PIEZAS = {'cordon', 'cuneta_calzada', 'vereda', 'no_identificable'}
