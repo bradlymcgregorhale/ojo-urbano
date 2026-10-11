@@ -31,11 +31,11 @@ fallo o una comprobación pendiente; no significa que exista una explotación.
 | JWT de Access | En la puerta actual versionada, firmas RSA, emisor, audiencia, cuenta, vencimiento, origen y rutas pasan con claves y cuentas sintéticas. La puerta pública devuelve 302 sin sesión; eso sólo comprueba el inicio del control de Access, no la navegación autorizada. | ❌ Falta recorrido público autorizado |
 | Cookie alternativa | Probé la omisión de Secure y el envío por HTTP con una credencial sintética. El parche emite Secure, HttpOnly y SameSite=Lax, migra la cookie anterior y evita su envío por HTTP en un navegador real. No comprobé la instalación en la puerta pública antigua. | ❌ Parche integrado, instalación pendiente |
 | Dependencias Python | Inventario y auditoría de 56 paquetes efectivos: 54 sin avisos registrados después de actualizar. Volví a comprobar Pillow 12.3.0, urllib3 2.8.0 y fsspec 2026.6.0 instalados. `constraints-security.txt` fija los mínimos para repetir la instalación. | ✅ Paquetes auditables actualizados |
-| Variantes CPU | El auditor omite torch 2.13.0+cpu y torchvision 0.28.0+cpu porque no están en PyPI. Las versiones públicas sin el sufijo no tienen avisos en la consulta adicional. Eso no audita los binarios CPU instalados ni sus bibliotecas nativas. | ❌ Cobertura binaria pendiente |
+| Variantes CPU | pip-audit omite torch 2.13.0+cpu y torchvision 0.28.0+cpu porque no están en PyPI. Consulté OSV directamente con ambas versiones efectivas y sus versiones públicas: las cuatro consultas no devolvieron avisos. Esa búsqueda comprueba avisos por versión, no integridad de binarios ni bibliotecas nativas. | ✅ Consulta de avisos por versión completada |
 | Secretos | Revisé 1083 blobs alcanzables de Git con patrones de OpenRouter, GitHub PAT y cabeceras PEM: cero coincidencias. `.env` productivo tiene permisos 0600. No demuestra ausencia de cualquier secreto o dato personal. | ✅ Búsqueda limitada comprobada |
-| Logs y privacidad | La inspección del formato de uso del proveedor registra costo, tokens, modelos e identificadores, sin imagen, contexto ni clave. El log de acceso conserva IP. No hice una auditoría completa de todos los logs históricos, artefactos externos o retención. | ❌ Cobertura histórica pendiente |
+| Logs y privacidad | Inspeccioné completos los tres logs existentes de la aplicación (1.343.127 bytes, 2027 líneas de uso). La búsqueda de credenciales actuales, patrones de tokens, imágenes incrustadas, campos privados y correos tuvo cero coincidencias. El acceso conserva IP. No hay imágenes ni archivos privados versionados en HEAD. No cubre archivos eliminados, otros tipos de datos personales ni servicios externos. | ✅ Búsqueda limitada comprobada |
 | Instrucciones en fotos y contexto | Las regresiones sin red comprueban las guardas deterministas y separación del contexto. Hay evidencia histórica de 100 imágenes adversariales sin servicios confirmados en esa prueba antigua. No repetí ese conjunto con los modelos y la versión actual. | ❌ Validación semántica actual pendiente |
-| TLS e infraestructura | La puerta requiere origen HTTPS; inspeccioné configuración y permisos de la aplicación. No hice una auditoría del sistema operativo, todos los puertos, certificados internos o componentes administrados por el proveedor. | ❌ Alcance de infraestructura pendiente |
+| TLS e infraestructura | La API escucha sólo en 127.0.0.1:8091. El acceso público validó certificado y hostname y negoció TLS 1.3. Las rutas probadas para .env, arranque.log, model.joblib y acceso al directorio privado devolvieron 403. .env tiene permisos 0600. Esto comprueba el recorrido público y la escucha de la aplicación; no el modo TLS de origen de Cloudflare ni la infraestructura del proveedor. | ❌ Comprobaciones de aplicación pasan; TLS de origen pendiente |
 
 ## Correcciones y seguimiento
 
@@ -73,3 +73,33 @@ Resultado esperado: los pasos 1 a 3 muestran ✅ dentro del alcance descrito.
 Para cerrar la auditoría, los pasos 4 y 5 también tienen que mostrar ✅ o contar
 con una decisión explícita sobre el alcance y riesgo restante. No hay tal decisión
 registrada para las filas pendientes.
+
+
+## Ampliación de infraestructura y privacidad
+
+El 11 de octubre volví a inspeccionar la API desplegada en 8e5773c. Los tres
+logs existentes son `arranque_nuevo.log`, `servidor.log` y `arranque.log`; no
+hay una subcarpeta de logs con más archivos. Leí su contenido sólo para producir
+contadores redactados, sin copiar entradas privadas al informe. Las búsquedas
+limitadas anteriores no prueban ausencia de cualquier dato personal.
+
+El certificado público validado vence el 1 de diciembre de 2026. No desactivé
+validación TLS ni probé cargas hostiles. El endpoint público de cada ruta privada
+probada respondió 403, sin publicar su contenido. Esas cuatro rutas no demuestran
+que toda ruta posible esté protegida; las regresiones locales cubren además
+traversal, ocultos y enlaces externos.
+
+Los permisos inspeccionados son 0755 para la aplicación y 0775 para private_html.
+El archivo .env tiene 0600. No afirmo aislamiento entre todos los usuarios del
+servidor administrado ni una auditoría del sistema operativo.
+
+No pude recuperar la configuración original de Access: la credencial existente
+de cloudflared devuelve cero aplicaciones a nivel cuenta y 403 al consultar la
+zona. No cambié políticas ni credenciales. La herramienta de navegador no dispone
+de una sesión utilizable. Sigue pendiente la comprobación pública autorizada.
+
+Consulté también https://api.osv.dev/v1/query con torch 2.13.0+cpu, torch 2.13.0,
+torchvision 0.28.0+cpu y torchvision 0.28.0. Las cuatro consultas devolvieron cero
+avisos. Así cubrí explícitamente las versiones omitidas por pip-audit en la búsqueda
+de avisos. No lo interpreto como una auditoría binaria o una garantía de ausencia
+de vulnerabilidades desconocidas.
