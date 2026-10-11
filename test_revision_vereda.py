@@ -59,6 +59,37 @@ class PlanoPeatonal(unittest.TestCase):
                            'rotura_estructural', 'rotura_estructural'])
         self.assertEqual(R.aplicar(original, propia)['problemas'], original['problemas'])
 
+    def test_dos_lecturas_recuperan_candidata_sin_borrar_persona(self):
+        original = self.salida()
+        original['problemas'] = [dict(key='situacion_calle', nombre='Situación de calle',
+                                     gravedad=4, fuentes=['a', 'b'])]
+        original['posibles'] = [dict(key=R.KEY, nombre='Vereda', gravedad=3,
+                                    fuentes=['modelo_local'], arbitro='rechazar',
+                                    motivo='No corroborada en la primera lectura')]
+        antes = copy.deepcopy(original)
+        r = R.aplicar(original, revision(['rotura_estructural', 'rotura_estructural',
+                                         'sin_rotura']))
+        self.assertEqual(original, antes)
+        self.assertEqual(r['problemas'][0], original['problemas'][0])
+        vereda = r['problemas'][1]
+        self.assertEqual(vereda['fuentes'], list(R.MODELOS[:2]))
+        self.assertNotIn('arbitro', vereda)
+        self.assertNotIn('motivo', vereda)
+        self.assertEqual(r['posibles'], [])
+        self.assertEqual(r['gravedad_maxima'], 4)
+
+    def test_no_recupera_candidata_sin_quorum_ni_foto_rechazada(self):
+        original = self.salida()
+        original['problemas'] = original['problemas'][1:]
+        original['posibles'] = [dict(key=R.KEY, nombre='Vereda', gravedad=3,
+                                    fuentes=['modelo_local'], arbitro='rechazar')]
+        r = R.aplicar(original, revision(['rotura_estructural', 'sin_rotura',
+                                         'indeterminado']))
+        self.assertEqual(r['problemas'], original['problemas'])
+        original['foto_valida'] = False
+        r = R.aplicar(original, revision(['rotura_estructural'] * 3))
+        self.assertEqual(r['problemas'], original['problemas'])
+
     def test_fallos_duplicados_y_evidencia_vacia_no_son_negativas(self):
         for cambio in ('fallo', 'duplicado', 'evidencia', 'ausente'):
             r = revision(['sin_rotura'] * 3)

@@ -61,6 +61,28 @@ def aplicar(salida, revision):
     veri = r.setdefault('detalle', {}).setdefault('verificacion', {})
     veri['revision_vereda'] = dict(copy.deepcopy(revision), estado=estado)
     if estado == 'confirmado':
+        if any(c.get('key') == KEY for c in r.get('problemas') or []):
+            return r
+        candidatas = [c for c in r.get('posibles') or [] if c.get('key') == KEY]
+        if not candidatas or r.get('foto_valida') is False:
+            return r
+        previa = candidatas[0]
+        veri['revision_vereda']['candidata_previa'] = copy.deepcopy(previa)
+        fuentes = [v['modelo'] for v in revision['lecturas']
+                   if v['estado'] == 'rotura_estructural']
+        agregado = {k: copy.deepcopy(v) for k, v in previa.items()
+                    if k not in {'arbitro', 'motivo', 'revision_geometria', 'fuentes'}}
+        agregado.update(fuentes=fuentes, origen='foto',
+                        gravedad=previa.get('gravedad') or 2,
+                        confirmado_por='revision_vereda')
+        r.setdefault('problemas', []).append(agregado)
+        r['posibles'] = [c for c in r['posibles'] if c.get('key') != KEY]
+        r['en_duda'] = [k for k in r.get('en_duda') or [] if k != KEY]
+        r['hay_problema'] = r['hay_reclamo'] = True
+        r['gravedad_maxima'] = max(c.get('gravedad') or 0 for c in r['problemas'])
+        veri['revision_vereda']['descripcion_anterior'] = r.get('descripcion')
+        r['descripcion'] = 'Hallazgos confirmados: ' + ', '.join(
+            c.get('nombre') or c['key'] for c in r['problemas']) + '.'
         return r
     anteriores = [c for c in r.get('problemas') or []
                   if c.get('key') == KEY and c.get('origen') != 'contexto_vecinal']
@@ -92,7 +114,8 @@ def revisar(img, salida):
     perfil = modos.perfil_actual()
     if (not perfil or perfil.modo != 'alto' or salida.get('foto_valida') is False
             or not any(c.get('key') == KEY and c.get('origen') != 'contexto_vecinal'
-                       for c in salida.get('problemas') or [])):
+                       for c in (salida.get('problemas') or [])
+                       + (salida.get('posibles') or []))):
         return salida
     revision = consultar(img)
     if revision.get('fallo'):
