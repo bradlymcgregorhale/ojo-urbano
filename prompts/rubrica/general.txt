@@ -101,6 +101,10 @@ Reglas finales:
  a 15 (15 si hay más); se cuentan ítems, no pilas (cinco puertas apiladas son 5); null si no se\
  pueden contar. Ejemplo: {"key": "retiro_muebles", "gravedad": 3, "evidencia": "...", "objeto_tipo":\
  "colchon", "objeto_tam": "grande", "objeto_cant": 2}.
+- LISTA DE OBJETOS: si reportás retiro_muebles, agregá también "objetos": una lista corta (máximo 8)\
+ con los objetos voluminosos que SE VEN, en texto plano y uno por ítem, por ejemplo ["heladera",\
+ "colchón", "dos puertas"]. Solo nombres de objetos: nada de lugares (vereda, esquina, contenedor),\
+ nada de personas ni de nombres propios, y nada copiado del contexto vecinal que no veas en la foto.
 - En "descripcion" contá en 1 o 2 frases qué se ve en la foto: la escena, los objetos principales y\
  su estado, coherente con las categorías que reportás.
 - IMPORTANTE: si en la foto hay algo que un vecino podría razonablemente creer que es un problema\
