@@ -84,7 +84,7 @@ GRAV_MAX = 5
 # vecino pide algo aunque la foto no lo confirme"; el contexto del vecino no
 # se devuelve nunca; ?verificar=0 responde degradado en vez de publicar el
 # modelo local. Ver README, "Cambios de contrato".
-VERSION_API = "4"
+VERSION_API = "5"
 CONTENEDORES_ESPECIALISTA = os.environ.get("CONTENEDORES_ESPECIALISTA", "0").lower() in ("1", "true", "si")
 
 # Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y varias
@@ -93,6 +93,9 @@ CONTENEDORES_ESPECIALISTA = os.environ.get("CONTENEDORES_ESPECIALISTA", "0").low
 # endpoint no puede quedar abierto sin techo.
 MAX_BYTES = int(os.environ.get("MAX_BYTES", str(10 * 1024 * 1024)))
 MARGEN_MULTIPART = 64 * 1024  # boundaries, headers y contexto encima de la foto
+# Tope del contexto vecinal (#206): una conversación corta con la dirección y
+# lo que el vecino contó; a 500 se cortaba justo donde empezaba lo útil.
+CONTEXTO_MAX = 2000
 MAX_PIXELES = int(os.environ.get("MAX_PIXELES", str(25_000_000)))
 CONCURRENCIA = max(1, int(os.environ.get("CONCURRENCIA", "1")))
 # Techo global de fotos verificadas por día (0 = sin techo). El límite por IP
@@ -1292,7 +1295,7 @@ async def clasificar(request: Request, file: UploadFile = File(...),
                      modo: Any = Form("alto", description="Modo de análisis: bajo, medio o alto.")):
     perfil = await _perfil_formulario(request)
     datos = await _leer_acotado(file)
-    contexto = (contexto or "").strip()[:500]
+    contexto = (contexto or "").strip()[:CONTEXTO_MAX]
 
     # La misma foto con el mismo contexto no se vuelve a pagar.
     huella = modos.identidad(datos, contexto, verificar, perfil)
@@ -1525,7 +1528,7 @@ async def crear_trabajo(request: Request, file: UploadFile = File(...),
                      modo: Any = Form("alto", description="Modo de análisis: bajo, medio o alto.")):
     perfil = await _perfil_formulario(request)
     datos = await _leer_acotado(file)
-    contexto = (contexto or "").strip()[:500]
+    contexto = (contexto or "").strip()[:CONTEXTO_MAX]
     huella = modos.identidad(datos, contexto, verificar, perfil)
     # Foto ya resuelta: el resultado va en la misma respuesta, sin crear ni
     # retener registro (repetir una foto cacheada no debe ocupar memoria).
@@ -1883,7 +1886,7 @@ select{max-width:100%;padding:8px;font:inherit;border:1px solid #aaa;border-radi
           <code class="ruta" data-ep="clasificar"></code>
           <div class="epdesc">Una foto, esperando el resultado en la misma conexión (25-60 s).
             multipart/form-data con <b>file</b> (JPG/PNG/WEBP, máx. 10 MB) y <b>contexto</b> opcional; <b>modo</b>: bajo, medio o alto (predeterminado)
-            (máx. 500 caracteres). Ocupado: <code>503</code> con <b>Retry-After</b>.</div></div>
+            (máx. 2000 caracteres). Ocupado: <code>503</code> con <b>Retry-After</b>.</div></div>
         <div class="ep1"><span class="met met-post">POST</span>
           <code class="ruta" data-ep="trabajos"></code>
           <div class="epdesc">Mismos campos, respuesta inmediata: <code>202 {"trabajo": id, "estado":
@@ -2104,7 +2107,7 @@ function crearTarjeta(it){
   const cuerpo=document.createElement('div');cuerpo.className='tarbody';
   cuerpo.innerHTML=`<div class="tarnombre" title="${esc(it.file.name)}">${esc(it.file.name)}</div><div class="tarres"></div>`;
   const ctxi=document.createElement('input');
-  ctxi.className='ctxfoto';ctxi.type='text';ctxi.maxLength=500;
+  ctxi.className='ctxfoto';ctxi.type='text';ctxi.maxLength=2000;
   ctxi.placeholder='Contexto de esta foto (opcional): lo que no se ve';
   ctxi.value=it.ctx;ctxi.oninput=()=>{it.ctx=ctxi.value;};
   const modo=document.createElement('label');modo.className='modofoto';
@@ -2143,7 +2146,7 @@ async function enviar(it){
     fallar(it,'El modo elegido no está disponible. No se cambió a otro modo.');bombear();return;
   }
   const fd=new FormData();fd.append('file',it.file);fd.append('modo',it.modoFijo);
-  const ctx=(it.ctx||'').trim();if(ctx)fd.append('contexto',ctx.slice(0,500));
+  const ctx=(it.ctx||'').trim();if(ctx)fd.append('contexto',ctx.slice(0,2000));
   try{
     // techo de subida: con la bomba serializada, una subida colgada
     // frenaría el lote entero; pasado el techo la tarjeta falla (con
