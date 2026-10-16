@@ -1109,8 +1109,51 @@ def _cuenta_1_a_15(valor):
     return min(CUENTA_MAX, n) if n >= 1 else None
 
 
+# Rótulos cerrados del objeto voluminoso dominante (#201). Son valores de
+# máquina (sin acentos) para que el consumidor los mapee al formulario de la
+# Ciudad; "otros" cubre la mezcla y lo que no encaja. Un rótulo inventado por
+# el modelo no es una lectura.
+OBJETO_TIPOS = (
+    "heladera", "lavarropas", "cocina", "televisor", "electronica", "colchon",
+    "somier", "sillon", "silla", "mesa", "placard", "estanteria", "puertas",
+    "ventanas", "maderas", "cajas", "alfombra", "sanitario", "vidrios",
+    "chatarra", "bidones", "otros",
+)
+_OBJETO_TIPO_ALIAS = {
+    "sofa": "sillon", "sillones": "sillon", "sofas": "sillon", "sillas": "silla",
+    "colchones": "colchon", "puerta": "puertas", "ventana": "ventanas",
+    "madera": "maderas", "tablas": "maderas", "tablones": "maderas",
+    "caja": "cajas", "carton": "cajas", "cartones": "cajas", "alfombras": "alfombra",
+    "heladeras": "heladera", "mesas": "mesa", "estanterias": "estanteria",
+    "placares": "placard", "ropero": "placard", "roperos": "placard",
+    "sanitarios": "sanitario", "inodoro": "sanitario", "vidrio": "vidrios",
+    "bidon": "bidones", "tachos": "bidones", "otro": "otros", "mezcla": "otros",
+    "electrodomestico": "electronica", "pc": "electronica", "monitor": "electronica",
+    "impresora": "electronica", "tv": "televisor", "televisores": "televisor",
+    "lavarropa": "lavarropas", "cocinas": "cocina",
+}
+
+
+def _objeto_tipo(valor):
+    if not isinstance(valor, str):
+        return None
+    rotulo = _norm_texto(valor).strip().replace("/", " ").split()
+    rotulo = rotulo[0] if rotulo else ""
+    rotulo = _OBJETO_TIPO_ALIAS.get(rotulo, rotulo)
+    return rotulo if rotulo in OBJETO_TIPOS else None
+
+
+def _objeto_tam(valor):
+    if not isinstance(valor, str):
+        return None
+    tam = _norm_texto(valor).strip()
+    return tam if tam in ("chico", "grande") else None
+
+
 CAMPOS_POR_CLAVE = {
     "retiro_escombros": {"bolsas": _cuenta_1_a_15},
+    "retiro_muebles": {"objeto_tipo": _objeto_tipo, "objeto_tam": _objeto_tam,
+                       "objeto_cant": _cuenta_1_a_15},
 }
 
 
