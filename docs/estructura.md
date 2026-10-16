@@ -17,6 +17,7 @@ Las fotos y respuestas privadas de `eval/vision/private/` siguen ignoradas. No s
 
 ## Módulos de producción
 
+- `comparador.py`: Comparación de dos fotos (misma escena). Dependencias internas directas: `prompts`, `verificador`.
 - `especialista_contenedores.py`: Inventario y estado de contenedores. Dependencias internas directas: ninguna.
 - `evaluacion_foto.py`: Ámbito, calidad y encuadre de la foto. Dependencias internas directas: ninguna.
 - `guard_modelo.py`: Candado del proceso que carga los pesos. Dependencias internas directas: ninguna.
@@ -29,10 +30,10 @@ Las fotos y respuestas privadas de `eval/vision/private/` siguen ignoradas. No s
 - `revision_escombros_publica.py`: Salida pública de la revisión de material. Dependencias internas directas: ninguna.
 - `revision_omisiones.py`: Recuperación de objetos, residuos y cubierta. Dependencias internas directas: `prompts`.
 - `revision_vereda.py`: Geometría y corroboración de daños en vereda. Dependencias internas directas: `prompts`.
-- `servidor.py`: API, modelo local, cola y página de análisis. Dependencias internas directas: `especialista_contenedores`, `evaluacion_foto`, `modos_analisis`, `observaciones_higiene`, `politica_escombros`, `prioridad`, `revision_cordon`, `revision_fragmentos`, `revision_escombros_publica`, `revision_omisiones`, `revision_vereda`, `verificador`.
+- `servidor.py`: API, modelo local, cola y página de análisis. Dependencias internas directas: `comparador`, `especialista_contenedores`, `evaluacion_foto`, `modos_analisis`, `observaciones_higiene`, `politica_escombros`, `prioridad`, `revision_cordon`, `revision_fragmentos`, `revision_escombros_publica`, `revision_omisiones`, `revision_vereda`, `verificador`.
 - `verificador.py`: Lectores, transporte, consenso y arbitraje. Dependencias internas directas: `evaluacion_foto`, `modos_analisis`, `observaciones_higiene`, `prioridad`, `prompts`, `revision_escombros_publica`.
 
-Los módulos de producción permanecen juntos en la raíz. `servidor.py`, `verificador.py`, `prompts/` y los evaluadores usan rutas e imports desde esa ubicación. Trasladarlos ahora a un paquete agregaría cambios en arranque, recursos y huellas sin reducir código duplicado. La separación de pruebas y herramientas deja 15 Python en la raíz: 14 de producción y el comando compatible de pruebas. No se eliminó un módulo por su nombre o por la cantidad de archivos.
+Los módulos de producción permanecen juntos en la raíz. `servidor.py`, `verificador.py`, `prompts/` y los evaluadores usan rutas e imports desde esa ubicación. Trasladarlos ahora a un paquete agregaría cambios en arranque, recursos y huellas sin reducir código duplicado. La separación de pruebas y herramientas deja 16 Python en la raíz: 15 de producción y el comando compatible de pruebas. No se eliminó un módulo por su nombre o por la cantidad de archivos.
 
 ## Comandos
 
@@ -70,6 +71,7 @@ Para desplegar la aplicación, conservar esos recursos juntos. No es necesario c
 
 Cada archivo versionado tiene una ubicación y función en el árbol siguiente. Los tests bajo `eval/` son regresiones de su herramienta, no scripts de producción.
 
+- `comparador.py`
 - `examples/ejemplo.py`
 - `especialista_contenedores.py`
 - `eval/analizar.py`

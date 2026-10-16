@@ -163,7 +163,7 @@ Ejemplo de respuesta:
 
 ```json
 {
-  "version": "9",
+  "version": "10",
   "hay_problema": true,
   "hay_reclamo": true,
   "gravedad_maxima": 3,
@@ -538,6 +538,7 @@ Un valor `null` o un estado indeterminado no significa ausencia. Las evaluacione
 
 | Versión | Fecha | Cambio |
 | --- | --- | --- |
+| 10 | 2026-10-16 | Endpoint nuevo `POST /comparar` (`file_a`, `file_b`): `misma` (`si`, `no`, `duda`) y `motivo`, con las lecturas en `modelos` y `arbitro`. |
 | 9 | 2026-10-16 | `retiro_objetos` deja de plegarse a `retiro_muebles` y es categoría propia (47 en total) con `problemas[].elemento` (`cemento`, `canos`, `bolardos`, `bancos`, `relojes`, `carteles` o `null`). El nombre de `retiro_muebles` pasa a "Retiro de residuos voluminosos (muebles y electrodomésticos)". |
 | 8 | 2026-10-16 | `problemas[].objetos` en `retiro_muebles` confirmado: lista de hasta 8 objetos voluminosos vistos. |
 | 7 | 2026-10-16 | `problemas[].objeto_tipo`, `objeto_tam` y `objeto_cant` en `retiro_muebles` confirmado: objeto dominante (rótulo cerrado), tamaño y cantidad. |
@@ -717,6 +718,36 @@ que agregues después. Cada tarjeta permite elegir otro modo antes de enviarla.
 Una vez enviado el análisis, sus reintentos conservan esa elección. "Volver a
 analizar" crea un intento nuevo y conserva el resultado anterior; puede generar
 otro consumo. El modo también aparece en las descargas JSON y CSV.
+
+## Comparar dos fotos
+
+### `POST /comparar`
+
+Recibe `multipart/form-data` con `file_a` y `file_b` (mismos límites de tamaño y formato que `/clasificar`, cada una) y el `modo` opcional (`alto` si se omite). Con barra final, como el resto. Responde si las dos fotos muestran la **misma escena**: el mismo lugar y el mismo problema desde otro ángulo u otro momento (el mismo contenedor, la misma pila, el mismo vehículo). Otro lugar, otro problema u otro objeto es `no`; ante la duda, `no`.
+
+```bash
+curl -s -F "file_a=@una.jpg" -F "file_b=@otra.jpg" http://127.0.0.1:8080/comparar/
+```
+
+```json
+{
+  "version": "10",
+  "misma": "si",
+  "motivo": "Mismo contenedor gris frente a la puerta con la persiana roja.",
+  "modelos": [
+    { "modelo": "openai/gpt-5-mini", "ok": true, "misma": "si", "motivo": "..." }
+  ],
+  "arbitro": null,
+  "modo": "alto", "modo_version": "...",
+  "costo_api": 0.0012, "tokens_api": 2150, "tokens_api_completos": true
+}
+```
+
+- `misma` vale `si`, `no` o `duda`. Un lector de visión alcanza cuando contesta `si` o `no`. Si contesta `duda` (o falla), se le pregunta a un segundo lector y el árbitro decide con las dos lecturas en una sola llamada más; `arbitro` trae esa decisión. Sin árbitro disponible vale la lectura decidida que haya, y si ninguna decide queda `duda`.
+- `modelos` enumera las lecturas hechas (una o dos). No interviene ningún modelo local y no se publica ninguna lectura suya.
+- Usa el mismo cupo, la misma cola y el mismo techo que `/clasificar`: ocupado devuelve `503` con `Retry-After`. El mismo par de fotos, en el mismo orden y modo, sale de la caché sin volver a pagar; un resultado apoyado en un corte de red no se guarda.
+- Sin clave de OpenRouter responde `503`: no hay comparación degradada. La cuota diaria de verificaciones también la cubre.
+- Un `modo` inválido o en la URL devuelve `422`, igual que en `/clasificar`.
 
 ## Configuración
 

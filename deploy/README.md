@@ -36,3 +36,12 @@ https://www.cloudflare.com/ips/ y actualizar los rangos si cambiaron.
 
 Prueba del intermediario y de los límites IPv4/IPv6:
 `python -m unittest discover -s tests -p test_intermediario.py`.
+
+### `/comparar`
+
+`POST /comparar` (#205) viaja por el mismo intermediario y recibe la misma
+validación de `modo` que `/clasificar` y `/trabajos`. En el servidor el sitio
+público tiene un subdirectorio real por endpoint (`salud/`, `clasificar/`,
+`trabajos/`) con el mismo `index.php`: al instalar esta versión hay que crear
+`public_html/ojourbano/comparar/` con una copia del intermediario, igual que
+los otros, o la ruta pública devuelve 404 aunque la API ya la sirva.
