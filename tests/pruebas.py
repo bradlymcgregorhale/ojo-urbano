@@ -2446,6 +2446,114 @@ check("el serializador publica los tres campos en el mueble confirmado y no en p
       and all("objeto_tipo" not in c for c in _pub_201["posibles"]))
 V.VERIFICADORES, V.ARBITRO, V._llamar, V.ARBITRO_VOTOS, V.CONSENSO_VLM_SOLO = _prev_201
 
+print("[#203] lista de objetos en retiro_muebles")
+_prev_203 = (V.VERIFICADORES, V.ARBITRO, V._llamar, V.ARBITRO_VOTOS, V.CONSENSO_VLM_SOLO,
+             V.SEGUNDA_MIRADA_VOLUMINOSO, V.REPREGUNTA_OBJETOS)
+V.VERIFICADORES, V.ARBITRO, V.ARBITRO_VOTOS = ["vlm/uno", "vlm/dos", "vlm/tres"], "arb/x", 1
+V.CONSENSO_VLM_SOLO = "confirma"
+V.SEGUNDA_MIRADA_VOLUMINOSO = V.REPREGUNTA_OBJETOS = False
+
+
+def _mock_objetos(por_modelo, descripcion="Una heladera y un colchón en la vereda.", key="retiro_muebles"):
+    def fake(modelo, mensajes, etapa="", **k):
+        if etapa == "arbitrar":
+            return json.dumps({"decisiones": [{"key": "recoleccion", "veredicto": "rechazar", "motivo": "m"}],
+                               "descripcion": descripcion})
+        cats = []
+        if modelo in por_modelo:
+            cats.append({"key": key, "gravedad": 3, "evidencia": "heladera y colchon descartados",
+                         "objetos": por_modelo[modelo]})
+        return json.dumps({"categorias": cats, "sin_problema": not cats,
+                           "descripcion": descripcion, "categorias_contexto": []})
+    return fake
+
+
+V._llamar = _mock_objetos({"vlm/uno": ["heladera", "colchón", "dos puertas"],
+                           "vlm/dos": ["Colchon", "heladera"]})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+_m = _muebles(r) or {}
+check("varios objetos: unión sin repetir, primero lo más nombrado",
+      _m.get("objetos") == ["heladera", "colchón", "dos puertas"], str(_m.get("objetos")))
+
+V._llamar = _mock_objetos({"vlm/uno": ["vereda frente a un local", "heladera", "una persona", "colchón"],
+                           "vlm/dos": ["heladera"]},
+                          descripcion="En la vereda frente a un local hay una heladera y un colchón.")
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+_m = _muebles(r) or {}
+check("descripción que empieza por el lugar: la lista trae solo objetos",
+      _m.get("objetos") == ["heladera", "colchón"], str(_m.get("objetos")))
+
+V._llamar = _mock_objetos({"vlm/uno": [f"objeto {i}" for i in range(12)] + ["mesa"],
+                           "vlm/dos": ["mesa"]})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+_m = _muebles(r) or {}
+check("ítems con dígitos no entran y la lista se corta en 8",
+      _m.get("objetos") == ["mesa"], str(_m.get("objetos")))
+
+V._llamar = _mock_objetos({"vlm/uno": ["a" * 41, "mesa de luz con cajones rota", "AB123CD", "silla"],
+                           "vlm/dos": ["silla"]})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+_m = _muebles(r) or {}
+check("se descartan ítems largos, de más de cuatro palabras o con patente",
+      _m.get("objetos") == ["silla"], str(_m.get("objetos")))
+
+V._llamar = _mock_objetos({"vlm/uno": ["Juan Perez", "heladera"], "vlm/dos": ["heladera"]},
+                          descripcion="Una heladera descartada junto al cordón.")
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "la heladera que tiró Juan Perez")
+_m = _muebles(r) or {}
+check("un ítem que solo está en el contexto vecinal no se publica (PII)",
+      _m.get("objetos") == ["heladera"], str(_m.get("objetos")))
+
+V._llamar = _mock_objetos({"vlm/uno": ["heladera"], "vlm/dos": ["heladera"]},
+                          descripcion="Una heladera descartada.")
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "hay una heladera tirada")
+_m = _muebles(r) or {}
+check("  pero un objeto que el contexto nombra Y los lectores ven sí se publica",
+      _m.get("objetos") == ["heladera"], str(_m.get("objetos")))
+
+V._llamar = _mock_objetos({"vlm/uno": ["heladera"], "vlm/dos": ["heladera"]}, key="recoleccion")
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("objetos en otra clave se ignora", all("objetos" not in c for c in r["confirmadas"]))
+
+V._llamar = _mock_objetos({"vlm/uno": None, "vlm/dos": None})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+_m = _muebles(r) or {}
+check("confirmado sin lista: objetos vale [] y está presente",
+      "objetos" in _m and _m["objetos"] == [], str(_m))
+
+_LOCAL_M = {"predichas": [{"key": "retiro_muebles", "nombre": "M", "score": 0.9}],
+            "probabilidades": [{"key": "retiro_muebles", "nombre": "M", "score": 0.9}],
+            "gravedad": {"value": 3, "raw": 3.0}}
+V.VERIFICADORES = ["vlm/uno"]
+V._llamar = _mock_objetos({"vlm/uno": ["sillón", "mesa"]})
+r = V.verificar(_Img(), CATS, _LOCAL_M, "")
+_m = _muebles(r) or {}
+check("con un solo lector activo igual se publica su lista",
+      _m.get("objetos") == ["sillón", "mesa"], str(_m))
+V.VERIFICADORES = ["vlm/uno", "vlm/dos", "vlm/tres"]
+
+check("la rúbrica pide la lista de objetos", "LISTA DE OBJETOS" in V._prompt_sistema(CATS))
+check("el README documenta objetos y la versión 8",
+      "- `objetos` aparece solo en un `retiro_muebles` confirmado" in (AQUI / "README.md").read_text(encoding="utf-8")
+      and int(S.VERSION_API) >= 8)
+_pub_203 = servidor._publica({
+    "version": S.VERSION_API, "hay_problema": True, "hay_reclamo": True, "gravedad_maxima": 3,
+    "problemas": [{"key": "retiro_muebles", "nombre": "M", "gravedad": 3, "fuentes": ["vlm/uno", "vlm/dos"],
+                   "objetos": ["heladera"]},
+                  {"key": "retiro_muebles", "nombre": "M2", "gravedad": 3, "fuentes": ["vlm/uno", "vlm/dos"]}],
+    "descripcion": "d", "categorias_contexto": [], "foto_valida": None,
+    "foto_valida_estado": "sin_contexto", "descartados_por_foto": [],
+    "posibles": [{"key": "retiro_muebles", "nombre": "M", "gravedad": 2, "objetos": ["mesa"],
+                  "fuentes": ["vlm/dos"], "origen": "foto", "arbitro": "rechazar", "motivo": "m"}],
+    "elementos_detectados": [], "en_duda": [],
+    "detalle": {"modelo_local": {"predichas": []},
+                "verificacion": {"activa": True, "verificadores": []}}})
+check("el serializador publica objetos en el confirmado, [] si falta, y nunca en posibles",
+      _pub_203["problemas"][0].get("objetos") == ["heladera"] and _pub_203["problemas"][1].get("objetos") == []
+      and all("objetos" not in c for c in _pub_203["posibles"]))
+(V.VERIFICADORES, V.ARBITRO, V._llamar, V.ARBITRO_VOTOS, V.CONSENSO_VLM_SOLO,
+ V.SEGUNDA_MIRADA_VOLUMINOSO, V.REPREGUNTA_OBJETOS) = _prev_203
+
 print("[#G] gravedad: mediana de los verificadores, no el maximo")
 # El maximo era un veto de una sola mano hacia arriba: con tres muestras
 # ruidosas queda siempre por encima del centro (medido: 58% de las fotos

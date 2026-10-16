@@ -1157,6 +1157,50 @@ CAMPOS_POR_CLAVE = {
 }
 
 
+# Campos de detalle en forma de LISTA (#203): no se votan por mayoría, se
+# consolidan uniendo lo que nombró cada lector (sin repetir). Tampoco van al
+# árbitro: una lista de nombres no tiene un "valor ganador".
+_OBJETOS_MAX = 8
+_OBJETO_ITEM = re.compile(r"^[^\W\d_](?:[^\W\d_]|[ \-'])*$")
+_OBJETO_NO_ES_OBJETO = re.compile(
+    r"\b(?:vereda|calle|esquina|cordon|calzada|contenedor(?:es)?|cesto|puerta de|frente|"
+    r"local|edificio|garage|garaje|persona|personas|gente|hombre|mujer|vecin[oa]s?|"
+    r"senor(?:a)?|chic[oa]s?|nen[eao]s?|nin[oa]s?|cartonero|trabajador)\b")
+
+
+def _objetos_lista(valor):
+    """Lista de nombres cortos de objetos; lo que no parece un objeto se descarta."""
+    if not isinstance(valor, list):
+        return None
+    salida, vistos = [], set()
+    for item in valor:
+        if not isinstance(item, str):
+            continue
+        texto = " ".join(item.split()).strip(" .,;:")
+        norma = _norm_texto(texto)
+        if (not texto or len(texto) > 40 or len(texto.split()) > 4
+                or not _OBJETO_ITEM.match(texto) or _OBJETO_NO_ES_OBJETO.search(norma)
+                or norma in vistos):
+            continue
+        vistos.add(norma)
+        salida.append(texto)
+        if len(salida) >= _OBJETOS_MAX:
+            break
+    return salida or None
+
+
+CAMPOS_LISTA_POR_CLAVE = {
+    "retiro_muebles": {"objetos": _objetos_lista},
+}
+
+
+def campos_detalle(key):
+    """Todos los campos de detalle de una clave con su valor por defecto público."""
+    campos = {campo: None for campo in CAMPOS_POR_CLAVE.get(key, {})}
+    campos.update({campo: [] for campo in CAMPOS_LISTA_POR_CLAVE.get(key, {})})
+    return campos
+
+
 def _campos_validos(c):
     """Deja en el voto solo los campos de detalle válidos para su clave."""
     for campo, validar in CAMPOS_POR_CLAVE.get(c.get("key"), {}).items():
@@ -1165,7 +1209,43 @@ def _campos_validos(c):
             c.pop(campo, None)
         else:
             c[campo] = valor
+    for campo, validar in CAMPOS_LISTA_POR_CLAVE.get(c.get("key"), {}).items():
+        valor = validar(c.get(campo))
+        if valor is None:
+            c.pop(campo, None)
+        else:
+            c[campo] = valor
     return c
+
+
+def _consolidar_lista(lecturas, respaldo="", contexto=""):
+    """lecturas: [(modelo, [items])]. Une sin repetir (sin acentos ni mayúsculas),
+    primero lo que más lectores nombraron y después por orden de aparición.
+    Un ítem que está en el contexto vecinal y que ningún lector menciona en su
+    propia evidencia o descripción se descarta: sería un eco del texto, no algo
+    visto en la foto."""
+    conteo, primero, orden = {}, {}, []
+    for _, items in lecturas:
+        vistos = set()
+        for item in items or []:
+            norma = _norm_texto(item)
+            if norma in vistos:
+                continue
+            vistos.add(norma)
+            if norma not in conteo:
+                conteo[norma], primero[norma] = 0, item
+                orden.append(norma)
+            conteo[norma] += 1
+    ctx = _norm_texto(contexto or "")
+    resp = _norm_texto(respaldo or "")
+    salida = []
+    for norma in sorted(orden, key=lambda n: (-conteo[n], orden.index(n))):
+        if ctx and norma in ctx and norma not in resp:
+            continue
+        salida.append(primero[norma])
+        if len(salida) >= _OBJETOS_MAX:
+            break
+    return salida
 
 
 def _resolver_dato(votos, del_arbitro=None):
@@ -2803,6 +2883,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     patentes = {}  # key -> {patente normalizada: [modelos que la leyeron]}
     partes = {}    # key -> {parte dañada: [modelos que la ubicaron]}
     datos_votados = {}  # key -> {campo: {valor: [modelos que lo leyeron]}}
+    listas_votadas = {}  # key -> {campo: [(modelo, lista)]}
     for p in prediccion_local["predichas"]:
         if p["key"] != "sin_problema":
             fuentes.setdefault(p["key"], []).append("modelo_local")
@@ -2822,6 +2903,10 @@ def verificar(img, categorias, prediccion_local, contexto=""):
                 if campo in c:
                     datos_votados.setdefault(k, {}).setdefault(campo, {}) \
                                  .setdefault(c[campo], []).append(v["modelo"])
+            for campo in CAMPOS_LISTA_POR_CLAVE.get(k, {}):
+                if c.get(campo):
+                    listas_votadas.setdefault(k, {}).setdefault(campo, []) \
+                                  .append((v["modelo"], c[campo]))
             # Se juntan TODOS los votos de gravedad y se resuelven abajo con
             # la mediana. Antes se publicaba el máximo, que es un veto de una
             # sola mano hacia arriba: con tres muestras ruidosas el máximo
@@ -4081,6 +4166,17 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             e[campo] = _resolver_dato(
                 datos_votados.get(e["key"], {}).get(campo),
                 (datos_arbitro.get(e["key"]) or {}).get(campo))
+    # Lo que los lectores vieron con sus propias palabras: respalda que un
+    # ítem de una lista no sea un eco del contexto vecinal. Una confirmada
+    # sin lista publica [], para que el campo esté siempre.
+    respaldo_txt = " ".join(
+        [str(v.get("descripcion") or "") for v in veredictos if v.get("ok")]
+        + [str(c.get("evidencia") or "") for v in veredictos if v.get("ok")
+           for c in v.get("categorias") or []])
+    for e in finales:
+        for campo in CAMPOS_LISTA_POR_CLAVE.get(e["key"], {}):
+            e[campo] = _consolidar_lista(
+                listas_votadas.get(e["key"], {}).get(campo, []), respaldo_txt, contexto)
 
     # Segunda pasada de patente, con la foto a mayor resolución: a LADO_MAX
     # una chapa a unos metros no se lee, así que la primera pasada rara vez
