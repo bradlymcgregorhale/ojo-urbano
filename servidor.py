@@ -84,7 +84,7 @@ GRAV_MAX = 5
 # vecino pide algo aunque la foto no lo confirme"; el contexto del vecino no
 # se devuelve nunca; ?verificar=0 responde degradado en vez de publicar el
 # modelo local. Ver README, "Cambios de contrato".
-VERSION_API = "6"
+VERSION_API = "7"
 CONTENEDORES_ESPECIALISTA = os.environ.get("CONTENEDORES_ESPECIALISTA", "0").lower() in ("1", "true", "si")
 
 # Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y varias
@@ -969,7 +969,7 @@ def _publica(r):
         if not patente_ok:
             e.pop("patente", None)
             e.pop("parte", None)
-            # Los campos de detalle (#202: bolsas) siguen el mismo contrato.
+            # Los campos de detalle (#202 bolsas, #201 objeto) siguen el mismo contrato.
             for campo in verificador.CAMPOS_POR_CLAVE.get(c.get("key"), {}):
                 e.pop(campo, None)
         return e

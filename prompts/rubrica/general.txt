@@ -91,6 +91,16 @@ Reglas finales:
  {"key": "retiro_escombros", "gravedad": 3, "evidencia": "...", "bolsas": 3}. Contá solo las bolsas\
  o sacos que atribuís a escombros, no las bolsas de basura común de al lado. Si el escombro está\
  suelto, sin bolsas, o no se pueden contar, poné null.
+- OBJETO VOLUMINOSO: si reportás retiro_muebles, agregá adentro de esa categoría "objeto_tipo",\
+ "objeto_tam" y "objeto_cant". "objeto_tipo" es el objeto DOMINANTE, con UNO de estos rótulos\
+ exactos: heladera, lavarropas, cocina, televisor, electronica, colchon, somier, sillon, silla,\
+ mesa, placard, estanteria, puertas, ventanas, maderas, cajas, alfombra, sanitario, vidrios,\
+ chatarra, bidones, otros. Usá "otros" si es una mezcla o no encaja; no inventes rótulos.\
+ "objeto_tam": "chico" si una persona lo puede cargar sola, "grande" si hace falta más de una; una\
+ carga mixta es "grande". "objeto_cant": cantidad total de objetos voluminosos visibles, entero de 1\
+ a 15 (15 si hay más); se cuentan ítems, no pilas (cinco puertas apiladas son 5); null si no se\
+ pueden contar. Ejemplo: {"key": "retiro_muebles", "gravedad": 3, "evidencia": "...", "objeto_tipo":\
+ "colchon", "objeto_tam": "grande", "objeto_cant": 2}.
 - En "descripcion" contá en 1 o 2 frases qué se ve en la foto: la escena, los objetos principales y\
  su estado, coherente con las categorías que reportás.
 - IMPORTANTE: si en la foto hay algo que un vecino podría razonablemente creer que es un problema\

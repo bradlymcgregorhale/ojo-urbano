@@ -2346,8 +2346,105 @@ check("  recoleccion no lleva el campo", "bolsas" not in _pub_202["problemas"][2
 check("  y posibles no lo arrastra", all("bolsas" not in c for c in _pub_202["posibles"]))
 check("el README documenta bolsas y la versión 6",
       "`bolsas` aparece solo en un `retiro_escombros` confirmado" in (AQUI / "README.md").read_text(encoding="utf-8")
-      and S.VERSION_API == "6")
+      and int(S.VERSION_API) >= 6)
 V.VERIFICADORES, V.ARBITRO, V._llamar, V.ARBITRO_VOTOS, V.CONSENSO_VLM_SOLO = _prev_202
+
+print("[#201] objeto, tamaño y cantidad en retiro_muebles")
+_prev_201 = V.VERIFICADORES, V.ARBITRO, V._llamar, V.ARBITRO_VOTOS, V.CONSENSO_VLM_SOLO
+V.VERIFICADORES, V.ARBITRO, V.ARBITRO_VOTOS = ["vlm/uno", "vlm/dos", "vlm/tres"], "arb/x", 1
+V.CONSENSO_VLM_SOLO = "confirma"
+
+
+def _mock_objeto(por_modelo, arbitro_datos=None, key="retiro_muebles"):
+    """por_modelo: modelo -> dict con los campos del objeto (ausente = no vota la clave)."""
+    def fake(modelo, mensajes, etapa="", **k):
+        if etapa == "arbitrar":
+            return json.dumps({"decisiones": [{"key": "recoleccion", "veredicto": "rechazar",
+                                               "motivo": "sin bolsas"}],
+                               "descripcion": "Un colchón en la vereda.",
+                               **({"datos": arbitro_datos} if arbitro_datos is not None else {})})
+        cats = []
+        if modelo in por_modelo:
+            cats.append({"key": key, "gravedad": 2, "evidencia": "colchon en la vereda",
+                         **por_modelo[modelo]})
+        return json.dumps({"categorias": cats, "sin_problema": not cats,
+                           "descripcion": "Un colchón en la vereda.", "categorias_contexto": []})
+    return fake
+
+
+def _muebles(r):
+    return next((c for c in r["confirmadas"] if c["key"] == "retiro_muebles"), None)
+
+
+_obj = {"objeto_tipo": "colchon", "objeto_tam": "grande", "objeto_cant": 2}
+V._llamar = _mock_objeto({"vlm/uno": _obj, "vlm/dos": _obj})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+_m = _muebles(r) or {}
+check("un solo mueble: tipo, tamaño y cantidad coincidentes se publican",
+      (_m.get("objeto_tipo"), _m.get("objeto_tam"), _m.get("objeto_cant")) == ("colchon", "grande", 2), str(_m))
+
+V._llamar = _mock_objeto({"vlm/uno": {"objeto_tipo": "Sofá", "objeto_tam": "Grande", "objeto_cant": "3"},
+                          "vlm/dos": {"objeto_tipo": "sillon", "objeto_tam": "grande", "objeto_cant": 3}})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+_m = _muebles(r) or {}
+check("los rótulos se normalizan (Sofá -> sillon, Grande -> grande, '3' -> 3)",
+      (_m.get("objeto_tipo"), _m.get("objeto_tam"), _m.get("objeto_cant")) == ("sillon", "grande", 3), str(_m))
+
+V._llamar = _mock_objeto({"vlm/uno": {"objeto_tipo": "colchon", "objeto_tam": "chico", "objeto_cant": 1},
+                          "vlm/dos": {"objeto_tipo": "sillon", "objeto_tam": "grande", "objeto_cant": 1}},
+                         arbitro_datos={"retiro_muebles": {"objeto_tipo": "sillon", "objeto_tam": "grande"}})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+_m = _muebles(r) or {}
+check("desacuerdo de objeto y tamaño: decide el árbitro en la llamada de desempate",
+      (_m.get("objeto_tipo"), _m.get("objeto_tam"), _m.get("objeto_cant")) == ("sillon", "grande", 1), str(_m))
+
+V._llamar = _mock_objeto({"vlm/uno": {"objeto_tipo": "mueble raro", "objeto_tam": "mediano", "objeto_cant": "varios"},
+                          "vlm/dos": {"objeto_tipo": "otros", "objeto_tam": "grande", "objeto_cant": 15}})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+_m = _muebles(r) or {}
+check("pila mixta: un rótulo inventado, un tamaño fuera de lista y una cuenta en letras no votan",
+      (_m.get("objeto_tipo"), _m.get("objeto_tam"), _m.get("objeto_cant")) == ("otros", "grande", 15), str(_m))
+
+V._llamar = _mock_objeto({"vlm/uno": {"objeto_tipo": "cajas", "objeto_tam": "grande", "objeto_cant": None},
+                          "vlm/dos": {"objeto_tipo": "cajas", "objeto_tam": "grande"}})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+_m = _muebles(r) or {}
+check("carga incontable: objeto_cant null, con la clave presente",
+      _m.get("objeto_tipo") == "cajas" and "objeto_cant" in _m and _m["objeto_cant"] is None, str(_m))
+
+V.ARBITRO = ""
+V._llamar = _mock_objeto({"vlm/uno": {"objeto_tam": "chico"}, "vlm/dos": {"objeto_tam": "grande"}})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+_m = _muebles(r) or {}
+check("empate sin árbitro: null en los tres campos, sin inventar",
+      _m and all(k in _m and _m[k] is None for k in ("objeto_tipo", "objeto_tam", "objeto_cant")), str(_m))
+V.ARBITRO = "arb/x"
+
+V._llamar = _mock_objeto({"vlm/uno": _obj, "vlm/dos": _obj}, key="recoleccion")
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("los campos del objeto en otra clave se ignoran",
+      all("objeto_tipo" not in c for c in r["confirmadas"]))
+
+check("la rúbrica pide el objeto con la lista cerrada",
+      "OBJETO VOLUMINOSO" in V._prompt_sistema(CATS) and all(t in V._prompt_sistema(CATS) for t in V.OBJETO_TIPOS))
+_readme_201 = (AQUI / "README.md").read_text(encoding="utf-8")
+check("el README lista los rótulos válidos y la versión 7",
+      all(f"`{t}`" in _readme_201 for t in V.OBJETO_TIPOS) and int(S.VERSION_API) >= 7)
+_pub_201 = servidor._publica({
+    "version": S.VERSION_API, "hay_problema": True, "hay_reclamo": True, "gravedad_maxima": 2,
+    "problemas": [{"key": "retiro_muebles", "nombre": "M", "gravedad": 2, "fuentes": ["vlm/uno", "vlm/dos"],
+                   "objeto_tipo": "colchon", "objeto_tam": "grande", "objeto_cant": 1}],
+    "descripcion": "d", "categorias_contexto": [], "foto_valida": None,
+    "foto_valida_estado": "sin_contexto", "descartados_por_foto": [],
+    "posibles": [{"key": "retiro_muebles", "nombre": "M", "gravedad": 2, "objeto_tipo": "colchon",
+                  "fuentes": ["vlm/dos"], "origen": "foto", "arbitro": "rechazar", "motivo": "m"}],
+    "elementos_detectados": [], "en_duda": [],
+    "detalle": {"modelo_local": {"predichas": []},
+                "verificacion": {"activa": True, "verificadores": []}}})
+check("el serializador publica los tres campos en el mueble confirmado y no en posibles",
+      _pub_201["problemas"][0].get("objeto_tipo") == "colchon" and _pub_201["problemas"][0].get("objeto_cant") == 1
+      and all("objeto_tipo" not in c for c in _pub_201["posibles"]))
+V.VERIFICADORES, V.ARBITRO, V._llamar, V.ARBITRO_VOTOS, V.CONSENSO_VLM_SOLO = _prev_201
 
 print("[#G] gravedad: mediana de los verificadores, no el maximo")
 # El maximo era un veto de una sola mano hacia arriba: con tres muestras
