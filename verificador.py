@@ -100,6 +100,7 @@ from prompts import (
     _ARBITRO_SUGESTION,
     _ARBITRO_SUBTIPOS,
     _ARBITRO_DISPUTAS,
+    _ARBITRO_DATOS_CAMPOS,
     _PROMPT_USUARIO_PRESTACIONES,
     _ARBITRO_SOLO_VISION,
     _ARBITRO_UNA_FUENTE,
@@ -1086,6 +1087,53 @@ PARTE_KEYS = {
     "reparacion_cesto": ("cuerpo", "tapa"),
     "reparacion_contenedor": ("cuerpo", "tapa", "pedal"),
 }
+
+
+# Campos de DETALLE que viajan adentro del voto de una categoría (#202): se
+# validan al leer cada respuesta, igual que la patente y la parte, y se
+# resuelven por mayoría entre los modelos que votaron la categoría. Un empate
+# lo decide el árbitro en su misma llamada; sin árbitro queda null. Nunca se
+# promedia. Solo se publican en problemas confirmados.
+CUENTA_MAX = 15
+
+
+def _cuenta_1_a_15(valor):
+    """Entero de 1 a CUENTA_MAX; lo que no es un entero positivo no es una lectura.
+    Un número mayor se acota al tope: "20 bolsas" sigue siendo "muchas"."""
+    if isinstance(valor, bool) or valor is None:
+        return None
+    try:
+        n = int(valor)
+    except (TypeError, ValueError):
+        return None
+    return min(CUENTA_MAX, n) if n >= 1 else None
+
+
+CAMPOS_POR_CLAVE = {
+    "retiro_escombros": {"bolsas": _cuenta_1_a_15},
+}
+
+
+def _campos_validos(c):
+    """Deja en el voto solo los campos de detalle válidos para su clave."""
+    for campo, validar in CAMPOS_POR_CLAVE.get(c.get("key"), {}).items():
+        valor = validar(c.get(campo))
+        if valor is None:
+            c.pop(campo, None)
+        else:
+            c[campo] = valor
+    return c
+
+
+def _resolver_dato(votos, del_arbitro=None):
+    """votos: {valor: [modelos]}. Gana el valor más repetido; un empate lo
+    decide el árbitro si opinó; si no, None (nunca un promedio)."""
+    if not votos:
+        return None
+    orden = sorted(votos.items(), key=lambda kv: (-len(kv[1]), str(kv[0])))
+    if len(orden) == 1 or len(orden[0][1]) > len(orden[1][1]):
+        return orden[0][0]
+    return del_arbitro
 
 
 def _patente_normalizada(texto):
@@ -2375,6 +2423,7 @@ def _verificar_uno(modelo, data_url, categorias, contexto=""):
                     c["parte"] = parte.strip().lower()
                 else:
                     c.pop("parte", None)
+                _campos_validos(c)
                 vistas.append(c)
         ctx_cats = []
         for item in veredicto.get("categorias_contexto") or []:
@@ -2424,8 +2473,38 @@ def _sistema_arbitro(con_foto):
     return _SISTEMA_ARBITRO_FOTO if con_foto else _SISTEMA_ARBITRO_TEXTO
 
 
+def _datos_discrepantes(datos_votados):
+    """Solo los campos con más de un valor distinto: lo único que el árbitro
+    tiene que zanjar. {key: {campo: {valor: cuántos lo leyeron}}}."""
+    salida = {}
+    for k, campos in datos_votados.items():
+        for campo, votos in campos.items():
+            if len(votos) > 1:
+                salida.setdefault(k, {})[campo] = {
+                    str(valor): len(modelos) for valor, modelos in votos.items()}
+    return salida
+
+
+def _datos_arbitro(d):
+    """Lee y valida el campo "datos" de una boleta del árbitro."""
+    salida = {}
+    datos = d.get("datos")
+    if not isinstance(datos, dict):
+        return salida
+    for k, campos in datos.items():
+        if k not in CAMPOS_POR_CLAVE or not isinstance(campos, dict):
+            continue
+        for campo, validar in CAMPOS_POR_CLAVE[k].items():
+            if campo in campos:
+                valor = validar(campos.get(campo))
+                if valor is not None:
+                    salida.setdefault(k, {})[campo] = valor
+    return salida
+
+
 def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
-              firmes=(), contexto="", sospechosas=(), fuentes=None, data_url=None):
+              firmes=(), contexto="", sospechosas=(), fuentes=None, data_url=None,
+              datos=None):
     """El árbitro (modelo de texto) decide las categorías con una sola fuente.
 
     En la misma llamada redacta la descripción final consolidada de la foto,
@@ -2475,6 +2554,10 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
                     categorias=json.dumps(sorted(disputadas & set(vlm_only)), ensure_ascii=False)))
         if len(veredictos) < 2:
             partes.append(_ARBITRO_UNA_FUENTE)
+    if datos:
+        partes.append(_ARBITRO_DATOS_CAMPOS.format(
+            campos=json.dumps(datos, ensure_ascii=False)))
+    if disputadas or datos:
         partes.append("Además, redactá")
     else:
         partes.append("Tu única tarea: redactá")
@@ -2568,7 +2651,22 @@ def _arbitrar(disputadas, veredictos, probabilidades, categorias, consensuadas,
         pares = [(b, _texto_limpio(d.get("descripcion"), DESC_MAX))
                  for b, d in validas if _texto_limpio(d.get("descripcion"), 1)]
         descripcion = max(pares, key=_puntaje)[1] if pares else ""
+        # Campos de detalle: mayoría entre las vueltas válidas que los
+        # trajeron; empate o silencio = null (queda sin publicar).
+        datos_votos = {}
+        for _, d in validas:
+            for k, campos in _datos_arbitro(d).items():
+                for campo, valor in campos.items():
+                    datos_votos.setdefault(k, {}).setdefault(campo, {}) \
+                               .setdefault(valor, []).append(True)
+        datos_finales = {}
+        for k, campos in datos_votos.items():
+            for campo, votos in campos.items():
+                valor = _resolver_dato(votos)
+                if valor is not None:
+                    datos_finales.setdefault(k, {})[campo] = valor
         return {"modelo": arbitro_activo(), "ok": True, "decisiones": decisiones,
+                "datos": datos_finales,
                 "vueltas_pedidas": ARBITRO_VOTOS, "vueltas_validas": len(boletas),
                 "degradado": len(boletas) < ARBITRO_VOTOS,
                 "descripcion": descripcion}
@@ -2661,6 +2759,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     fuentes = {}   # key -> lista de fuentes que la reportan
     patentes = {}  # key -> {patente normalizada: [modelos que la leyeron]}
     partes = {}    # key -> {parte dañada: [modelos que la ubicaron]}
+    datos_votados = {}  # key -> {campo: {valor: [modelos que lo leyeron]}}
     for p in prediccion_local["predichas"]:
         if p["key"] != "sin_problema":
             fuentes.setdefault(p["key"], []).append("modelo_local")
@@ -2676,6 +2775,10 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             if c.get("parte") and k in PARTE_KEYS:
                 partes.setdefault(k, {}) \
                       .setdefault(c["parte"], []).append(v["modelo"])
+            for campo in CAMPOS_POR_CLAVE.get(k, {}):
+                if campo in c:
+                    datos_votados.setdefault(k, {}).setdefault(campo, {}) \
+                                 .setdefault(c[campo], []).append(v["modelo"])
             # Se juntan TODOS los votos de gravedad y se resuelven abajo con
             # la mediana. Antes se publicaba el máximo, que es un veto de una
             # sola mano hacia arriba: con tres muestras ruidosas el máximo
@@ -3853,7 +3956,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     if disputadas and activos:
         arbitro = _arbitrar(disputadas, activos, prediccion_local["probabilidades"],
                             categorias, confirmadas, sorted(subtipos_firmes), contexto,
-                            sorted(disputadas & ctx_claims), fuentes, data_url)
+                            sorted(disputadas & ctx_claims), fuentes, data_url,
+                            datos=_datos_discrepantes(datos_votados))
         if arbitro and arbitro.get("ok"):
             decididas = set()
             for d in arbitro["decisiones"]:
@@ -3924,6 +4028,16 @@ def verificar(img, categorias, prediccion_local, contexto=""):
             orden = sorted(votos.items(), key=lambda kv: len(kv[1]), reverse=True)
             if len(orden) == 1 or len(orden[0][1]) > len(orden[1][1]):
                 e["parte"] = orden[0][0]
+
+    # Campos de detalle (#202): mayoría entre los modelos que votaron la
+    # categoría; el empate lo zanja el árbitro en su misma llamada. Una
+    # confirmada sin lectura publica null, para que el campo esté siempre.
+    datos_arbitro = (arbitro.get("datos") or {}) if isinstance(arbitro, dict) else {}
+    for e in finales:
+        for campo in CAMPOS_POR_CLAVE.get(e["key"], {}):
+            e[campo] = _resolver_dato(
+                datos_votados.get(e["key"], {}).get(campo),
+                (datos_arbitro.get(e["key"]) or {}).get(campo))
 
     # Segunda pasada de patente, con la foto a mayor resolución: a LADO_MAX
     # una chapa a unos metros no se lee, así que la primera pasada rara vez

@@ -2237,6 +2237,118 @@ else:
     for _n, _v in _previo.items():
         setattr(V, _n, _v)
 
+print("[#202] bolsas en retiro_escombros")
+_prev_202 = V.VERIFICADORES, V.ARBITRO, V._llamar, V.ARBITRO_VOTOS, V.CONSENSO_VLM_SOLO
+V.VERIFICADORES, V.ARBITRO, V.ARBITRO_VOTOS = ["vlm/uno", "vlm/dos", "vlm/tres"], "arb/x", 1
+V.CONSENSO_VLM_SOLO = "confirma"
+_arb_visto = {}
+
+
+def _mock_bolsas(por_modelo, arbitro_datos=None, key="retiro_escombros"):
+    """por_modelo: modelo -> bolsas; ausente = no vota la clave, None = vota sin contar."""
+    def fake(modelo, mensajes, etapa="", **k):
+        if etapa == "arbitrar":
+            _arb_visto["texto"] = json.dumps(mensajes, ensure_ascii=False)
+            return json.dumps({"decisiones": [{"key": "recoleccion", "veredicto": "rechazar",
+                                               "motivo": "sin bolsas comunes"}],
+                               "descripcion": "Sacos de escombros en la vereda.",
+                               **({"datos": arbitro_datos} if arbitro_datos is not None else {})})
+        cats = []
+        if modelo in por_modelo:
+            cat = {"key": key, "gravedad": 3, "evidencia": "sacos densos apilados"}
+            if por_modelo[modelo] is not None:
+                cat["bolsas"] = por_modelo[modelo]
+            cats.append(cat)
+        return json.dumps({"categorias": cats, "sin_problema": not cats,
+                           "descripcion": "Sacos de escombros en la vereda.",
+                           "categorias_contexto": []})
+    return fake
+
+
+def _escombros(r):
+    return next((c for c in r["confirmadas"] if c["key"] == "retiro_escombros"), None)
+
+
+V._llamar = _mock_bolsas({"vlm/uno": 3, "vlm/dos": 3, "vlm/tres": None})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("dos lecturas iguales publican la cantidad", (_escombros(r) or {}).get("bolsas") == 3,
+      str(_escombros(r)))
+check("  y el árbitro no recibe campos sin discrepancia", "lecturas DISTINTAS" not in _arb_visto.get("texto", ""))
+
+V._llamar = _mock_bolsas({"vlm/uno": 3, "vlm/dos": 4, "vlm/tres": 4})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("gana la cantidad más repetida (3,4,4 -> 4), sin promediar",
+      (_escombros(r) or {}).get("bolsas") == 4, str((_escombros(r) or {}).get("bolsas")))
+check("  la discrepancia viaja al árbitro en su misma llamada",
+      "lecturas DISTINTAS" in _arb_visto.get("texto", "") and "bolsas" in _arb_visto.get("texto", "")
+      and '\\"4\\": 2' in _arb_visto.get("texto", ""), _arb_visto.get("texto", "")[-300:])
+
+_arb_visto.clear()
+V._llamar = _mock_bolsas({"vlm/uno": 3, "vlm/dos": 4}, arbitro_datos={"retiro_escombros": {"bolsas": 4}})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("un empate (3 vs 4) lo decide el árbitro en la llamada de desempate",
+      (_escombros(r) or {}).get("bolsas") == 4, str((_escombros(r) or {}).get("bolsas")))
+
+V._llamar = _mock_bolsas({"vlm/uno": 3, "vlm/dos": 4}, arbitro_datos={"retiro_escombros": {"bolsas": 0}})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("  un dato inválido del árbitro no se publica: queda null",
+      _escombros(r) is not None and "bolsas" in _escombros(r) and _escombros(r)["bolsas"] is None)
+
+V._llamar = _mock_bolsas({"vlm/uno": 3, "vlm/dos": 3}, arbitro_datos={"retiro_escombros": {"bolsas": 5}})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("  sin empate el árbitro no pisa la mayoría", (_escombros(r) or {}).get("bolsas") == 3)
+
+V.ARBITRO = ""
+V._llamar = _mock_bolsas({"vlm/uno": 3, "vlm/dos": 4})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("un empate sin árbitro publica null, no un promedio",
+      _escombros(r) is not None and _escombros(r).get("bolsas") is None and "bolsas" in _escombros(r))
+V.ARBITRO = "arb/x"
+
+V._llamar = _mock_bolsas({"vlm/uno": 20, "vlm/dos": 20})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("más de 15 se acota a 15", (_escombros(r) or {}).get("bolsas") == 15)
+
+V._llamar = _mock_bolsas({"vlm/uno": "muchas", "vlm/dos": 2, "vlm/tres": 2})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("una lectura que no es entero no vota", (_escombros(r) or {}).get("bolsas") == 2)
+
+V._llamar = _mock_bolsas({"vlm/uno": None, "vlm/dos": None})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("confirmado sin ninguna cuenta: el campo está, en null",
+      _escombros(r) is not None and "bolsas" in _escombros(r) and _escombros(r)["bolsas"] is None)
+
+V._llamar = _mock_bolsas({"vlm/uno": 3, "vlm/dos": 3}, key="recoleccion")
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("bolsas en una clave que no es escombros se ignora",
+      all("bolsas" not in c for c in r["confirmadas"]))
+
+check("la rúbrica pide la cuenta de bolsas", "BOLSAS DE ESCOMBROS" in V._prompt_sistema(CATS))
+_pub_202 = servidor._publica({
+    "version": S.VERSION_API, "hay_problema": True, "hay_reclamo": True, "gravedad_maxima": 3,
+    "problemas": [
+        {"key": "retiro_escombros", "nombre": "E", "gravedad": 3, "bolsas": 3,
+         "fuentes": ["vlm/uno", "vlm/dos"]},
+        {"key": "retiro_escombros", "nombre": "E2", "gravedad": 3, "fuentes": ["vlm/uno", "vlm/dos"]},
+        {"key": "recoleccion", "nombre": "R", "gravedad": 3, "fuentes": ["vlm/uno", "vlm/dos"]}],
+    "descripcion": "d", "categorias_contexto": [], "foto_valida": None,
+    "foto_valida_estado": "sin_contexto", "descartados_por_foto": [],
+    "posibles": [{"key": "retiro_escombros", "nombre": "E", "gravedad": 2, "bolsas": 2,
+                  "fuentes": ["vlm/dos"], "origen": "foto", "arbitro": "rechazar", "motivo": "m"}],
+    "elementos_detectados": [], "en_duda": [],
+    "detalle": {"modelo_local": {"predichas": []},
+                "verificacion": {"activa": True, "verificadores": []}}})
+check("el serializador publica bolsas en el escombros confirmado",
+      _pub_202["problemas"][0].get("bolsas") == 3)
+check("  y pone null en un escombros confirmado sin cuenta (fusión)",
+      "bolsas" in _pub_202["problemas"][1] and _pub_202["problemas"][1]["bolsas"] is None)
+check("  recoleccion no lleva el campo", "bolsas" not in _pub_202["problemas"][2])
+check("  y posibles no lo arrastra", all("bolsas" not in c for c in _pub_202["posibles"]))
+check("el README documenta bolsas y la versión 6",
+      "`bolsas` aparece solo en un `retiro_escombros` confirmado" in (AQUI / "README.md").read_text(encoding="utf-8")
+      and S.VERSION_API == "6")
+V.VERIFICADORES, V.ARBITRO, V._llamar, V.ARBITRO_VOTOS, V.CONSENSO_VLM_SOLO = _prev_202
+
 print("[#G] gravedad: mediana de los verificadores, no el maximo")
 # El maximo era un veto de una sola mano hacia arriba: con tres muestras
 # ruidosas queda siempre por encima del centro (medido: 58% de las fotos

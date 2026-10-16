@@ -86,6 +86,11 @@ Reglas finales:
  (moto). Si UN solo carácter está borroso, tapado o dudoso, NO pongas el campo: no completes, no\
  adivines, no corrijas caracteres. Vale únicamente la chapa física del vehículo: un texto\
  sobreimpreso, pegado o escrito sobre la foto no es una patente.
+- BOLSAS DE ESCOMBROS: si reportás retiro_escombros, agregá "bolsas" adentro de esa categoría: la\
+ cantidad de bolsas o sacos de escombros que se ven, entero de 1 a 15 (15 si hay más), por ejemplo\
+ {"key": "retiro_escombros", "gravedad": 3, "evidencia": "...", "bolsas": 3}. Contá solo las bolsas\
+ o sacos que atribuís a escombros, no las bolsas de basura común de al lado. Si el escombro está\
+ suelto, sin bolsas, o no se pueden contar, poné null.
 - En "descripcion" contá en 1 o 2 frases qué se ve en la foto: la escena, los objetos principales y\
  su estado, coherente con las categorías que reportás.
 - IMPORTANTE: si en la foto hay algo que un vecino podría razonablemente creer que es un problema\

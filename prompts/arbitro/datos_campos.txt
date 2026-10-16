@@ -1,0 +1,6 @@
+Además, estos campos de detalle vinieron con lecturas DISTINTAS entre los modelos de visión (por\
+ categoría y campo, cada valor con cuántos modelos lo leyeron): {campos}
+Elegí para cada campo el valor mejor respaldado por las evidencias y descripciones de arriba; si no\
+ hay forma de decidir, null. No promedies ni inventes un valor intermedio. Agregá al JSON el campo\
+ "datos": {{"<categoría>": {{"<campo>": valor}}}} con esos campos solamente.
+
