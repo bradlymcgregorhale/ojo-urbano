@@ -641,6 +641,16 @@ check("el README documenta el tope nuevo",
       "hasta 2000 caracteres" in (AQUI / "README.md").read_text(encoding="utf-8"))
 S.procesar = _contando
 
+print("[#213] la demo rediseñada muestra los campos nuevos")
+check("la tarjeta rotula bolsas, objeto, objetos y elemento",
+      all(t in S.PAGINA for t in ("'Bolsas: '", "'Objeto: '", "'Objetos: '", "'Elemento: '", "function renderProblema")))
+check("  solo desde problemas confirmados, con rótulos legibles",
+      "probs.map(renderProblema)" in S.PAGINA and "colchon:'colchón'" in S.PAGINA and "canos:'caños'" in S.PAGINA)
+check("  conserva descarga CSV, JSON, modos por foto y la ruta de comparar",
+      all(t in S.PAGINA for t in ('id="csvbtn"', 'id="jsonbtn"', "data-modo", "data-ep=\"comparar\"", "comparar:O+'/comparar'+SUF")))
+check("  modo oscuro y celular", "prefers-color-scheme:dark" in S.PAGINA and "max-width:640px" in S.PAGINA)
+check("  sin recursos externos", "https://" not in S.PAGINA.split("<script>")[0].replace("https://dominio/ojourbano/", ""))
+
 # Un resultado degradado por cuota agotada no puede quedar cacheado: al día
 # siguiente, con cuota nueva, la misma foto tiene que volver a verificarse.
 degradada = {"detalle": {"verificacion": {"activa": False, "motivo": S.MOTIVO_CUOTA}}}
