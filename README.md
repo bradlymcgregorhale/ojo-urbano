@@ -163,7 +163,7 @@ Ejemplo de respuesta:
 
 ```json
 {
-  "version": "5",
+  "version": "6",
   "hay_problema": true,
   "hay_reclamo": true,
   "gravedad_maxima": 3,
@@ -206,6 +206,7 @@ Ejemplo de respuesta:
 - Cada problema incluye `confianza`: `alta` con 3 o más fuentes y `media` con 2. La aceptación de escombros basada en contenido informado por el vecino usa una fuente y confianza `baja`. El campo superior `predominante` contiene la clave del problema de mayor gravedad. Si hay empate, elige el que tenga más fuentes. Vale `null` cuando no hay uno.
 - `verificacion_escombros`, cuando aparece, informa `estado`, `motivo`, `basado_en_contexto` y `requiere_nueva_foto`. Su estado `apto` significa que la ubicación y presentación sirven para el retiro, no que el material esté confirmado. Para decidir qué reclamo se acepta, usá `problemas`. Una contradicción de contenido puede requerir aclaración aunque `requiere_nueva_foto` sea `false`.
 - `patente` puede aparecer en escenas de `vehiculo_mal_estacionado` o `vehiculo_abandonado`. Acepta formatos argentinos como `AB123CD` y `ABC123`. Solo se devuelve cuando dos lectores independientes obtienen la misma cadena del vehículo protagonista. Cualquier lectura válida que discrepe la suprime. Si hace falta, la API vuelve a leer la foto a mayor resolución solo para la chapa. El valor aparece arriba y dentro del problema confirmado.
+- `bolsas` aparece solo en un `retiro_escombros` confirmado: cantidad de bolsas o sacos de escombros visibles, entero de 1 a 15, o `null` si el escombro está suelto o no se pudo contar. Cada lector cuenta por su lado; se publica la cantidad más repetida entre los que votaron escombros. Un empate lo decide el árbitro en su misma llamada de desempate, y sin árbitro queda `null`. Nunca se promedia. En `posibles` y `descartados_por_foto` no viaja.
 - `foto_valida` dice si la imagen respalda el contexto. `true` significa que sirve como prueba, `false` que no muestra lo reclamado y `null` que no pudo evaluarse. Un valor `null` no significa que la foto sea correcta.
 - `foto_valida_estado` explica ese resultado. `corresponde` y `no_corresponde` acompañan a `true` y `false`. Con `null` puede valer `sin_contexto`, `empate`, `sin_opinion` o `no_evaluado`. Solo `no_corresponde` descarta los hallazgos visuales.
 - `posibles` reúne detecciones no confirmadas y siempre está presente. `origen` puede ser `foto`, `foto_no_relacionada` o `contexto_vecinal`.
@@ -534,6 +535,7 @@ Un valor `null` o un estado indeterminado no significa ausencia. Las evaluacione
 
 | Versión | Fecha | Cambio |
 | --- | --- | --- |
+| 6 | 2026-10-16 | `problemas[].bolsas` en `retiro_escombros` confirmado: cantidad de bolsas de escombros (1 a 15 o `null`). |
 | 5 | 2026-10-16 | `contexto` acepta hasta 2000 caracteres en `/clasificar` y `/trabajos` (antes 500). El exceso se recorta. |
 | 4 | 2026-08-06 | El voto del modelo local no se publica: `fuentes` es un conteo y las detecciones sostenidas solo por el clasificador local se filtran. |
 

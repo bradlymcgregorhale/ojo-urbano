@@ -140,6 +140,8 @@ _ARBITRO_SUBTIPOS = cargar_prompt('arbitro/subtipos')
 
 _ARBITRO_DISPUTAS = cargar_prompt('arbitro/disputas')
 
+_ARBITRO_DATOS_CAMPOS = cargar_prompt('arbitro/datos_campos')
+
 _ARBITRO_SOLO_VISION = cargar_prompt('arbitro/solo_vision')
 
 _ARBITRO_UNA_FUENTE = cargar_prompt('arbitro/una_fuente')

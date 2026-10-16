@@ -84,7 +84,7 @@ GRAV_MAX = 5
 # vecino pide algo aunque la foto no lo confirme"; el contexto del vecino no
 # se devuelve nunca; ?verificar=0 responde degradado en vez de publicar el
 # modelo local. Ver README, "Cambios de contrato".
-VERSION_API = "5"
+VERSION_API = "6"
 CONTENEDORES_ESPECIALISTA = os.environ.get("CONTENEDORES_ESPECIALISTA", "0").lower() in ("1", "true", "si")
 
 # Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y varias
@@ -969,11 +969,20 @@ def _publica(r):
         if not patente_ok:
             e.pop("patente", None)
             e.pop("parte", None)
+            # Los campos de detalle (#202: bolsas) siguen el mismo contrato.
+            for campo in verificador.CAMPOS_POR_CLAVE.get(c.get("key"), {}):
+                e.pop(campo, None)
         return e
 
     for campo in ("problemas", "posibles", "descartados_por_foto"):
         pub[campo] = [_entrada(c, patente_ok=(campo == "problemas"))
                       for c in (r.get(campo) or []) if _visible(c)]
+    # En un problema confirmado el campo de detalle está SIEMPRE: null cuando
+    # ninguna lectura lo trajo (por ejemplo escombros inyectados por la fusión
+    # del modelo local, que no cuenta bolsas).
+    for c in pub["problemas"]:
+        for campo in verificador.CAMPOS_POR_CLAVE.get(c.get("key"), {}):
+            c.setdefault(campo, None)
 
     # elementos_detectados y en_duda también pueden nacer solo del modelo
     # local (modo sin verificación; árbitro caído): mismo filtro. en_duda es
