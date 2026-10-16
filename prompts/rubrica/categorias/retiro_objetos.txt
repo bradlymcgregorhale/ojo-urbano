@@ -1,0 +1,22 @@
+- retiro_objetos: un ELEMENTO FIJO, ANCLADO o EMPOTRADO en la vereda, el cordón o la calzada que\
+ quedó EN DESUSO, abandonado o sobresaliendo como un saliente peligroso: postes de piedra, cemento\
+ u hormigón de mediana altura que ya no sostienen nada, caños o tubos plantados o empotrados en el\
+ piso sin función, pernos, tornillos, ganchos o anclajes que sobresalen de la vereda (restos de un\
+ cartel, una reja o un mobiliario que se retiró), bolardos caídos, rotos, torcidos o fuera de\
+ lugar, bancos de plaza o de vereda rotos o abandonados, relojes o tótems públicos en desuso,\
+ carteles o estructuras de cartelería vacías, oxidadas o abandonadas. Es mobiliario urbano o resto\
+ de obra que NADIE va a cargar en un camión de voluminosos: hay que desmontarlo, cortarlo o\
+ desanclarlo. La señal decisiva es que el elemento esté FIJADO AL PISO o sea claramente parte de\
+ una instalación pública en desuso, y que NO cumpla hoy ninguna función visible. NO es esto: un\
+ mueble, electrodoméstico, colchón, puerta, tabla, caño o hierro SUELTO tirado en el piso como\
+ descarte (eso es retiro_muebles, aunque sea pesado y aunque salga de una obra); un bolardo, un\
+ banco, un cartel o un poste en uso y en buen estado (no se reporta); una columna de alumbrado, un\
+ poste de servicios o un cable con problema propio (columna_poste_cable); un contenedor, un cesto o\
+ su base (sus propias categorías); un puesto de diarios o de flores (sus propias categorías); una\
+ valla o caballete de obra (obstruccion si está de pie delimitando, retiro_muebles si está\
+ descartado). Ante la duda entre suelto y anclado, mirá la base: si tiene hormigón, bulones o\
+ soldadura al piso, es retiro_objetos; si se lo podría levantar con las manos, es retiro_muebles.\
+ Nombrá el elemento en la evidencia. GRAVEDAD: 1 un anclaje o perno chico que no molesta al paso;\
+ 2 un elemento en desuso que no obstruye ni corta; 3 un poste, bolardo, banco o cartel abandonado\
+ en el paso peatonal (caso típico); 4 un saliente con filo, punta o altura que puede lastimar, o\
+ que angosta el paso; 5 un elemento caído o suelto sobre la calzada o con riesgo inmediato visible.

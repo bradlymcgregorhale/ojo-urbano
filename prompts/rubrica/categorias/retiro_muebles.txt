@@ -64,7 +64,11 @@
  recoleccion. En una escena mixta con basura común Y alfombras, madera, muebles u otros\
  voluminosos, reportá AMBAS categorías; no dejes retiro_muebles afuera porque las bolsas o cajas\
  sean más numerosas. NO cuentan la mercadería ni el mobiliario EN USO de un vendedor, ni objetos en\
- uso. Tampoco cuenta el CERCO DE MADERA de un cantero: la guarda baja de listones o enrejado que\
+ uso. Tampoco cuentan los elementos FIJOS, ANCLADOS o EMPOTRADOS en la vereda o la calzada que\
+ quedaron en desuso (un poste de cemento que ya no sostiene nada, un bolardo, un banco, un reloj,\
+ un cartel o una estructura de cartelería abandonada, pernos, ganchos o anclajes que sobresalen del\
+ piso): eso es retiro_objetos, no un voluminoso descartado; retiro_muebles es lo SUELTO que se\
+ carga en un camión. Tampoco cuenta el CERCO DE MADERA de un cantero: la guarda baja de listones o enrejado que\
  rodea la cantera de un árbol o un cantero (parada, prolija, siguiendo el borde de la tierra) es\
  parte del cantero, NO un palet ni una madera descartada; un palet descartado de verdad está\
  SUELTO, apoyado contra algo o tirado plano, no plantado alrededor de la tierra. Tampoco cuentan\

@@ -2554,6 +2554,112 @@ check("el serializador publica objetos en el confirmado, [] si falta, y nunca en
 (V.VERIFICADORES, V.ARBITRO, V._llamar, V.ARBITRO_VOTOS, V.CONSENSO_VLM_SOLO,
  V.SEGUNDA_MIRADA_VOLUMINOSO, V.REPREGUNTA_OBJETOS) = _prev_203
 
+print("[#204] retiro_objetos separado de retiro_muebles, con elemento")
+_prev_204 = (V.VERIFICADORES, V.ARBITRO, V._llamar, V.ARBITRO_VOTOS, V.CONSENSO_VLM_SOLO,
+             V.SEGUNDA_MIRADA_VOLUMINOSO, V.REPREGUNTA_OBJETOS)
+V.VERIFICADORES, V.ARBITRO, V.ARBITRO_VOTOS = ["vlm/uno", "vlm/dos", "vlm/tres"], "arb/x", 1
+V.CONSENSO_VLM_SOLO = "confirma"
+V.SEGUNDA_MIRADA_VOLUMINOSO = V.REPREGUNTA_OBJETOS = False
+check("retiro_objetos ya no se pliega en la API", "retiro_objetos" not in V.FOLD)
+check("  pero el clasificador local sigue plegándolo a retiro_muebles",
+      V.FOLD_LOCAL.get("retiro_objetos") == "retiro_muebles" and all(V.FOLD_LOCAL[k] == v for k, v in V.FOLD.items()))
+check("retiro_objetos es categoría propia con su prestación",
+      len(CATS) == 47 and CATS.get("retiro_objetos", {}).get("prestacion") == "1645729658238"
+      and "objetos en desuso" not in CATS["retiro_muebles"]["nombre"])
+_rub_204 = V._prompt_sistema(CATS)
+check("  con rúbrica propia y la pregunta del elemento",
+      "retiro_objetos" in V._RUBRICA_KEYS and "- retiro_objetos:" in _rub_204 and "ELEMENTO EN DESUSO" in _rub_204
+      and "eso es retiro_objetos" in _rub_204)
+
+
+def _mock_elemento(por_modelo, key="retiro_objetos", evidencia="bolardo caído en la vereda"):
+    def fake(modelo, mensajes, etapa="", **k):
+        if etapa == "arbitrar":
+            return json.dumps({"decisiones": [{"key": "recoleccion", "veredicto": "rechazar", "motivo": "m"}],
+                               "descripcion": "Un elemento en desuso en la vereda."})
+        cats = []
+        if modelo in por_modelo:
+            cat = {"key": key, "gravedad": 3, "evidencia": evidencia}
+            if por_modelo[modelo] is not None:
+                cat["elemento"] = por_modelo[modelo]
+            cats.append(cat)
+        return json.dumps({"categorias": cats, "sin_problema": not cats,
+                           "descripcion": "Un elemento en desuso en la vereda.", "categorias_contexto": []})
+    return fake
+
+
+def _objetos_conf(r):
+    return next((c for c in r["confirmadas"] if c["key"] == "retiro_objetos"), None)
+
+
+V._llamar = _mock_elemento({"vlm/uno": "bolardos", "vlm/dos": "bolardo"})
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("un bolardo caído es retiro_objetos con elemento bolardos",
+      (_objetos_conf(r) or {}).get("elemento") == "bolardos"
+      and not any(c["key"] == "retiro_muebles" for c in r["confirmadas"]), str(_objetos_conf(r)))
+
+V._llamar = _mock_elemento({"vlm/uno": "cartel", "vlm/dos": "carteles"}, evidencia="estructura de cartel vacía y oxidada")
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("un cartel en desuso: elemento carteles (singular normalizado)",
+      (_objetos_conf(r) or {}).get("elemento") == "carteles", str(_objetos_conf(r)))
+
+V._llamar = _mock_elemento({"vlm/uno": "farol", "vlm/dos": None}, evidencia="tótem metálico oxidado")
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("un valor fuera de la lista no vota: elemento null, con la clave presente",
+      _objetos_conf(r) is not None and "elemento" in _objetos_conf(r) and _objetos_conf(r)["elemento"] is None)
+
+V._llamar = _mock_elemento({"vlm/uno": None, "vlm/dos": None}, key="retiro_muebles", evidencia="sillón de dos cuerpos descartado")
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+_sillon = next((c for c in r["confirmadas"] if c["key"] == "retiro_muebles"), None)
+check("control: un sillón sigue siendo retiro_muebles, sin retiro_objetos ni elemento",
+      _sillon is not None and "elemento" not in _sillon and _objetos_conf(r) is None, str(r["confirmadas"]))
+
+V._llamar = _mock_elemento({"vlm/uno": "bolardos", "vlm/dos": "bolardos"}, key="retiro_muebles")
+r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
+check("elemento en retiro_muebles se ignora",
+      all("elemento" not in c for c in r["confirmadas"]))
+
+# El clasificador local con la clase retiro_objetos: su puntaje suma a retiro_muebles.
+_clases_prev, _clf_prev = S.clases, S.clf
+
+
+class _ClfObjetos:
+    classes_ = ["retiro_objetos", "retiro_muebles", "sin_problema"]
+
+    def predict_proba(self, X):
+        return np.array([[0.95, 0.40, 0.02]])
+
+
+S.clases, S.clf = _ClfObjetos.classes_, _ClfObjetos()
+try:
+    _local_204 = S.clasificar_local(Image.new("RGB", (64, 64)))
+    _claves_local = {p["key"]: p["score"] for p in _local_204["probabilidades"]}
+    check("el puntaje local de retiro_objetos se pliega a retiro_muebles (máximo)",
+          "retiro_objetos" not in _claves_local and _claves_local.get("retiro_muebles") == 0.95, str(_claves_local))
+finally:
+    S.clases, S.clf = _clases_prev, _clf_prev
+
+check("el README documenta elemento, retiro_objetos y la versión 9",
+      "- `elemento` aparece solo en un `retiro_objetos` confirmado" in (AQUI / "README.md").read_text(encoding="utf-8")
+      and int(S.VERSION_API) >= 9)
+_pub_204 = servidor._publica({
+    "version": S.VERSION_API, "hay_problema": True, "hay_reclamo": True, "gravedad_maxima": 3,
+    "problemas": [{"key": "retiro_objetos", "nombre": "O", "gravedad": 3, "fuentes": ["vlm/uno", "vlm/dos"],
+                   "elemento": "bolardos"},
+                  {"key": "retiro_objetos", "nombre": "O2", "gravedad": 3, "fuentes": ["vlm/uno", "vlm/dos"]}],
+    "descripcion": "d", "categorias_contexto": [], "foto_valida": None,
+    "foto_valida_estado": "sin_contexto", "descartados_por_foto": [],
+    "posibles": [{"key": "retiro_objetos", "nombre": "O", "gravedad": 2, "elemento": "bancos",
+                  "fuentes": ["vlm/dos"], "origen": "foto", "arbitro": "rechazar", "motivo": "m"}],
+    "elementos_detectados": [], "en_duda": [],
+    "detalle": {"modelo_local": {"predichas": []},
+                "verificacion": {"activa": True, "verificadores": []}}})
+check("el serializador publica elemento en el confirmado, null si falta, y nunca en posibles",
+      _pub_204["problemas"][0].get("elemento") == "bolardos" and "elemento" in _pub_204["problemas"][1]
+      and _pub_204["problemas"][1]["elemento"] is None and all("elemento" not in c for c in _pub_204["posibles"]))
+(V.VERIFICADORES, V.ARBITRO, V._llamar, V.ARBITRO_VOTOS, V.CONSENSO_VLM_SOLO,
+ V.SEGUNDA_MIRADA_VOLUMINOSO, V.REPREGUNTA_OBJETOS) = _prev_204
+
 print("[#G] gravedad: mediana de los verificadores, no el maximo")
 # El maximo era un veto de una sola mano hacia arriba: con tres muestras
 # ruidosas queda siempre por encima del centro (medido: 58% de las fotos

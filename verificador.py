@@ -157,7 +157,6 @@ def _resumen_prestacion(p, largo=240):
 # Sinónimos que se pliegan a una categoría canónica en TODA la API: el modelo
 # local fue entrenado con estas clases pero la salida siempre usa la canónica.
 FOLD = {
-    "retiro_objetos": "retiro_muebles",
     "recoleccion_voluminosos": "retiro_muebles",
     "recoleccion_restos_obra": "retiro_escombros",
     "recoleccion_verdes": "retiro_poda",
@@ -166,6 +165,13 @@ FOLD = {
     # pliega a tapa_vereda y los modelos de visión deciden el subtipo real
     "nivelacion_tapa": "tapa_vereda",
 }
+# Pliegues SOLO para el clasificador local (#204): su clase retiro_objetos se
+# entrenó con fotos filadas por vecinos bajo ese trámite, que en la práctica
+# son voluminosos comunes. Ese puntaje sigue sumando a retiro_muebles; la
+# categoría retiro_objetos (mobiliario urbano o saliente anclado en desuso)
+# es solo de los modelos de visión y se confirma con dos lectores, como las
+# demás sin voto local.
+FOLD_LOCAL = {**FOLD, "retiro_objetos": "retiro_muebles"}
 
 # Claves de PRESENCIA: indican que un contenedor se ve en la foto, no que haya
 # un problema. No cuentan para sin_problema ni para la gravedad máxima.
@@ -1150,8 +1156,29 @@ def _objeto_tam(valor):
     return tam if tam in ("chico", "grande") else None
 
 
+# Elemento en desuso (#204): opción cerrada del formulario de la Ciudad.
+ELEMENTOS_OBJETOS = ("cemento", "canos", "bolardos", "bancos", "relojes", "carteles")
+_ELEMENTO_ALIAS = {
+    "cano": "canos", "canos": "canos", "tubo": "canos", "tubos": "canos", "perno": "canos",
+    "pernos": "canos", "gancho": "canos", "ganchos": "canos", "anclaje": "canos",
+    "anclajes": "canos", "poste": "cemento", "postes": "cemento", "hormigon": "cemento",
+    "concreto": "cemento", "piedra": "cemento", "bolardo": "bolardos", "banco": "bancos",
+    "reloj": "relojes", "cartel": "carteles", "carteleria": "carteles",
+}
+
+
+def _elemento(valor):
+    if not isinstance(valor, str):
+        return None
+    e = _norm_texto(valor).strip().split()
+    e = e[0] if e else ""
+    e = _ELEMENTO_ALIAS.get(e, e)
+    return e if e in ELEMENTOS_OBJETOS else None
+
+
 CAMPOS_POR_CLAVE = {
     "retiro_escombros": {"bolsas": _cuenta_1_a_15},
+    "retiro_objetos": {"elemento": _elemento},
     "retiro_muebles": {"objeto_tipo": _objeto_tipo, "objeto_tam": _objeto_tam,
                        "objeto_cant": _cuenta_1_a_15},
 }

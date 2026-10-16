@@ -5,5 +5,6 @@
  única exclusión es el cable EN el árbol cuyo defecto principal es dañar al árbol (apoyado, atado o\
  tensado contra el tronco, clavándose en la corteza, sin otro riesgo propio): eso es\
  problemas_arbolado. Un poste o caño SUELTO tirado en el piso como descarte es retiro_muebles, NO\
- esto.
+ esto. Un poste de cemento o un caño PLANTADO en la vereda que ya no sostiene nada, o un anclaje\
+ que sobresale del piso, es retiro_objetos, tampoco esto.
 
