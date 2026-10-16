@@ -12,8 +12,13 @@
     "grupo": "Residuos"
   },
   "retiro_muebles": {
-    "nombre": "Retiro de residuos voluminosos (muebles, electrodomésticos y objetos en desuso)",
+    "nombre": "Retiro de residuos voluminosos (muebles y electrodomésticos)",
     "grupo": "Residuos"
+  },
+  "retiro_objetos": {
+    "nombre": "Retiro de objetos en desuso / salientes en la vía pública",
+    "grupo": "Resoluciones urbanas",
+    "prestacion": "1645729658238"
   },
   "retiro_poda": {
     "nombre": "Retiro de restos de poda o jardinería",

@@ -84,7 +84,7 @@ GRAV_MAX = 5
 # vecino pide algo aunque la foto no lo confirme"; el contexto del vecino no
 # se devuelve nunca; ?verificar=0 responde degradado en vez de publicar el
 # modelo local. Ver README, "Cambios de contrato".
-VERSION_API = "8"
+VERSION_API = "9"
 CONTENEDORES_ESPECIALISTA = os.environ.get("CONTENEDORES_ESPECIALISTA", "0").lower() in ("1", "true", "si")
 
 # Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y varias
@@ -274,7 +274,7 @@ def clasificar_local(img):
     # pliega las clases sinónimas del modelo a su categoría canónica (max score)
     agg = {}
     for k, p in zip(clases, proba):
-        ck = verificador.FOLD.get(k, k)
+        ck = verificador.FOLD_LOCAL.get(k, k)
         agg[ck] = max(agg.get(ck, 0.0), float(p))
     ranking = sorted(agg.items(), key=lambda x: -x[1])
     fmt = lambda lst: [{"key": k, "nombre": nombre_de(k), "score": round(s, 4)}
@@ -1206,7 +1206,7 @@ async def guardias(request, call_next):
 
 @app.get("/salud")
 def salud():
-    canonicas = sorted({verificador.FOLD.get(k, k) for k in clases})
+    canonicas = sorted({verificador.FOLD_LOCAL.get(k, k) for k in clases})
     return {"ok": True, "clases": canonicas,
             "verificacion": verificador.disponible(),
             "verificadores": verificador.VERIFICADORES,

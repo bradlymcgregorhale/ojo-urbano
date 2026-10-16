@@ -122,7 +122,7 @@ El servicio está escrito en Python.
 - `model.joblib` contiene el modelo local: embeddings de CLIP, DINOv2 y SigLIP2, un scaler, un OneVsRest de regresión logística y un regresor de gravedad. Se ejecuta en CPU con PyTorch, transformers, sentence-transformers, scikit-learn, joblib y Pillow.
 - `verificador.py` hace las llamadas a OpenRouter. Los modelos de visión trabajan en paralelo. DeepSeek interviene como árbitro de texto porque sus modelos en OpenRouter no aceptan imágenes.
 - Los criterios por categoría y las pasadas dirigidas están en [`prompts/`](prompts/README.md), junto con las instrucciones del árbitro y del análisis de texto.
-- [`categorias.json`](categorias.json) contiene las 46 categorías propias. [`prestaciones.json`](prestaciones.json) contiene el catálogo completo de la Ciudad usado para interpretar el texto del vecino.
+- [`categorias.json`](categorias.json) contiene las 47 categorías propias. [`prestaciones.json`](prestaciones.json) contiene el catálogo completo de la Ciudad usado para interpretar el texto del vecino.
 
 ## API
 
@@ -163,7 +163,7 @@ Ejemplo de respuesta:
 
 ```json
 {
-  "version": "8",
+  "version": "9",
   "hay_problema": true,
   "hay_reclamo": true,
   "gravedad_maxima": 3,
@@ -209,12 +209,13 @@ Ejemplo de respuesta:
 - `bolsas` aparece solo en un `retiro_escombros` confirmado: cantidad de bolsas o sacos de escombros visibles, entero de 1 a 15, o `null` si el escombro está suelto o no se pudo contar. Cada lector cuenta por su lado; se publica la cantidad más repetida entre los que votaron escombros. Un empate lo decide el árbitro en su misma llamada de desempate, y sin árbitro queda `null`. Nunca se promedia. En `posibles` y `descartados_por_foto` no viaja.
 - `objeto_tipo`, `objeto_tam` y `objeto_cant` aparecen solo en un `retiro_muebles` confirmado. `objeto_tipo` es el objeto dominante con uno de estos rótulos: `heladera`, `lavarropas`, `cocina`, `televisor`, `electronica`, `colchon`, `somier`, `sillon`, `silla`, `mesa`, `placard`, `estanteria`, `puertas`, `ventanas`, `maderas`, `cajas`, `alfombra`, `sanitario`, `vidrios`, `chatarra`, `bidones` u `otros` (mezcla o nada que encaje); un rótulo fuera de la lista no cuenta. `objeto_tam` es `chico` si una persona lo carga sola o `grande` si hacen falta más de una (una carga mixta es `grande`). `objeto_cant` cuenta ítems, no pilas: entero de 1 a 15 o `null` si no se pudo contar. Los tres se resuelven como `bolsas`: la lectura más repetida entre los lectores que votaron la categoría, el empate lo decide el árbitro en su misma llamada y sin árbitro queda `null`.
 - `objetos` aparece solo en un `retiro_muebles` confirmado: lista de hasta 8 nombres cortos de los objetos voluminosos que se ven, en texto plano y uno por ítem (`["heladera", "colchón", "dos puertas"]`), para armar el detalle de un formulario sin recortar `descripcion`. Sale de la misma respuesta JSON de cada lector, sin llamadas extra, y se publica aunque haya un solo lector activo. Se unen las listas de los lectores que votaron la categoría, sin repetir, primero lo que más lectores nombraron. Sólo nombres de objetos: se descartan lugares, personas, nombres propios y cualquier ítem que esté en el `contexto` del vecino y que ningún lector mencione por su cuenta. Vacía (`[]`) si ningún lector nombró nada.
+- `elemento` aparece solo en un `retiro_objetos` confirmado, con uno de estos valores: `cemento` (postes o bloques de piedra, cemento u hormigón), `canos` (caños, tubos, pernos, ganchos y anclajes), `bolardos`, `bancos`, `relojes`, `carteles`, o `null` si no encaja. `retiro_objetos` es el trámite de la Ciudad "Retiro de objetos en desuso" (prestación 1645729658238): mobiliario urbano o resto de obra fijo, anclado o empotrado que quedó en desuso o sobresale. Es distinto de `retiro_muebles`, que es lo suelto que tiró un vecino (una heladera, un colchón, un sillón); un bolardo caído es `retiro_objetos` con `elemento: bolardos`, un sillón sigue siendo `retiro_muebles`. La categoría la confirman dos lectores de visión; el puntaje `retiro_objetos` del clasificador local sigue sumando a `retiro_muebles`, porque esa clase se entrenó con voluminosos comunes. Se resuelve como `bolsas`: la lectura más repetida, el empate lo decide el árbitro y sin árbitro queda `null`.
 - `foto_valida` dice si la imagen respalda el contexto. `true` significa que sirve como prueba, `false` que no muestra lo reclamado y `null` que no pudo evaluarse. Un valor `null` no significa que la foto sea correcta.
 - `foto_valida_estado` explica ese resultado. `corresponde` y `no_corresponde` acompañan a `true` y `false`. Con `null` puede valer `sin_contexto`, `empate`, `sin_opinion` o `no_evaluado`. Solo `no_corresponde` descarta los hallazgos visuales.
 - `posibles` reúne detecciones no confirmadas y siempre está presente. `origen` puede ser `foto`, `foto_no_relacionada` o `contexto_vecinal`.
 - `descartados_por_foto` contiene lo que mostraba una imagen marcada con `foto_valida: false`. Esas entradas no se reportan y traen `motivo_descarte`.
 - `descripcion` resume la escena. La escribe el árbitro cuando interviene; de lo contrario se usa la descripción del verificador que más coincide con el resultado. Sin verificación vale `null`.
-- `categorias_contexto` contiene lo que describe el texto y la foto no confirma. No modifica `gravedad_maxima` ni `hay_problema`, pero sí puede hacer que `hay_reclamo` sea `true`. Cada entrada trae `respaldo_visual`, con valor `compatible`, `neutral` o `contradice`. Un reclamo ajeno a las 46 categorías puede mapear a una prestación de [`prestaciones.json`](prestaciones.json), que usa `codigo` en lugar de `key`.
+- `categorias_contexto` contiene lo que describe el texto y la foto no confirma. No modifica `gravedad_maxima` ni `hay_problema`, pero sí puede hacer que `hay_reclamo` sea `true`. Cada entrada trae `respaldo_visual`, con valor `compatible`, `neutral` o `contradice`. Un reclamo ajeno a las 47 categorías puede mapear a una prestación de [`prestaciones.json`](prestaciones.json), que usa `codigo` en lugar de `key`.
 - `elementos_detectados` enumera los contenedores visibles aunque no tengan problemas.
 - `en_duda` contiene categorías con una fuente que el árbitro no resolvió. Las detecciones aisladas normalmente aparecen en `posibles`. La excepción son las claves de presencia `contenedor_*`: no pasan por el árbitro ni por `posibles`. Con una fuente quedan en `en_duda`; con dos pasan a `elementos_detectados`.
 - `calidad_foto` informa `lado_menor`, `nitidez`, `luminancia` y `definicion`, que puede ser `buena` o `limitada`. No filtra resultados ni cambia decisiones. Sobre 200 fotos etiquetadas por personas, la calidad global no predijo los errores.
@@ -537,6 +538,7 @@ Un valor `null` o un estado indeterminado no significa ausencia. Las evaluacione
 
 | Versión | Fecha | Cambio |
 | --- | --- | --- |
+| 9 | 2026-10-16 | `retiro_objetos` deja de plegarse a `retiro_muebles` y es categoría propia (47 en total) con `problemas[].elemento` (`cemento`, `canos`, `bolardos`, `bancos`, `relojes`, `carteles` o `null`). El nombre de `retiro_muebles` pasa a "Retiro de residuos voluminosos (muebles y electrodomésticos)". |
 | 8 | 2026-10-16 | `problemas[].objetos` en `retiro_muebles` confirmado: lista de hasta 8 objetos voluminosos vistos. |
 | 7 | 2026-10-16 | `problemas[].objeto_tipo`, `objeto_tam` y `objeto_cant` en `retiro_muebles` confirmado: objeto dominante (rótulo cerrado), tamaño y cantidad. |
 | 6 | 2026-10-16 | `problemas[].bolsas` en `retiro_escombros` confirmado: cantidad de bolsas de escombros (1 a 15 o `null`). |

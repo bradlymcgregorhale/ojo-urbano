@@ -105,6 +105,10 @@ Reglas finales:
  con los objetos voluminosos que SE VEN, en texto plano y uno por ítem, por ejemplo ["heladera",\
  "colchón", "dos puertas"]. Solo nombres de objetos: nada de lugares (vereda, esquina, contenedor),\
  nada de personas ni de nombres propios, y nada copiado del contexto vecinal que no veas en la foto.
+- ELEMENTO EN DESUSO: si reportás retiro_objetos, agregá "elemento" adentro de esa categoría con UNO\
+ de estos valores exactos: cemento (postes o bloques de piedra, cemento u hormigón), canos (caños o\
+ tubos, pernos, ganchos y anclajes metálicos), bolardos, bancos, relojes, carteles. Si no encaja en\
+ ninguno, null; no inventes otro valor.
 - En "descripcion" contá en 1 o 2 frases qué se ve en la foto: la escena, los objetos principales y\
  su estado, coherente con las categorías que reportás.
 - IMPORTANTE: si en la foto hay algo que un vecino podría razonablemente creer que es un problema\
