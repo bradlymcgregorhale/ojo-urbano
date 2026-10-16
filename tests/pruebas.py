@@ -327,8 +327,8 @@ for _ in range(150):
     time.sleep(0.2)
 check("la consulta por query string llega a estado listo",
       _fin is not None and _fin.get("estado") == "listo", str(_fin)[:120])
-check("  con el contrato v4 en resultado",
-      bool(_fin) and (_fin.get("resultado") or {}).get("version") == "4"
+check("  con el contrato vigente en resultado",
+      bool(_fin) and (_fin.get("resultado") or {}).get("version") == S.VERSION_API
       and "problemas" in (_fin.get("resultado") or {}))
 código, e2 = pedir(f"/trabajos/{_tid}")
 check("  y el segmento directo /trabajos/{id} da lo mismo",
@@ -339,7 +339,7 @@ _demora["s"] = 0.0
 código, t2 = pedir("/trabajos", *_multipart("t.jpg", foto(830, 630))[::1])
 check("repetir la foto devuelve listo directo desde la caché",
       código == 200 and t2.get("estado") == "listo" and t2.get("trabajo") is None
-      and (t2.get("resultado") or {}).get("version") == "4", f"HTTP {código}")
+      and (t2.get("resultado") or {}).get("version") == S.VERSION_API, f"HTTP {código}")
 
 código, _ = pedir("/trabajos?id=noexiste")
 check("un id desconocido devuelve 404", código == 404, f"HTTP {código}")
@@ -606,6 +606,40 @@ check("la misma foto no vuelve a procesarse", _corridas["n"] == 1, f"{_corridas[
 pedir("/clasificar", *_multipart("f.jpg", misma, contexto="hay ratas")[::1])
 check("distinto contexto sí se procesa de nuevo", _corridas["n"] == 2,
       f"{_corridas['n']} ejecuciones")
+
+print("[#206] el contexto acepta hasta 2000 caracteres y se recorta")
+_ctx_visto = {}
+
+
+def _contando_ctx(datos, contexto, verificar):
+    _ctx_visto["contexto"] = contexto
+    return _contando(datos, contexto, verificar)
+
+
+S.procesar = _contando_ctx
+_antes_ctx = _corridas["n"]
+_foto_ctx = foto(811, 611)
+código, _ = pedir("/clasificar", *_multipart("l.jpg", _foto_ctx, contexto="a" * 2500)[::1])
+check("2500 caracteres de contexto no fallan", código == 200, f"HTTP {código}")
+check("  y llegan al pipeline recortados a 2000",
+      len(_ctx_visto.get("contexto") or "") == 2000, str(len(_ctx_visto.get("contexto") or "")))
+check("  el tope es CONTEXTO_MAX = 2000", S.CONTEXTO_MAX == 2000, str(S.CONTEXTO_MAX))
+pedir("/clasificar", *_multipart("l.jpg", _foto_ctx, contexto="a" * 2000)[::1])
+check("  el mismo texto ya recortado sale de la caché, sin otra corrida",
+      _corridas["n"] == _antes_ctx + 1, f"{_corridas['n'] - _antes_ctx} corridas")
+código, _ = pedir("/clasificar", *_multipart("l.jpg", _foto_ctx, contexto="b" * 1500)[::1])
+check("  1500 caracteres viajan enteros", código == 200 and _ctx_visto.get("contexto") == "b" * 1500)
+código, _tr = pedir("/trabajos", *_multipart("t.jpg", foto(812, 612), contexto="c" * 2500)[::1])
+_tid_ctx = _tr.get("trabajo")
+check("/trabajos recorta con el mismo tope",
+      código == 202 and bool(_tid_ctx) and len(S._trabajos[_tid_ctx]["contexto"]) == 2000,
+      f"HTTP {código}")
+check("la demo anuncia el tope nuevo",
+      "2000 caracteres" in S.PAGINA and "maxLength=2000" in S.PAGINA
+      and "slice(0,2000)" in S.PAGINA and "500 caracteres" not in S.PAGINA)
+check("el README documenta el tope nuevo",
+      "hasta 2000 caracteres" in (AQUI / "README.md").read_text(encoding="utf-8"))
+S.procesar = _contando
 
 # Un resultado degradado por cuota agotada no puede quedar cacheado: al día
 # siguiente, con cuota nueva, la misma foto tiene que volver a verificarse.
@@ -1023,8 +1057,8 @@ _PROHIBIDAS = {"detalle", "modelo_local", "predichas", "top5",
                "probabilidades", "contexto", "score", "umbral"}
 for _vuelta in ("fresca", "cacheada"):
     _c, _r = pedir("/clasificar", *_multipart("v4.jpg", _foto_v4)[::1])
-    check(f"({_vuelta}) contrato v4 con las claves esperadas",
-          _c == 200 and _r.get("version") == "4" and all(k in _r for k in _LEAN),
+    check(f"({_vuelta}) contrato vigente con las claves esperadas",
+          _c == 200 and _r.get("version") == S.VERSION_API and all(k in _r for k in _LEAN),
           f"HTTP {_c} claves={sorted(_r)[:8]}")
     _coladas = set(_claves_recursivas({k: v for k, v in _r.items()
                                      if k != "modelo_local"})) & _PROHIBIDAS

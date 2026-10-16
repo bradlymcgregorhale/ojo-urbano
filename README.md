@@ -131,7 +131,7 @@ El servicio está escrito en Python.
 Recibe `multipart/form-data` con estos campos:
 
 - `file`: la foto.
-- `contexto`: texto opcional de hasta 500 caracteres.
+- `contexto`: texto opcional de hasta 2000 caracteres. Lo que pasa de ese tope se recorta; el pedido no falla.
 - `modo`: `bajo` (Económico), `medio` (Equilibrado) o `alto` (Completo). Se envía como campo del formulario; si lo omitís, se usa `alto`. Qué hace cada uno está en [Modos de análisis](#modos-de-análisis).
 - `verificar`: `auto`, `1` o `0`. El valor por defecto es `auto`, que verifica cuando hay una clave configurada. `1` fuerza la verificación y `0` devuelve una respuesta degradada, sin clasificación.
 
@@ -163,7 +163,7 @@ Ejemplo de respuesta:
 
 ```json
 {
-  "version": "4",
+  "version": "5",
   "hay_problema": true,
   "hay_reclamo": true,
   "gravedad_maxima": 3,
@@ -527,6 +527,15 @@ La guía del Gobierno de la Ciudad indica barrer desde el cordón hacia el frent
 - https://boletinoficialpdf.buenosaires.gob.ar/util/imagen.php?idf=1&idn=30564
 
 Un valor `null` o un estado indeterminado no significa ausencia. Las evaluaciones incompletas tampoco cuentan como acuerdo. Si hay evidencia corroborada de un problema y a la vez los lectores dicen que la calidad impide evaluarlo, se conserva el problema y se publica `calidad_contradictoria` para revisión.
+
+### Cambios de contrato
+
+`version` sube cuando cambia lo que publica la API. Un cliente que lee `version` puede saber qué campos esperar.
+
+| Versión | Fecha | Cambio |
+| --- | --- | --- |
+| 5 | 2026-10-16 | `contexto` acepta hasta 2000 caracteres en `/clasificar` y `/trabajos` (antes 500). El exceso se recorta. |
+| 4 | 2026-08-06 | El voto del modelo local no se publica: `fuentes` es un conteo y las detecciones sostenidas solo por el clasificador local se filtran. |
 
 ## Reglas de clasificación
 
