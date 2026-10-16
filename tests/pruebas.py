@@ -2660,6 +2660,132 @@ check("el serializador publica elemento en el confirmado, null si falta, y nunca
 (V.VERIFICADORES, V.ARBITRO, V._llamar, V.ARBITRO_VOTOS, V.CONSENSO_VLM_SOLO,
  V.SEGUNDA_MIRADA_VOLUMINOSO, V.REPREGUNTA_OBJETOS) = _prev_204
 
+print("[#205] POST /comparar: ¿las dos fotos son la misma escena?")
+import comparador  # noqa: E402
+
+
+def _multipart_par(datos_a, datos_b, modo=None, sin_b=False):
+    b = "----ojo"
+    partes = [f'--{b}\r\nContent-Disposition: form-data; name="file_a"; filename="a.jpg"\r\n'
+              f"Content-Type: application/octet-stream\r\n\r\n".encode(), datos_a, b"\r\n"]
+    if not sin_b:
+        partes += [f'--{b}\r\nContent-Disposition: form-data; name="file_b"; filename="b.jpg"\r\n'
+                   f"Content-Type: application/octet-stream\r\n\r\n".encode(), datos_b, b"\r\n"]
+    if modo is not None:
+        partes.append(f'--{b}\r\nContent-Disposition: form-data; name="modo"\r\n\r\n{modo}\r\n'.encode())
+    partes.append(f"--{b}--\r\n".encode())
+    return b"".join(partes), f"multipart/form-data; boundary={b}"
+
+
+_prev_205 = V.VERIFICADORES, V.ARBITRO, V._llamar, os.environ.get("OPENROUTER_API_KEY", "")
+_cmp_llamadas = []
+
+
+def _mock_comparar(respuestas, arbitro="no", arbitro_falla=False):
+    """respuestas: lista de veredictos de los lectores en orden ("si", "no", "duda",
+    "falla" para un corte de red, "basura" para una respuesta inválida)."""
+    def fake(modelo, mensajes, etapa="", **k):
+        _cmp_llamadas.append((modelo, etapa))
+        if etapa == "arbitrar_comparar":
+            if arbitro_falla:
+                raise urllib.error.URLError("caído")
+            return json.dumps({"misma": arbitro, "motivo": "la lectura con el cartel decide"})
+        i = sum(1 for m, e in _cmp_llamadas if e == "comparar") - 1
+        v = respuestas[min(i, len(respuestas) - 1)]
+        if v == "falla":
+            raise urllib.error.URLError("caído")
+        if v == "basura":
+            return "no sé"
+        return json.dumps({"misma": v, "motivo": f"motivo {v}"})
+    return fake
+
+
+_FA, _FB = foto(821, 621), foto(822, 622)
+_c, _r = pedir("/comparar/", *_multipart_par(_FA, _FB)[::1])
+check("sin clave de OpenRouter la comparación responde 503", _c == 503, f"HTTP {_c} {_r}")
+
+os.environ["OPENROUTER_API_KEY"] = "prueba-205"
+V._llamar = _mock_comparar(["si"])
+_c, _r = pedir("/comparar/", *_multipart_par(_FA, _FB)[::1])
+check("un lector que contesta 'si' alcanza: 200 con misma y motivo",
+      _c == 200 and _r.get("misma") == "si" and _r.get("motivo") == "motivo si"
+      and _r.get("version") == S.VERSION_API, f"HTTP {_c} {_r}")
+check("  con una sola llamada y sin árbitro",
+      len([e for _, e in _cmp_llamadas if e == "comparar"]) == 1 and _r.get("arbitro") is None
+      and len(_r.get("modelos") or []) == 1 and _r["modelos"][0].get("misma") == "si")
+check("  y sin ninguna lectura del modelo local",
+      not any("local" in k for k in _claves_recursivas(_r)) and _r.get("modo") == "alto"
+      and "costo_api" in _r and "tokens_api" in _r)
+_n_antes = len(_cmp_llamadas)
+_c2, _r2 = pedir("/comparar/", *_multipart_par(_FA, _FB)[::1])
+check("el mismo par sale de la caché sin volver a llamar",
+      _c2 == 200 and _r2 == _r and len(_cmp_llamadas) == _n_antes)
+_c3, _r3 = pedir("/comparar", *_multipart_par(_FB, _FA)[::1])
+check("el par invertido es otra comparación (y /comparar sin barra también sirve)",
+      _c3 == 200 and len(_cmp_llamadas) == _n_antes + 1, f"HTTP {_c3}")
+
+_c, _r = pedir("/comparar/", *_multipart_par(b"x" * (S.MAX_BYTES + 1), _FB)[::1])
+check("una foto por encima del techo da 413", _c == 413, f"HTTP {_c}")
+_c, _r = pedir("/comparar/", *_multipart_par(b"x" * (S.MAX_BYTES - 1024), b"y" * (S.MAX_BYTES - 1024))[::1])
+check("dos fotos casi al techo pasan la guarda de tamaño (400 por no ser imagen, no 413)",
+      _c == 400, f"HTTP {_c} {_r}")
+_c, _r = pedir("/comparar/?modo=alto", *_multipart_par(_FA, _FB)[::1])
+check("modo en la URL da 422 como en /clasificar", _c == 422, f"HTTP {_c}")
+_c, _r = pedir("/comparar/", *_multipart_par(_FA, _FB, modo="turbo")[::1])
+check("modo desconocido da 422", _c == 422, f"HTTP {_c}")
+_c, _r = pedir("/comparar/", *_multipart_par(_FA, _FB, sin_b=True)[::1])
+check("sin file_b da 422", _c == 422, f"HTTP {_c}")
+
+# Recorridos de duda, segundo lector y árbitro, directo sobre el módulo.
+V.VERIFICADORES, V.ARBITRO = ["cmp/uno", "cmp/dos", "cmp/tres"], "arb/x"
+
+
+def _correr_cmp(respuestas, **k):
+    _cmp_llamadas.clear()
+    V._llamar = _mock_comparar(respuestas, **k)
+    return comparador.comparar(_Img(), _Img())
+
+
+r = _correr_cmp(["duda", "no"], arbitro="no")
+check("duda -> segundo lector -> árbitro: decide el árbitro ('no')",
+      r["misma"] == "no" and r["arbitro"] and r["arbitro"]["modelo"] == "arb/x"
+      and [e for _, e in _cmp_llamadas] == ["comparar", "comparar", "arbitrar_comparar"] and not r["fallo"], str(r))
+r = _correr_cmp(["duda", "no"], arbitro="si")
+check("  el árbitro puede contradecir al segundo lector", r["misma"] == "si" and r["motivo"] == "la lectura con el cartel decide")
+r = _correr_cmp(["no"])
+check("dos ángulos distintos: un 'no' directo no pregunta a nadie más",
+      r["misma"] == "no" and len(_cmp_llamadas) == 1 and r["arbitro"] is None)
+r = _correr_cmp(["duda", "si"], arbitro_falla=True)
+check("árbitro caído: vale la lectura decidida del segundo, marcado como fallo",
+      r["misma"] == "si" and r["arbitro"] is None and r["fallo"] is True, str(r))
+r = _correr_cmp(["falla", "no"])
+check("primer lector caído: el segundo decide solo, marcado como fallo",
+      r["misma"] == "no" and r["fallo"] is True and len(_cmp_llamadas) == 2, str(r))
+r = _correr_cmp(["basura", "si"])
+check("una respuesta sin veredicto cuenta como lector caído", r["misma"] == "si" and r["fallo"] is True)
+r = _correr_cmp(["duda", "duda"], arbitro="duda")
+check("dos dudas y árbitro en duda: 'duda'", r["misma"] == "duda" and r["arbitro"]["misma"] == "duda")
+try:
+    _correr_cmp(["falla", "falla"])
+    check("dos lectores caídos: no hay veredicto", False)
+except comparador.ComparacionNoDisponibleError:
+    check("dos lectores caídos: no hay veredicto", True)
+V.VERIFICADORES = ["cmp/uno"]
+r = _correr_cmp(["duda"])
+check("un solo lector configurado en duda: 'duda' sin árbitro", r["misma"] == "duda" and r["arbitro"] is None)
+check("una comparación apoyada en un corte no se guarda en caché",
+      S._cacheable({"tipo": "comparacion", "fallo": True}) is False
+      and S._cacheable({"tipo": "comparacion", "fallo": False}) is True)
+check("los prompts de comparación están cargados y fijados",
+      '"misma"' in V._PROMPT_COMPARAR and "{lecturas}" in V._ARBITRO_COMPARAR)
+check("README, estructura e intermediario documentan /comparar",
+      "### `POST /comparar`" in (AQUI / "README.md").read_text(encoding="utf-8")
+      and "`comparador.py`" in (AQUI / "docs" / "estructura.md").read_text(encoding="utf-8")
+      and "'/comparar'" in (AQUI / "deploy" / "ojourbano.php").read_text(encoding="utf-8")
+      and int(S.VERSION_API) >= 10)
+V.VERIFICADORES, V.ARBITRO, V._llamar, _clave_prev = _prev_205
+os.environ["OPENROUTER_API_KEY"] = _clave_prev
+
 print("[#G] gravedad: mediana de los verificadores, no el maximo")
 # El maximo era un veto de una sola mano hacia arriba: con tres muestras
 # ruidosas queda siempre por encima del centro (medido: 58% de las fotos

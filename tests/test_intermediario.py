@@ -91,7 +91,7 @@ class IntermediarioTests(unittest.TestCase):
                                     if proc.poll() is not None:
                                         self.fail('El servidor PHP no inició')
                                     time.sleep(.02)
-                            for ruta in ('clasificar', 'trabajos', '%63lasificar', 'trabajos%2F', 'otra'):
+                            for ruta in ('clasificar', 'trabajos', 'comparar', '%63lasificar', 'trabajos%2F', 'otra'):
                                 for campos in ([('modo', 'bajo')], [('modo', 'medio')], [],
                                                [('modo', 'bajo'), ('modo', 'alto')],
                                                [('modo[]', 'bajo')], [('modo[clave]', 'medio')],

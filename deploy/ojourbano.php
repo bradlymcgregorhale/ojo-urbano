@@ -144,7 +144,7 @@ if ( 'POST' === $_SERVER['REQUEST_METHOD'] ) {
 
 		// PHP convierte modo[] y modo[clave] en arrays al leer multipart.
 		// Los rechazo antes de que cURL pueda convertirlos en un valor escalar.
-		if ( in_array( rtrim( rawurldecode( $path ), '/' ), array( '/clasificar', '/trabajos' ), true )
+		if ( in_array( rtrim( rawurldecode( $path ), '/' ), array( '/clasificar', '/trabajos', '/comparar' ), true )
 			&& ( ( isset( $_POST['modo'] ) && ! is_string( $_POST['modo'] ) )
 				|| isset( $_FILES['modo'] ) ) ) {
 			http_response_code( 422 );

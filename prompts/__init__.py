@@ -76,6 +76,9 @@ PRIORIDAD_COMPARACION = cargar_prompt('compartidos/prioridad_comparacion')
 OBSERVACIONES_HIGIENE = cargar_prompt('compartidos/observaciones_higiene')
 
 _PROMPT_PATENTE = cargar_prompt('dirigidos/patente')
+
+_PROMPT_COMPARAR = cargar_prompt('dirigidos/comparar')
+_ARBITRO_COMPARAR = cargar_prompt('arbitro/comparar')
 # Pregunta separada de encuadre con el criterio de la cuadrilla de Higiene (#114).
 _PROMPT_ENCUADRE_HIGIENE = cargar_prompt('dirigidos/encuadre_higiene')
 _PROMPT_APTITUD_HIGIENE = cargar_prompt('dirigidos/aptitud_higiene')

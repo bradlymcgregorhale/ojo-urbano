@@ -50,6 +50,7 @@ from PIL import Image, ImageOps
 from sentence_transformers import SentenceTransformer
 
 import verificador
+import comparador
 import modos_analisis as modos
 from typing import Any
 import revision_escombros_publica as revision_publica
@@ -84,7 +85,7 @@ GRAV_MAX = 5
 # vecino pide algo aunque la foto no lo confirme"; el contexto del vecino no
 # se devuelve nunca; ?verificar=0 responde degradado en vez de publicar el
 # modelo local. Ver README, "Cambios de contrato".
-VERSION_API = "9"
+VERSION_API = "10"
 CONTENEDORES_ESPECIALISTA = os.environ.get("CONTENEDORES_ESPECIALISTA", "0").lower() in ("1", "true", "si")
 
 # Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y varias
@@ -454,6 +455,10 @@ def _cacheable(respuesta):
     verificadores caídos), esa foto queda devuelta sin verificar para siempre,
     incluso al día siguiente con cuota nueva.
     """
+    if respuesta.get("tipo") == "comparacion":
+        # /comparar: un veredicto que se apoyó en menos lecturas de las
+        # previstas (lector o árbitro caídos) no se guarda.
+        return not respuesta.get("fallo")
     if respuesta.get("modo") in ("bajo", "medio") and respuesta.get("analisis_estado") == "parcial":
         return False
     veri = respuesta.get("detalle", {}).get("verificacion", {})
@@ -1173,8 +1178,9 @@ async def guardias(request, call_next):
     mientras el router igual despacha /clasificar.
     """
     ruta = request.scope.get("path", "").rstrip("/")
+    es_comparar = ruta.endswith("/comparar")
     if request.method == "POST" and (ruta.endswith("/clasificar")
-                                     or ruta.endswith("/trabajos")):
+                                     or ruta.endswith("/trabajos") or es_comparar):
         if API_TOKEN and not hmac.compare_digest(
                 request.headers.get("x-api-token", ""), API_TOKEN):
             return JSONResponse({"detail": "token inválido o ausente"}, status_code=401)
@@ -1189,9 +1195,13 @@ async def guardias(request, call_next):
         # contexto), no solo la foto: sin este margen una foto justo en el
         # límite se rechazaría por el envoltorio. El techo exacto de la foto lo
         # aplica _leer_acotado.
-        if int(declarado) > MAX_BYTES + MARGEN_MULTIPART:
+        # /comparar lleva DOS fotos, cada una con el mismo techo que /clasificar;
+        # el techo exacto por archivo lo aplica _leer_acotado.
+        fotos = 2 if es_comparar else 1
+        if int(declarado) > fotos * MAX_BYTES + MARGEN_MULTIPART:
             return JSONResponse(
-                {"detail": f"la foto supera el límite de {MAX_BYTES // (1024 * 1024)} MB"},
+                {"detail": ("cada foto" if es_comparar else "la foto")
+                 + f" supera el límite de {MAX_BYTES // (1024 * 1024)} MB"},
                 status_code=413)
         permitido, espera = _permitir(_ip_cliente(request))
         if not permitido:
@@ -1345,8 +1355,11 @@ async def clasificar(request: Request, file: UploadFile = File(...),
     return JSONResponse(_publica(respuesta))
 
 
-async def _correr_con_cupo(datos, contexto, verificar, huella, perfil=None):
-    """Corre el pipeline con el cupo YA tomado, fuera del event loop."""
+async def _correr_con_cupo(datos, contexto, verificar, huella, perfil=None, funcion=None):
+    """Corre el pipeline con el cupo YA tomado, fuera del event loop.
+
+    funcion: callable sin argumentos que reemplaza a procesar() (lo usa
+    /comparar, que comparte cupo, cola, techo y caché con /clasificar)."""
     # El cupo lo suelta EL PRIMERO que llegue: el hilo al terminar, o el techo
     # si el trabajo se colgó. Nunca los dos (BoundedSemaphore explotaría).
     soltado = threading.Lock()
@@ -1391,7 +1404,7 @@ async def _correr_con_cupo(datos, contexto, verificar, huella, perfil=None):
         # corrutina que espera se cancela (cliente que corta la conexión):
         # cancelar el await NO corta el hilo, que sigue quemando CPU.
         try:
-            respuesta = procesar(datos, contexto, verificar)
+            respuesta = funcion() if funcion is not None else procesar(datos, contexto, verificar)
             # La caché se escribe ACÁ, en el hilo y antes de soltar el cupo:
             # si el cliente abortó, la corrutina ya no está para guardarla, y
             # el reintento de la misma foto tiene que encontrar el resultado
@@ -1436,6 +1449,78 @@ async def _correr_con_cupo(datos, contexto, verificar, huella, perfil=None):
             techo.cancel()
             soltar_cupo()
         raise
+
+
+# ---- Comparar dos fotos (#205) ---------------------------------------------
+def _comparar_sync(datos_a, datos_b):
+    """Compara dos fotos fuera del event loop. Misma contabilidad de costo y
+    tokens que procesar(); sin modelo local."""
+    verificador.costo_reset()
+    verificador.tokens_reset()
+    img_a = _abrir_imagen(datos_a)
+    img_b = _abrir_imagen(datos_b)
+    if not _hay_cuota():
+        raise _503(MOTIVO_CUOTA + "; la comparación necesita lectores de visión", 3600)
+    r = comparador.comparar(img_a, img_b)
+    r["tipo"] = "comparacion"
+    r["costo_api"] = verificador.costo_total()
+    r.update(verificador.tokens_total())
+    return r
+
+
+def _publica_comparacion(r, perfil):
+    """Forma pública: veredicto, motivo y las lecturas, nada más."""
+    def _lectura(l):
+        return {"modelo": l.get("modelo"), "ok": l.get("ok"), "misma": l.get("misma"),
+                "motivo": _sanear_motivo(l.get("motivo"))}
+    return {
+        "version": VERSION_API,
+        "misma": r["misma"],
+        "motivo": _sanear_motivo(r.get("motivo")) or None,
+        "modelos": [_lectura(l) for l in r.get("lecturas") or []],
+        "arbitro": _lectura(r["arbitro"]) if r.get("arbitro") else None,
+        **perfil.metadatos(),
+        "costo_api": r.get("costo_api", 0),
+        "tokens_api": r.get("tokens_api", 0),
+        "tokens_api_completos": r.get("tokens_api_completos", True),
+    }
+
+
+@app.post("/comparar")
+@app.post("/comparar/")
+async def comparar_fotos(request: Request, file_a: UploadFile = File(...),
+                         file_b: UploadFile = File(...),
+                         modo: Any = Form("alto", description="Modo de análisis: bajo, medio o alto.")):
+    """¿Las dos fotos muestran la misma escena? Mismo cupo, cola y caché que
+    /clasificar; no hay lectura local que publicar."""
+    perfil = await _perfil_formulario(request)
+    datos_a = await _leer_acotado(file_a)
+    datos_b = await _leer_acotado(file_b)
+    if not verificador.disponible():
+        raise _503("la comparación necesita lectores de visión y no hay clave configurada", 30)
+    huella = hashlib.sha256(b"comparar\0" + datos_a + b"\0" + datos_b + json.dumps(
+        [perfil.modo, perfil.version], separators=(",", ":")).encode()).hexdigest()
+    respuesta = _cache_leer(huella)
+    if respuesta is not None:
+        return JSONResponse(_publica_comparacion(respuesta, perfil))
+    if _saturado():
+        raise _503("el servidor está degradado; reintentá más tarde", 30)
+    turno = await _esperar_cupo(huella)
+    if turno == "cache":
+        respuesta = _cache_leer(huella)
+        if respuesta is not None:
+            return JSONResponse(_publica_comparacion(respuesta, perfil))
+        raise _503("el servidor está ocupado; reintentá en un momento")
+    if _saturado():
+        _cupos.release()
+        raise _503("el servidor está degradado; reintentá más tarde", 30)
+    try:
+        respuesta = await _correr_con_cupo(
+            None, "", "1", huella, perfil,
+            funcion=lambda: _comparar_sync(datos_a, datos_b))
+    except comparador.ComparacionNoDisponibleError as e:
+        raise _503("no se pudo comparar: " + str(e)[:120], 15)
+    return JSONResponse(_publica_comparacion(respuesta, perfil))
 
 
 # ---- Trabajos asíncronos ---------------------------------------------------
