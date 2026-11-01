@@ -76,6 +76,9 @@ PRIORIDAD_COMPARACION = cargar_prompt('compartidos/prioridad_comparacion')
 OBSERVACIONES_HIGIENE = cargar_prompt('compartidos/observaciones_higiene')
 
 _PROMPT_PATENTE = cargar_prompt('dirigidos/patente')
+# Lectura de chapas por recorte (#215) y veredicto de escena de vehículo (#216).
+_PROMPT_LEER_CHAPA = cargar_prompt('vehiculo/leer_chapa')
+_PROMPT_ESCENA_VEHICULO = cargar_prompt('vehiculo/escena')
 
 _PROMPT_COMPARAR = cargar_prompt('dirigidos/comparar')
 _ARBITRO_COMPARAR = cargar_prompt('arbitro/comparar')

@@ -1312,6 +1312,18 @@ def _leer_patente(img):
     una distinta. La lectura nula no es discrepancia (chapa chica, reflejo,
     un modelo conservador); la lectura válida distinta sí, y no se publica
     nada: la duda no se vota."""
+    # Con el detector de chapas instalado (#215) la lectura va por recorte:
+    # ubica la chapa, la amplía y vota entre el OCR local y los lectores de
+    # `patentes.LECTORES`. Publica una sola chapa legible; dos legibles en la
+    # misma foto son dos vehículos y no se publica ninguna. Si el detector no
+    # está, sigue la lectura de la foto entera de siempre.
+    try:
+        import patentes
+        if patentes.disponible():
+            legibles = {c["patente"] for c in patentes.leer_chapas(img) if c.get("legible")}
+            return next(iter(legibles)) if len(legibles) == 1 else None
+    except ImportError:
+        pass
     # Únicos, por si la config repite un modelo: el mismo lector dos veces
     # no son dos lecturas independientes.
     lectores = list(dict.fromkeys(modelos_activos()))[:3]

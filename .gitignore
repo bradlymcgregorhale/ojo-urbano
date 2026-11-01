@@ -20,3 +20,6 @@ eval/harness/inyeccion-*.jsonl
 
 # Fotos, etiquetas individuales y respuestas de la evaluación visual.
 eval/vision/private/
+
+# Pesos del detector y del OCR de chapas (/vehiculo, #215): se descargan al primer uso.
+.modelos-chapas/

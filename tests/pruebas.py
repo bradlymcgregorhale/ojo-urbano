@@ -2796,6 +2796,100 @@ check("README, estructura e intermediario documentan /comparar",
 V.VERIFICADORES, V.ARBITRO, V._llamar, _clave_prev = _prev_205
 os.environ["OPENROUTER_API_KEY"] = _clave_prev
 
+print("[#215/#216] POST /vehiculo: patente por recorte y veredicto de escena")
+import patentes  # noqa: E402
+import vehiculo  # noqa: E402
+
+
+def _multipart_vehiculo(datos_a, datos_b=None, modo=None, contexto=None):
+    b = "----ojo"
+    partes = [f'--{b}\r\nContent-Disposition: form-data; name="file"; filename="a.jpg"\r\n'
+              f"Content-Type: application/octet-stream\r\n\r\n".encode(), datos_a, b"\r\n"]
+    if datos_b is not None:
+        partes += [f'--{b}\r\nContent-Disposition: form-data; name="file_b"; filename="b.jpg"\r\n'
+                   f"Content-Type: application/octet-stream\r\n\r\n".encode(), datos_b, b"\r\n"]
+    if contexto is not None:
+        partes.append(f'--{b}\r\nContent-Disposition: form-data; name="contexto"\r\n\r\n{contexto}\r\n'.encode())
+    if modo is not None:
+        partes.append(f'--{b}\r\nContent-Disposition: form-data; name="modo"\r\n\r\n{modo}\r\n'.encode())
+    partes.append(f"--{b}--\r\n".encode())
+    return b"".join(partes), f"multipart/form-data; boundary={b}"
+
+
+_prev_215 = (V.VERIFICADORES, V.ARBITRO, V._llamar, os.environ.get("OPENROUTER_API_KEY", ""),
+             patentes.disponible, patentes.analizar, vehiculo.escena)
+_veh_llamadas = []
+
+
+def _fake_analizar(imgs, lectores=None):
+    _veh_llamadas.append(("analizar", len(imgs)))
+    chapa = {"caja": [10, 10, 210, 110], "confianza_deteccion": 0.9, "ancho_px": 200,
+             "lecturas": {"ocr_local": "A123BCD", "grok": "A123BCD", "gemini": None},
+             "ocr_local": {"lectura": "A123BCD", "confianza": 0.97},
+             "patente": "A123BCD", "fuentes": 2, "legible": True, "motivo": None}
+    return {"fotos": [{"chapas": [chapa], "patente": "A123BCD", "motivo": None} for _ in imgs],
+            "patente": "A123BCD", "motivo": None, "lectores": ["grok", "gemini"],
+            "detector": "det", "ocr": "ocr"}
+
+
+def _fake_escena(imgs, contexto="", modelos=None):
+    _veh_llamadas.append(("escena", len(imgs), contexto))
+    return {"vehiculos_protagonistas": 1, "tipo": "moto", "color": "negro", "mismo_vehiculo": "si" if len(imgs) == 2 else None,
+            "infraccion": "vereda", "abandono": {"senales": [], "nivel": "ninguno"}, "personas_visibles": False,
+            "conductor_adentro": False, "misma_escena": "si" if len(imgs) == 2 else None, "fuentes": 3, "en_duda": {},
+            "revisiones": [{"modelo": "a/1", "ok": True, "motivo": "moto sobre la vereda <b>x</b>"}]}
+
+
+_VA, _VB = foto(823, 623), foto(824, 624)
+_c, _r = pedir("/vehiculo/", *_multipart_vehiculo(_VA))
+check("sin clave de OpenRouter la lectura de vehículo responde 503", _c == 503, f"HTTP {_c} {_r}")
+os.environ["OPENROUTER_API_KEY"] = "prueba-215"
+patentes.disponible = lambda: True
+patentes.analizar = _fake_analizar
+vehiculo.escena = _fake_escena
+_c, _r = pedir("/vehiculo/", *_multipart_vehiculo(_VA, _VB, contexto="moto sobre la vereda"))
+check("dos fotos: 200 con chapas por foto, patente del conjunto y escena",
+      _c == 200 and _r.get("patente") == "A123BCD" and len(_r.get("fotos") or []) == 2
+      and _r["fotos"][0]["chapas"][0]["legible"] is True and _r["fotos"][0]["chapas"][0]["lecturas"]["grok"] == "A123BCD"
+      and _r.get("escena", {}).get("infraccion") == "vereda" and _r["escena"]["misma_escena"] == "si"
+      and _r.get("version") == S.VERSION_API, f"HTTP {_c} {_r}")
+check("  el contexto llega a la escena y las revisiones salen saneadas",
+      ("escena", 2, "moto sobre la vereda") in _veh_llamadas
+      and "<b>" not in (_r["escena"]["revisiones"][0]["motivo"] or ""), str(_veh_llamadas))
+check("  con costo, tokens y modo, y sin lectura del modelo local",
+      "costo_api" in _r and "tokens_api" in _r and _r.get("modo") == "alto"
+      and not any("modelo_local" in k for k in _claves_recursivas(_r)))
+_n_antes = len(_veh_llamadas)
+_c2, _r2 = pedir("/vehiculo/", *_multipart_vehiculo(_VA, _VB, contexto="moto sobre la vereda"))
+check("el mismo par con el mismo contexto sale de la caché", _c2 == 200 and _r2 == _r and len(_veh_llamadas) == _n_antes)
+_c3, _r3 = pedir("/vehiculo", *_multipart_vehiculo(_VA, _VB, contexto="otro texto"))
+check("otro contexto es otro análisis (y /vehiculo sin barra sirve)", _c3 == 200 and len(_veh_llamadas) == _n_antes + 2, f"HTTP {_c3}")
+_c, _r = pedir("/vehiculo/", *_multipart_vehiculo(_VA))
+check("una sola foto: 200 sin mismo_vehiculo ni misma_escena",
+      _c == 200 and len(_r["fotos"]) == 1 and _r["escena"]["misma_escena"] is None, f"HTTP {_c} {_r}")
+patentes.disponible = lambda: False
+_c, _r = pedir("/vehiculo/", *_multipart_vehiculo(_VB))
+check("sin ONNX instalado la escena igual sale y la chapa explica que no está disponible",
+      _c == 200 and _r.get("patente") is None and "no disponible" in (_r.get("motivo") or "")
+      and _r["escena"]["tipo"] == "moto", f"HTTP {_c} {_r}")
+_c, _r = pedir("/vehiculo/", *_multipart_vehiculo(b"x" * (S.MAX_BYTES + 1)))
+check("una foto por encima del techo da 413", _c == 413, f"HTTP {_c}")
+_c, _r = pedir("/vehiculo/?modo=alto", *_multipart_vehiculo(_VA))
+check("modo en la URL da 422 como en /clasificar", _c == 422, f"HTTP {_c}")
+_c, _r = pedir("/vehiculo/", *_multipart_vehiculo(_VA, modo="turbo"))
+check("modo desconocido da 422", _c == 422, f"HTTP {_c}")
+check("los prompts de vehículo están cargados",
+      '"patente"' in patentes._PROMPT_LEER_CHAPA and '"infraccion"' in vehiculo._PROMPT_ESCENA_VEHICULO)
+check("README, estructura, requisitos e intermediario documentan /vehiculo",
+      "### `POST /vehiculo`" in (AQUI / "README.md").read_text(encoding="utf-8")
+      and "`patentes.py`" in (AQUI / "docs" / "estructura.md").read_text(encoding="utf-8")
+      and "fast-plate-ocr" in (AQUI / "requirements.txt").read_text(encoding="utf-8")
+      and "'/vehiculo'" in (AQUI / "deploy" / "ojourbano.php").read_text(encoding="utf-8")
+      and int(S.VERSION_API) >= 11)
+(V.VERIFICADORES, V.ARBITRO, V._llamar, _clave_prev,
+ patentes.disponible, patentes.analizar, vehiculo.escena) = _prev_215
+os.environ["OPENROUTER_API_KEY"] = _clave_prev
+
 print("[#G] gravedad: mediana de los verificadores, no el maximo")
 # El maximo era un veto de una sola mano hacia arriba: con tres muestras
 # ruidosas queda siempre por encima del centro (medido: 58% de las fotos
@@ -5557,6 +5651,8 @@ from tests import test_revision_escombros_publica
 from tests import test_contenedores
 from tests import test_recoleccion_pertenencias
 from tests import test_descripcion_principal
+from tests import test_patentes
+from tests import test_vehiculo
 from tests import test_especialista_contenedores
 from tests import test_presencia_contenedores
 from tests import test_aptitud_higiene
@@ -5576,6 +5672,8 @@ _suite_alcance = unittest.defaultTestLoader.loadTestsFromModule(test_politica_es
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_contenedores))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_recoleccion_pertenencias))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_descripcion_principal))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_patentes))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_vehiculo))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_especialista_contenedores))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_presencia_contenedores))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_aptitud_higiene))

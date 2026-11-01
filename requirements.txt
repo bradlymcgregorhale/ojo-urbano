@@ -10,5 +10,8 @@ pillow>=10.0.0
 fastapi>=0.110.0
 uvicorn>=0.29.0
 python-multipart>=0.0.9
+# Lectura de patentes por recorte (/vehiculo, #215): detector y OCR en ONNX, CPU.
+open-image-models[onnx]>=0.6.0
+fast-plate-ocr[onnx]>=1.1.0
 # Cliente examples/ejemplo.py
 requests>=2.31.0
