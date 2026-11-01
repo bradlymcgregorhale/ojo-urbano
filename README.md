@@ -539,6 +539,7 @@ Un valor `null` o un estado indeterminado no significa ausencia. Las evaluacione
 | Versión | Fecha | Cambio |
 | --- | --- | --- |
 | 10 | 2026-10-16 | Endpoint nuevo `POST /comparar` (`file_a`, `file_b`): `misma` (`si`, `no`, `duda`) y `motivo`, con las lecturas en `modelos` y `arbitro`. |
+| 11 | 2026-11-01 | Endpoint nuevo `POST /vehiculo` (`file`, `file_b` opcional, `contexto`): chapas por foto con `patente`, `legible`, `motivo` y lecturas, `patente` del conjunto y `escena` por consenso (#215, #216). |
 | 9 | 2026-10-16 | `retiro_objetos` deja de plegarse a `retiro_muebles` y es categoría propia (47 en total) con `problemas[].elemento` (`cemento`, `canos`, `bolardos`, `bancos`, `relojes`, `carteles` o `null`). El nombre de `retiro_muebles` pasa a "Retiro de residuos voluminosos (muebles y electrodomésticos)". |
 | 8 | 2026-10-16 | `problemas[].objetos` en `retiro_muebles` confirmado: lista de hasta 8 objetos voluminosos vistos. |
 | 7 | 2026-10-16 | `problemas[].objeto_tipo`, `objeto_tam` y `objeto_cant` en `retiro_muebles` confirmado: objeto dominante (rótulo cerrado), tamaño y cantidad. |
@@ -718,6 +719,44 @@ que agregues después. Cada tarjeta permite elegir otro modo antes de enviarla.
 Una vez enviado el análisis, sus reintentos conservan esa elección. "Volver a
 analizar" crea un intento nuevo y conserva el resultado anterior; puede generar
 otro consumo. El modo también aparece en las descargas JSON y CSV.
+
+## Vehículos: patente por recorte y escena
+
+### `POST /vehiculo`
+
+Recibe `multipart/form-data` con `file` (obligatoria), `file_b` (opcional, la segunda foto del mismo reporte), `contexto` (texto del vecino, hasta 300 caracteres) y `modo` (`alto` si se omite). Mismos límites, cupo, cola y caché que `/clasificar`. Con barra final, como el resto.
+
+Para cada foto ubica las chapas con un detector ONNX en CPU, recorta cada una con margen, la amplía y la leen el OCR local de chapas y los lectores de `LECTORES_CHAPA` (por defecto `x-ai/grok-4.3,google/gemini-3.8-flash`). Una chapa se publica (`legible: true`) cuando al menos dos lecturas coinciden en la misma cadena válida y ninguna otra lectura válida la contradice. Un recorte de menos de `CHAPA_ANCHO_MINIMO` px (110) no se intenta: `motivo` pide la foto más cerca. `patente` a nivel respuesta sale cuando las fotos que leyeron algo coinciden en una sola chapa; dos distintas son dos vehículos y queda `null`.
+
+`escena` sale del consenso de los verificadores configurados (al menos dos coincidencias por campo): `vehiculos_protagonistas`, `tipo`, `color`, `mismo_vehiculo` (solo con dos fotos), `infraccion` (`vereda`, `ochava`, `sumidero`, `doble_fila`, `senda_peatonal`, `rampa`, `garaje`, `cordon_amarillo`, `parada_colectivo`, `prohibido_estacionar`, `ciclovia`, `ninguna_visible`), `abandono` (`senales` y `nivel`), `personas_visibles` y `conductor_adentro`. `misma_escena` reutiliza `/comparar`. Lo que sostiene un solo lector queda en `en_duda`.
+
+```bash
+curl -s -F "file=@atras.jpg" -F "file_b=@contexto.jpg" -F "contexto=moto sobre la vereda" http://127.0.0.1:8080/vehiculo/
+```
+
+```json
+{
+  "version": "11",
+  "fotos": [
+    { "chapas": [ { "caja": [1120, 610, 1302, 756], "ancho_px": 182, "confianza_deteccion": 0.88,
+                    "lecturas": { "ocr_local": "A123BCD", "grok_4_3": "A123BCD", "gemini_3_8_flash": null },
+                    "ocr_local": { "lectura": "A123BCD", "confianza": 0.98 },
+                    "patente": "A123BCD", "fuentes": 2, "legible": true, "motivo": null } ],
+      "patente": "A123BCD", "motivo": null },
+    { "chapas": [ { "ancho_px": 98, "legible": false, "motivo": "chapa muy chica (98 px de ancho): sacá la foto más cerca y de atrás", "..." : "..." } ],
+      "patente": null, "motivo": "chapa muy chica (98 px de ancho): sacá la foto más cerca y de atrás" }
+  ],
+  "patente": "A123BCD", "motivo": null, "lectores": ["grok_4_3", "gemini_3_8_flash"],
+  "escena": { "vehiculos_protagonistas": 1, "tipo": "moto", "color": "negro", "mismo_vehiculo": "si",
+              "infraccion": "vereda", "abandono": { "senales": ["cadena_candado"], "nivel": "bajo" },
+              "personas_visibles": false, "conductor_adentro": false, "misma_escena": "si",
+              "fuentes": 3, "en_duda": {}, "revisiones": [ { "modelo": "...", "ok": true, "motivo": "..." } ] },
+  "modo": "alto", "modo_version": "...",
+  "costo_api": 0.0046, "tokens_api": 9800, "tokens_api_completos": true
+}
+```
+
+Sin `onnxruntime`, `open-image-models[onnx]` y `fast-plate-ocr[onnx]` instalados, el endpoint sigue respondiendo la `escena` y marca `motivo: "lectura de chapas no disponible"`. Los pesos (unos 25 MB) se descargan la primera vez a `MODELOS_CHAPAS_DIR` (`.modelos-chapas/` junto al código).
 
 ## Comparar dos fotos
 

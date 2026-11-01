@@ -51,6 +51,8 @@ from sentence_transformers import SentenceTransformer
 
 import verificador
 import comparador
+import patentes
+import vehiculo
 import modos_analisis as modos
 from typing import Any
 import revision_escombros_publica as revision_publica
@@ -85,7 +87,7 @@ GRAV_MAX = 5
 # vecino pide algo aunque la foto no lo confirme"; el contexto del vecino no
 # se devuelve nunca; ?verificar=0 responde degradado en vez de publicar el
 # modelo local. Ver README, "Cambios de contrato".
-VERSION_API = "10"
+VERSION_API = "11"
 CONTENEDORES_ESPECIALISTA = os.environ.get("CONTENEDORES_ESPECIALISTA", "0").lower() in ("1", "true", "si")
 
 # Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y varias
@@ -1178,7 +1180,7 @@ async def guardias(request, call_next):
     mientras el router igual despacha /clasificar.
     """
     ruta = request.scope.get("path", "").rstrip("/")
-    es_comparar = ruta.endswith("/comparar")
+    es_comparar = ruta.endswith("/comparar") or ruta.endswith("/vehiculo")
     if request.method == "POST" and (ruta.endswith("/clasificar")
                                      or ruta.endswith("/trabajos") or es_comparar):
         if API_TOKEN and not hmac.compare_digest(
@@ -1521,6 +1523,98 @@ async def comparar_fotos(request: Request, file_a: UploadFile = File(...),
     except comparador.ComparacionNoDisponibleError as e:
         raise _503("no se pudo comparar: " + str(e)[:120], 15)
     return JSONResponse(_publica_comparacion(respuesta, perfil))
+
+
+# ---- Vehículos: patente por recorte y veredicto de escena (#215, #216) ----
+def _vehiculo_sync(datos_lista, contexto, lectura_chapas=True):
+    """Lee las chapas y arma el veredicto de escena fuera del event loop.
+    Misma contabilidad de costo y tokens que procesar(); sin modelo local."""
+    verificador.costo_reset()
+    verificador.tokens_reset()
+    imgs = [_abrir_imagen(d) for d in datos_lista]
+    if not _hay_cuota():
+        raise _503(MOTIVO_CUOTA + "; la lectura de vehículos necesita lectores de visión", 3600)
+    r = {"tipo": "vehiculo", "fotos": [{"chapas": [], "patente": None, "motivo": "lectura de chapas no disponible"}
+                                       for _ in imgs],
+         "patente": None, "motivo": "lectura de chapas no disponible", "lectores": [], "detector": None, "ocr": None}
+    if lectura_chapas and patentes.disponible():
+        r.update(patentes.analizar(imgs))
+    try:
+        r["escena"] = vehiculo.escena(imgs, contexto)
+    except ValueError as e:
+        r["escena"] = None
+        r["escena_error"] = str(e)[:120]
+    r["costo_api"] = verificador.costo_total()
+    r.update(verificador.tokens_total())
+    return r
+
+
+def _publica_vehiculo(r, perfil):
+    """Forma pública: chapas por foto, patente del conjunto y escena."""
+    def _chapa(c):
+        return {"caja": c.get("caja"), "ancho_px": c.get("ancho_px"),
+                "confianza_deteccion": c.get("confianza_deteccion"),
+                "lecturas": c.get("lecturas") or {}, "ocr_local": c.get("ocr_local"),
+                "patente": c.get("patente"), "fuentes": c.get("fuentes", 0),
+                "legible": bool(c.get("legible")), "motivo": _sanear_motivo(c.get("motivo")) or None}
+    escena = r.get("escena")
+    if escena:
+        escena = dict(escena)
+        escena["revisiones"] = [{"modelo": x.get("modelo"), "ok": x.get("ok"),
+                                 "motivo": _sanear_motivo(x.get("motivo")) or None}
+                                for x in escena.get("revisiones") or []]
+    return {
+        "version": VERSION_API,
+        "fotos": [{"chapas": [_chapa(c) for c in f.get("chapas") or []],
+                   "patente": f.get("patente"), "motivo": _sanear_motivo(f.get("motivo")) or None}
+                  for f in r.get("fotos") or []],
+        "patente": r.get("patente"),
+        "motivo": _sanear_motivo(r.get("motivo")) or None,
+        "lectores": r.get("lectores") or [],
+        "escena": escena,
+        **({"escena_error": r["escena_error"]} if r.get("escena_error") else {}),
+        **perfil.metadatos(),
+        "costo_api": r.get("costo_api", 0),
+        "tokens_api": r.get("tokens_api", 0),
+        "tokens_api_completos": r.get("tokens_api_completos", True),
+    }
+
+
+@app.post("/vehiculo")
+@app.post("/vehiculo/")
+async def vehiculo_fotos(request: Request, file: UploadFile = File(...),
+                         file_b: UploadFile | None = File(None),
+                         contexto: str = Form(""),
+                         modo: Any = Form("alto", description="Modo de análisis: bajo, medio o alto.")):
+    """Patente por recorte y veredicto de escena para un reporte de vehículo
+    (una o dos fotos). Mismo cupo, cola, techo y caché que /clasificar."""
+    perfil = await _perfil_formulario(request)
+    datos = [await _leer_acotado(file)]
+    if file_b is not None and file_b.filename:
+        datos.append(await _leer_acotado(file_b))
+    contexto = (contexto or "").strip()[:300]
+    if not verificador.disponible():
+        raise _503("la lectura de vehículos necesita lectores de visión y no hay clave configurada", 30)
+    huella = hashlib.sha256(b"vehiculo\0" + b"\0".join(datos) + b"\0" + json.dumps(
+        [contexto, perfil.modo, perfil.version], separators=(",", ":")).encode()).hexdigest()
+    respuesta = _cache_leer(huella)
+    if respuesta is not None:
+        return JSONResponse(_publica_vehiculo(respuesta, perfil))
+    if _saturado():
+        raise _503("el servidor está degradado; reintentá más tarde", 30)
+    turno = await _esperar_cupo(huella)
+    if turno == "cache":
+        respuesta = _cache_leer(huella)
+        if respuesta is not None:
+            return JSONResponse(_publica_vehiculo(respuesta, perfil))
+        raise _503("el servidor está ocupado; reintentá en un momento")
+    if _saturado():
+        _cupos.release()
+        raise _503("el servidor está degradado; reintentá más tarde", 30)
+    respuesta = await _correr_con_cupo(
+        None, "", "1", huella, perfil,
+        funcion=lambda: _vehiculo_sync(datos, contexto))
+    return JSONResponse(_publica_vehiculo(respuesta, perfil))
 
 
 # ---- Trabajos asíncronos ---------------------------------------------------

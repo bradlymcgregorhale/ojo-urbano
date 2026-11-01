@@ -23,6 +23,7 @@ Las fotos y respuestas privadas de `eval/vision/private/` siguen ignoradas. No s
 - `guard_modelo.py`: Candado del proceso que carga los pesos. Dependencias internas directas: ninguna.
 - `modos_analisis.py`: Perfiles, límites y trazabilidad de los modos. Dependencias internas directas: ninguna.
 - `observaciones_higiene.py`: Publicación de observaciones de higiene. Dependencias internas directas: ninguna.
+- `patentes.py`: Lectura de patentes por recorte: detector ONNX, OCR local y voto con lectores de visión (#215). Dependencias internas directas: `prompts`, `verificador`.
 - `politica_escombros.py`: Decisiones de material, ámbito y retiro. Dependencias internas directas: `revision_escombros_publica`.
 - `prioridad.py`: Problema principal y solicitudes sugeridas. Dependencias internas directas: ninguna.
 - `revision_fragmentos.py`: Distingue fragmentos del daño y pilas independientes. Dependencias internas directas: `prompts`, `modos_analisis`, `verificador`.
@@ -30,7 +31,8 @@ Las fotos y respuestas privadas de `eval/vision/private/` siguen ignoradas. No s
 - `revision_escombros_publica.py`: Salida pública de la revisión de material. Dependencias internas directas: ninguna.
 - `revision_omisiones.py`: Recuperación de objetos, residuos y cubierta. Dependencias internas directas: `prompts`.
 - `revision_vereda.py`: Geometría y corroboración de daños en vereda. Dependencias internas directas: `prompts`.
-- `servidor.py`: API, modelo local, cola y página de análisis. Dependencias internas directas: `comparador`, `especialista_contenedores`, `evaluacion_foto`, `modos_analisis`, `observaciones_higiene`, `politica_escombros`, `prioridad`, `revision_cordon`, `revision_fragmentos`, `revision_escombros_publica`, `revision_omisiones`, `revision_vereda`, `verificador`.
+- `servidor.py`: API, modelo local, cola y página de análisis. Dependencias internas directas: `comparador`, `patentes`, `vehiculo`, `especialista_contenedores`, `evaluacion_foto`, `modos_analisis`, `observaciones_higiene`, `politica_escombros`, `prioridad`, `revision_cordon`, `revision_fragmentos`, `revision_escombros_publica`, `revision_omisiones`, `revision_vereda`, `verificador`.
+- `vehiculo.py`: Veredicto de escena de vehículo por consenso (#216). Dependencias internas directas: `comparador`, `prompts`, `verificador`.
 - `verificador.py`: Lectores, transporte, consenso y arbitraje. Dependencias internas directas: `evaluacion_foto`, `modos_analisis`, `observaciones_higiene`, `prioridad`, `prompts`, `revision_escombros_publica`.
 
 Los módulos de producción permanecen juntos en la raíz. `servidor.py`, `verificador.py`, `prompts/` y los evaluadores usan rutas e imports desde esa ubicación. Trasladarlos ahora a un paquete agregaría cambios en arranque, recursos y huellas sin reducir código duplicado. La separación de pruebas y herramientas deja 16 Python en la raíz: 15 de producción y el comando compatible de pruebas. No se eliminó un módulo por su nombre o por la cantidad de archivos.
@@ -72,6 +74,8 @@ Para desplegar la aplicación, conservar esos recursos juntos. No es necesario c
 Cada archivo versionado tiene una ubicación y función en el árbol siguiente. Los tests bajo `eval/` son regresiones de su herramienta, no scripts de producción.
 
 - `comparador.py`
+- `patentes.py`
+- `vehiculo.py`
 - `examples/ejemplo.py`
 - `especialista_contenedores.py`
 - `eval/analizar.py`

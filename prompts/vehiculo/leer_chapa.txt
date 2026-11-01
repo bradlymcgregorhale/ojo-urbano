@@ -1,0 +1,9 @@
+La imagen es el recorte ampliado de UNA chapa patente argentina, tomada en la calle. Leela\
+ carácter por carácter, de izquierda a derecha y de arriba hacia abajo.
+Formatos válidos y completos: AB123CD (auto Mercosur), ABC123 (auto anterior), A123BCD (moto\
+ Mercosur, que en la chapa va en DOS líneas: "A12" arriba y "3BCD" abajo), 123ABC (moto anterior).
+Usá el formato para resolver las letras y los números que se parecen (O y 0, I y 1, B y 8, Z y 2,\
+ G y 6, S y 5): en la posición de un número va un número y en la de una letra va una letra.
+Si la chapa está cortada, borrosa, tapada, doblada o UN solo carácter no se distingue, respondé\
+ {"patente": null}. No completes, no adivines ni corrijas. Respondé SOLO con el JSON:
+{"patente": "..."|null}
