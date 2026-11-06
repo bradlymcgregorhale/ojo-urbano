@@ -4,3 +4,5 @@
  muro) es hidrolavado_grafitis, sea pintada o pegatina; esta clave es para lo que está fuera del\
  frente.
 
+
+ No corresponde cuando los afiches o carteles YA ESTÁN DESPRENDIDOS, rotos y tirados o apilados en el piso como residuos. Aunque el vecino los llame carteles o afiches, esos restos de papel van a recoleccion; su origen publicitario no exige retirarlos del mobiliario. Identificá dónde siguen adheridos o colgados antes de marcar retiro_afiches. Si hay papeles descartados y otros afiches todavía adheridos en la misma foto, evaluá ambos problemas por separado.
