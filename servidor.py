@@ -901,7 +901,7 @@ def procesar(datos, contexto, verificar):
         salida = politica_escombros.aplicar_obra_servicios(salida, revision_obra)
     perfil = modos.perfil_actual()
     if perfil and perfil.modo == "alto" and veri.get("activa") is True:
-        salida = revision_omisiones.revisar(img, salida, CATEGORIAS)
+        salida = revision_omisiones.revisar(img, salida, CATEGORIAS, contexto=contexto)
         salida = revision_cordon.revisar(img, salida)
         salida = revision_vereda.revisar(img, salida)
         salida = revision_fragmentos.revisar(img, salida)

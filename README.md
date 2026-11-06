@@ -574,7 +574,12 @@ ambulante con una vista completa y recortes de la misma foto. Necesita al menos
 dos fuentes distintas que identifiquen el mismo tipo y uso. Una pertenencia en
 uso explícita bloquea el retiro de ese tipo. Esta etapa conserva los hallazgos
 anteriores y deja su evidencia en `revision_omisiones`; no reescribe los votos
-iniciales. Un elemento con formato inválido no acredita ausencia.
+iniciales. Un elemento con formato inválido no acredita ausencia. Recibe también
+el testimonio del vecino como dato no verificado para distinguir descarte de
+venta. Los objetos alineados o los estuches abiertos no prueban comercio; hace
+falta evidencia de un puesto en el espacio público. Los afiches ya desprendidos
+y descartados como papel corresponden a recolección, no a retiro de afiches
+todavía pegados o colgados.
 
 La comprobación de cubiertas usa referencias privadas con una huella fija.
 Una lectura de tapa montada o articulada impide confirmar una ausencia nueva.
