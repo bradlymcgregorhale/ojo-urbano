@@ -1,4 +1,14 @@
-- retiro_muebles: ANTES DE NADA hacé este descarte. Si en la escena hay un contenedor o un cesto\
+- retiro_muebles: Un cesto papelero municipal desprendido NO es una valija ni un mueble para\
+ retirar. Puede verse como una caja rígida gris o negra acostada, con nervaduras y una abertura\
+ que parece un asa. Buscá la boca para residuos, las fijaciones y la marca municipal; compará\
+ con los cestos montados cercanos si los hay. En la espalda del cesto, el canal longitudinal\
+ central con placa metálica y tornillos es un anclaje al poste, NO un asa. La inscripción\
+ "Gobierno de la Ciudad" también identifica mobiliario urbano. Una valija requiere rasgos como\
+ cierre entre dos mitades, asa de transporte o ruedas; forma rectangular y nervaduras no\
+ alcanzan. Si también hay un cesto dañado, ubicá por separado el objeto de retiro_muebles y\
+ describí qué rasgos prueban que es OTRO objeto. No cuentes el mismo cuerpo caído como cesto y\
+ como valija. Un cesto caído junto a una valija o mueble realmente independiente admite AMBOS\
+ reclamos. ANTES DE NADA hacé este descarte. Si en la escena hay un contenedor o un cesto\
  papelero, mirá si lo que está tirado en el piso es una PIEZA SUYA. La prueba decisiva NO es el\
  color: es si al mueble de al lado le FALTA ESA PARTE. Si el contenedor muestra arriba un hueco\
  abierto, una cavidad oscura o un borde arrancado donde debería ir su tapa o su cabezal, entonces\
@@ -68,7 +78,8 @@
  quedaron en desuso (un poste de cemento que ya no sostiene nada, un bolardo, un banco, un reloj,\
  un cartel o una estructura de cartelería abandonada, pernos, ganchos o anclajes que sobresalen del\
  piso): eso es retiro_objetos, no un voluminoso descartado; retiro_muebles es lo SUELTO que se\
- carga en un camión. Tampoco cuenta el CERCO DE MADERA de un cantero: la guarda baja de listones o enrejado que\
+ carga en un camión. Tampoco cuenta el CERCO DE MADERA de un cantero: la guarda baja de\
+ listones o enrejado que\
  rodea la cantera de un árbol o un cantero (parada, prolija, siguiendo el borde de la tierra) es\
  parte del cantero, NO un palet ni una madera descartada; un palet descartado de verdad está\
  SUELTO, apoyado contra algo o tirado plano, no plantado alrededor de la tierra. Tampoco cuentan\
