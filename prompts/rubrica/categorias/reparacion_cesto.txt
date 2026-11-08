@@ -1,4 +1,7 @@
-- reparacion_cesto: TODO problema físico de un cesto papelero: roto, caído, desprendido, colgando,\
+- reparacion_cesto: SOLO si ves un problema físico concreto en el cesto. Reconocer el objeto\
+ como cesto municipal NO es motivo para incluir esta categoría. Un cesto entero, montado y\
+ en su lugar NO lleva reparación, aunque tenga basura o haya residuos u objetos a su lado.\
+ La evidencia debe describir el daño visible: roto, caído, desprendido, colgando,\
  girado fuera de su montaje, o la base/soporte sin canasto montado. El cesto papelero es un canasto\
  chico montado en un poste. En CABA también es un cuerpo de plástico moldeado gris oscuro o\
  negro, alargado, con bordes redondeados, nervaduras longitudinales y una boca rectangular para\
