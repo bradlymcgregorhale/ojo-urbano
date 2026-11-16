@@ -574,7 +574,11 @@ ambulante con una vista completa y recortes de la misma foto. Necesita al menos
 dos fuentes distintas que identifiquen el mismo tipo y uso. Una pertenencia en
 uso explícita bloquea el retiro de ese tipo. Esta etapa conserva los hallazgos
 anteriores y deja su evidencia en `revision_omisiones`; no reescribe los votos
-iniciales. Un elemento con formato inválido no acredita ausencia. Recibe también
+iniciales. Si la revisión de alcance excluyó un bolsón de obra con al menos dos
+lectores distintos y no corroboró basura independiente, esta etapa no vuelve a
+consultar residuos ni agrega recolección por su contenido. Los hallazgos de otros
+objetos y la basura independiente corroborada conservan su recorrido.
+Un elemento con formato inválido no acredita ausencia. Recibe también
 el testimonio del vecino como dato no verificado para distinguir descarte de
 venta. Los objetos alineados o los estuches abiertos no prueban comercio; hace
 falta evidencia de un puesto en el espacio público. Los afiches ya desprendidos

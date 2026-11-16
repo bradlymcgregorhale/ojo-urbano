@@ -214,6 +214,15 @@ def decidir_cubierta(revision):
     return []
 
 
+def bolson_sin_residuos_independientes(salida):
+    """La recuperación de omisiones respeta el alcance ya corroborado."""
+    alcance = ((salida.get('detalle') or {}).get('verificacion') or {}).get('alcance_escombros') or {}
+    return (alcance.get('estado') == 'excluido'
+            and alcance.get('basura_independiente') is not True
+            and len({v.get('modelo') for v in alcance.get('revisiones') or []
+                     if v.get('modelo') and v.get('presentacion') == 'solo_bolson'}) >= 2)
+
+
 def aplicar(salida, revision, categorias):
     """Agrega hallazgos corroborados; conserva decisiones y lecturas anteriores."""
     r = copy.deepcopy(salida)
@@ -247,7 +256,10 @@ def aplicar(salida, revision, categorias):
             r['descripcion'] = motivo + ' Hallazgos confirmados: ' + ', '.join(
                 p.get('nombre') or p['key'] for p in r['problemas']) + '.'
     nuevos = decidir_objetos(revision.get('objetos') or {})
-    nuevos += decidir_residuos(revision.get('residuos') or {})
+    if bolson_sin_residuos_independientes(r):
+        veri['revision_omisiones']['residuos_excluidos_por_bolson'] = True
+    else:
+        nuevos += decidir_residuos(revision.get('residuos') or {})
     cubierta = decidir_cubierta(revision.get('cubierta') or {})
     # Una segunda mirada anterior que encontró el contenedor usable no se revoca.
     if (veri.get('segunda_mirada_dano') or {}).get('sin_dano'):
@@ -298,7 +310,8 @@ def revisar(img, salida, categorias, contexto=""):
     candidatos.update(c.get('key') for v in lecturas for c in v.get('categorias') or [])
     # El recorrido de pertenencias mantiene su propia compuerta de descarte.
     hay_persona = 'situacion_calle' in candidatos
-    if not hay_persona and (candidatos & claves_retiro or veri.get('alcance_escombros')) and not any(
+    if not hay_persona and not bolson_sin_residuos_independientes(salida) and (
+            candidatos & claves_retiro or veri.get('alcance_escombros')) and not any(
             c.get('key') == 'recoleccion' for c in salida.get('problemas') or []):
         trabajos.append(('residuos', consultar_residuos))
     hay_contenedor = any(c.get('key') in V.CONTENEDOR_KEYS

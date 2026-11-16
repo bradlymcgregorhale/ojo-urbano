@@ -68,6 +68,55 @@ class OmisionesTest(unittest.TestCase):
         self.assertEqual(R.aplicar(originales, {'residuos': {'lecturas': [a, b]}}, CATS)
                          ['problemas'], originales['problemas'])
 
+    def test_bolson_excluido_no_reaparece_por_papel_o_plasticos(self):
+        original = self.salida()
+        original.update(problemas=[], posibles=[], en_duda=[], hay_problema=False,
+                        hay_reclamo=False, descripcion='Bolsón excluido.')
+        alcance = dict(estado='excluido', basura_independiente=False,
+                       revisiones=[dict(modelo=m, presentacion='solo_bolson')
+                                   for m in ('a', 'b', 'c')])
+        original['detalle']['verificacion']['alcance_escombros'] = alcance
+        residuos = dict(lecturas=[dict(modelo=m, residuos_comunes=True,
+            descartado_publico=True, clases=['papel', 'envoltorio'],
+            componente='Papel aislado y plásticos dentro del bolsón',
+            ubicacion='Sobre el contenido y delante del bolsón',
+            evidencia='Material expuesto.') for m in ('a', 'b', 'c')])
+        anterior = copy.deepcopy(original)
+        r = R.aplicar(original, dict(residuos=residuos), CATS)
+        self.assertEqual(original, anterior)
+        self.assertEqual(r['problemas'], [])
+        self.assertFalse(r['hay_reclamo'])
+        self.assertEqual(r['descripcion'], original['descripcion'])
+        self.assertTrue(r['detalle']['verificacion']['revision_omisiones']
+                        ['residuos_excluidos_por_bolson'])
+        # Otros hallazgos independientes siguen su recorrido habitual.
+        r = R.aplicar(original, dict(residuos=residuos,
+            objetos=dict(lecturas=[objeto('a'), objeto('b')])), CATS)
+        self.assertEqual([p['key'] for p in r['problemas']], ['retiro_muebles'])
+        # El alcance también puede corroborar basura fuera del bolsón.
+        alcance['basura_independiente'] = True
+        self.assertEqual([p['key'] for p in R.aplicar(original,
+            dict(residuos=residuos), CATS)['problemas']], ['recoleccion'])
+        alcance['basura_independiente'] = False
+        alcance['estado'] = 'indeterminado'
+        self.assertFalse(R.bolson_sin_residuos_independientes(original))
+        alcance['estado'] = 'excluido'
+        alcance['revisiones'] = [alcance['revisiones'][0]] * 3
+        self.assertFalse(R.bolson_sin_residuos_independientes(original))
+
+    def test_bolson_excluido_no_consulta_residuos_otra_vez(self):
+        original = self.salida()
+        original['problemas'] = []
+        original['detalle']['verificacion'].update(
+            verificadores=[dict(ok=True, modelo='a', categorias=[])],
+            alcance_escombros=dict(estado='excluido', basura_independiente=False,
+                revisiones=[dict(modelo=m, presentacion='solo_bolson') for m in ('a', 'b')]))
+        with patch('evaluacion_foto.resumir', return_value=({'rechazada': False}, [])), \
+                patch.object(R, 'consultar_objetos', return_value={'lecturas': []}), \
+                patch.object(R, 'consultar_residuos') as residuos:
+            R.revisar(Image.new('RGB', (20, 20)), original, CATS)
+        residuos.assert_not_called()
+
     def test_bolsas_opacas_y_respuestas_incompletas_no_crean_corroboracion(self):
         for v in ({}, {'residuos_comunes': 'true', 'descartado_publico': True,
                        'clases': ['carton'], 'evidencia': 'caja'},
