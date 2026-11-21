@@ -793,18 +793,18 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa",
               # Pide a OpenRouter el costo real de la llamada (usage.cost, USD).
               "usage": {"include": True},
               "reasoning": {"effort": esfuerzo},
-              # Sin esto se sampleaba a la temperatura default del proveedor
-              # (típicamente 1). Fijarlo en 0 ayuda pero no alcanza: ver #7.
-              "temperature": TEMPERATURA,
-              "top_p": 1,
               "messages": mensajes}
+    if esquema is None:
+        # El recorrido anterior usa temperatura y top_p. Los lectores con
+        # esquema estricto se rutean sólo a proveedores que admiten sus campos.
+        cuerpo.update(temperature=TEMPERATURA, top_p=1)
     if etapa == 'arbitrar' and ARBITRO_SIN_RAZONAMIENTO:
         cuerpo['reasoning'] = {'enabled': False}
         cuerpo['response_format'] = {'type': 'json_object'}
     clave = _clave_cache_prompt(modelo, mensajes) if OPENROUTER_CACHE_PROMPTS else None
     if clave:
         cuerpo["prompt_cache_key"] = clave
-    if SEMILLA is not None:
+    if SEMILLA is not None and esquema is None:
         cuerpo["seed"] = SEMILLA
     if PROVEEDOR_FIJO:
         # OpenRouter puede mandar el mismo modelo a backends distintos, con
