@@ -257,6 +257,9 @@ class ApiModos(unittest.TestCase):
         casos = [
             ({'obstruccion': 'Dos bolsones con asas de izado reducen el paso peatonal.'},
              {'obstruccion'}),
+            ({'obstruccion': 'Dos bolsones con asas reducen el paso por la vereda.'},
+             {'obstruccion'}),
+            ({'obstruccion': 'Los bolsones de obra estrechan el paso peatonal.'}, {'obstruccion'}),
             ({'obstruccion': 'Bolsas chicas con asas reducen el paso.',
               'retiro_escombros': 'Sacos de obra cargables a mano.'}, {'retiro_escombros'}),
             ({'obstruccion': 'Un bolsón con asas de izado y cascotes ocupa la vereda.'}, set()),
