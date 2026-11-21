@@ -27,6 +27,7 @@ REGLAS = {
     'contexto_sin_respaldo': 'El contexto no tiene el respaldo necesario para confirmar escombros.',
     'escombros_por_contexto': 'El contexto validado sostiene el retiro; no demuestra por sí solo el material visible.',
     'retirar_servicios_sin_residuos_independientes': 'Se retiran servicios sin residuos independientes corroborados.',
+    'recoleccion_duplicada': 'La revisión de la pila de escombros no encontró residuos comunes separados para otro retiro.',
     'material_publico_disputado': 'La ubicación y presentación son aptas, pero el material está disputado; la elección del servicio queda pendiente.',
     'sin_cambios': 'La revisión no cambió las categorías.',
 }
@@ -59,11 +60,22 @@ def evidencia_publica(texto, contexto='', limite=160, sanear=None):
     return limpio[:limite]
 
 
+def campos_recuento(respuesta):
+    cuenta = respuesta.get('bolsas_visibles')
+    if (respuesta.get('presentacion') != 'bolsas_chicas_o_suelto'
+            or type(cuenta) is not int or not 0 <= cuenta <= 999):
+        return {}
+    adicionales = respuesta.get('bolsas_adicionales_posibles')
+    return {'bolsas_visibles': cuenta,
+            'bolsas_adicionales_posibles': adicionales if isinstance(adicionales, bool) else None}
+
+
 def capturar_respuesta(respuesta, contexto='', limite=160):
     """Copia acotada: el voto de negocio no se modifica."""
     salida = {k: respuesta[k] for k in ENUMS}
     salida['afirma_validada'] = respuesta['afirma_validada']
     salida['otros_retiros_independientes'] = list(respuesta['otros_retiros_independientes'])
+    salida.update(campos_recuento(respuesta))
     salida.update({k: evidencia_publica(respuesta.get(k), contexto, limite) for k in EVIDENCIAS})
     return salida
 
@@ -132,6 +144,7 @@ def _respuesta_publica(r, textos, sanear, limite):
         return None
     salida = {k: r[k] for k in ENUMS}
     salida.update(afirma_validada=r['afirma_validada'], otros_retiros_independientes=list(dict.fromkeys(otros)))
+    salida.update(campos_recuento(r))
     salida.update({k: evidencia_publica(r.get(k), limite=limite, sanear=sanear)
                    if textos else None for k in EVIDENCIAS})
     return salida

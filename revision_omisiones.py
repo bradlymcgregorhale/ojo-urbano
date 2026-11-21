@@ -220,6 +220,10 @@ def bolson_sin_residuos_independientes(salida):
                      if v.get('modelo') and v.get('presentacion') == 'solo_bolson'}) >= 2)
 
 
+def recoleccion_duplicada(verificacion):
+    return 'recoleccion_duplicada' in (verificacion.get('decision_alcance') or {}).get('reglas', [])
+
+
 def aplicar(salida, revision, categorias):
     """Agrega hallazgos corroborados; conserva decisiones y lecturas anteriores."""
     r = copy.deepcopy(salida)
@@ -255,7 +259,7 @@ def aplicar(salida, revision, categorias):
     nuevos = decidir_objetos(revision.get('objetos') or {})
     if bolson_sin_residuos_independientes(r):
         veri['revision_omisiones']['residuos_excluidos_por_bolson'] = True
-    else:
+    elif not recoleccion_duplicada(veri):
         nuevos += decidir_residuos(revision.get('residuos') or {})
     cubierta = decidir_cubierta(revision.get('cubierta') or {})
     # Una segunda mirada anterior que encontró el contenedor usable no se revoca.
@@ -307,7 +311,7 @@ def revisar(img, salida, categorias, contexto=""):
     candidatos.update(c.get('key') for v in lecturas for c in v.get('categorias') or [])
     # El recorrido de pertenencias mantiene su propia compuerta de descarte.
     hay_persona = 'situacion_calle' in candidatos
-    if not hay_persona and not bolson_sin_residuos_independientes(salida) and (
+    if not hay_persona and not recoleccion_duplicada(veri) and not bolson_sin_residuos_independientes(salida) and (
             candidatos & claves_retiro or veri.get('alcance_escombros')) and not any(
             c.get('key') == 'recoleccion' for c in salida.get('problemas') or []):
         trabajos.append(('residuos', consultar_residuos))

@@ -646,7 +646,8 @@ print("[#213] la demo rediseñada muestra los campos nuevos")
 check("la tarjeta rotula bolsas, objeto, objetos y elemento",
       all(t in S.PAGINA for t in ("'Bolsas: '", "'Objeto: '", "'Objetos: '", "'Elemento: '", "function renderProblema")))
 check("  solo desde problemas confirmados, con rótulos legibles",
-      "probs.map(renderProblema)" in S.PAGINA and "colchon:'colchón'" in S.PAGINA and "canos:'caños'" in S.PAGINA)
+      "probs.map(c=>renderProblema(c,d.verificacion_escombros))" in S.PAGINA
+      and "colchon:'colchón'" in S.PAGINA and "canos:'caños'" in S.PAGINA)
 check("  conserva descarga CSV, JSON, modos por foto y la ruta de comparar",
       all(t in S.PAGINA for t in ('id="csvbtn"', 'id="jsonbtn"', "data-modo", "data-ep=\"comparar\"", "comparar:O+'/comparar'+SUF")))
 check("  modo oscuro y celular", "prefers-color-scheme:dark" in S.PAGINA and "max-width:640px" in S.PAGINA)
