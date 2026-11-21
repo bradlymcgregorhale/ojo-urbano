@@ -196,7 +196,9 @@ def clasificar(img, local, categorias, modelos):
             fuentes['retiro_escombros'] = ['modelo_local', luna, apoyo]
     evidencia = confirmadas.get('obstruccion', '').casefold()
     # Conservá el hallazgo cuando la evidencia habla del paso, no sólo de la vereda.
-    izado = re.search(r'\b(?:con asas? de izado|bols[oó]n(?:es)? de izado|big[- ]bags?)\b', evidencia)
+    izado = re.search(
+        r'\b(?:con asas? de izado|big[- ]bags?|'
+        r'bols[oó]n(?:es)?(?: grandes?)? (?:con asas?|de (?:obra|izado)))\b', evidencia)
     paso = re.search(r'\b(?:paso|circulaci[oó]n|senda|sendero|bloque\w*|interrump\w*|desvi\w*)\b',
                      evidencia)
     if (not (izado and paso)
