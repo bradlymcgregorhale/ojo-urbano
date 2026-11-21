@@ -279,6 +279,12 @@ class ApiModos(unittest.TestCase):
                     self.assertEqual(set(fuentes), esperadas)
                     self.assertEqual(leer.call_count, 3)
 
+    def test_prueba_pide_describir_el_paso_si_hay_indicios_de_obra(self):
+        from prueba_completo import _decision
+        claves = ('retiro_escombros', 'obstruccion')
+        self.assertIn('nombrá las asas', _decision([], {'retiro_escombros': .85}, claves))
+        self.assertNotIn('nombrá las asas', _decision([], {'retiro_escombros': .05}, claves))
+
     def test_prueba_rechaza_contexto_y_otros_usos_antes_de_llamar(self):
         f = ('foto.jpg', self.foto, 'image/jpeg')
         self.assertEqual(self.cliente.post('/trabajos', files={'file': f},

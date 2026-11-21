@@ -143,6 +143,10 @@ def _decision(lecturas, scores, claves):
         texto += ('\nSi confirmás un puesto de venta, sumá obstruccion sólo si identificás una barrera '
                   'independiente colocada a propósito y describís cómo bloquea o desvía el paso. '
                   'Los cajones de mercadería y los topes bajos aislados con paso libre no alcanzan.')
+    if scores.get('retiro_escombros', 0) >= .50:
+        texto += ('\nUn bolsón de obra con asas que estrecha o desvía el paso peatonal corresponde '
+                  'a obstruccion. En esa evidencia, nombrá las asas y explicá cómo afecta el paso '
+                  'peatonal. Un bolsón en el cantero o al costado con paso libre no alcanza.')
     if indicios:
         texto += ('\nObservaciones cortas de una lectura previa. Podrían estar equivocadas. '
                   'Contrástalas con la foto y no copies una categoría sin ver su evidencia.\n'
