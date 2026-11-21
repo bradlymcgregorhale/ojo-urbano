@@ -67,7 +67,8 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low'):
         mensajes = [{'role': 'system', 'content': texto},
                     {'role': 'user', 'content': vistas}]
         schema = _ALCANCE if permitidas is None else _LECTURA
-        limite = 550 if esfuerzo == 'low' else 700
+        # El límite de salida incluye el razonamiento, además del JSON.
+        limite = 550 if etapa == 'decision' else 1400
         valor = V._extraer_json(V._llamar(modelo, mensajes, max_tokens=limite, intentos=1,
                               etapa=nombre, esquema=schema, esfuerzo=esfuerzo))
         if not isinstance(valor, dict):

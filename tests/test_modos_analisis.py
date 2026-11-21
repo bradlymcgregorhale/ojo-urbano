@@ -237,6 +237,7 @@ class ApiModos(unittest.TestCase):
         self.assertEqual([x['key'] for x in d['problemas']], ['retiro_muebles'])
         self.assertEqual([x['model'] for x in self.llamadas].count('t/dirigidos'), 2)
         self.assertEqual(self.llamadas[-1]['model'], 't/decision')
+        self.assertEqual([x['max_tokens'] for x in self.llamadas], [1400, 1400, 550])
         self.assertTrue(all(x['provider']['require_parameters'] for x in self.llamadas))
         self.assertTrue(all(not {'temperature', 'top_p', 'seed'} & x.keys() for x in self.llamadas))
         self.assertEqual(d['costo_api'], .003)
