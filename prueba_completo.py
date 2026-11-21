@@ -195,7 +195,12 @@ def clasificar(img, local, categorias, modelos):
         if all(r is not V._FALLO_MODELO for r in alcances) and _escombro_elegible(alcances):
             fuentes['retiro_escombros'] = ['modelo_local', luna, apoyo]
     evidencia = confirmadas.get('obstruccion', '').casefold()
-    if (any(k in evidencia for k in ('sacos', 'bolsas', 'pila', 'tubos', 'bolson', 'bolsón'))
+    # Conservá el hallazgo cuando la evidencia habla del paso, no sólo de la vereda.
+    izado = re.search(r'\b(?:con asas? de izado|bols[oó]n(?:es)? de izado|big[- ]bags?)\b', evidencia)
+    paso = re.search(r'\b(?:paso|circulaci[oó]n|senda|sendero|bloque\w*|interrump\w*|desvi\w*)\b',
+                     evidencia)
+    if (not (izado and paso)
+            and any(k in evidencia for k in ('sacos', 'bolsas', 'pila', 'tubos', 'bolson', 'bolsón'))
             and not any(k in evidencia for k in ('barrera', 'valla', 'cartel', 'anclad', 'colocad'))):
         fuentes.pop('obstruccion', None)
     modelo = {'modelo': sol, 'ok': True,

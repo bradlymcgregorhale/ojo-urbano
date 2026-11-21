@@ -252,6 +252,30 @@ class ApiModos(unittest.TestCase):
         self.assertIn('barrera independiente', _decision([{'confirmadas': {
             'manteros': 'Puesto con mercadería exhibida.'}, 'dudosas': {}}], {}, claves))
 
+    def test_prueba_conserva_obstruccion_de_bolsones_de_izado(self):
+        import prueba_completo as P
+        casos = [
+            ({'obstruccion': 'Dos bolsones con asas de izado reducen el paso peatonal.'},
+             {'obstruccion'}),
+            ({'obstruccion': 'Bolsas chicas con asas reducen el paso.',
+              'retiro_escombros': 'Sacos de obra cargables a mano.'}, {'retiro_escombros'}),
+            ({'obstruccion': 'Un bolsón con asas de izado y cascotes ocupa la vereda.'}, set()),
+            ({'obstruccion': 'Bolsones sin asas de izado reducen el paso.'}, set()),
+            ({}, set()),
+        ]
+        foto = Image.new('RGB', (24, 24))
+        local = {'probabilidades': [{'key': 'retiro_escombros', 'score': .85}],
+                 'escombros_mixtos': .98}
+        with patch.object(P, '_vistas', return_value=[]):
+            for confirmadas, esperadas in casos:
+                with self.subTest(confirmadas=confirmadas):
+                    lectura = {'confirmadas': confirmadas, 'dudosas': {}}
+                    with patch.object(P, '_leer', return_value=lectura) as leer:
+                        fuentes, _, _ = P.clasificar(foto, local, ('obstruccion', 'retiro_escombros'),
+                                                     ('decision', 'dirigidos', 'alcance'))
+                    self.assertEqual(set(fuentes), esperadas)
+                    self.assertEqual(leer.call_count, 3)
+
     def test_prueba_rechaza_contexto_y_otros_usos_antes_de_llamar(self):
         f = ('foto.jpg', self.foto, 'image/jpeg')
         self.assertEqual(self.cliente.post('/trabajos', files={'file': f},
