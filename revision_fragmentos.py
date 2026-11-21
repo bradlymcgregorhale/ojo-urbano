@@ -1,10 +1,11 @@
 """Distingue el fragmento del cordón de un retiro independiente."""
 import copy
 
+import modos_analisis as modos
 from prompts import cargar_prompt
 
 KEY = 'retiro_escombros'
-MODELOS = ('anthropic/claude-sonnet-4.6', 'google/gemini-3.8-flash', 'openai/gpt-5.6-luna')
+MODELOS = modos.leer_modelos('VERIFICADORES_FRAGMENTOS', ausente=None)
 ESTADOS = {'fragmentos_del_dano', 'pila_independiente', 'indeterminado'}
 PROMPT = cargar_prompt('dirigidos/fragmentos_cordon')
 
@@ -18,6 +19,9 @@ def interpretar(valor):
 
 def consultar(img):
     import verificador as V
+    modelos = V.modelos_dirigidos(MODELOS)
+    if len(set(modelos)) != 3:
+        return {'lecturas': [], 'fallo': True}
     contenido = [{'type': 'image_url', 'image_url': {'url': V._imagen_data_url(img, lado=1600)}}]
 
     def uno(modelo):
@@ -25,15 +29,17 @@ def consultar(img):
             [{'role': 'system', 'content': PROMPT}, {'role': 'user', 'content': contenido}],
             max_tokens=600, etapa='fragmentos_cordon')))
 
-    resultados = V._map_modelos(MODELOS, uno)
-    lecturas = [dict(modelo=m, **v) for m, v in zip(MODELOS, resultados) if v is not V._FALLO_MODELO]
-    return {'lecturas': lecturas, 'fallo': len(lecturas) != len(MODELOS)}
+    resultados = V._map_modelos(modelos, uno)
+    lecturas = [dict(modelo=m, **v) for m, v in zip(modelos, resultados) if v is not V._FALLO_MODELO]
+    return {'lecturas': lecturas, 'fallo': len(lecturas) != 3}
 
 
 def decidir(revision):
+    import verificador as V
+    modelos = V.modelos_dirigidos(MODELOS)
     lecturas = revision.get('lecturas') or []
-    if (revision.get('fallo') or len(lecturas) != len(MODELOS)
-            or {v.get('modelo') for v in lecturas} != set(MODELOS)):
+    if (revision.get('fallo') or len(lecturas) != 3
+            or {v.get('modelo') for v in lecturas} != set(modelos)):
         return 'revision'
     try:
         estados = {interpretar(v)['estado'] for v in lecturas}

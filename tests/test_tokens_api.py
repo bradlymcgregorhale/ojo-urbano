@@ -24,6 +24,8 @@ def respuesta(uso, contenido='{"ok":true}'):
 
 class TokensApi(unittest.TestCase):
     def setUp(self):
+        import especialista_contenedores as E
+        self.enterContext(patch.object(E, 'MODELO', 'prueba/inventario'))
         V.tokens_reset()
         V.costo_reset()
         self.pila = ExitStack()
@@ -97,10 +99,12 @@ class TokensApi(unittest.TestCase):
             self.assertEqual(V.costo_total(), .002)
 
     def test_arbitro_directo_y_salida_corta_conservan_json(self):
+        self.enterContext(patch.object(V, 'ARBITRO_SIN_RAZONAMIENTO', True))
+        self.enterContext(patch.object(V, 'MODELOS_MIN_1000', ('prueba/minimo',)))
         casos = [
-            ('deepseek/deepseek-v4-flash', 'arbitrar', 6000, 6000, {'enabled': False}),
-            ('openai/gpt-5-mini', 'pregunta_abierta', 400, 1000, {'effort': 'low'}),
-            ('openai/gpt-5-mini', 'verificar_uno', 6000, 6000, {'effort': 'low'}),
+            ('prueba/arbitro', 'arbitrar', 6000, 6000, {'enabled': False}),
+            ('prueba/minimo', 'pregunta_abierta', 400, 1000, {'effort': 'low'}),
+            ('prueba/minimo', 'verificar_uno', 6000, 6000, {'effort': 'low'}),
             ('otro', 'pregunta_abierta', 400, 400, {'effort': 'low'}),
         ]
         for modelo, etapa, limite, esperado, razonamiento in casos:
@@ -113,7 +117,7 @@ class TokensApi(unittest.TestCase):
                 cuerpo = json.loads(http.call_args.args[0].data)
                 self.assertEqual(cuerpo['max_tokens'], esperado)
                 self.assertEqual(cuerpo['reasoning'], razonamiento)
-                if modelo == 'deepseek/deepseek-v4-flash':
+                if etapa == 'arbitrar':
                     self.assertEqual(cuerpo['response_format'], {'type': 'json_object'})
                 else:
                     self.assertNotIn('response_format', cuerpo)

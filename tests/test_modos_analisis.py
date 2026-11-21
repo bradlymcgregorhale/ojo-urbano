@@ -33,6 +33,19 @@ class Configuracion(unittest.TestCase):
             self.assertIsNone(p['alto'].motivo)
             self.assertEqual(p['bajo'].motivo, 'no_configurado')
 
+    def test_listas_dirigidas_y_huella_usan_la_configuracion(self):
+        concepto = 'VERIFICADORES_RESIDUOS'
+        self.assertIsNone(M.leer_modelos(concepto, ausente=None, entorno={}))
+        self.assertEqual(M.leer_modelos(concepto, entorno={concepto: ''}), ())
+        self.assertEqual(M.leer_modelos(concepto, entorno={concepto: 'prueba/a, prueba/b, prueba/a'}),
+                         ('prueba/a', 'prueba/b'))
+        with self.assertRaises(ValueError):
+            M.leer_modelos(concepto, entorno={concepto: 'sin-proveedor'})
+        antes = M.cargar(V, {}, {concepto: 'prueba/a'})
+        despues = M.cargar(V, {}, {concepto: 'prueba/b'})
+        self.assertNotEqual(antes['alto'].version, despues['alto'].version)
+        self.assertEqual(antes['medio'].version, despues['medio'].version)
+
     def test_listas_explicitas_invalidas_aisladas(self):
         for valor in ('', 't/a,', 't/a,t/a', 't/a,t/b', 'http://privado', 'sk-secreto'):
             p = M.cargar(V, {}, {'VERIFICADORES_BAJO': valor})
@@ -163,6 +176,7 @@ class ApiModos(unittest.TestCase):
         self.pila.enter_context(patch.object(V, '_pedir_http', side_effect=http))
         # El especialista conserva su contrato, sin abrir el banco privado de ejemplos.
         import especialista_contenedores as E
+        self.pila.enter_context(patch.object(E, 'MODELO', 'prueba/inventario'))
         self.pila.enter_context(patch.object(E, 'solicitud', return_value={'model': E.MODELO, 'messages': []}))
         from fastapi.testclient import TestClient
         self.cliente = self.pila.enter_context(TestClient(S.app))
@@ -171,6 +185,12 @@ class ApiModos(unittest.TestCase):
     def post(self, modo=None, ruta='/clasificar', **kw):
         return self.cliente.post(ruta, files={'file': ('foto.jpg', self.foto, 'image/jpeg')},
                                  data={} if modo is None else {'modo': modo}, **kw)
+
+    def test_salud_usa_la_lista_de_completo(self):
+        r = self.cliente.get('/salud')
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()['verificacion'])
+        self.assertEqual(r.json()['verificadores'], list(self.ps['alto'].verificadores))
 
     def test_perfiles_reales_llamadas_y_cache_por_modo(self):
         # Económico: un lector. Medio y Completo agregan encuadre y aptitud

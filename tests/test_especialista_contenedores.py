@@ -21,11 +21,14 @@ def respuesta(tipos=None, uncertain=False):
 
 
 class Inventario(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch.object(E, 'MODELO', 'prueba/inventario'))
+
     def test_vistas_mantienen_foto_completa_y_ejemplos_sin_mutar_original(self):
         foto = io.BytesIO(); Image.new('RGB', (100, 200), 'red').save(foto, format='JPEG')
         raw = foto.getvalue()
         # La lógica de vistas no depende del contenido de ejemplos privados.
-        plantilla = json.dumps({'messages': [
+        plantilla = json.dumps({'model': 'prueba/plantilla', 'messages': [
             {'role': 'system', 'content': 'Inventario sintético'},
             {'role': 'user', 'content': [
                 {'type': 'text', 'text': 'Ejemplo sintético'},
@@ -39,6 +42,7 @@ class Inventario(unittest.TestCase):
                     E, 'PLANTILLA_SHA256', hashlib.sha256(plantilla).hexdigest()):
                 anterior = E.solicitud(raw, vistas=False)
                 nueva = E.solicitud(raw)
+        self.assertEqual((anterior['model'], nueva['model']), (E.MODELO, E.MODELO))
         a, b = anterior['messages'][1]['content'], nueva['messages'][1]['content']
         self.assertEqual(b[:-10], a[:-2])
         self.assertEqual(b[-9], a[-1])

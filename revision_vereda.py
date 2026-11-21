@@ -1,11 +1,12 @@
 """Distingue rotura propia del plano peatonal de otros objetos dañados."""
 import copy
 
+import modos_analisis as modos
 from prompts import cargar_prompt
 
 KEY = 'reparacion_vereda'
 PROMPT = cargar_prompt('dirigidos/vereda_geometria')
-MODELOS = ('anthropic/claude-sonnet-4.6', 'google/gemini-3.8-flash', 'openai/gpt-5.6-luna')
+MODELOS = modos.leer_modelos('VERIFICADORES_VEREDA', ausente=None)
 NEGATIVOS = {'fisura_menor', 'hueco_servicio', 'dano_cordon',
              'afectacion_puntual_elemento', 'sin_rotura'}
 ESTADOS = NEGATIVOS | {'rotura_estructural', 'indeterminado'}
@@ -21,6 +22,9 @@ def interpretar(valor):
 
 def consultar(img):
     import verificador as V
+    modelos = V.modelos_dirigidos(MODELOS)
+    if len(set(modelos)) != 3:
+        return {'lecturas': [], 'fallo': True}
     ancho, alto = img.size
     contenido = [{'type': 'text', 'text': 'Foto completa, sin comentario del vecino:'},
         {'type': 'image_url', 'image_url': {'url': V._imagen_data_url(img, lado=1600)}}]
@@ -32,16 +36,18 @@ def consultar(img):
         return interpretar(V._extraer_json(V._llamar(modelo,
             [{'role': 'system', 'content': PROMPT}, {'role': 'user', 'content': contenido}],
             max_tokens=1000, etapa='vereda_geometria')))
-    resultados = V._map_modelos(MODELOS, uno)
-    lecturas = [dict(modelo=m, **v) for m, v in zip(MODELOS, resultados)
+    resultados = V._map_modelos(modelos, uno)
+    lecturas = [dict(modelo=m, **v) for m, v in zip(modelos, resultados)
                 if v is not V._FALLO_MODELO]
-    return {'lecturas': lecturas, 'fallo': len(lecturas) != len(MODELOS)}
+    return {'lecturas': lecturas, 'fallo': len(lecturas) != 3}
 
 
 def decidir(revision):
+    import verificador as V
+    modelos = V.modelos_dirigidos(MODELOS)
     lecturas = revision.get('lecturas') or []
-    if (revision.get('fallo') or len(lecturas) != len(MODELOS)
-            or {v.get('modelo') for v in lecturas} != set(MODELOS)):
+    if (revision.get('fallo') or len(lecturas) != 3
+            or {v.get('modelo') for v in lecturas} != set(modelos)):
         return 'revision'
     try:
         lecturas = [interpretar(v) for v in lecturas]

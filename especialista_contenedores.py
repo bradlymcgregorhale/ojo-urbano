@@ -10,7 +10,9 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-MODELO = 'google/gemini-3.8-flash'
+from modos_analisis import leer_modelo
+
+MODELO = leer_modelo('MODELO_CONTENEDORES')
 TIPOS = ('contenedor_secos', 'contenedor_humedos_lateral', 'contenedor_humedos_bilateral')
 PLANTILLA = Path(__file__).resolve().parent / 'eval/vision/private/serving-contenedores-051.json'
 PLANTILLA_SHA256 = '4d420e509f0ae3569cb83b6b88884722a761004e77eb940f6faeec34db2e8f44'
@@ -30,6 +32,7 @@ def solicitud(datos, *, vistas=True):
     if hashlib.sha256(raw).hexdigest() != PLANTILLA_SHA256:
         raise ValueError('Plantilla de contenedores modificada')
     cuerpo = json.loads(raw)
+    cuerpo["model"] = MODELO
     with Image.open(io.BytesIO(datos)) as fuente:
         imagen = ImageOps.exif_transpose(fuente).convert('RGB')
     contenido = cuerpo['messages'][1]['content']

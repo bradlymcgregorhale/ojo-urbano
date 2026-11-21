@@ -196,11 +196,12 @@ class PrioridadTest(unittest.TestCase):
         from unittest.mock import patch
         import verificador as V
         with patch.object(V, '_imagen_data_url', return_value='data:image/jpeg;base64,QQ=='), \
+                patch.object(V, 'MODELO_PRIORIDAD_COMPARACION', 'prueba/prioridad'), \
                 patch.object(V, '_llamar', return_value='{"key":"retiro_escombros","fundamento":"acumulacion_principal","evidencia":"sacos"}') as llamada:
             r = V.comparar_prioridad(object(), [{'key': 'retiro_escombros', 'nombre': 'Escombros', 'observaciones': ['sacos']}])
         self.assertEqual(r['key'], 'retiro_escombros')
         modelo, mensajes = llamada.call_args.args[:2]
-        self.assertEqual(modelo, V.MODELO_PRIORIDAD_COMPARACION)
+        self.assertEqual(modelo, 'prueba/prioridad')
         self.assertEqual(llamada.call_args.kwargs['etapa'], 'prioridad_comparacion')
         self.assertEqual(mensajes[0]['content'], V._PROMPT_PRIORIDAD_COMPARACION)
         self.assertNotIn(V.PRIORIDAD[:40], mensajes[0]['content'])

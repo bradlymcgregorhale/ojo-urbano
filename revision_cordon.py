@@ -4,13 +4,14 @@ import hashlib
 import json
 from pathlib import Path
 
+import modos_analisis as modos
 from prompts import cargar_prompt
 
 KEY = 'reparacion_cordon'
 PROMPT = cargar_prompt('dirigidos/cordon_geometria')
 REFERENCIAS = Path(__file__).parent / 'eval/vision/private/serving-cordon-103-v1.json'
 REFERENCIAS_SHA256 = '9446c6dc9e8b7ffa456e48adf4afb9922ff27374efa5bfae16083491731dcf20'
-MODELOS = ('google/gemini-3.8-flash', 'google/gemini-3.5-flash', 'openai/gpt-5.6-luna')
+MODELOS = modos.leer_modelos('VERIFICADORES_CORDON', ausente=None)
 ESTADOS = {'rotura_estructural', 'diseno_funcional', 'desgaste_superficial', 'sano', 'indeterminado'}
 PIEZAS = {'cordon', 'cuneta_calzada', 'vereda', 'no_identificable'}
 
@@ -26,6 +27,9 @@ def interpretar(valor):
 
 def consultar(img):
     import verificador as V
+    modelos = V.modelos_dirigidos(MODELOS)
+    if len(set(modelos)) != 3:
+        return {'lecturas': [], 'fallo': True}
     try:
         raw = REFERENCIAS.read_bytes()
         if hashlib.sha256(raw).hexdigest() != REFERENCIAS_SHA256:
@@ -47,15 +51,17 @@ def consultar(img):
         return interpretar(V._extraer_json(V._llamar(modelo,
             [{'role': 'system', 'content': PROMPT}, {'role': 'user', 'content': contenido}],
             max_tokens=1000, etapa='cordon_geometria')))
-    resultados = V._map_modelos(MODELOS, uno)
-    lecturas = [dict(modelo=m, **v) for m, v in zip(MODELOS, resultados) if v is not V._FALLO_MODELO]
+    resultados = V._map_modelos(modelos, uno)
+    lecturas = [dict(modelo=m, **v) for m, v in zip(modelos, resultados) if v is not V._FALLO_MODELO]
     return {'lecturas': lecturas, 'fallo': len(lecturas) != 3}
 
 
 def decidir(revision):
+    import verificador as V
+    modelos = V.modelos_dirigidos(MODELOS)
     lecturas = revision.get('lecturas') or []
     if (revision.get('fallo') or len(lecturas) != 3
-            or {v.get('modelo') for v in lecturas} != set(MODELOS)):
+            or {v.get('modelo') for v in lecturas} != set(modelos)):
         return 'revision'
     try:
         lecturas = [interpretar(v) for v in lecturas]

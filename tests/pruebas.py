@@ -48,6 +48,7 @@ sys.addaudithook(_solo_red_local)
 # que no le corte los pedidos a las demás pruebas (todas salen de 127.0.0.1).
 os.environ.update(
     OPENROUTER_API_KEY="", RATE_LIMITE="10000", API_TOKEN="", CONCURRENCIA="1",
+    VERIFICADORES="prueba/uno,prueba/dos,prueba/tres",
     MAX_BYTES=str(1024 * 1024), MAX_PIXELES="25000000", CUOTA_DIARIA="0")
 
 _ok = _fallos = 0

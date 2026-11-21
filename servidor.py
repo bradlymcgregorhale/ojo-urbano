@@ -88,7 +88,8 @@ GRAV_MAX = 5
 # se devuelve nunca; ?verificar=0 responde degradado en vez de publicar el
 # modelo local. Ver README, "Cambios de contrato".
 VERSION_API = "11"
-CONTENEDORES_ESPECIALISTA = os.environ.get("CONTENEDORES_ESPECIALISTA", "0").lower() in ("1", "true", "si")
+CONTENEDORES_ESPECIALISTA = bool(especialista_contenedores.MODELO) and (
+    os.environ.get("CONTENEDORES_ESPECIALISTA", "0").lower() in ("1", "true", "si"))
 
 # Límites de abuso. Clasificar una foto cuesta 25-60 s de CPU y varias
 # llamadas pagas a OpenRouter (una por verificador, tres por defecto, más el
@@ -908,7 +909,7 @@ def procesar(datos, contexto, verificar):
         veri_actual = dict((salida.get("detalle") or {}).get("verificacion") or {})
         lecturas = veri_actual.get("verificadores") or []
         previa = evaluacion_foto.aplicar({"problemas": list(salida.get("problemas") or [])}, lecturas)
-        if prioridad.requiere_comparacion(previa, lecturas):
+        if verificador.MODELO_PRIORIDAD_COMPARACION and prioridad.requiere_comparacion(previa, lecturas):
             try:
                 candidatos = prioridad.armar_candidatos(previa, lecturas, CATEGORIAS)
                 veri_actual["prioridad_comparacion"] = verificador.comparar_prioridad(
@@ -927,6 +928,8 @@ def _terminos_prohibidos():
     """Nombres internos que un texto público jamás debe contener."""
     modelos = [m for m in (list(verificador.VERIFICADORES) + [verificador.ARBITRO]) if m]
     modelos += [m for p in PERFILES.values() for m in (*p.verificadores, p.arbitro) if m]
+    modelos += [m for variable in modos.CONFIG_MODELOS_ALTO for m in modos.leer_modelos(variable)]
+    modelos += list(patentes.LECTORES)
     partes = [re.escape(m) for m in modelos]
     # también el nombre pelado, sin el proveedor: "gpt-5-mini" a secas
     partes += [re.escape(m.split("/", 1)[1]) for m in modelos if "/" in m]
@@ -1219,9 +1222,10 @@ async def guardias(request, call_next):
 @app.get("/salud")
 def salud():
     canonicas = sorted({verificador.FOLD_LOCAL.get(k, k) for k in clases})
+    completo = PERFILES['alto']
     return {"ok": True, "clases": canonicas,
-            "verificacion": verificador.disponible(),
-            "verificadores": verificador.VERIFICADORES,
+            "verificacion": bool(completo.motivo is None and completo.verificadores and verificador.api_key()),
+            "verificadores": completo.verificadores,
             "arbitro": verificador.ARBITRO or None,
             "inventario_contenedores": CONTENEDORES_ESPECIALISTA,
             "modos_analisis": [p.publico() for p in PERFILES.values()]}
