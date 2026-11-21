@@ -86,6 +86,8 @@ En `.env.example` están las opciones de OpenRouter. Las revisiones dirigidas de
 
 Las comprobaciones que un modo no ejecuta aparecen en `analisis_limitaciones` (`modo_reducido`, `especialista_desactivado`, `corroboracion_insuficiente`) y las categorías que quedaron sin corroborar por esa omisión pasan a `posibles`; no se bajan los requisitos de evidencia para compensar. Cada respuesta lleva `modo` y `modo_version`, y la caché distingue los modos entre sí. Los lectores de cada modo se configuran con `VERIFICADORES_BAJO`, `VERIFICADORES_MEDIO` y `VERIFICADORES_ALTO`; un modo sin lista válida figura como no disponible en `GET /salud`.
 
+Completo (prueba) se puede elegir en la página o enviar como `modo=prueba` a `/clasificar` y `/trabajos`. Admite una foto sin comentario. Devuelve categorías de prueba y `costo_api` facturado, sin estimar gravedad ni evaluar encuadre. Configurá `VERIFICADORES_PRUEBA` con tres lectores distintos en este orden: decisión, consultas dirigidas y segundo lector para el alcance de escombros. Abrí la página con `?prueba=1` para preseleccionar el modo.
+
 ## Dónde ayuda el modelo local
 
 Su aporte más claro está en la identificación de contenedores. Detecta si hay uno y distingue entre húmedos de carga lateral, húmedos de carga bilateral y secos. En las fotos etiquetadas, la presencia y el tipo alcanzan F1 0,97.
