@@ -68,6 +68,44 @@ class PoliticaTest(unittest.TestCase):
         self.assertEqual(nuevo['problemas'], r['problemas'])
         self.assertNotIn('requiere_revision', nuevo['verificacion_escombros'])
 
+    def test_una_sola_pila_no_genera_una_segunda_recoleccion(self):
+        r, revision = self.opacas([categoria(), categoria('recoleccion')])
+        for v in r['detalle']['verificacion']['verificadores']:
+            v['categorias'].append(dict(key=P.KEY, evidencia='Sacos de obra junto al árbol.'))
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertEqual([p['key'] for p in nuevo['problemas']], [P.KEY])
+        self.assertEqual([p['key'] for p in nuevo['descartados_por_foto']], ['recoleccion'])
+        self.assertIn('recoleccion_duplicada',
+                      nuevo['detalle']['verificacion']['decision_alcance']['reglas'])
+        for valor in ('si', 'indeterminado'):
+            with self.subTest(residuos_independientes=valor):
+                revision['revisiones'][0]['residuos_comunes_independientes'] = valor
+                self.assertEqual(P.aplicar(r, revision, self.cats)['problemas'], r['problemas'])
+        revision['revisiones'][0]['residuos_comunes_independientes'] = 'no'
+        r['categorias_contexto'] = [categoria('recoleccion')]
+        self.assertEqual(P.aplicar(r, revision, self.cats)['problemas'], r['problemas'])
+
+    def test_recuento_de_bolsas_corroborado_y_minimo_con_superposicion(self):
+        r, revision = self.opacas([dict(categoria(), bolsas=3)])
+        revision['material_visible_confirmado'] = True
+        for v in revision['revisiones']:
+            v.update(bolsas_visibles=5, bolsas_adicionales_posibles=False)
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertEqual(nuevo['problemas'][0]['bolsas'], 5)
+        self.assertEqual(nuevo['verificacion_escombros']['bolsas_minimo'], 5)
+        self.assertTrue(nuevo['verificacion_escombros']['bolsas_recuento_completo'])
+        revision['revisiones'][0]['bolsas_adicionales_posibles'] = True
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertIsNone(nuevo['problemas'][0]['bolsas'])
+        self.assertEqual(nuevo['verificacion_escombros']['bolsas_minimo'], 5)
+        self.assertIn('al menos 5', nuevo['descripcion'])
+        for v in revision['revisiones']:
+            v.update(bolsas_visibles=0, bolsas_adicionales_posibles=False)
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertEqual(nuevo['verificacion_escombros']['bolsas_minimo'], 0)
+        self.assertTrue(nuevo['verificacion_escombros']['bolsas_recuento_completo'])
+        self.assertIsNone(nuevo['problemas'][0]['bolsas'])
+
     def test_material_opaco_no_confirma_fusion_local_con_un_solo_testigo(self):
         r, revision = self.opacas([categoria(fuentes=['modelo_local', 'm1']),
                                   categoria('retiro_muebles')])
@@ -694,6 +732,20 @@ class RevisionTest(unittest.TestCase):
 
         with patch.object(V, "VERIFICADORES", ["m1", "m2", "m3"]), patch.object(V, "_llamar", llamar):
             return V.validar_alcance_escombros(Image.new("RGB", (64, 64)), contexto)
+
+    def test_recuento_en_las_mismas_llamadas(self):
+        lecturas = [respuesta(bolsas_visibles=4, bolsas_adicionales_posibles=True),
+                    respuesta(bolsas_visibles=True), respuesta()]
+        r = self.revisar(lecturas)
+        self.assertEqual(len(self.llamadas), 3)
+        for _, mensajes, _ in self.llamadas:
+            self.assertEqual([p['type'] for p in mensajes[1]['content']],
+                             ['text', 'image_url'])
+        filas = P.revision_publica.publicar(r)['revisiones']
+        self.assertEqual(filas[0]['respuesta']['bolsas_visibles'], 4)
+        self.assertIs(filas[0]['respuesta']['bolsas_adicionales_posibles'], True)
+        self.assertNotIn('bolsas_visibles', filas[1]['respuesta'])
+        self.assertNotIn('bolsas_visibles', filas[2]['respuesta'])
 
     def test_contexto_explicito_compatible(self):
         r = self.revisar([respuesta()] * 3)

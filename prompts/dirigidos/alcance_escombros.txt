@@ -22,6 +22,18 @@ evaluá esos residuos por separado: "bolsas_chicas_o_suelto", con su ubicación.
 No confundas bolsas chicas impresas, blancas o de rafia con un big-bag. Si no
 hay bolsas ni pila candidata, "sin_pila". No inventes un objeto por el texto.
 
+RECUENTO: recorré la pila de izquierda a derecha, del frente al fondo. En
+"bolsas_visibles" contá cada bolsa chica individual de esa pila, incluso si
+está parcialmente tapada y ves un borde, boca, costura o contorno que permita
+distinguirla de las demás. Mirá detrás y a los costados de las del frente.
+No cuentes dos veces la misma bolsa por un pliegue o una inscripción.
+Excluí bolsones grandes y residuos independientes.
+Usá 0 si sólo se ven restos sueltos y null si no se puede contar la pila.
+En "bolsas_adicionales_posibles" indicá true si la superposición, el encuadre
+o un borde dudoso podrían ocultar otra bolsa. Usá false si se puede contar
+la pila completa, y null si no se puede evaluar. Mencioná en la evidencia
+de presentación qué contornos separaste o qué parte del recuento está tapada.
+
 CONTENIDO NO VISIBLE: examiná cada bolsa de la pila, no sólo la que está
 abierta. "hay_bolsas_opacas_o_parciales" es "si" cuando AL MENOS UNA bolsa
 no deja identificar TODO su contenido. Una bolsa abierta arriba pero opaca
@@ -54,9 +66,10 @@ en un testimonio. En cita_vecinal copiá sólo la frase literal que afirma el
 contenido; si no hay afirmación, cadena vacía. No repitas nombres ni direcciones.
 
 RESIDUOS COMUNES INDEPENDIENTES: "si" sólo si ves OTROS residuos domésticos o
-reciclables descartados en ESPACIO PÚBLICO aparte de la pila candidata. Las
-mismas bolsas opacas no son evidencia de una segunda categoría. "no" si no hay
-otros; "indeterminado" si no podés resolverlo.
+reciclables descartados en ESPACIO PÚBLICO que justifiquen una recolección aparte
+de la pila candidata. Las mismas bolsas opacas no son evidencia de una segunda
+categoría. Unas pocas hojas, papeles o envoltorios dispersos en el cordón tampoco.
+"no" si no hay otros residuos para recolectar; "indeterminado" si no podés resolverlo.
 OTROS RETIROS INDEPENDIENTES: enumerá "retiro_muebles" o "retiro_poda" sólo si
 hay muebles/voluminosos o restos vegetales descartados en ESPACIO PÚBLICO
 independientes de las bolsas/pila candidata. El mismo bolsón y su contenido
@@ -75,6 +88,7 @@ independiente que sí podés identificar. Describí ese objeto en la evidencia.
 Respondé sólo JSON. Cada evidencia visual tiene como máximo 20 palabras:
 {"ubicacion":"publica|privada|indeterminada",
  "presentacion":"bolsas_chicas_o_suelto|solo_bolson|sin_pila|indeterminada",
+ "bolsas_visibles":null, "bolsas_adicionales_posibles":null,
  "material":"escombros_visible|oculto_o_ambiguo|incompatible_visible|indeterminado",
  "hay_bolsas_opacas_o_parciales":"si|no|indeterminado",
  "afirmacion_vecinal":"afirma|duda|niega|no_menciona",

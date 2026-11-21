@@ -1450,6 +1450,7 @@ def validar_alcance_escombros(img, contexto=""):
                 for k in otros):
             raise ValueError("Alcance sin evaluación de otros retiros")
         r["otros_retiros_independientes"] = list(dict.fromkeys(otros))
+        r.update(revision_publica.campos_recuento(dict(v, presentacion=r['presentacion'])))
         for k in ("evidencia_ubicacion", "evidencia_presentacion", "evidencia_material"):
             if not isinstance(v.get(k), str) or not v[k].strip():
                 raise ValueError("Alcance sin evidencia")

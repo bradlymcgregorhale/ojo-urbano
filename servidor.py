@@ -2590,7 +2590,7 @@ function lineaCosto(d){
   return t;
 }
 // Los detalles de retiro se leen únicamente de problemas confirmados.
-function renderProblema(c){
+function renderProblema(c,revisionEscombros){
   const tipos={heladera:'heladera',lavarropas:'lavarropas',cocina:'cocina',televisor:'televisor',
     electronica:'electrónica',colchon:'colchón',somier:'somier',sillon:'sillón',silla:'silla',mesa:'mesa',
     placard:'placard',estanteria:'estantería',puertas:'puertas',ventanas:'ventanas',maderas:'maderas',
@@ -2603,7 +2603,13 @@ function renderProblema(c){
   if(c.fuentes)datos.push(c.fuentes+(c.fuentes===1?' fuente':' fuentes'));
   if(c.patente)datos.push('Patente: '+c.patente);
   const campos=[];
-  if(c.key==='retiro_escombros')campos.push('Bolsas: '+cantidad(c.bolsas));
+  if(c.key==='retiro_escombros'){
+    const minimo=revisionEscombros?.bolsas_minimo;
+    const completo=revisionEscombros?.bolsas_recuento_completo===true;
+    const bolsas=Number.isInteger(minimo)&&(minimo>0||(completo&&minimo===0))
+      ?(completo?String(minimo):'al menos '+minimo):cantidad(c.bolsas);
+    campos.push('Bolsas: '+bolsas);
+  }
   if(c.key==='retiro_muebles'){
     const tam=['chico','grande'].includes(c.objeto_tam)?c.objeto_tam:'tamaño sin informar';
     campos.push('Objeto: '+etiqueta(tipos,c.objeto_tipo)+' · '+tam+' · '+cantidad(c.objeto_cant));
@@ -2649,7 +2655,7 @@ function renderResultado(d){
   if(revisionMaterial)estados.push('Tipo de residuos pendiente de revisión');
   if(estados.length)resumen+='<div class="estados">'+estados.map(t=>`<span class="estado">${esc(t)}</span>`).join('')+'</div>';
   if(aviso)resumen+=`<div class="tardesc">${esc(aviso)}</div>`;
-  if(probs.length)resumen+='<div class="minicats">'+probs.map(renderProblema).join('')+'</div>';
+  if(probs.length)resumen+='<div class="minicats">'+probs.map(c=>renderProblema(c,d.verificacion_escombros)).join('')+'</div>';
   const cc=d.categorias_contexto||[];
   if(cc.length)resumen+='<div class="minicats">'+cc.map(c=>
     `<div class="minicat ctx"><b>${esc(c.nombre||c.key)}</b><span>Según tu texto, sin confirmar en la foto</span></div>`).join('')+'</div>';

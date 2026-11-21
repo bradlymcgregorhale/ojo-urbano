@@ -132,6 +132,19 @@ class OmisionesTest(unittest.TestCase):
             R.revisar(Image.new('RGB', (20, 20)), original, CATS)
         residuos.assert_not_called()
 
+    def test_recoleccion_de_la_misma_pila_no_vuelve_a_consultar_residuos(self):
+        original = self.salida()
+        original['problemas'] = [dict(key='retiro_escombros', gravedad=2)]
+        original['detalle']['verificacion'].update(
+            verificadores=[dict(ok=True, modelo='a', categorias=[dict(key='recoleccion')])],
+            decision_alcance=dict(reglas=['recoleccion_duplicada']))
+        with patch('evaluacion_foto.resumir', return_value=({'rechazada': False}, [])), \
+                patch.object(R, 'consultar_objetos', return_value={'lecturas': []}), \
+                patch.object(R, 'consultar_residuos') as residuos:
+            r = R.revisar(Image.new('RGB', (20, 20)), original, CATS)
+        residuos.assert_not_called()
+        self.assertEqual(r['problemas'], original['problemas'])
+
     def test_bolsas_opacas_y_respuestas_incompletas_no_crean_corroboracion(self):
         for v in ({}, {'residuos_comunes': 'true', 'descartado_publico': True,
                        'clases': ['carton'], 'evidencia': 'caja'},

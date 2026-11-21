@@ -209,6 +209,44 @@ def _bolsas_opacas_sin_material(revision):
         for v in lecturas)
 
 
+def _sin_recoleccion_independiente(salida, revision):
+    if (salida.get('foto_valida') is False or revision.get('fallo')
+            or revision.get('estado') != 'apto' or revision.get('basura_independiente')):
+        return False
+    lecturas = revision.get('revisiones') or []
+    modelos = {v.get('modelo') for v in lecturas if v.get('modelo')}
+    if len(modelos) < 2 or len(modelos) != len(lecturas) or not all(
+            v.get('ubicacion') == 'publica'
+            and v.get('presentacion') == 'bolsas_chicas_o_suelto'
+            and v.get('residuos_comunes_independientes') == 'no' for v in lecturas):
+        return False
+    veri = salida['detalle']['verificacion']
+    contexto = (salida['categorias_contexto'] + (veri.get('por_contexto') or [])
+                + [c for c in salida['problemas'] + salida['posibles']
+                   if c.get('origen') == 'contexto_vecinal'
+                   or 'contexto_vecinal' in (c.get('fuentes') or [])])
+    return not any(c.get('key') == 'recoleccion' for c in contexto)
+
+
+def _recuento_bolsas(revision):
+    lecturas = {v['modelo']: revision_publica.campos_recuento(v)
+                for v in revision.get('revisiones') or []
+                if v.get('modelo') and v.get('ubicacion') == 'publica'}
+    conteos = sorted((v['bolsas_visibles'] for v in lecturas.values() if v), reverse=True)
+    if len(conteos) < 2:
+        return None, None
+    minimo = conteos[1]
+    exactas = sum(v.get('bolsas_visibles') == minimo
+                  and v.get('bolsas_adicionales_posibles') is False for v in lecturas.values())
+    compatible = all((v.get('bolsas_visibles') == minimo
+                      and v.get('bolsas_adicionales_posibles') is not True)
+                     or (v.get('bolsas_visibles', minimo) < minimo
+                         and v.get('bolsas_adicionales_posibles') is True)
+                     for v in lecturas.values())
+    exacto = exactas >= 2 and compatible and not revision.get('fallo')
+    return minimo, minimo if exacto else None
+
+
 def _respaldo_visual(salida, key):
     lectores = ((salida.get('detalle') or {}).get('verificacion') or {}).get('verificadores') or []
     return {v['modelo'] for v in lectores if v.get('ok') is True and v.get('modelo')
@@ -480,10 +518,40 @@ def aplicar(salida, revision, categorias):
             diagnostico.anotar('conservar_basura_publica', ['recoleccion'])
         otros = [c['nombre'] for c in r['problemas']]
         r['descripcion'] = motivo + (" Otros hallazgos: " + "; ".join(otros) + "." if otros else "")
+    escombros = [c for c in r['problemas'] if es_escombros(c)]
+    escombros_corroborados = escombros and (revision.get('material_visible_confirmado') is True
+        or any(len(_respaldo_visual(salida, c.get('key'))) >= 2 for c in escombros))
+    if (escombros_corroborados and any(c.get('key') == 'recoleccion' for c in r['problemas'])
+            and _sin_recoleccion_independiente(salida, revision)):
+        diagnostico.anotar('recoleccion_duplicada', ['recoleccion'])
+        motivo_duplicado = revision_publica.REGLAS['recoleccion_duplicada']
+        r['descartados_por_foto'].extend(dict(c, motivo_descarte=motivo_duplicado)
+            for c in r['problemas'] if c.get('key') == 'recoleccion')
+        for campo in ('problemas', 'posibles'):
+            r[campo] = [c for c in r[campo] if c.get('key') != 'recoleccion']
+        r['en_duda'] = [k for k in r['en_duda'] if k != 'recoleccion']
+        veri.get('fuentes_en_duda', {}).pop('recoleccion', None)
     r["verificacion_escombros"] = {
         "estado": revision.get("estado", "indeterminado"),
         "motivo": motivo, "basado_en_contexto": uso_contexto,
         "requiere_nueva_foto": not apto}
+    if apto and r.get('foto_valida') is not False:
+        minimo, exacto = _recuento_bolsas(revision)
+        if minimo is not None:
+            from verificador import _cuenta_1_a_15
+            r['verificacion_escombros'].update(bolsas_minimo=minimo,
+                                               bolsas_recuento_completo=exacto is not None)
+            for c in escombros:
+                c['bolsas'] = _cuenta_1_a_15(exacto)
+            if len(escombros) == len(r['problemas']) == 1 and not uso_contexto and minimo:
+                cantidad = str(exacto) if exacto is not None else f'al menos {minimo}'
+                bolsas = 'bolsa chica' if minimo == 1 else 'bolsas chicas'
+                verbo = 'Se ve' if minimo == 1 else 'Se ven'
+                r['descripcion'] = f'{verbo} {cantidad} {bolsas} en la vía pública.'
+                if exacto is None:
+                    r['descripcion'] += ' El recuento total queda por confirmar.'
+                if revision.get('material_visible_confirmado') is not True:
+                    r['descripcion'] += ' El contenido de las bolsas no se distingue por completo.'
     if revisar_material or lector_pendiente or material_oculto:
         r['verificacion_escombros']['requiere_revision'] = True
     r["hay_problema"] = bool(r["problemas"])
