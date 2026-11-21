@@ -23,6 +23,9 @@ def salida():
 
 
 class FragmentosTests(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch.object(R, 'MODELOS', ('prueba/a', 'prueba/b', 'prueba/c')))
+
     def test_tres_lecturas_del_mismo_dano_excluyen_solo_el_retiro(self):
         s = salida(); anterior = copy.deepcopy(s)
         r = R.aplicar(s, revision(*['fragmentos_del_dano'] * 3))

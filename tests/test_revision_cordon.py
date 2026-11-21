@@ -12,6 +12,9 @@ def revision(estados, **extra):
 
 
 class GeometriaCordon(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch.object(R, 'MODELOS', ('prueba/a', 'prueba/b', 'prueba/c')))
+
     def test_rotura_requiere_tres_lectores_y_pieza_correcta(self):
         r = revision(['rotura_estructural'] * 3)
         self.assertEqual(R.decidir(r), 'confirmado')

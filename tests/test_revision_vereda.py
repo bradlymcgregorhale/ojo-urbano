@@ -12,6 +12,9 @@ def revision(estados, **extra):
 
 
 class PlanoPeatonal(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch.object(R, 'MODELOS', ('prueba/a', 'prueba/b', 'prueba/c')))
+
     def salida(self):
         return dict(problemas=[dict(key=R.KEY, nombre='Vereda', gravedad=3, fuentes=['a', 'b']),
             dict(key='reparacion_cordon', nombre='Cordón', gravedad=3, fuentes=['a', 'b'])],

@@ -16,6 +16,30 @@ NOMBRES = {'bajo': 'Económico', 'medio': 'Equilibrado', 'alto': 'Completo'}
 IDENTIFICADOR = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.:-]+$')
 
 
+CONFIG_MODELOS_ALTO = (
+    'VERIFICADORES_RESIDUOS', 'VERIFICADORES_CUBIERTA', 'VERIFICADORES_CORDON',
+    'VERIFICADORES_VEREDA', 'VERIFICADORES_FRAGMENTOS', 'VERIFICADORES_PRESENCIA_CONTENEDOR',
+    'MODELO_CONTENEDORES', 'PRIORIDAD_COMPARACION_MODELO',
+)
+
+
+def leer_modelos(variable, *, ausente=(), entorno=None):
+    env = os.environ if entorno is None else entorno
+    if variable not in env:
+        return ausente
+    modelos = tuple(m.strip() for m in env[variable].split(',') if m.strip())
+    if any(not IDENTIFICADOR.fullmatch(m) for m in modelos):
+        raise ValueError(f'Identificador de modelo inválido en {variable}')
+    return tuple(dict.fromkeys(modelos))
+
+
+def leer_modelo(variable):
+    modelos = leer_modelos(variable)
+    if len(modelos) > 1:
+        raise ValueError(f'{variable} admite un solo modelo')
+    return modelos[0] if modelos else ''
+
+
 @dataclass(frozen=True)
 class Perfil:
     modo: str
@@ -42,7 +66,7 @@ def cargar(verificador, opciones_servidor, entorno=None):
     archivos = sorted((raiz / 'prompts').rglob('*.txt')) + [
         raiz / n for n in ('verificador.py', 'politica_escombros.py',
                           'revision_escombros_publica.py', 'revision_omisiones.py', 'revision_cordon.py', 'revision_fragmentos.py', 'revision_vereda.py', 'modos_analisis.py',
-                          'servidor.py', 'especialista_contenedores.py', 'categorias.json', 'evaluacion_foto.py', 'prioridad.py', 'observaciones_higiene.py')]
+                          'servidor.py', 'especialista_contenedores.py', 'patentes.py', 'categorias.json', 'evaluacion_foto.py', 'prioridad.py', 'observaciones_higiene.py')]
     base = hashlib.sha256()
     for archivo in archivos:
         base.update(archivo.relative_to(raiz).as_posix().encode())
@@ -75,8 +99,15 @@ def cargar(verificador, opciones_servidor, entorno=None):
         efectivas = dict(opciones)
         if modo != 'alto':
             efectivas = {k: v for k, v in efectivas.items() if not k.startswith('CONTENEDORES_')}
+        efectivas['OPENROUTER_MODELOS_MIN_1000'] = leer_modelos(
+            'OPENROUTER_MODELOS_MIN_1000', entorno=env)
+        efectivas['LECTORES_CHAPA'] = leer_modelos('LECTORES_CHAPA', entorno=env)
+        if modo == 'alto':
+            efectivas.update({k: leer_modelos(k, ausente=None, entorno=env)
+                              for k in CONFIG_MODELOS_ALTO})
         if modo != 'bajo':
             efectivas['ARBITRO_VOTOS'] = verificador.ARBITRO_VOTOS
+            efectivas['ARBITRO_SIN_RAZONAMIENTO'] = verificador.ARBITRO_SIN_RAZONAMIENTO
         datos = [base.hexdigest(), modo, modelos, arbitro, foto, confirma,
                  especialista, efectivas, motivo]
         if especialista:

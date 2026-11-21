@@ -25,6 +25,8 @@ import threading
 import urllib.error
 from pathlib import Path
 
+import modos_analisis as modos
+
 from PIL import Image
 
 import verificador as V
@@ -37,8 +39,7 @@ OCR_LOCAL = os.environ.get("OCR_CHAPAS", "cct-xs-v2-global-model").strip()
 # Lectores de visión para el recorte. Distintos de los verificadores de la
 # rúbrica a propósito: medidos sobre recortes, grok y gemini fueron los que
 # más coincidieron entre sí y con el OCR local.
-LECTORES = [m.strip() for m in os.environ.get(
-    "LECTORES_CHAPA", "x-ai/grok-4.3,google/gemini-3.8-flash").split(",") if m.strip()]
+LECTORES = modos.leer_modelos("LECTORES_CHAPA")
 MARGEN = 0.25           # margen alrededor de la caja del detector
 ANCHO_RECORTE = 640     # el recorte se amplía hasta este ancho antes de leerlo
 # Por debajo de este ancho (en la foto original) ningún lector acertó.

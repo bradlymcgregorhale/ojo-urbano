@@ -51,7 +51,7 @@ La API recibe la imagen y, si existe, el texto escrito por quien reporta en el c
 
 El modelo local procesa la foto en el mismo equipo donde está instalada la API. Combina embeddings de CLIP, DINOv2 y SigLIP2 con un clasificador multietiqueta de regresión logística, entrenado con miles de fotos callejeras etiquetadas a mano. También estima una gravedad de 1 a 5.
 
-Si configuraste OpenRouter, uno, dos o tres modelos de visión según el modo (por defecto GPT-5 mini, Gemini Flash Lite y GPT-5.6 luna en Completo) evalúan la misma imagen con una rúbrica por categoría. La confirmación visual necesita al menos dos fuentes. La aceptación contextual de escombros, explicada abajo, es una excepción. El modelo local participa como una fuente y sus puntuaciones aparecen por separado en `modelo_local`.
+Si configuraste OpenRouter, uno, dos o tres modelos de visión según el modo (según las listas de `.env`) evalúan la misma imagen con una rúbrica por categoría. La confirmación visual necesita al menos dos fuentes. La aceptación contextual de escombros, explicada abajo, es una excepción. El modelo local participa como una fuente y sus puntuaciones aparecen por separado en `modelo_local`.
 
 Una detección sostenida por una sola fuente aparece en `posibles`. DeepSeek actúa como árbitro de texto cuando hay desacuerdos y deja el motivo en la respuesta. Por defecto no convierte una detección aislada en problema confirmado, porque las mediciones no mostraron una mejora.
 
@@ -81,6 +81,8 @@ Completo es el modo por defecto y el único que recorre todas las etapas. Tarda 
 Equilibrado usa dos lectores y el árbitro de texto. Puede confirmar categorías con la misma regla de dos fuentes, pero no tiene especialista de contenedores ni comparación de prioridad, y las comprobaciones de calidad y encuadre necesitan que los dos lectores coincidan.
 
 Económico usa un solo lector y ninguna etapa que exija dos. Como una categoría se confirma con dos fuentes y el modelo local solo cuenta cuando supera su umbral, casi todo lo que ve ese lector queda en `posibles`. Por eso su respuesta trae una `conclusion` con `estado: "preliminar"` cuando hay indicios sin corroborar: describe qué vio el lector y pide corroboración, sin publicarlo como problema confirmado. Sirve como filtro barato antes de un análisis en Completo, o para revisar a mano.
+
+En `.env.example` están las opciones de OpenRouter. Las revisiones dirigidas de Completo usan los lectores del modo si no se define su lista. Para fijar otra lista, usá `VERIFICADORES_RESIDUOS`, `VERIFICADORES_CUBIERTA`, `VERIFICADORES_CORDON`, `VERIFICADORES_VEREDA`, `VERIFICADORES_FRAGMENTOS` o `VERIFICADORES_PRESENCIA_CONTENEDOR`. Configurá `ARBITRO`, `PRIORIDAD_COMPARACION_MODELO`, `MODELO_CONTENEDORES` y `LECTORES_CHAPA` para las consultas correspondientes.
 
 Las comprobaciones que un modo no ejecuta aparecen en `analisis_limitaciones` (`modo_reducido`, `especialista_desactivado`, `corroboracion_insuficiente`) y las categorías que quedaron sin corroborar por esa omisión pasan a `posibles`; no se bajan los requisitos de evidencia para compensar. Cada respuesta lleva `modo` y `modo_version`, y la caché distingue los modos entre sí. Los lectores de cada modo se configuran con `VERIFICADORES_BAJO`, `VERIFICADORES_MEDIO` y `VERIFICADORES_ALTO`; un modo sin lista válida figura como no disponible en `GET /salud`.
 
@@ -389,7 +391,7 @@ foto esté libre de problemas.
 
 ### Inventario especializado de contenedores
 
-`CONTENEDORES_ESPECIALISTA=1` activa una pasada fija para identificar secos,
+`CONTENEDORES_ESPECIALISTA=1` y `MODELO_CONTENEDORES` activan una pasada para identificar secos,
 húmedos de carga lateral y húmedos de carga bilateral. Usa la misma foto
 original, seis referencias privadas y la configuración validada. La plantilla
 se instala fuera de git en `eval/vision/private/serving-contenedores-051.json`;
@@ -735,7 +737,7 @@ otro consumo. El modo también aparece en las descargas JSON y CSV.
 
 Recibe `multipart/form-data` con `file` (obligatoria), `file_b` (opcional, la segunda foto del mismo reporte), `contexto` (texto del vecino, hasta 300 caracteres) y `modo` (`alto` si se omite). Mismos límites, cupo, cola y caché que `/clasificar`. Con barra final, como el resto.
 
-Para cada foto ubica las chapas con un detector ONNX en CPU, recorta cada una con margen, la amplía y la leen el OCR local de chapas y los lectores de `LECTORES_CHAPA` (por defecto `x-ai/grok-4.3,google/gemini-3.8-flash`). Una chapa se publica (`legible: true`) cuando al menos dos lecturas coinciden en la misma cadena válida y ninguna otra lectura válida la contradice. Un recorte de menos de `CHAPA_ANCHO_MINIMO` px (110) no se intenta: `motivo` pide la foto más cerca. `patente` a nivel respuesta sale cuando las fotos que leyeron algo coinciden en una sola chapa; dos distintas son dos vehículos y queda `null`.
+Para cada foto ubica las chapas con un detector ONNX en CPU, recorta cada una con margen, la amplía y la leen el OCR local de chapas y los lectores de `LECTORES_CHAPA`. Una chapa se publica (`legible: true`) cuando al menos dos lecturas coinciden en la misma cadena válida y ninguna otra lectura válida la contradice. Un recorte de menos de `CHAPA_ANCHO_MINIMO` px (110) no se intenta: `motivo` pide la foto más cerca. `patente` a nivel respuesta sale cuando las fotos que leyeron algo coinciden en una sola chapa; dos distintas son dos vehículos y queda `null`.
 
 `escena` sale del consenso de los verificadores configurados (al menos dos coincidencias por campo): `vehiculos_protagonistas`, `tipo`, `color`, `mismo_vehiculo` (solo con dos fotos), `infraccion` (`vereda`, `ochava`, `sumidero`, `doble_fila`, `senda_peatonal`, `rampa`, `garaje`, `cordon_amarillo`, `parada_colectivo`, `prohibido_estacionar`, `ciclovia`, `ninguna_visible`), `abandono` (`senales` y `nivel`), `personas_visibles` y `conductor_adentro`. `misma_escena` reutiliza `/comparar`. Lo que sostiene un solo lector queda en `en_duda`.
 

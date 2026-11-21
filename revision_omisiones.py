@@ -4,13 +4,14 @@ import hashlib
 import json
 from pathlib import Path
 
+import modos_analisis as modos
 from prompts import cargar_prompt
 
 OBJETOS = cargar_prompt('dirigidos/objetos_omitidos')
 CUBIERTA = cargar_prompt('dirigidos/cubierta_contenedor')
 RESIDUOS = cargar_prompt('dirigidos/residuos_independientes')
-MODELOS_RESIDUOS = ('anthropic/claude-sonnet-4.6', 'google/gemini-3.8-flash',
-                    'openai/gpt-5.6-luna')
+MODELOS_RESIDUOS = modos.leer_modelos('VERIFICADORES_RESIDUOS', ausente=None)
+MODELOS_CUBIERTA = modos.leer_modelos('VERIFICADORES_CUBIERTA', ausente=None)
 CLASES_RESIDUOS = {'carton', 'papel', 'envase', 'envoltorio', 'restos_domesticos'}
 REFERENCIAS = Path(__file__).parent / 'eval/vision/private/serving-cubierta-111-v2.json'
 REFERENCIAS_SHA256 = 'dd236dbe45d0ed7c979bbd78977ca75c9d359c21b29a1f75196a61a3f87ecda1'
@@ -64,7 +65,9 @@ def interpretar_cubierta(valor):
 
 def _consultar(img, prompt, contenido, etapa, interpretar, modelos=None):
     import verificador as V
-    modelos = list(dict.fromkeys(V.modelos_activos() if modelos is None else modelos))
+    modelos = tuple(dict.fromkeys(V.modelos_dirigidos(modelos)))
+    if len(modelos) < 2:
+        return {'lecturas': [], 'fallo': True}
     mensajes = [{'role': 'system', 'content': prompt}, {'role': 'user', 'content': contenido}]
     def uno(modelo):
         return interpretar(V._extraer_json(V._llamar(
@@ -102,7 +105,6 @@ def cargar_referencias():
 
 def consultar_cubierta(img):
     import verificador as V
-    import modos_analisis as modos
     try:
         contenido = cargar_referencias()
     except (OSError, ValueError):
@@ -113,13 +115,8 @@ def consultar_cubierta(img):
     contenido.extend([{'type': 'text', 'text': 'Banda inferior de la MISMA foto nueva, no de los ejemplos:'},
         {'type': 'image_url', 'image_url': {'url': V._imagen_data_url(
             img.crop((0, int(alto * .45), ancho, alto)), lado=1600)}}])
-    modelos = list(V.modelos_activos())
-    perfil = modos.perfil_actual()
-    if (perfil is None or perfil.modo == 'alto') and 'anthropic/claude-sonnet-4.6' not in modelos:
-        # La revisión del montaje usa otro lector visual. Los modos reducidos
-        # conservan sus lectores y su límite de consultas.
-        modelos = ['anthropic/claude-sonnet-4.6' if m == 'openai/gpt-5-mini' else m for m in modelos]
-    return _consultar(img, CUBIERTA, contenido, 'cubierta_contenedor', interpretar_cubierta, modelos)
+    return _consultar(img, CUBIERTA, contenido, 'cubierta_contenedor',
+                      interpretar_cubierta, MODELOS_CUBIERTA)
 
 
 def _unicas(lecturas):

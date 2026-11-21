@@ -43,6 +43,21 @@ class OmisionesTest(unittest.TestCase):
             R.revisar(Image.new('RGB', (20, 20)), original, CATS, contexto='Residuos')
         self.assertEqual(consulta.call_args.args[1], 'Residuos')
 
+    def test_residuos_usan_lectores_configurados_o_los_del_modo(self):
+        import verificador as V
+        contenido = json.dumps({'residuos_comunes': False, 'descartado_publico': False,
+            'clases': [], 'evidencia': 'Solo hojas secas.'})
+        foto = Image.new('RGB', (20, 20))
+        base = ('prueba/base1', 'prueba/base2', 'prueba/base3')
+        dirigidos = ('prueba/r1', 'prueba/r2', 'prueba/r3')
+        for lista, esperados in ((None, base), (dirigidos, dirigidos), ((), ())):
+            with self.subTest(lista=lista), patch.object(R, 'MODELOS_RESIDUOS', lista), \
+                    patch.object(V, 'modelos_activos', return_value=base), \
+                    patch.object(V, '_llamar', return_value=contenido) as llamada:
+                resultado = R.consultar_residuos(foto)
+                self.assertEqual({p.args[0] for p in llamada.call_args_list}, set(esperados))
+                self.assertEqual(resultado['fallo'], not esperados)
+
     def test_residuos_exigen_misma_clase_expuesta_y_fuentes_distintas(self):
         def lector(m, clase='carton'):
             return dict(modelo=m, residuos_comunes=True, descartado_publico=True,

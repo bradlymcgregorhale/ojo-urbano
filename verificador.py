@@ -200,10 +200,9 @@ CONTENEDOR_KEYS = {"contenedor_secos", "contenedor_humedos_lateral",
 # denuncia que se pierde es un vecino ignorado; una de más la filtra el
 # árbitro. Cuesta ~18% más, no 50%, porque luna es el barato del trío.
 # Ojo: n=59, diferencias de pocos puntos están dentro del ruido.
-VERIFICADORES = [m.strip() for m in os.environ.get(
-    "VERIFICADORES",
-    "openai/gpt-5-mini,google/gemini-3.5-flash-lite,openai/gpt-5.6-luna"
-).split(",") if m.strip()]
+VERIFICADORES = modos.leer_modelos("VERIFICADORES")
+MODELOS_MIN_1000 = modos.leer_modelos("OPENROUTER_MODELOS_MIN_1000")
+MODELOS_PRESENCIA = modos.leer_modelos("VERIFICADORES_PRESENCIA_CONTENEDOR", ausente=None)
 # Segunda mirada dirigida, SOLO para retiro_escombros (la categoría más
 # perdida): cuando UN verificador la reporta y los demás no, se les
 # re-pregunta solo por las bolsas, tri-estado y sin decirles qué vio el
@@ -212,8 +211,7 @@ VERIFICADORES = [m.strip() for m in os.environ.get(
 SEGUNDA_MIRADA_ESCOMBROS = os.environ.get(
     "SEGUNDA_MIRADA_ESCOMBROS", "1").strip().lower() not in ("0", "false", "no")
 LADO_SEGUNDA_MIRADA = int(os.environ.get("LADO_SEGUNDA_MIRADA", "1600"))
-MODELO_PRIORIDAD_COMPARACION = os.environ.get(
-    "PRIORIDAD_COMPARACION_MODELO", "anthropic/claude-opus-5")
+MODELO_PRIORIDAD_COMPARACION = modos.leer_modelo("PRIORIDAD_COMPARACION_MODELO")
 # Segunda mirada dirigida para la BASE del contenedor: cuando algún
 # verificador reporta retiro_muebles con evidencia de "estructura metálica" y
 # hay un contenedor en la escena, se re-pregunta SOLO por ese objeto. Medido
@@ -318,7 +316,8 @@ SEGUNDA_MIRADA_POSTES = os.environ.get(
 SANEO_PROSA = os.environ.get(
     "SANEO_PROSA", "1").strip().lower() not in ("0", "false", "no")
 
-ARBITRO = os.environ.get("ARBITRO", "deepseek/deepseek-v4-flash").strip()
+ARBITRO = modos.leer_modelo("ARBITRO")
+ARBITRO_SIN_RAZONAMIENTO = os.environ.get("ARBITRO_SIN_RAZONAMIENTO", "").lower() in ("1", "true", "si")
 # Si el árbitro es un modelo con visión, conviene darle la foto: decidir sobre
 # descripciones ajenas es juzgar una compresión con pérdida del original.
 ARBITRO_VE_FOTO = os.environ.get("ARBITRO_VE_FOTO", "").strip().lower() not in (
@@ -432,6 +431,10 @@ def api_key():
 def modelos_activos():
     perfil = modos.perfil_actual()
     return perfil.verificadores if perfil else VERIFICADORES
+
+
+def modelos_dirigidos(configurados):
+    return tuple(modelos_activos()) if configurados is None else configurados
 
 
 def arbitro_activo():
@@ -677,6 +680,8 @@ def verificar_contenedores(datos):
     if perfil and not perfil.especialista:
         raise ValueError("El modo no usa especialista de contenedores")
     import especialista_contenedores as especialista
+    if not especialista.MODELO:
+        return especialista.revision(fallo=True)
     inicio = time.monotonic()
     vence = inicio + 40
     data, error = None, None
@@ -697,17 +702,9 @@ def verificar_contenedores(datos):
         if enviado:
             _tokens_sumar(data)
         _registrar_uso(especialista.MODELO, "inventario_contenedores", None, 1, inicio, data, error)
-    modelos = list(dict.fromkeys(modelos_activos()))
-    if not especialista.requiere_presencia(resultado) or len(modelos) != 3:
+    modelos = modelos_dirigidos(MODELOS_PRESENCIA)
+    if not especialista.requiere_presencia(resultado) or len(set(modelos)) != 3:
         return resultado
-    # En esta pregunta Mini se abstiene ante bolsas oscuras aun con la escena
-    # legible. El lector alternativo sólo participa si el especialista duda;
-    # no sustituye el inventario ni se usa en los modos reducidos.
-    reemplazos = {'openai/gpt-5-mini': 'anthropic/claude-sonnet-4.6',
-                  'openai/gpt-5.6-luna': 'openai/gpt-5.6-sol'}
-    candidatos = [reemplazos.get(m, m) for m in modelos]
-    if len(set(candidatos)) == 3:
-        modelos = candidatos
     if vence - time.monotonic() < 5:
         modos.fallo('presencia_contenedores_sin_tiempo')
         return dict(resultado, fallo=True,
@@ -789,7 +786,7 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa")
             raise ValueError("Económico no usa árbitro")
     # Las preguntas cortas también consumen tokens de razonamiento. Con 400,
     # Mini podía agotar la salida antes de entregar el JSON.
-    if modelo == 'openai/gpt-5-mini' and max_tokens < 1000:
+    if modelo in MODELOS_MIN_1000 and max_tokens < 1000:
         max_tokens = 1000
     cuerpo = {"model": modelo, "max_tokens": max_tokens,
               # Pide a OpenRouter el costo real de la llamada (usage.cost, USD).
@@ -800,9 +797,7 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa")
               "temperature": TEMPERATURA,
               "top_p": 1,
               "messages": mensajes}
-    if etapa == 'arbitrar' and modelo == 'deepseek/deepseek-v4-flash':
-        # Este modelo sólo ofrece high/xhigh. Enviarle low no lo limita y puede
-        # gastar toda la salida sin responder. El arbitraje usa su modo directo.
+    if etapa == 'arbitrar' and ARBITRO_SIN_RAZONAMIENTO:
         cuerpo['reasoning'] = {'enabled': False}
         cuerpo['response_format'] = {'type': 'json_object'}
     clave = _clave_cache_prompt(modelo, mensajes) if OPENROUTER_CACHE_PROMPTS else None
@@ -1361,7 +1356,7 @@ def _leer_patente(img):
 
 def comparar_prioridad(img, candidatos):
     """Una lectura dirigida de prioridad, no un cuarto verificador."""
-    if not candidatos:
+    if not candidatos or not MODELO_PRIORIDAD_COMPARACION:
         return None
     data_url = _imagen_data_url(img, lado=LADO_SEGUNDA_MIRADA)
     contenido = _llamar(MODELO_PRIORIDAD_COMPARACION, [
