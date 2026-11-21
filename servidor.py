@@ -2063,15 +2063,15 @@ PAGINA = r"""<!DOCTYPE html>
       contá lo que no se ve, como olores o presencia de ratas (hasta 2000 caracteres).</p>
     <div class="config">
       <div><label for="modo-general">Modo de análisis</label>
-        <select id="modo-general" aria-describedby="modo-ayuda">
+        <select id="modo-general" aria-describedby="modo-ayuda" autocomplete="off">
           <option value="bajo" disabled>Económico (no disponible)</option>
           <option value="medio" disabled>Equilibrado (no disponible)</option>
-          <option value="alto" selected>Completo</option>
-          <option value="prueba" disabled>Completo (prueba)</option>
+          <option value="alto">Completo</option>
+          <option value="prueba" selected>Completo (prueba)</option>
         </select>
       </div>
-      <p id="modo-ayuda">Completo (prueba) evalúa categorías en fotos sin comentario y muestra el costo de la API.
-        Elegí un modo general o uno para cada foto antes de enviarla.</p>
+      <p id="modo-ayuda">Las fotos empiezan en Completo (prueba), que evalúa categorías y muestra el costo de la API.
+        Si agregás un comentario, elegí otro modo antes de analizar. Completo puede costar más.</p>
       <p id="modo-estado" role="status" aria-live="polite"></p>
     </div>
   </section>
@@ -2199,15 +2199,7 @@ document.querySelectorAll('.ruta').forEach(el=>{el.textContent=RUTAS[el.dataset.
 const GRAV={1:'registro',2:'leve',3:'típico',4:'grave',5:'crítico'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const nombresModos={bajo:'Económico',medio:'Equilibrado',alto:'Completo',prueba:'Completo (prueba)'};
-let modoEnlace=new URLSearchParams(location.search).get('prueba')==='1'?'prueba':null;
-if(modoEnlace)$('#modo-general').value=modoEnlace;
-// La elección general vale para las tarjetas en espera (#129); las enviadas ya
-// mandaron su modo y no se tocan. Se recuerda en este navegador.
-const CLAVE_MODO='ojo-urbano-modo-general';
-function modoRecordado(actual){
-  try{const v=localStorage.getItem(CLAVE_MODO);return v&&nombresModos[v]?v:null;}catch(e){return null;}
-}
-function guardarModo(v){try{localStorage.setItem(CLAVE_MODO,v);}catch(e){}}
+const MODO_DEMO='prueba';
 let perfilesModos={};
 const modoBloqueado=modo=>perfilesModos[modo]?.disponible===false;
 function opcionesModos(valor){
@@ -2226,11 +2218,7 @@ async function actualizarModos(){
     $('#modo-estado').textContent='No pude actualizar los modos disponibles. El servidor comprobará el modo al enviar la foto.';
   }
   const general=$('#modo-general');
-  let seleccionado=modoEnlace||modoRecordado(general.value)||general.value||'alto';
-  if(modoEnlace&&perfilesModos.prueba?.disponible===true)guardarModo(modoEnlace);
-  modoEnlace=null;
-  // Un modo recordado que el servidor ya no ofrece vuelve a Completo, sin dejar la elección vieja guardada.
-  if(modoBloqueado(seleccionado)&&modoRecordado(general.value)===seleccionado){seleccionado='alto';guardarModo('alto');}
+  const seleccionado=general.value||MODO_DEMO;
   general.innerHTML=opcionesModos(seleccionado);general.value=seleccionado;
   document.querySelectorAll('select[data-modo]').forEach(el=>{
     const valor=el.value;el.innerHTML=opcionesModos(valor);el.value=valor;
@@ -2242,10 +2230,8 @@ async function actualizarModos(){
 actualizarModos();
 window.addEventListener('focus',actualizarModos);
 $('#modo-general').onchange=()=>{
-  modoEnlace=null;
   const v=$('#modo-general').value;
   $('#modo-estado').textContent=modoBloqueado(v)?'El modo elegido no está disponible.':'';
-  guardarModo(v);
   for(const it of items){if(!it.modoFijo&&it.estado==='espera'){it.modo=v;pintar(it);}}
 };
 
@@ -2329,7 +2315,7 @@ function agregar(lista,modoElegido=null,contextoInicial=''){
     if(!f.type.startsWith('image/')){rechazadas++;continue;}
     const it={n:++seq,file:f,estado:'espera',trabajo:null,resultado:null,detalle:'',
               posicion:null,reenvios:0,reenvios404:0,card:null,nota:'',noAntes:null,ctx:'',armada:false,
-              tProc:null,tFin:null,dur:null,modo:modoElegido||$('#modo-general').value||'alto',modoFijo:null};
+              tProc:null,tFin:null,dur:null,modo:modoElegido||$('#modo-general').value||MODO_DEMO,modoFijo:null};
     it.ctx=contextoInicial;
     items.push(it);crearTarjeta(it);pintar(it);
   }
