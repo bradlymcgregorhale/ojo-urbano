@@ -54,6 +54,7 @@ import comparador
 import patentes
 import vehiculo
 import modos_analisis as modos
+import prueba_completo
 from typing import Any
 import revision_escombros_publica as revision_publica
 import politica_escombros
@@ -462,6 +463,8 @@ def _cacheable(respuesta):
         # /comparar: un veredicto que se apoyó en menos lecturas de las
         # previstas (lector o árbitro caídos) no se guarda.
         return not respuesta.get("fallo")
+    if respuesta.get("modo") == "prueba" and respuesta.get("analisis_estado") != "completo":
+        return False
     if respuesta.get("modo") in ("bajo", "medio") and respuesta.get("analisis_estado") == "parcial":
         return False
     veri = respuesta.get("detalle", {}).get("verificacion", {})
@@ -561,6 +564,28 @@ def _calidad_segura(img):
         return None
 
 
+def _procesar_prueba(img, local, perfil, verificar):
+    confirmadas, dudas, lector = {}, {}, None
+    if verificar:
+        confirmadas, dudas, lector = prueba_completo.clasificar(img, local, CATEGORIAS, perfil.verificadores)
+    elementos, problemas = [], []
+    for key, fuentes in confirmadas.items():
+        entrada = {'key': key, 'nombre': nombre_de(key), 'fuentes': fuentes, 'gravedad': None}
+        (elementos if key in verificador.PRESENCIA else problemas).append(entrada)
+    posibles = [{'key': k, 'nombre': nombre_de(k), 'fuentes': [perfil.verificadores[0]],
+                 'origen': 'foto', 'motivo': e} for k, e in dudas.items()]
+    salida = {'version': VERSION_API, 'costo_api': verificador.costo_total(),
+              'problemas': problemas, 'elementos_detectados': elementos,
+              'posibles': posibles, 'en_duda': list(dudas), 'categorias_contexto': [],
+              'descartados_por_foto': [], 'foto_valida': None, 'foto_valida_estado': 'sin_contexto',
+              'descripcion': ', '.join(c['nombre'] for c in problemas) or None,
+              'calidad_foto': _calidad_segura(img), 'detalle': {'modelo_local': local,
+                  'verificacion': {'activa': lector is not None,
+                                   'verificadores': [lector] if lector is not None else []}}}
+    salida.update(verificador.tokens_total(desglose=True))
+    return modos.completar(salida)
+
+
 def procesar(datos, contexto, verificar):
     """Pipeline completo y sincrónico. Corre fuera del event loop."""
     verificador.costo_reset()
@@ -572,6 +597,10 @@ def procesar(datos, contexto, verificar):
     sin_cuota = activar and verificador.disponible() and not _hay_cuota()
     if sin_cuota:
         activar = False
+
+    perfil = modos.perfil_actual()
+    if perfil and perfil.modo == 'prueba':
+        return _procesar_prueba(img, local, perfil, activar and verificador.disponible())
 
     if activar and verificador.disponible():
         veri = verificador.verificar(img, CATEGORIAS, local, contexto)
@@ -1030,8 +1059,8 @@ def _publica(r):
     # 2 media. La excepción contextual de escombros usa una fuente humana
     # y confianza baja, sin contar la revisión de alcance como voto material.
     for c in pub["problemas"]:
-        c["confianza"] = ("baja" if c.get("origen") == "contexto_vecinal"
-                          and c["fuentes"] == 1 else
+        c["confianza"] = ("baja" if pub.get("modo") == "prueba" or (
+                              c.get("origen") == "contexto_vecinal" and c["fuentes"] == 1) else
                           "alta" if c["fuentes"] >= 3 else "media")
 
     # Las invariantes del contrato valen sobre lo PUBLICADO: si el filtro
@@ -1154,7 +1183,7 @@ def _conclusion(pub):
     perfil = PERFILES.get(pub.get('modo')) if hasattr(PERFILES, 'get') else None
     # Solo Económico: un Completo o Equilibrado sin árbitro configurado es una
     # degradación, no un modo de lectura única.
-    sin_arbitro = pub.get('modo') == 'bajo' and perfil is not None and not perfil.arbitro
+    sin_arbitro = pub.get('modo') in {'bajo', 'prueba'} and perfil is not None and not perfil.arbitro
     preliminares = [c for c in pub.get('posibles') or []
                     if isinstance(c, dict) and c.get('key') and c.get('origen') == 'foto'
                     and not c.get('arbitro')] if sin_arbitro else []
@@ -1300,15 +1329,17 @@ async def _esperar_cupo(huella, tipo="sync"):
             pass
 
 
-async def _perfil_formulario(request):
+async def _perfil_formulario(request, *, admite_prueba=False):
     if any(k == "modo" or k.startswith("modo[") for k in request.query_params):
         raise HTTPException(422, "Enviá modo como un campo del formulario, no en la consulta de la URL.")
     formulario = await request.form()
     if any(k.startswith("modo[") for k in formulario):
-        raise HTTPException(422, "modo debe ser un único valor: bajo, medio o alto.")
+        raise HTTPException(422, "modo debe ser un único valor.")
     valor = formulario.get("modo", "alto")
     if not isinstance(valor, str) or valor not in modos.NOMBRES:
-        raise HTTPException(422, "modo debe ser bajo, medio o alto; si lo omitís se usa alto.")
+        raise HTTPException(422, "Elegí un modo válido. Si lo omitís se usa Completo.")
+    if valor == 'prueba' and (not admite_prueba or str(formulario.get('contexto') or '').strip()):
+        raise HTTPException(422, "Completo (prueba) admite una foto sin comentario.")
     perfil = PERFILES[valor]
     if perfil.motivo:
         raise HTTPException(503, "El modo elegido no está disponible: " + perfil.motivo + ".")
@@ -1319,7 +1350,7 @@ async def _perfil_formulario(request):
 async def clasificar(request: Request, file: UploadFile = File(...),
                      verificar: str = "auto", contexto: str = Form(""),
                      modo: Any = Form("alto", description="Modo de análisis: bajo, medio o alto.")):
-    perfil = await _perfil_formulario(request)
+    perfil = await _perfil_formulario(request, admite_prueba=True)
     datos = await _leer_acotado(file)
     contexto = (contexto or "").strip()[:CONTEXTO_MAX]
 
@@ -1719,7 +1750,7 @@ async def _correr_trabajo(t):
 async def crear_trabajo(request: Request, file: UploadFile = File(...),
                         verificar: str = "auto", contexto: str = Form(""),
                      modo: Any = Form("alto", description="Modo de análisis: bajo, medio o alto.")):
-    perfil = await _perfil_formulario(request)
+    perfil = await _perfil_formulario(request, admite_prueba=True)
     datos = await _leer_acotado(file)
     contexto = (contexto or "").strip()[:CONTEXTO_MAX]
     huella = modos.identidad(datos, contexto, verificar, perfil)
@@ -2036,11 +2067,11 @@ PAGINA = r"""<!DOCTYPE html>
           <option value="bajo" disabled>Económico (no disponible)</option>
           <option value="medio" disabled>Equilibrado (no disponible)</option>
           <option value="alto" selected>Completo</option>
+          <option value="prueba" disabled>Completo (prueba)</option>
         </select>
       </div>
-      <p id="modo-ayuda">Completo incluye todas las verificaciones. Económico y Equilibrado usan menos
-        y pueden dejar casos pendientes. Elegí un modo para las fotos en espera y las que agregues;
-        las enviadas conservan el suyo. Tu elección se guarda en este navegador.</p>
+      <p id="modo-ayuda">Completo (prueba) evalúa categorías en fotos sin comentario y muestra el costo de la API.
+        Elegí un modo general o uno para cada foto antes de enviarla.</p>
       <p id="modo-estado" role="status" aria-live="polite"></p>
     </div>
   </section>
@@ -2167,7 +2198,9 @@ const RUTAS={clasificar:O+'/clasificar'+SUF, trabajos:T, consulta:T+'?id=ID',
 document.querySelectorAll('.ruta').forEach(el=>{el.textContent=RUTAS[el.dataset.ep]||'';});
 const GRAV={1:'registro',2:'leve',3:'típico',4:'grave',5:'crítico'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-const nombresModos={bajo:'Económico',medio:'Equilibrado',alto:'Completo'};
+const nombresModos={bajo:'Económico',medio:'Equilibrado',alto:'Completo',prueba:'Completo (prueba)'};
+let modoEnlace=new URLSearchParams(location.search).get('prueba')==='1'?'prueba':null;
+if(modoEnlace)$('#modo-general').value=modoEnlace;
 // La elección general vale para las tarjetas en espera (#129); las enviadas ya
 // mandaron su modo y no se tocan. Se recuerda en este navegador.
 const CLAVE_MODO='ojo-urbano-modo-general';
@@ -2193,7 +2226,9 @@ async function actualizarModos(){
     $('#modo-estado').textContent='No pude actualizar los modos disponibles. El servidor comprobará el modo al enviar la foto.';
   }
   const general=$('#modo-general');
-  let seleccionado=modoRecordado(general.value)||general.value||'alto';
+  let seleccionado=modoEnlace||modoRecordado(general.value)||general.value||'alto';
+  if(modoEnlace&&perfilesModos.prueba?.disponible===true)guardarModo(modoEnlace);
+  modoEnlace=null;
   // Un modo recordado que el servidor ya no ofrece vuelve a Completo, sin dejar la elección vieja guardada.
   if(modoBloqueado(seleccionado)&&modoRecordado(general.value)===seleccionado){seleccionado='alto';guardarModo('alto');}
   general.innerHTML=opcionesModos(seleccionado);general.value=seleccionado;
@@ -2207,6 +2242,7 @@ async function actualizarModos(){
 actualizarModos();
 window.addEventListener('focus',actualizarModos);
 $('#modo-general').onchange=()=>{
+  modoEnlace=null;
   const v=$('#modo-general').value;
   $('#modo-estado').textContent=modoBloqueado(v)?'El modo elegido no está disponible.':'';
   guardarModo(v);

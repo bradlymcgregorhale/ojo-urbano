@@ -774,7 +774,8 @@ def _contenido_final(data):
     return content
 
 
-def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa"):
+def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa",
+            esquema=None, esfuerzo="low"):
     # reasoning effort bajo: los modelos razonadores (Kimi) pueden gastar todo
     # el presupuesto pensando y devolver el JSON vacío (finish_reason=length)
     perfil = modos.perfil_actual()
@@ -791,7 +792,7 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa")
     cuerpo = {"model": modelo, "max_tokens": max_tokens,
               # Pide a OpenRouter el costo real de la llamada (usage.cost, USD).
               "usage": {"include": True},
-              "reasoning": {"effort": "low"},
+              "reasoning": {"effort": esfuerzo},
               # Sin esto se sampleaba a la temperatura default del proveedor
               # (típicamente 1). Fijarlo en 0 ayuda pero no alcanza: ver #7.
               "temperature": TEMPERATURA,
@@ -812,6 +813,10 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa")
         cuerpo["provider"] = {"allow_fallbacks": False}
     if OPENROUTER_PROVEEDORES_EXCLUIDOS:
         cuerpo.setdefault("provider", {})["ignore"] = OPENROUTER_PROVEEDORES_EXCLUIDOS.split(",")
+    if esquema is not None:
+        cuerpo["response_format"] = {"type": "json_schema", "json_schema": {
+            "name": "lectura_urbana", "strict": True, "schema": esquema}}
+        cuerpo.setdefault("provider", {})["require_parameters"] = True
     body = json.dumps(cuerpo).encode()
     req = urllib.request.Request(OPENROUTER_URL, data=body, headers={
         "Authorization": "Bearer " + api_key(),

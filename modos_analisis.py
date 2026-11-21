@@ -12,7 +12,8 @@ import re
 import threading
 from types import MappingProxyType
 
-NOMBRES = {'bajo': 'Económico', 'medio': 'Equilibrado', 'alto': 'Completo'}
+NOMBRES = {'bajo': 'Económico', 'medio': 'Equilibrado', 'alto': 'Completo',
+           'prueba': 'Completo (prueba)'}
 IDENTIFICADOR = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.:-]+$')
 
 
@@ -80,7 +81,7 @@ def cargar(verificador, opciones_servidor, entorno=None):
                      if k.startswith(('FUSION_', 'CONTENEDORES_'))
                      and type(v) in (bool, int, float, str, type(None))})
     perfiles = {}
-    for modo, cantidad in (('bajo', 1), ('medio', 2), ('alto', 3)):
+    for modo, cantidad in (('bajo', 1), ('medio', 2), ('alto', 3), ('prueba', 3)):
         nombre = 'VERIFICADORES_' + modo.upper()
         motivo = None
         if nombre in env:
@@ -92,7 +93,7 @@ def cargar(verificador, opciones_servidor, entorno=None):
             modelos = tuple(verificador.VERIFICADORES)
         else:
             modelos, motivo = (), 'no_configurado'
-        arbitro = '' if modo == 'bajo' else verificador.ARBITRO
+        arbitro = '' if modo in {'bajo', 'prueba'} else verificador.ARBITRO
         foto = bool(modo == 'alto' and verificador.ARBITRO_VE_FOTO)
         confirma = bool(modo == 'alto' and verificador.ARBITRO_CONFIRMA)
         especialista = bool(modo == 'alto' and opciones_servidor.get('CONTENEDORES_ESPECIALISTA'))
@@ -113,6 +114,8 @@ def cargar(verificador, opciones_servidor, entorno=None):
         if especialista:
             import especialista_contenedores as e
             datos.append(hashlib.sha256(Path(e.__file__).read_bytes()).hexdigest())
+        if modo == 'prueba':
+            datos.append(hashlib.sha256((raiz / 'prueba_completo.py').read_bytes()).hexdigest())
         version = hashlib.sha256(json.dumps(datos, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:24]
         perfiles[modo] = Perfil(modo, modelos, arbitro, foto, confirma, especialista, version, motivo)
     return MappingProxyType(perfiles)
@@ -210,6 +213,8 @@ def completar(salida):
     limites = []
     if p.modo != 'alto':
         limites.append('modo_reducido')
+    if p.modo == 'prueba':
+        limites.append('clasificacion_experimental')
     if not p.especialista:
         limites.append('especialista_desactivado')
     if p.modo == 'medio' and not p.arbitro:

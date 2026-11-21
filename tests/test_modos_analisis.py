@@ -21,7 +21,8 @@ def perfiles():
     with patch.multiple(V, ARBITRO='t/arbitro', ARBITRO_VE_FOTO=True, ARBITRO_CONFIRMA=True):
         return M.cargar(V, {'CONTENEDORES_ESPECIALISTA': True}, {
             'VERIFICADORES_BAJO': 't/a', 'VERIFICADORES_MEDIO': 't/a,t/b',
-            'VERIFICADORES_ALTO': 't/a,t/b,t/c'})
+            'VERIFICADORES_ALTO': 't/a,t/b,t/c',
+            'VERIFICADORES_PRUEBA': 't/decision,t/dirigidos,t/alcance'})
 
 
 class Configuracion(unittest.TestCase):
@@ -161,7 +162,10 @@ class ApiModos(unittest.TestCase):
         def http(req, *_):
             datos = json.loads(req.data);self.llamadas.append(datos)
             contenido = {'categorias': [], 'descripcion': '', 'sin_problema': True}
-            if datos['model'] == __import__('especialista_contenedores').MODELO:
+            if datos.get('response_format'):
+                contenido = {'confirmadas': [{'key': 'retiro_muebles', 'evidencia': 'Tubos largos descartados.'}],
+                             'dudosas': []}
+            elif datos['model'] == __import__('especialista_contenedores').MODELO:
                 contenido = {'types': [], 'uncertain': False, 'evidence': ''}
             elif datos['messages'][0].get('content') == V._PROMPT_ENCUADRE_HIGIENE:
                 contenido = {'contexto_suficiente': True, 'motivo': None, 'evidencia': 'vereda'}
@@ -221,6 +225,29 @@ class ApiModos(unittest.TestCase):
             self.assertEqual(self.post(None, ruta+'?modo=bajo').status_code, 422)
             r = self.cliente.post(ruta, files={'file': ('foto.jpg', self.foto)}, data={'modo[]': 'alto'})
             self.assertEqual(r.status_code, 422)
+        self.assertEqual(self.llamadas, [])
+
+    def test_prueba_por_ruta_normal_con_costo_y_cache(self):
+        r = self.post('prueba')
+        self.assertEqual(r.status_code, 200, r.text)
+        d = r.json()
+        self.assertEqual(d['modo'], 'prueba')
+        self.assertEqual(d['modo_version'], self.ps['prueba'].version)
+        self.assertIn('clasificacion_experimental', d['analisis_limitaciones'])
+        self.assertEqual([x['key'] for x in d['problemas']], ['retiro_muebles'])
+        self.assertEqual([x['model'] for x in self.llamadas].count('t/dirigidos'), 2)
+        self.assertEqual(self.llamadas[-1]['model'], 't/decision')
+        self.assertTrue(all(x['provider']['require_parameters'] for x in self.llamadas))
+        self.assertEqual(d['costo_api'], .003)
+        self.assertEqual(self.post('prueba', '/trabajos').json()['resultado'], d)
+        self.assertEqual(len(self.llamadas), 3)
+
+    def test_prueba_rechaza_contexto_y_otros_usos_antes_de_llamar(self):
+        f = ('foto.jpg', self.foto, 'image/jpeg')
+        self.assertEqual(self.cliente.post('/trabajos', files={'file': f},
+            data={'modo': 'prueba', 'contexto': 'Comentario'}).status_code, 422)
+        self.assertEqual(self.cliente.post('/comparar', files={'file_a': f, 'file_b': f},
+            data={'modo': 'prueba'}).status_code, 422)
         self.assertEqual(self.llamadas, [])
 
     def test_ultimo_campo_escalar_y_no_archivo(self):
