@@ -244,6 +244,14 @@ class ApiModos(unittest.TestCase):
         self.assertEqual(self.post('prueba', '/trabajos').json()['resultado'], d)
         self.assertEqual(len(self.llamadas), 3)
 
+    def test_prueba_pide_evidencia_independiente_de_obstruccion_en_un_puesto(self):
+        from prueba_completo import _decision
+        claves = ('manteros', 'obstruccion')
+        self.assertNotIn('barrera independiente', _decision([], {'obstruccion': .9}, claves))
+        self.assertIn('barrera independiente', _decision([], {'manteros': .9}, claves))
+        self.assertIn('barrera independiente', _decision([{'confirmadas': {
+            'manteros': 'Puesto con mercadería exhibida.'}, 'dudosas': {}}], {}, claves))
+
     def test_prueba_rechaza_contexto_y_otros_usos_antes_de_llamar(self):
         f = ('foto.jpg', self.foto, 'image/jpeg')
         self.assertEqual(self.cliente.post('/trabajos', files={'file': f},

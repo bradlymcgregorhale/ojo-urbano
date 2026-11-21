@@ -139,6 +139,10 @@ def _decision(lecturas, scores, claves):
         + TEXTOS['decision'] + '\nClaves pertinentes\n' + ', '.join(sorted(opciones))
         + '\nSi ves otro problema, podés usar la clave más probable de estas otras categorías: '
         + ', '.join(sorted(set(claves) - opciones)))
+    if 'manteros' in opciones:
+        texto += ('\nSi confirmás un puesto de venta, sumá obstruccion sólo si identificás una barrera '
+                  'independiente colocada a propósito y describís cómo bloquea o desvía el paso. '
+                  'Los cajones de mercadería y los topes bajos aislados con paso libre no alcanzan.')
     if indicios:
         texto += ('\nObservaciones cortas de una lectura previa. Podrían estar equivocadas. '
                   'Contrástalas con la foto y no copies una categoría sin ver su evidencia.\n'
