@@ -510,6 +510,7 @@ def aplicar(salida, revision, categorias):
                 and revision.get('estado') == 'apto'
                 and not revision.get('afirmacion_explicita')
                 and not revision.get('material_contradictorio')
+                and not (consenso_opaco and _sin_recoleccion_independiente(salida, revision))
                 and len(_respaldo_visual(salida, 'recoleccion')) >= 2
                 and not any(c.get('key') == 'recoleccion' for c in r['problemas'])):
             r['problemas'].append(copy.deepcopy(previa))

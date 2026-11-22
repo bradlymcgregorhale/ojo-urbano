@@ -150,6 +150,20 @@ class PoliticaTest(unittest.TestCase):
         self.assertTrue(nuevo['verificacion_escombros']['requiere_revision'])
         self.assertFalse(nuevo['verificacion_escombros']['requiere_nueva_foto'])
 
+    def test_pila_opaca_no_restaura_recoleccion_sin_residuos_independientes(self):
+        r, revision = self.opacas([dict(categoria(), reclasificado_por='modelo_local'),
+                                   categoria('reparacion_vereda')])
+        r['posibles'] = [categoria('recoleccion')]
+        r['detalle']['verificacion']['confirmadas'] = [categoria('recoleccion')]
+        for lector in r['detalle']['verificacion']['verificadores']:
+            lector['categorias'][0]['evidencia'] = 'Bolsas opacas agrupadas al pie del árbol.'
+
+        nuevo = P.aplicar(r, revision, self.cats)
+
+        self.assertEqual([c['key'] for c in nuevo['problemas']], ['reparacion_vereda'])
+        self.assertIn(P.KEY, nuevo['en_duda'])
+        self.assertTrue(nuevo['verificacion_escombros']['requiere_revision'])
+
     def test_fallo_de_un_lector_no_confirma_escombros_por_fusion_local(self):
         r, revision = self.opacas([dict(categoria(), reclasificado_por='modelo_local')])
         r['posibles'] = [categoria('recoleccion')]
