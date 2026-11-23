@@ -133,9 +133,11 @@ El servicio está escrito en Python.
 ### `POST /clasificar`
 
 Si el texto pide ocupación de la vereda o del espacio público y apunta a un local comercial,
-`reclamo_foto` devuelve la categoría `ocupacion_comercial` (prestación `118001`) y un
-`estado` de `compatible`, `no_corresponde` o `sin_evidencia`. La foto compatible propone
-ese servicio en `solicitudes_sugeridas` para confirmar. Una foto que no corresponde o
+`reclamo_foto` devuelve un `estado` de `compatible`, `no_corresponde` o `sin_evidencia`.
+En `servicios` aparecen `ocupacion_comercial` cuando hay productos visibles ofrecidos a la venta
+(`118001`), `obstruccion` cuando hay un elemento que ocupa el paso (`118020`), o ambos si se
+trata de elementos distintos. La foto compatible también propone los servicios en
+`solicitudes_sugeridas` para confirmar. Una foto que no corresponde o
 carece de evidencia deja la lista de servicios vacía. `problemas` conserva el diagnóstico
 visual. Sin pedido de ocupación, el análisis sigue usando las señales de la foto.
 

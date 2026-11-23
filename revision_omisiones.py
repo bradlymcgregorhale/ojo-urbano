@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import modos_analisis as modos
+from contexto_ocupacion import mercaderia_visible
 from prompts import cargar_prompt
 
 OBJETOS = cargar_prompt('dirigidos/objetos_omitidos')
@@ -38,8 +39,13 @@ def interpretar_objetos(valor):
                        for k in ('objeto', 'evidencia', 'ubicacion'))):
             invalidos += 1
             continue
-        salida.append({k: h[k].strip()[:500] for k in
-                       ('tipo', 'uso', 'objeto', 'evidencia', 'ubicacion')})
+        hallazgo = {k: h[k].strip()[:500] for k in ('tipo', 'uso', 'objeto', 'evidencia', 'ubicacion')}
+        if hallazgo['tipo'] == 'venta_ambulante' and hallazgo['uso'] == 'venta':
+            producto = mercaderia_visible(h.get('mercaderia_visible'))
+            if not producto:
+                continue
+            hallazgo['mercaderia_visible'] = producto
+        salida.append(hallazgo)
     return {'hallazgos': salida, 'fallo': bool(invalidos), 'descartados_por_formato': invalidos}
 
 

@@ -79,6 +79,10 @@ Reglas finales:
 - En "evidencia" describí SIEMPRE lo que se VE (el objeto, dónde está, en qué estado), citando la\
  cartelería del lugar solo como dato de apoyo. Una evidencia que se apoya ÚNICAMENTE en lo que dice\
  un texto, sin ningún objeto detrás, no sostiene la categoría.
+- Para ocupacion_comercial o manteros, agregá "mercaderia_visible" dentro de la categoría.\
+ Señalá UN producto que se vea físicamente sobre la vereda, con un rasgo propio y su ubicación,\
+ por ejemplo "manzanas rojas en la bandeja contra la vidriera". Leé este campo sin usar el texto\
+ del cartel. Si solo ves publicidad, cajones opacos o soportes, omití la categoría.
 - PATENTE: si reportás vehiculo_mal_estacionado o vehiculo_abandonado y la patente del vehículo\
  infractor se lee COMPLETA y SIN NINGUNA DUDA en su chapa, agregá "patente" adentro de esa\
  categoría, por ejemplo {"key": "vehiculo_mal_estacionado", "gravedad": 4, "evidencia": "...",\

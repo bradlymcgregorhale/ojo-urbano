@@ -1094,6 +1094,8 @@ def _publica(r, contexto=""):
          # Se publica anotado: el veredicto crudo del modelo no se falsifica.
          "categorias": [{"key": c.get("key"), "gravedad": c.get("gravedad"),
                          "evidencia": c.get("evidencia"),
+                         **({"mercaderia_visible": c["mercaderia_visible"]}
+                            if c.get("mercaderia_visible") else {}),
                          **({"anulada_por": c["anulada_por"]}
                             if c.get("anulada_por") else {})}
                         for c in (v.get("categorias") or [])],

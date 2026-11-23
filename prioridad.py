@@ -211,6 +211,8 @@ def proponer_solicitudes(publica):
         elegido = None
     if elegido and principal.get('criterio') == 'pedido_explicito':
         servicios, motivo = [elegido], 'El servicio corresponde al pedido explícito respaldado por la foto.'
+    elif {'ocupacion_comercial', 'obstruccion'} <= set(candidatos):
+        servicios, motivo = ['ocupacion_comercial', 'obstruccion'], 'La foto muestra mercadería y una barrera independiente.'
     elif elegido in {'volquete_mal_dispuesto', 'situacion_calle'}:
         servicios, motivo = [elegido], 'Se propone atender el problema principal; los demás hallazgos siguen disponibles.'
     elif elegido == 'reparacion_vereda' and 'tapa_vereda' in candidatos:
