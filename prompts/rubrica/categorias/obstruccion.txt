@@ -5,7 +5,9 @@
  reserva o bloquea espacio. Una pizarra de precios apoyada en cajones puede ser una barrera aunque\
  el producto escrito en el cartel no se vea. La mercadería misma se evalúa en ocupacion_comercial.\
  Reportá las dos categorías cuando la mercadería esté exhibida en la vereda y un elemento separado\
- reduzca el paso por su cuenta. Los VEHÍCULOS nunca son obstruccion: un camión de basura o de reparto\
+ reduzca el paso por su cuenta. Los cajones, estantes o carretillas que sostienen la mercadería\
+ exhibida en ese mismo lugar forman parte de la exhibición. Si el carro está aparte y ocupa\
+ otro tramo del paso, sí cuenta como barrera. Los VEHÍCULOS nunca son obstruccion: un camión de basura o de reparto\
  trabajando, el tránsito o un auto estacionado no cuentan (un vehículo en infracción es\
  vehiculo_mal_estacionado). Tampoco cuentan los contenedores municipales, la basura (eso es\
  recoleccion) ni los objetos puestos como advertencia sobre un hueco (ver tapa_vereda). Un objeto\

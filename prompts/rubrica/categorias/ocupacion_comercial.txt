@@ -1,6 +1,9 @@
 - ocupacion_comercial: un local comercial ESTABLECIDO exhibe sobre la vereda CUALQUIER producto\
  puesto a la venta, como ropa, fruta, muebles, electrodomésticos, plantas o artículos de bazar.\
- Identificá el producto que físicamente se ve y se ofrece. La disposición ALINEADA en fila, los\
+ En fotos con carteles de precios, ignorá los nombres escritos al buscar la mercadería. Mirá\
+ fuera del cartel. Identificá un producto por su propia forma, color o envase visible y señalá\
+ en qué parte de la vereda se ve. Si ves solamente los costados o el fondo de los cajones y el\
+ producto queda tapado, no deduzcas el contenido. La disposición ALINEADA en fila, los\
  exhibidores, el césped sintético de exhibición y las etiquetas de precio ayudan a reconocer su\
  función. La fachada puede quedar fuera del encuadre si se ve la exhibición comercial en la vereda.\
  En una verdulería, si solo se ven una pizarra de precios y cajones de apoyo vacíos, cerrados o\
