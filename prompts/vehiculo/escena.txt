@@ -19,8 +19,9 @@ Reglas:
 - "vehiculos_protagonistas": cuántos vehículos están en la misma situación reportada (dos motos\
  juntas sobre la vereda son 2).
 - "marca": usá el nombre visible o un emblema inequívoco del vehículo protagonista.
-- "modelo": copiá el nombre legible en ese vehículo. Agregá la variante solo si también se lee.\
- Si el nombre del modelo está tapado, borroso o fuera de cuadro, devolvé null. El diseño del\
+- "modelo": copiá el nombre legible del modelo en ese vehículo. Omití las siglas o nombres del\
+ nivel de equipamiento aunque se lean. Conservá las letras y números que forman parte del nombre\
+ del modelo. Si el nombre está tapado, borroso o fuera de cuadro, devolvé null. El diseño del\
  vehículo, el emblema de la marca, la patente y el contexto del vecino no acreditan el modelo.
 - Devolvé null en cada campo que no puedas leer o identificar con esas reglas. Si hay más de un\
  protagonista o las dos fotos muestran vehículos distintos, devolvé ambos campos como null.
