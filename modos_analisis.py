@@ -67,7 +67,8 @@ def cargar(verificador, opciones_servidor, entorno=None):
     archivos = sorted((raiz / 'prompts').rglob('*.txt')) + [
         raiz / n for n in ('verificador.py', 'politica_escombros.py',
                           'revision_escombros_publica.py', 'revision_omisiones.py', 'revision_cordon.py', 'revision_fragmentos.py', 'revision_vereda.py', 'modos_analisis.py',
-                          'servidor.py', 'especialista_contenedores.py', 'patentes.py', 'categorias.json', 'evaluacion_foto.py', 'prioridad.py', 'observaciones_higiene.py')]
+                          'servidor.py', 'especialista_contenedores.py', 'patentes.py', 'categorias.json', 'evaluacion_foto.py', 'prioridad.py', 'observaciones_higiene.py',
+                          'contexto_ocupacion.py')]
     base = hashlib.sha256()
     for archivo in archivos:
         base.update(archivo.relative_to(raiz).as_posix().encode())
