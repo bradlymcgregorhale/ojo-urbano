@@ -56,6 +56,7 @@ from pathlib import Path
 import revision_escombros_publica as revision_publica
 import modos_analisis as modos
 import evaluacion_foto
+import contexto_ocupacion
 import observaciones_higiene
 from prompts import OBSERVACIONES_HIGIENE
 import prioridad
@@ -2571,6 +2572,11 @@ def _verificar_uno(modelo, data_url, categorias, contexto=""):
                 continue
             c["key"] = FOLD.get(c.get("key"), c.get("key"))
             if c["key"] in categorias and c["key"] not in {v["key"] for v in vistas}:
+                if c["key"] in {"ocupacion_comercial", "manteros"}:
+                    producto = contexto_ocupacion.mercaderia_visible(c.get("mercaderia_visible"))
+                    if not producto:
+                        continue
+                    c["mercaderia_visible"] = producto
                 c["evidencia"] = _texto_limpio(c.get("evidencia"), EVID_MAX)
                 # La patente se normaliza y valida ACÁ: lo que no matchea un
                 # formato argentino completo no entra ni al detalle.
