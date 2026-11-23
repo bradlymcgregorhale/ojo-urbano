@@ -1,7 +1,7 @@
 """Veredicto de escena para reportes de vehículo (#216).
 
 Los verificadores configurados (`VERIFICADORES`) miran una o dos fotos con
-`prompts/vehiculo/escena.txt` y contestan tipo, color, cuántos vehículos
+`prompts/vehiculo/escena.txt` y contestan tipo, marca, modelo, color, cuántos vehículos
 protagonistas hay, si las dos fotos muestran el mismo, qué infracción se ve,
 qué señales de abandono hay y si hay personas o conductor. Cada campo se
 publica con el consenso de al menos dos lectores, como en `/clasificar`; lo
@@ -10,6 +10,7 @@ que sostiene uno solo queda en `en_duda`. `misma_escena` reutiliza
 """
 import collections
 import json
+import unicodedata
 import urllib.error
 
 import comparador
@@ -25,6 +26,8 @@ SENALES = ("cubiertas_desinfladas", "polvo_hojas", "partes_faltantes", "cadena_c
            "chapa_doblada_o_ausente", "vidrios_rotos", "oxido", "cubierto_con_lona", "vegetacion")
 _ERRORES = (urllib.error.URLError, ValueError, KeyError, json.JSONDecodeError, OSError)
 MINIMO_FUENTES = 2
+_IDENTIDAD_DESCONOCIDA = {"desconocido", "desconocida", "noidentificado", "noidentificada", "nolegible",
+                          "novisible", "ilegible", "nolose", "null", "na", "sinidentificar"}
 
 
 def _opcion(valor, opciones):
@@ -45,6 +48,18 @@ def _entero(valor):
     return n if 0 <= n <= 20 else None
 
 
+def _clave_identidad(valor):
+    return "".join(c for c in unicodedata.normalize("NFKD", valor.casefold()) if c.isalnum())
+
+
+def _identificador(valor):
+    if not isinstance(valor, str):
+        return None
+    texto = V._texto_limpio(valor, 60)
+    clave = _clave_identidad(texto)
+    return texto if clave and "?" not in texto and clave not in _IDENTIDAD_DESCONOCIDA else None
+
+
 def _normalizar(v, dos_fotos):
     """Una respuesta cruda -> campos validados (None donde no contestó bien)."""
     abandono = v.get("abandono") if isinstance(v.get("abandono"), dict) else {}
@@ -52,6 +67,8 @@ def _normalizar(v, dos_fotos):
     return {
         "vehiculos_protagonistas": _entero(v.get("vehiculos_protagonistas")),
         "tipo": _opcion(v.get("tipo"), TIPOS),
+        "marca": _identificador(v.get("marca")),
+        "modelo": _identificador(v.get("modelo")),
         "color": V._texto_limpio(v.get("color"), 30) or None,
         "mismo_vehiculo": _opcion(v.get("mismo_vehiculo"), ("si", "no", "duda")) if dos_fotos else None,
         "infraccion": _opcion(v.get("infraccion"), INFRACCIONES),
@@ -100,6 +117,17 @@ def _consenso(lecturas):
     return escena, en_duda
 
 
+def _consenso_identidad(lecturas, campo):
+    votos = collections.defaultdict(list)
+    for lectura in lecturas:
+        if valor := lectura[campo]:
+            votos[_clave_identidad(valor)].append(valor)
+    grupos = sorted(votos.values(), key=len, reverse=True)
+    if grupos and len(grupos[0]) >= MINIMO_FUENTES and (len(grupos) == 1 or len(grupos[0]) > len(grupos[1])):
+        return grupos[0][0], []
+    return None, sorted(grupo[0] for grupo in grupos)
+
+
 def escena(imgs, contexto="", modelos=None):
     """Veredicto de escena por consenso. Devuelve el bloque público y las
     lecturas; lanza ValueError si no hay lectores configurados."""
@@ -116,6 +144,15 @@ def escena(imgs, contexto="", modelos=None):
         if ok:
             lecturas.append(r)
     consenso, en_duda = _consenso(lecturas)
+    dos_fotos = len(imgs) == 2
+    mismo_protagonista = consenso["vehiculos_protagonistas"] == 1 and (
+        not dos_fotos or consenso["mismo_vehiculo"] == "si")
+    lecturas_identidad = [l for l in lecturas if l["vehiculos_protagonistas"] == 1
+                         and (not dos_fotos or l["mismo_vehiculo"] == "si")] if mismo_protagonista else []
+    for campo in ("marca", "modelo"):
+        consenso[campo], alternativas = _consenso_identidad(lecturas_identidad, campo)
+        if alternativas:
+            en_duda[campo] = alternativas
     consenso["abandono"] = {"senales": consenso.pop("abandono_senales"),
                             "nivel": consenso.pop("abandono_nivel")}
     if "abandono_nivel" in en_duda:
@@ -123,7 +160,7 @@ def escena(imgs, contexto="", modelos=None):
     if "abandono_senales" in en_duda:
         en_duda["abandono.senales"] = en_duda.pop("abandono_senales")
     misma_escena = None
-    if len(imgs) == 2:
+    if dos_fotos:
         try:
             misma_escena = comparador.comparar(imgs[0], imgs[1]).get("misma")
         except (comparador.ComparacionNoDisponibleError, *_ERRORES):

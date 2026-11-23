@@ -1576,6 +1576,11 @@ def _vehiculo_sync(datos_lista, contexto, lectura_chapas=True):
         r.update(patentes.analizar(imgs))
     try:
         r["escena"] = vehiculo.escena(imgs, contexto)
+        if len({f["patente"] for f in r["fotos"] if f.get("patente")}) > 1:
+            # Dos chapas confirmadas contradicen una escena de un solo vehículo.
+            for campo in ("marca", "modelo"):
+                r["escena"][campo] = None
+                r["escena"]["en_duda"].pop(campo, None)
     except ValueError as e:
         r["escena"] = None
         r["escena_error"] = str(e)[:120]
