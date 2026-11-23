@@ -2839,7 +2839,8 @@ def _fake_analizar(imgs, lectores=None):
 def _fake_escena(imgs, contexto="", modelos=None):
     _veh_llamadas.append(("escena", len(imgs), contexto))
     return {"vehiculos_protagonistas": 1, "tipo": "moto", "color": "negro", "mismo_vehiculo": "si" if len(imgs) == 2 else None,
-            "infraccion": "vereda", "abandono": {"senales": [], "nivel": "ninguno"}, "personas_visibles": False,
+            "marca": "Zanella", "modelo": None, "infraccion": "vereda",
+            "abandono": {"senales": [], "nivel": "ninguno"}, "personas_visibles": False,
             "conductor_adentro": False, "misma_escena": "si" if len(imgs) == 2 else None, "fuentes": 3, "en_duda": {},
             "revisiones": [{"modelo": "a/1", "ok": True, "motivo": "moto sobre la vereda <b>x</b>"}]}
 
@@ -2860,6 +2861,8 @@ check("dos fotos: 200 con chapas por foto, patente del conjunto y escena",
 check("  el contexto llega a la escena y las revisiones salen saneadas",
       ("escena", 2, "moto sobre la vereda") in _veh_llamadas
       and "<b>" not in (_r["escena"]["revisiones"][0]["motivo"] or ""), str(_veh_llamadas))
+check("  escena publica marca y conserva modelo como null si no se leyó",
+      _r["escena"]["marca"] == "Zanella" and _r["escena"]["modelo"] is None)
 check("  con costo, tokens y modo, y sin lectura del modelo local",
       "costo_api" in _r and "tokens_api" in _r and _r.get("modo") == "alto"
       and not any("modelo_local" in k for k in _claves_recursivas(_r)))
@@ -2868,6 +2871,21 @@ _c2, _r2 = pedir("/vehiculo/", *_multipart_vehiculo(_VA, _VB, contexto="moto sob
 check("el mismo par con el mismo contexto sale de la caché", _c2 == 200 and _r2 == _r and len(_veh_llamadas) == _n_antes)
 _c3, _r3 = pedir("/vehiculo", *_multipart_vehiculo(_VA, _VB, contexto="otro texto"))
 check("otro contexto es otro análisis (y /vehiculo sin barra sirve)", _c3 == 200 and len(_veh_llamadas) == _n_antes + 2, f"HTTP {_c3}")
+
+
+def _fake_analizar_vehiculos_distintos(imgs):
+    resultado = _fake_analizar(imgs)
+    resultado["fotos"][1]["patente"] = "AA123BB"
+    resultado["patente"] = None
+    return resultado
+
+
+patentes.analizar = _fake_analizar_vehiculos_distintos
+_c, _r = pedir("/vehiculo/", *_multipart_vehiculo(_VA, _VB, contexto="chapas distintas"))
+check("dos chapas confirmadas dejan marca y modelo en null",
+      _c == 200 and _r["escena"]["marca"] is None and _r["escena"]["modelo"] is None
+      and _r["escena"]["color"] == "negro" and _r["fotos"][1]["patente"] == "AA123BB", f"HTTP {_c}")
+patentes.analizar = _fake_analizar
 _c, _r = pedir("/vehiculo/", *_multipart_vehiculo(_VA))
 check("una sola foto: 200 sin mismo_vehiculo ni misma_escena",
       _c == 200 and len(_r["fotos"]) == 1 and _r["escena"]["misma_escena"] is None, f"HTTP {_c} {_r}")
