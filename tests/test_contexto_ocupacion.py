@@ -51,6 +51,12 @@ class ContextoOcupacionTest(unittest.TestCase):
         resultado = prioridad.proponer_solicitudes({"problemas": problemas})
         self.assertEqual(resultado["servicios"], ["ocupacion_comercial", "obstruccion"])
 
+    def test_prioridad_respeta_un_pedido_especifico_respaldado_por_la_foto(self):
+        problemas = [{"key": clave, "fuentes": 2} for clave in ("obstruccion", "ocupacion_comercial")]
+        principal = {"key": "obstruccion", "estado": "seleccionado", "criterio": "pedido_explicito"}
+        resultado = prioridad.proponer_solicitudes({"problemas": problemas, "problema_principal": principal})
+        self.assertEqual(resultado["servicios"], ["obstruccion"])
+
     def test_obstruccion_corroborada_mantiene_pedido_generico_aunque_la_foto_haya_sido_descartada(self):
         resultado = {"foto_valida": False, "descartados_por_foto": [
             {"key": "obstruccion", "fuentes": 2, "motivo_descarte": "la foto no corresponde a lo que se pidió"},
@@ -68,6 +74,15 @@ class ContextoOcupacionTest(unittest.TestCase):
         with patch.object(verificador, "_llamar", return_value=json.dumps(veredicto)):
             lectura = verificador._verificar_uno("prueba/modelo", "", categorias)
         self.assertEqual([c["key"] for c in lectura["categorias"]], ["obstruccion"])
+
+    def test_el_verificador_conserva_mercaderia_identificada_en_ambos_tipos_de_venta(self):
+        for clave in ("ocupacion_comercial", "manteros"):
+            with self.subTest(clave=clave):
+                categoria = {"key": clave, "mercaderia_visible": "naranjas y peras",
+                             "evidencia": "Naranjas y peras en exhibición en la vereda"}
+                with patch.object(verificador, "_llamar", return_value=json.dumps({"categorias": [categoria]})):
+                    lectura = verificador._verificar_uno("prueba/modelo", "", {clave: {"nombre": clave}})
+                self.assertEqual(lectura["categorias"][0]["mercaderia_visible"], "naranjas y peras")
 
     def test_revision_de_objetos_no_recupera_venta_ambulante_sin_productos(self):
         hallazgo = {"tipo": "venta_ambulante", "uso": "venta", "objeto": "pizarra",
