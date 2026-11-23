@@ -51,6 +51,7 @@ from sentence_transformers import SentenceTransformer
 
 import verificador
 import comparador
+import contexto_ocupacion
 import patentes
 import vehiculo
 import modos_analisis as modos
@@ -984,7 +985,7 @@ def _sanear_motivo(texto):
     return _MOTIVO_GENERICO if _terminos_prohibidos().search(texto) else texto
 
 
-def _publica(r):
+def _publica(r, contexto=""):
     """Veredicto y diagnóstico local separado de las incidencias confirmadas."""
     veri = (r.get("detalle") or {}).get("verificacion") or {}
     pub = {k: v for k, v in r.items() if k != "detalle"}
@@ -1159,6 +1160,7 @@ def _publica(r):
     pub['conclusion'] = _conclusion(pub)
     if pub['conclusion']['estado'] == 'preliminar':
         pub['descripcion'] = pub['conclusion']['texto']
+    contexto_ocupacion.aplicar(pub, contexto)
     return pub
 
 
@@ -1360,7 +1362,7 @@ async def clasificar(request: Request, file: UploadFile = File(...),
     # por el serializador v4. No hay escotilla que devuelva los internals.
     respuesta = _cache_leer(huella)
     if respuesta is not None:
-        return JSONResponse(_publica(respuesta))
+        return JSONResponse(_publica(respuesta, contexto))
 
     # Acá hubo una deduplicación de pedidos en vuelo (que el segundo pedido
     # de la misma foto se colgara del primero en vez de pagarla dos veces).
@@ -1376,7 +1378,7 @@ async def clasificar(request: Request, file: UploadFile = File(...),
     if turno == "cache":
         respuesta = _cache_leer(huella)
         if respuesta is not None:
-            return JSONResponse(_publica(respuesta))
+            return JSONResponse(_publica(respuesta, contexto))
         # Entre el aviso y la lectura la caché se vació (rarísimo: CACHE_MAX
         # entradas nuevas en milisegundos). Antes que complicar la cola:
         raise _503("el servidor está ocupado; reintentá en un momento")
@@ -1389,7 +1391,7 @@ async def clasificar(request: Request, file: UploadFile = File(...),
         raise _503("el servidor está degradado; reintentá más tarde", 30)
 
     respuesta = await _correr_con_cupo(datos, contexto, verificar, huella, perfil)
-    return JSONResponse(_publica(respuesta))
+    return JSONResponse(_publica(respuesta, contexto))
 
 
 async def _correr_con_cupo(datos, contexto, verificar, huella, perfil=None, funcion=None):
@@ -1728,7 +1730,7 @@ async def _correr_trabajo(t):
             respuesta = _cache_leer(t["huella"])
             if respuesta is None:
                 raise _503("el servidor está ocupado; reintentá en un momento")
-        t["resultado"] = _publica(respuesta)
+        t["resultado"] = _publica(respuesta, t["contexto"])
         t["estado"] = "listo"
     except HTTPException as e:
         t["estado"], t["detalle"] = "error", e.detail
@@ -1764,7 +1766,7 @@ async def crear_trabajo(request: Request, file: UploadFile = File(...),
     respuesta = _cache_leer(huella)
     if respuesta is not None:
         return JSONResponse({"trabajo": None, "estado": "listo",
-                             **perfil.metadatos(), "resultado": _publica(respuesta)})
+                             **perfil.metadatos(), "resultado": _publica(respuesta, contexto)})
     if _saturado():
         raise _503("el servidor está degradado; reintentá más tarde", 30)
     _podar_trabajos()

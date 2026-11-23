@@ -5675,6 +5675,7 @@ from tests import test_recoleccion_pertenencias
 from tests import test_descripcion_principal
 from tests import test_patentes
 from tests import test_vehiculo
+from tests import test_contexto_ocupacion
 from tests import test_especialista_contenedores
 from tests import test_presencia_contenedores
 from tests import test_aptitud_higiene
@@ -5696,6 +5697,7 @@ _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_reco
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_descripcion_principal))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_patentes))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_vehiculo))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_contexto_ocupacion))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_especialista_contenedores))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_presencia_contenedores))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_aptitud_higiene))
