@@ -584,6 +584,13 @@ def _procesar_prueba(img, local, perfil, verificar):
                   'verificacion': {'activa': lector is not None,
                                    'verificadores': [lector] if lector is not None else []}}}
     salida.update(verificador.tokens_total(desglose=True))
+    recuento = lector.get('recuento_escombros') if lector else None
+    if recuento is not None:
+        salida['verificacion_escombros'] = recuento
+        if recuento['bolsas_recuento_completo']:
+            for problema in problemas:
+                if problema['key'] == 'retiro_escombros':
+                    problema['bolsas'] = verificador._cuenta_1_a_15(recuento['bolsas_minimo'])
     return modos.completar(salida)
 
 

@@ -17,6 +17,11 @@ TEXTOS = {etapa: cargar_prompt(f'prueba/{etapa}')
           for etapa in ('inicio', 'decision', 'alcance', *GRUPOS)}
 CRITERIOS = dict(linea.split(': ', 1)
                  for linea in cargar_prompt('prueba/criterios').splitlines())
+RECUENTO = ('Si confirmás retiro_escombros, contá las bolsas portables de esa pila una sola vez. '
+            'Identificá cada bolsa por su silueta, costura o boca. Incluí las parcialmente visibles '
+            'si se distinguen como unidades. Excluí bolsones de izado y residuos aparte. Usá 0 si '
+            'sólo hay material suelto, null si no podés contar. Marcá bolsas_adicionales_posibles '
+            'si el solapamiento o el encuadre podría ocultar otras. Sin escombros, devolvé ambos campos null.')
 ESTADOS_ALCANCE = {
     'ubicacion': ('publica', 'privada', 'indeterminada'),
     'presentacion': ('sacos_portables_o_suelto', 'solo_bolson_izado', 'sin_pila', 'indeterminada'),
@@ -34,6 +39,11 @@ _TEXTO = {'type': 'string'}
 _HALLAZGO = _objeto({'key': _TEXTO, 'evidencia': _TEXTO})
 _LECTURA = _objeto({campo: {'type': 'array', 'items': _HALLAZGO}
                    for campo in ('confirmadas', 'dudosas')})
+_LECTURA_CON_RECUENTO = _objeto({
+    **_LECTURA['properties'],
+    'bolsas_visibles': {'type': ['integer', 'null']},
+    'bolsas_adicionales_posibles': {'type': ['boolean', 'null']},
+})
 _ALCANCE = _objeto({**{k: {'type': 'string', 'enum': list(v)}
                       for k, v in ESTADOS_ALCANCE.items()}, 'evidencia': _TEXTO})
 
@@ -64,16 +74,27 @@ def _alcance(valor):
 def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low'):
     nombre = 'prueba_' + etapa
     try:
+        schema = _ALCANCE if permitidas is None else (
+            _LECTURA_CON_RECUENTO if etapa in ('retiros', 'decision') else _LECTURA)
+        if schema is _LECTURA_CON_RECUENTO:
+            texto += '\n' + RECUENTO
         mensajes = [{'role': 'system', 'content': texto},
                     {'role': 'user', 'content': vistas}]
-        schema = _ALCANCE if permitidas is None else _LECTURA
         # El límite de salida incluye el razonamiento, además del JSON.
         limite = 550 if etapa == 'decision' else 1400
         valor = V._extraer_json(V._llamar(modelo, mensajes, max_tokens=limite, intentos=1,
                               etapa=nombre, esquema=schema, esfuerzo=esfuerzo))
         if not isinstance(valor, dict):
             raise ValueError('Lectura inválida')
-        return _alcance(valor) if permitidas is None else _normalizar(valor, permitidas)
+        if permitidas is None:
+            return _alcance(valor)
+        lectura = _normalizar(valor, permitidas)
+        cuenta = valor.get('bolsas_visibles')
+        tapadas = valor.get('bolsas_adicionales_posibles')
+        if (schema is _LECTURA_CON_RECUENTO and 'retiro_escombros' in lectura['confirmadas']
+                and type(cuenta) is int and 0 <= cuenta <= 999):
+            lectura['recuento'] = (cuenta, tapadas if isinstance(tapadas, bool) else None)
+        return lectura
     except (AttributeError, TypeError, ValueError, OSError):
         modos.fallo(nombre)
         return None
@@ -119,15 +140,16 @@ def _grupo(modelo, etapa, vistas):
 
 
 def _decision(lecturas, scores, claves):
-    opciones = {k for lectura in lecturas for grupo in lectura.values() for k in grupo}
+    estados = ('confirmadas', 'dudosas')
+    opciones = {k for lectura in lecturas for estado in estados for k in lectura[estado]}
     opciones.update(k for k, s in scores.items() if s >= .50 and k in claves)
     for grupo in ('contenedores', 'retiros'):
         if opciones.intersection(GRUPOS[grupo]):
             opciones.update(GRUPOS[grupo])
     indicios, vistos = [], set()
     for lectura in lecturas:
-        for estado, hallazgos in lectura.items():
-            for key, texto in hallazgos.items():
+        for estado in estados:
+            for key, texto in lectura[estado].items():
                 texto = ' '.join(re.sub(r'\b\d{4,}\b', '', texto).split()[:15])
                 if texto and texto not in vistos:
                     vistos.add(texto)
@@ -161,6 +183,34 @@ def _escombro_elegible(lecturas):
                and r['residuos_comunes_aparte'] == 'si' for r in lecturas)
 
 
+def _recuento(retiros, final):
+    primera = retiros.get('recuento')
+    ultima = final.get('recuento')
+    if primera is None or ultima is None:
+        return None
+    minimo = min(primera[0], ultima[0])
+    exacto = primera == ultima == (minimo, False)
+    if minimo == 0 and not exacto:
+        return None
+    return {'bolsas_minimo': minimo, 'bolsas_recuento_completo': exacto}
+
+
+def _excluir_indicios_insuficientes(fuentes, confirmadas):
+    piso = confirmadas.get('reparacion_vereda', '').casefold()
+    if (re.search(r'\b(?:piso|baldosas?) (?:del balc[oó]n|del interior|del patio privado)\b', piso)
+            and not re.search(r'\b(?:vereda|calzada|cord[oó]n|paso peatonal)\b', piso)):
+        fuentes.pop('reparacion_vereda', None)
+    poda = confirmadas.get('retiro_poda', '').casefold()
+    if (re.search(r'\b(?:[aá]rbol|tronco|cantero)\b', poda)
+            and not re.search(r'\b(?:ramas?|hojas?|tallos?|pastos?|frondas?|pencas?|vegetal(?:es)?)\b', poda)):
+        fuentes.pop('retiro_poda', None)
+    comunes = confirmadas.get('recoleccion', '').casefold()
+    if ('retiro_escombros' in fuentes and re.search(r'\bbolsas? negras?\b', comunes)
+            and not re.search(r'\b(?:separad[ao]s?|aparte|cart[oó]n|cartones|cajas?|envoltorios?|'
+                              r'comida|envases?|papeles?|botellas?)\b', comunes)):
+        fuentes.pop('recoleccion', None)
+
+
 def clasificar(img, local, categorias, modelos):
     """Devuelve categorías y su procedencia, con las comprobaciones elegidas."""
     sol, luna, apoyo = modelos
@@ -172,7 +222,9 @@ def clasificar(img, local, categorias, modelos):
         tareas.append(lambda: _grupo(luna, 'contenedores', detalles))
     tareas.append(lambda: _leer(luna, _inicio(scores, claves), foto, 'inicio', claves))
     with ThreadPoolExecutor(max_workers=len(tareas)) as pool:
-        previas = [r for r in V._map_con_contexto(pool, lambda fn: fn(), tareas) if r is not None]
+        lecturas = V._map_con_contexto(pool, lambda fn: fn(), tareas)
+    retiros = lecturas[0] or {}
+    previas = [r for r in lecturas if r is not None]
     final = _leer(sol, _decision(previas, scores, claves), foto, 'decision', claves)
     if final is None:
         return {}, {}, None
@@ -209,6 +261,9 @@ def clasificar(img, local, categorias, modelos):
             and any(k in evidencia for k in ('sacos', 'bolsas', 'pila', 'tubos', 'bolson', 'bolsón'))
             and not any(k in evidencia for k in ('barrera', 'valla', 'cartel', 'anclad', 'colocad'))):
         fuentes.pop('obstruccion', None)
+    _excluir_indicios_insuficientes(fuentes, confirmadas)
     modelo = {'modelo': sol, 'ok': True,
               'categorias': [{'key': k, 'evidencia': e} for k, e in confirmadas.items()]}
+    if 'retiro_escombros' in fuentes:
+        modelo['recuento_escombros'] = _recuento(retiros, final)
     return fuentes, {k: e for k, e in dudas.items() if k not in fuentes}, modelo
