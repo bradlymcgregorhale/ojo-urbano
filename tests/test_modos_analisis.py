@@ -252,6 +252,62 @@ class ApiModos(unittest.TestCase):
         self.assertIn('barrera independiente', _decision([{'confirmadas': {
             'manteros': 'Puesto con mercadería exhibida.'}, 'dudosas': {}}], {}, claves))
 
+    def test_prueba_publica_recuento_sin_agregar_llamadas(self):
+        for dirigida, final, tapadas, minimo, exacto in (
+            (5, 5, False, 5, True), (6, 7, False, 6, False),
+            (5, 5, True, 5, False), (5, None, False, None, False),
+            (5, True, False, None, False), (0, 0, False, 0, True),
+        ):
+            with self.subTest(dirigida=dirigida, final=final, tapadas=tapadas):
+                llamadas = []
+
+                def responder(modelo, mensajes, **opciones):
+                    esquema = opciones['esquema']['properties']
+                    etapa = opciones['etapa']
+                    llamadas.append(etapa)
+                    valor = {'confirmadas': [{'key': 'retiro_escombros',
+                                              'evidencia': 'Sacos de rafia densos en la vereda.'}],
+                             'dudosas': []}
+                    if etapa != 'prueba_inicio':
+                        self.assertIn('bolsas_visibles', esquema)
+                        valor.update(bolsas_visibles=dirigida if etapa == 'prueba_retiros' else final,
+                                     bolsas_adicionales_posibles=tapadas)
+                    return json.dumps(valor)
+
+                with patch.object(self.S, '_cache', __import__('collections').OrderedDict()):
+                    with patch.object(V, '_llamar', side_effect=responder):
+                        r = self.post('prueba')
+                self.assertEqual(r.status_code, 200)
+                self.assertCountEqual(llamadas, ['prueba_inicio', 'prueba_retiros', 'prueba_decision'])
+                salida = r.json()
+                self.assertEqual([(p['key'], p['bolsas']) for p in salida['problemas']],
+                                 [('retiro_escombros', minimo if exacto and minimo else None)])
+                if minimo is None:
+                    self.assertNotIn('verificacion_escombros', salida)
+                else:
+                    self.assertEqual(salida['verificacion_escombros']['bolsas_minimo'], minimo)
+                    self.assertIs(salida['verificacion_escombros']['bolsas_recuento_completo'], exacto)
+
+    def test_prueba_distingue_evidencia_de_la_escena(self):
+        import prueba_completo as P
+        for poda, piso, comunes, esperadas in (
+            ('Bolsas negras junto al árbol.', 'Rajaduras en el piso del balcón.',
+             'Una bolsa negra atada sobre la vereda.', {'retiro_escombros'}),
+            ('Ramas cortadas en un montón junto al árbol.', 'Baldosas flojas en la vereda pública.',
+             'Cajas de cartón descartadas aparte.', {'retiro_escombros', 'retiro_poda',
+                                                      'reparacion_vereda', 'recoleccion'}),
+        ):
+            confirmadas = {'retiro_escombros': 'Sacos de corralón densos junto al cordón.',
+                           'retiro_poda': poda, 'reparacion_vereda': piso,
+                           'recoleccion': comunes}
+            lectura = {'confirmadas': confirmadas, 'dudosas': {}}
+            with self.subTest(lectura=lectura), patch.object(P, '_vistas', return_value=[]), \
+                    patch.object(P, '_leer', return_value=lectura) as leer:
+                fuentes, _, _ = P.clasificar(Image.new('RGB', (24, 24)), {}, tuple(confirmadas),
+                                             ('decision', 'dirigidos', 'alcance'))
+            self.assertEqual(set(fuentes), esperadas)
+            self.assertEqual(leer.call_count, 3)
+
     def test_prueba_conserva_obstruccion_de_bolsones_de_izado(self):
         import prueba_completo as P
         casos = [
