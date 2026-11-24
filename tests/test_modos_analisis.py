@@ -255,8 +255,9 @@ class ApiModos(unittest.TestCase):
     def test_prueba_publica_recuento_sin_agregar_llamadas(self):
         for dirigida, final, tapadas, minimo, exacto in (
             (5, 5, False, 5, True), (6, 7, False, 6, False),
-            (5, 5, True, 5, False), (5, None, False, None, False),
-            (5, True, False, None, False), (0, 0, False, 0, True),
+            (5, 5, True, 5, False), (5, None, False, 5, False),
+            (5, True, False, 5, False), (0, 0, False, 0, True),
+            (None, 6, False, 6, False), (None, None, False, None, False),
         ):
             with self.subTest(dirigida=dirigida, final=final, tapadas=tapadas):
                 llamadas = []
@@ -272,6 +273,9 @@ class ApiModos(unittest.TestCase):
                         self.assertIn('bolsas_visibles', esquema)
                         valor.update(bolsas_visibles=dirigida if etapa == 'prueba_retiros' else final,
                                      bolsas_adicionales_posibles=tapadas)
+                    if etapa == 'prueba_retiros':
+                        valor['dudosas'] = valor['confirmadas']
+                        valor['confirmadas'] = []
                     return json.dumps(valor)
 
                 with patch.object(self.S, '_cache', __import__('collections').OrderedDict()):

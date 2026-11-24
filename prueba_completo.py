@@ -17,11 +17,12 @@ TEXTOS = {etapa: cargar_prompt(f'prueba/{etapa}')
           for etapa in ('inicio', 'decision', 'alcance', *GRUPOS)}
 CRITERIOS = dict(linea.split(': ', 1)
                  for linea in cargar_prompt('prueba/criterios').splitlines())
-RECUENTO = ('Si confirmás retiro_escombros, contá las bolsas portables de esa pila una sola vez. '
+RECUENTO = ('Si detectás una pila candidata de retiro_escombros, aunque el material quede en duda, '
+            'contá las bolsas portables de esa pila una sola vez. '
             'Identificá cada bolsa por su silueta, costura o boca. Incluí las parcialmente visibles '
             'si se distinguen como unidades. Excluí bolsones de izado y residuos aparte. Usá 0 si '
             'sólo hay material suelto, null si no podés contar. Marcá bolsas_adicionales_posibles '
-            'si el solapamiento o el encuadre podría ocultar otras. Sin escombros, devolvé ambos campos null.')
+            'si el solapamiento o el encuadre podría ocultar otras. Sin pila candidata, devolvé ambos campos null.')
 ESTADOS_ALCANCE = {
     'ubicacion': ('publica', 'privada', 'indeterminada'),
     'presentacion': ('sacos_portables_o_suelto', 'solo_bolson_izado', 'sin_pila', 'indeterminada'),
@@ -91,7 +92,8 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low'):
         lectura = _normalizar(valor, permitidas)
         cuenta = valor.get('bolsas_visibles')
         tapadas = valor.get('bolsas_adicionales_posibles')
-        if (schema is _LECTURA_CON_RECUENTO and 'retiro_escombros' in lectura['confirmadas']
+        if (schema is _LECTURA_CON_RECUENTO
+                and any('retiro_escombros' in lectura[k] for k in ('confirmadas', 'dudosas'))
                 and type(cuenta) is int and 0 <= cuenta <= 999):
             lectura['recuento'] = (cuenta, tapadas if isinstance(tapadas, bool) else None)
         return lectura
@@ -184,12 +186,11 @@ def _escombro_elegible(lecturas):
 
 
 def _recuento(retiros, final):
-    primera = retiros.get('recuento')
-    ultima = final.get('recuento')
-    if primera is None or ultima is None:
+    votos = [r['recuento'] for r in (retiros, final) if 'recuento' in r]
+    if not votos:
         return None
-    minimo = min(primera[0], ultima[0])
-    exacto = primera == ultima == (minimo, False)
+    minimo = min(n for n, _ in votos)
+    exacto = votos == [(minimo, False)] * 2
     if minimo == 0 and not exacto:
         return None
     return {'bolsas_minimo': minimo, 'bolsas_recuento_completo': exacto}
