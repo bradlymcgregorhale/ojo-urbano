@@ -1,4 +1,6 @@
-- retiro_poda: ramas, troncos o restos de poda/jardinería CORTADOS y acumulados para retirar.\
+- retiro_poda: ramas, troncos o restos de poda/jardinería cortados para retirar. También una sola\
+ rama grande cortada o quebrada en el suelo, visiblemente desprendida. Si el tronco sigue en pie,\
+ no llames árbol caído a la rama. Que ocupe parte del paso no agrega obstruccion por sí solo.\
  TAMBIÉN cuenta embolsado: bolsas (verdes o negras) con restos vegetales visibles (pasto, hojas o\
  ramitas asomando por la boca o transparentándose), y una pila de bolsas con un cartel escrito a\
  mano tipo "RECOLECCIÓN PROGRAMADA" (es el protocolo municipal de retiro de poda: esa pila es\
