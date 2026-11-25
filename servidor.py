@@ -572,6 +572,8 @@ def _procesar_prueba(img, local, perfil, verificar):
     elementos, problemas = [], []
     for key, fuentes in confirmadas.items():
         entrada = {'key': key, 'nombre': nombre_de(key), 'fuentes': fuentes, 'gravedad': None}
+        if key == 'retiro_muebles':
+            entrada['objetos'] = lector.get('objetos', [])
         (elementos if key in verificador.PRESENCIA else problemas).append(entrada)
     posibles = [{'key': k, 'nombre': nombre_de(k), 'fuentes': [perfil.verificadores[0]],
                  'origen': 'foto', 'motivo': e} for k, e in dudas.items()]

@@ -23,6 +23,10 @@ RECUENTO = ('Si detectás una pila candidata de retiro_escombros, aunque el mate
             'si se distinguen como unidades. Excluí bolsones de izado y residuos aparte. Usá 0 si '
             'sólo hay material suelto, null si no podés contar. Marcá bolsas_adicionales_posibles '
             'si el solapamiento o el encuadre podría ocultar otras. Sin pila candidata, devolvé ambos campos null.')
+OBJETOS = ('Si confirmás retiro_muebles, enumerá en objetos hasta ocho voluminosos descartados que se '
+           'distingan en la foto. Usá nombres cortos, por ejemplo "lavarropas", "armario" o "silla plástica". '
+           'Excluí el contenedor, los objetos en uso y lo que no se distingue. Si no confirmás retiro_muebles '
+           'o no podés identificar ningún objeto, devolvé [].')
 ESTADOS_ALCANCE = {
     'ubicacion': ('publica', 'privada', 'indeterminada'),
     'presentacion': ('sacos_portables_o_suelto', 'solo_bolson_izado', 'sin_pila', 'indeterminada'),
@@ -44,6 +48,10 @@ _LECTURA_CON_RECUENTO = _objeto({
     **_LECTURA['properties'],
     'bolsas_visibles': {'type': ['integer', 'null']},
     'bolsas_adicionales_posibles': {'type': ['boolean', 'null']},
+})
+_LECTURA_FINAL = _objeto({
+    **_LECTURA_CON_RECUENTO['properties'],
+    'objetos': {'type': 'array', 'items': _TEXTO},
 })
 _ALCANCE = _objeto({**{k: {'type': 'string', 'enum': list(v)}
                       for k, v in ESTADOS_ALCANCE.items()}, 'evidencia': _TEXTO})
@@ -75,10 +83,13 @@ def _alcance(valor):
 def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low'):
     nombre = 'prueba_' + etapa
     try:
-        schema = _ALCANCE if permitidas is None else (
-            _LECTURA_CON_RECUENTO if etapa in ('retiros', 'decision') else _LECTURA)
-        if schema is _LECTURA_CON_RECUENTO:
+        schema = _ALCANCE if permitidas is None else {
+            'retiros': _LECTURA_CON_RECUENTO, 'decision': _LECTURA_FINAL,
+        }.get(etapa, _LECTURA)
+        if etapa in ('retiros', 'decision'):
             texto += '\n' + RECUENTO
+        if etapa == 'decision':
+            texto += '\n' + OBJETOS
         mensajes = [{'role': 'system', 'content': texto},
                     {'role': 'user', 'content': vistas}]
         # El límite de salida incluye el razonamiento, además del JSON.
@@ -92,10 +103,12 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low'):
         lectura = _normalizar(valor, permitidas)
         cuenta = valor.get('bolsas_visibles')
         tapadas = valor.get('bolsas_adicionales_posibles')
-        if (schema is _LECTURA_CON_RECUENTO
+        if (etapa in ('retiros', 'decision')
                 and any('retiro_escombros' in lectura[k] for k in ('confirmadas', 'dudosas'))
                 and type(cuenta) is int and 0 <= cuenta <= 999):
             lectura['recuento'] = (cuenta, tapadas if isinstance(tapadas, bool) else None)
+        if etapa == 'decision' and 'retiro_muebles' in lectura['confirmadas']:
+            lectura['objetos'] = V._objetos_lista(valor.get('objetos')) or []
         return lectura
     except (AttributeError, TypeError, ValueError, OSError):
         modos.fallo(nombre)
@@ -267,4 +280,6 @@ def clasificar(img, local, categorias, modelos):
               'categorias': [{'key': k, 'evidencia': e} for k, e in confirmadas.items()]}
     if 'retiro_escombros' in fuentes:
         modelo['recuento_escombros'] = _recuento(retiros, final)
+    if 'retiro_muebles' in fuentes:
+        modelo['objetos'] = final.get('objetos', [])
     return fuentes, {k: e for k, e in dudas.items() if k not in fuentes}, modelo
