@@ -1,6 +1,6 @@
 retiro_escombros: pila de cascote o bolsas con señales físicas de obra que se corroboren; el estampado o el color solo no prueba el contenido.
 retiro_muebles: voluminosos enteros descartados, incluidos tubos, tablas, placas o marcos; un objeto entero no es cascote.
-retiro_poda: vegetación cortada y descartada, no brotes vivos ni unas pocas hojas caídas.
+retiro_poda: vegetación cortada y descartada o una rama grande desprendida en el suelo, no brotes vivos ni unas pocas hojas caídas.
 recoleccion: residuos domésticos descartados que justifican su propio retiro; no dupliques la misma pila ni cuentes unos papeles dispersos.
 barrido: acumulación notable de suciedad liviana; unas pocas hojas o papeles dispersos no alcanzan.
 contenedor_desbordado: recipiente realmente lleno al borde o residuos que salen por exceso; un objeto largo apoyado o una tapa levantada no bastan.

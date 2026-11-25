@@ -62,6 +62,7 @@ import politica_escombros
 import evaluacion_foto
 import revision_omisiones
 import revision_fragmentos
+import revision_ramas
 import revision_cordon
 import revision_vereda
 import observaciones_higiene
@@ -469,6 +470,8 @@ def _cacheable(respuesta):
     if respuesta.get("modo") in ("bajo", "medio") and respuesta.get("analisis_estado") == "parcial":
         return False
     veri = respuesta.get("detalle", {}).get("verificacion", {})
+    if veri.get('revision_ramas_fallo'):
+        return False
     if (veri.get("inventario_contenedores") or {}).get("fallo"):
         return False
     if veri.get("activa"):
@@ -585,7 +588,6 @@ def _procesar_prueba(img, local, perfil, verificar):
               'calidad_foto': _calidad_segura(img), 'detalle': {'modelo_local': local,
                   'verificacion': {'activa': lector is not None,
                                    'verificadores': [lector] if lector is not None else []}}}
-    salida.update(verificador.tokens_total(desglose=True))
     recuento = lector.get('recuento_escombros') if lector else None
     if recuento is not None:
         salida['verificacion_escombros'] = recuento
@@ -593,6 +595,9 @@ def _procesar_prueba(img, local, perfil, verificar):
             for problema in problemas:
                 if problema['key'] == 'retiro_escombros':
                     problema['bolsas'] = verificador._cuenta_1_a_15(recuento['bolsas_minimo'])
+    salida = revision_ramas.revisar(img, salida, perfil)
+    salida['costo_api'] = verificador.costo_total()
+    salida.update(verificador.tokens_total(desglose=True))
     return modos.completar(salida)
 
 
@@ -945,6 +950,7 @@ def procesar(datos, contexto, verificar):
         salida = revision_cordon.revisar(img, salida)
         salida = revision_vereda.revisar(img, salida)
         salida = revision_fragmentos.revisar(img, salida)
+        salida = revision_ramas.revisar(img, salida, perfil, contexto)
         veri_actual = dict((salida.get("detalle") or {}).get("verificacion") or {})
         lecturas = veri_actual.get("verificadores") or []
         previa = evaluacion_foto.aplicar({"problemas": list(salida.get("problemas") or [])}, lecturas)

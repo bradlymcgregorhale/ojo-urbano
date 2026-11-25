@@ -1,0 +1,5 @@
+Mirá la foto completa y distinguí el retiro de una rama en el suelo de dos hallazgos separados.
+- rama_desprendida: marcá sí si se ve una rama cortada o quebrada en el suelo de la vía pública, separada del árbol. Mirá el extremo de la rama y dónde termina el tronco en pie. Ramas colgantes, un tronco vivo que sigue unido al suelo y un árbol entero volcado no son una rama desprendida para retirar.
+- problemas_arbolado: marcá sí si se ve un árbol entero caído o un problema visible en el árbol que queda, como un tronco partido, un desgarro importante o una rama todavía colgando. Una rama en el piso junto a un tronco que sigue en pie no demuestra por sí sola otro problema con el árbol.
+- obstruccion: marcá sí si hay una barrera independiente de la rama, como una valla o un cartel colocado que bloquea el paso. Que la propia rama ocupe la vereda no cuenta como una segunda incidencia.
+En cada campo usá si, no o indeterminado. Usá no si revisaste la escena y no observás ese hallazgo. Usá indeterminado si el encuadre o la imagen no permiten distinguirlo. En evidencia describí en una frase corta lo que ves, sin inferir quién cortó la rama ni por qué cayó.

@@ -4,5 +4,7 @@
  presionan, estrangulan o lastiman: cables atados o tensados clavándose en el tronco o la corteza,\
  tutores o ataduras que estrangulan, clavos u objetos incrustados. NO lo uses solo por ramas\
  próximas o apoyadas sobre cables si no se ve daño en el árbol. Si las raíces están rompiendo la\
- vereda, eso es reparacion_vereda; si lo que hace falta es podar, es poda_arbol.
+ vereda, eso es reparacion_vereda; si lo que hace falta es podar, es poda_arbol. Una rama\
+ desprendida en el suelo es retiro_poda. Sumá problemas_arbolado solo si distinguís un árbol\
+ entero caído o daño visible en el propio árbol, como un tronco partido o una rama colgando.
 
