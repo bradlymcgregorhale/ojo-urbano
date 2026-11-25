@@ -252,6 +252,40 @@ class ApiModos(unittest.TestCase):
         self.assertIn('barrera independiente', _decision([{'confirmadas': {
             'manteros': 'Puesto con mercadería exhibida.'}, 'dudosas': {}}], {}, claves))
 
+    def test_prueba_publica_objetos_visibles_en_la_misma_lectura(self):
+        casos = (
+            ('retiro_muebles', 'Junto al cordón hay un lavarropas y una silla.',
+             ['lavarropas', 'silla plástica']),
+            ('contenedor_humedos_bilateral', 'Hay un contenedor gris junto al cordón.', []),
+        )
+        for clave, evidencia, esperados in casos:
+            with self.subTest(clave=clave):
+                llamadas = []
+
+                def responder(modelo, mensajes, **opciones):
+                    etapa = opciones['etapa']
+                    llamadas.append(etapa)
+                    propiedades = opciones['esquema']['properties']
+                    self.assertEqual('objetos' in propiedades, etapa == 'prueba_decision')
+                    valor = {'confirmadas': [{'key': clave, 'evidencia': evidencia}], 'dudosas': []}
+                    if etapa == 'prueba_decision':
+                        self.assertIn('voluminosos descartados', mensajes[0]['content'])
+                        valor['objetos'] = ['lavarropas', 'Lavarropas', 'silla plástica', 'contenedor', 'vereda']
+                    return json.dumps(valor)
+
+                with patch.object(self.S, '_cache', __import__('collections').OrderedDict()), \
+                        patch.object(V, '_llamar', side_effect=responder):
+                    r = self.post('prueba')
+                self.assertEqual(r.status_code, 200, r.text)
+                self.assertCountEqual(llamadas, ['prueba_inicio', 'prueba_retiros', 'prueba_decision'])
+                salida = r.json()
+                if esperados:
+                    self.assertEqual(salida['problemas'][0]['objetos'], esperados)
+                else:
+                    self.assertEqual(salida['problemas'], [])
+                    self.assertEqual(salida['elementos_detectados'][0]['key'], clave)
+                    self.assertNotIn('objetos', salida['elementos_detectados'][0])
+
     def test_prueba_publica_recuento_sin_agregar_llamadas(self):
         for dirigida, final, tapadas, minimo, exacto in (
             (5, 5, False, 5, True), (6, 7, False, 6, False),
