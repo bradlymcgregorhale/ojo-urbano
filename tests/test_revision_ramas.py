@@ -47,6 +47,17 @@ class TestRevisionRamas(unittest.TestCase):
         corregida = ramas.aplicar(entrada, dict(self.lectura, problemas_arbolado='indeterminado'))
         self.assertEqual([p['key'] for p in corregida['problemas']], ['problemas_arbolado', 'retiro_poda'])
 
+    def test_tronco_tapado_conserva_dano_posible(self):
+        entrada = resultado('retiro_poda')
+        entrada['posibles'].append({'key': 'problemas_arbolado'})
+        entrada['en_duda'].append('problemas_arbolado')
+        lectura = dict(self.lectura, problemas_arbolado='indeterminado',
+                       evidencia='Una banda de texto tapa parte del tronco.')
+        corregida = ramas.aplicar(entrada, lectura)
+        self.assertIn({'key': 'problemas_arbolado'}, corregida['posibles'])
+        self.assertIn('problemas_arbolado', corregida['en_duda'])
+        self.assertNotIn('problemas_arbolado', corregida['revision_ramas']['descartadas'])
+
     def test_pedido_de_extraccion_separado_se_conserva(self):
         entrada = resultado('problemas_arbolado', 'retiro_poda')
         corregida = ramas.aplicar(entrada, self.lectura, 'Rama caída. También pido extraer el árbol seco.')
