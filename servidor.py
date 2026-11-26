@@ -596,6 +596,12 @@ def _procesar_prueba(img, local, perfil, verificar):
                 if problema['key'] == 'retiro_escombros':
                     problema['bolsas'] = verificador._cuenta_1_a_15(recuento['bolsas_minimo'])
     salida = revision_ramas.revisar(img, salida, perfil)
+    vehiculos = [p for p in salida['problemas'] if p['key'] in verificador.PATENTE_KEYS]
+    if vehiculos:
+        patente = verificador._leer_patente(img, solo_recorte=True)
+        if patente:
+            for problema in vehiculos:
+                problema['patente'] = patente
     salida.update(verificador.costo_total(con_estado=True))
     salida.update(verificador.tokens_total(desglose=True))
     return modos.completar(salida)

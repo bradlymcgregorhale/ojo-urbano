@@ -786,6 +786,9 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa",
     perfil = modos.perfil_actual()
     if perfil and perfil.modo != "alto":
         permitidos = set(perfil.verificadores) | ({perfil.arbitro} if perfil.arbitro else set())
+        if perfil.modo == "prueba" and etapa == "leer_chapa":
+            import patentes
+            permitidos.update(patentes.LECTORES)
         if modelo not in permitidos:
             raise ValueError("Modelo fuera del modo elegido")
         if etapa == "arbitrar" and perfil.modo == "bajo":
@@ -1325,7 +1328,7 @@ def _leer_patente(img, *, solo_recorte=False):
     try:
         import patentes
         if patentes.disponible():
-            chapas = patentes.leer_chapas(img)
+            chapas = patentes.leer_chapas(img, solo_una=solo_recorte)
             if solo_recorte and len(chapas) != 1:
                 return None
             legibles = {c["patente"] for c in chapas if c.get("legible")}

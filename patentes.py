@@ -160,11 +160,14 @@ def _nombre(modelo):
     return re.sub(r"[^a-z0-9]+", "_", modelo.split("/")[-1].lower()).strip("_")
 
 
-def leer_chapas(img, lectores=None):
+def leer_chapas(img, lectores=None, *, solo_una=False):
     """Todas las chapas detectadas en la foto, cada una con sus lecturas."""
     lectores = list(dict.fromkeys(LECTORES if lectores is None else lectores))
+    detecciones = detectar(img)
+    if solo_una and len(detecciones) != 1:
+        return []
     salida = []
-    for det in detectar(img):
+    for det in detecciones:
         x1, y1, x2, y2 = det["caja"]
         chapa = {"caja": det["caja"], "confianza_deteccion": det["confianza"],
                  "ancho_px": x2 - x1, "lecturas": {}, "patente": None,

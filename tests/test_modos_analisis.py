@@ -285,6 +285,47 @@ class ApiModos(unittest.TestCase):
         self.assertEqual(r.json()['costo_api'], .002)
         self.assertFalse(r.json()['costo_api_completo'])
 
+    def test_prueba_solo_comparte_una_chapa_corroborada(self):
+        import patentes
+
+        claves = ('vehiculo_abandonado', 'vehiculo_mal_estacionado')
+        una = [{'caja': [2, 4, 20, 14], 'confianza': .9}]
+        otra = [{'caja': [4, 16, 19, 23], 'confianza': .8}]
+        ocr = {'patente': 'A123BCD', 'lectura': 'A123BCD', 'confianza': .9}
+        lector_chapa = 't/chapa'
+        for cajas, lectura, esperado, consultas_chapa in (
+                (una, 'A123BCD', 'A123BCD', 1),
+                (una, 'A128BCD', None, 1),
+                (una + otra, 'A123BCD', None, 0)):
+            with self.subTest(cajas=len(cajas), lectura=lectura):
+                self.llamadas.clear()
+
+                def http(req, *_):
+                    cuerpo = json.loads(req.data)
+                    self.llamadas.append(cuerpo['model'])
+                    if cuerpo['model'] == lector_chapa:
+                        contenido = {'patente': lectura}
+                    else:
+                        hallazgos = [{'key': k, 'evidencia': 'Una moto junto al poste.'} for k in claves]
+                        contenido = {'confirmadas': hallazgos if cuerpo['model'] == 't/decision' else [],
+                                     'dudosas': []}
+                    return {'usage': {'cost': .001, 'total_tokens': 10}, 'choices': [
+                        {'finish_reason': 'stop', 'message': {'content': json.dumps(contenido)}}]}
+
+                with (patch.multiple(patentes, LECTORES=(lector_chapa,), ANCHO_MINIMO=1),
+                      patch.object(patentes, 'disponible', return_value=True),
+                      patch.object(patentes, 'detectar', return_value=cajas),
+                      patch.object(patentes, 'leer_local', return_value=ocr),
+                      patch.object(V, '_pedir_http', side_effect=http),
+                      patch.object(self.S, '_cache', __import__('collections').OrderedDict())):
+                    r = self.post('prueba')
+                self.assertEqual(r.status_code, 200, r.text)
+                salida = r.json()
+                self.assertEqual({p['key']: p.get('patente') for p in salida['problemas']},
+                                 dict.fromkeys(claves, esperado))
+                self.assertEqual(self.llamadas.count(lector_chapa), consultas_chapa)
+                self.assertEqual(salida['costo_api'], .004 if consultas_chapa else .003)
+
     def test_prueba_pide_evidencia_independiente_de_obstruccion_en_un_puesto(self):
         from prueba_completo import _decision
         claves = ('manteros', 'obstruccion')
