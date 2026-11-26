@@ -2,6 +2,7 @@
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from decimal import Decimal
 from functools import wraps
 import copy
 import hashlib
@@ -15,6 +16,14 @@ from types import MappingProxyType
 NOMBRES = {'bajo': 'Económico', 'medio': 'Equilibrado', 'alto': 'Completo',
            'prueba': 'Completo (prueba)'}
 IDENTIFICADOR = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.:-]+$')
+_TOPE_PRUEBA = Decimal('0.01')
+_DECISION_PRUEBA = 'prueba_decision'
+_ETAPAS_PRUEBA = {_DECISION_PRUEBA, 'prueba_inicio', 'prueba_retiros', 'prueba_contenedores',
+                 'prueba_tipos', 'prueba_alcance', 'rama_desprendida'}
+
+
+class ConsultaSinSaldo(ValueError):
+    """La consulta no se envió, por saldo insuficiente o pendiente."""
 
 
 CONFIG_MODELOS_ALTO = (
@@ -51,6 +60,7 @@ class Perfil:
     especialista: bool
     version: str
     motivo: str | None = None
+    reservas_prueba: MappingProxyType | None = None
 
     def metadatos(self):
         return {'modo': self.modo, 'modo_version': self.version}
@@ -58,6 +68,18 @@ class Perfil:
     def publico(self):
         return {'modo': self.modo, 'modo_version': self.version, 'nombre': NOMBRES[self.modo],
                 'disponible': self.motivo is None, 'motivo': self.motivo}
+
+
+def _leer_reservas_prueba(texto):
+    valores = json.loads(texto, parse_float=Decimal)
+    if not isinstance(valores, dict) or valores.keys() != _ETAPAS_PRUEBA:
+        raise ValueError('Faltan reservas para el modo de prueba')
+    reservas = {etapa: Decimal(str(valor)) for etapa, valor in valores.items()}
+    if any(not v.is_finite() or not 0 < v <= _TOPE_PRUEBA for v in reservas.values()):
+        raise ValueError('Reserva fuera del rango de costo por foto')
+    if sum(reservas[k] for k in (_DECISION_PRUEBA, 'prueba_inicio', 'prueba_retiros')) > _TOPE_PRUEBA:
+        raise ValueError('Las lecturas principales no caben en el presupuesto')
+    return MappingProxyType(reservas)
 
 
 def cargar(verificador, opciones_servidor, entorno=None):
@@ -85,6 +107,7 @@ def cargar(verificador, opciones_servidor, entorno=None):
     for modo, cantidad in (('bajo', 1), ('medio', 2), ('alto', 3), ('prueba', 3)):
         nombre = 'VERIFICADORES_' + modo.upper()
         motivo = None
+        reservas = None
         if nombre in env:
             modelos = tuple(m.strip() for m in env[nombre].split(','))
             if (len(modelos) != cantidad or len(set(modelos)) != cantidad
@@ -94,6 +117,11 @@ def cargar(verificador, opciones_servidor, entorno=None):
             modelos = tuple(verificador.VERIFICADORES)
         else:
             modelos, motivo = (), 'no_configurado'
+        if modo == 'prueba' and 'PRUEBA_RESERVAS_USD' in env:
+            try:
+                reservas = _leer_reservas_prueba(env['PRUEBA_RESERVAS_USD'])
+            except (ArithmeticError, ValueError, TypeError):
+                motivo = 'configuracion_invalida'
         arbitro = '' if modo in {'bajo', 'prueba'} else verificador.ARBITRO
         foto = bool(modo == 'alto' and verificador.ARBITRO_VE_FOTO)
         confirma = bool(modo == 'alto' and verificador.ARBITRO_CONFIRMA)
@@ -117,8 +145,10 @@ def cargar(verificador, opciones_servidor, entorno=None):
             datos.append(hashlib.sha256(Path(e.__file__).read_bytes()).hexdigest())
         if modo == 'prueba':
             datos.append(hashlib.sha256((raiz / 'prueba_completo.py').read_bytes()).hexdigest())
+            if reservas is not None:
+                datos.append({k: str(v.normalize()) for k, v in reservas.items()})
         version = hashlib.sha256(json.dumps(datos, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:24]
-        perfiles[modo] = Perfil(modo, modelos, arbitro, foto, confirma, especialista, version, motivo)
+        perfiles[modo] = Perfil(modo, modelos, arbitro, foto, confirma, especialista, version, motivo, reservas)
     return MappingProxyType(perfiles)
 
 
@@ -131,6 +161,10 @@ class Registro:
     pendientes: set = field(default_factory=set)
     llamadas: int = 0
     lock: object = field(default_factory=threading.Lock)
+    costo: Decimal = Decimal(0)
+    reservado: Decimal = Decimal(0)
+    decision_pendiente: bool = True
+    limites_costo: set = field(default_factory=set)
 
 
 _actual = ContextVar('modo_analisis', default=None)
@@ -160,6 +194,66 @@ def llamada():
     if r:
         with r.lock:
             r.llamadas += 1
+
+
+def con_reservas():
+    p = perfil_actual()
+    return p is not None and p.reservas_prueba is not None
+
+
+def _caben(r, etapas):
+    if r.limites_costo - {'presupuesto_api_insuficiente'}:
+        return False
+    reservas = r.perfil.reservas_prueba
+    decision = reservas[_DECISION_PRUEBA] if r.decision_pendiente and _DECISION_PRUEBA not in etapas else 0
+    if all(e in reservas for e in etapas) and (
+            r.costo + r.reservado + decision + sum(reservas[e] for e in etapas) <= _TOPE_PRUEBA):
+        return True
+    r.limites_costo.add('presupuesto_api_insuficiente')
+    return False
+
+
+def caben_apoyos(*etapas):
+    if not con_reservas():
+        return True
+    r = _actual.get()
+    with r.lock:
+        return _caben(r, etapas)
+
+
+def reservar_consulta(etapa):
+    if not con_reservas():
+        return None
+    r = _actual.get()
+    with r.lock:
+        if not _caben(r, (etapa,)):
+            raise ConsultaSinSaldo('Saldo insuficiente o pendiente para la consulta')
+        reserva = r.perfil.reservas_prueba[etapa]
+        r.reservado += reserva
+        if etapa == _DECISION_PRUEBA:
+            r.decision_pendiente = False
+        return reserva
+
+
+def liquidar_consulta(reserva, uso):
+    if reserva is None:
+        return
+    r = _actual.get()
+    importe = uso.get('cost') if isinstance(uso, dict) else None
+    with r.lock:
+        r.reservado -= reserva
+        if type(importe) not in (int, float):
+            r.limites_costo.add('costo_api_sin_conciliar')
+            return
+        monto = Decimal(str(importe))
+        if not monto.is_finite() or monto < 0:
+            r.limites_costo.add('costo_api_sin_conciliar')
+            return
+        r.costo += monto
+        if monto > reserva:
+            r.limites_costo.add('reserva_api_excedida')
+        if r.costo > _TOPE_PRUEBA:
+            r.limites_costo.add('tope_api_excedido')
 
 
 def fallo(etapa):
@@ -217,7 +311,7 @@ def completar(salida):
     p = r.perfil
     salida.update(p.metadatos())
     veri = (salida.get('detalle') or {}).get('verificacion') or {}
-    limites = []
+    limites = sorted(r.limites_costo)
     if p.modo != 'alto':
         limites.append('modo_reducido')
     if p.modo == 'prueba':
@@ -251,7 +345,7 @@ def completar(salida):
     import verificador
     arbitraje_pendiente = p.arbitro and any(k not in verificador.PRESENCIA for k in salida.get('en_duda') or [])
     fallo_tecnico = bool(r.fallos or _fallos_en(datos_fallos))
-    incompleto = bool(fallo_tecnico or veri.get('ruteo_contexto_fallo') or arbitraje_pendiente)
+    incompleto = bool(r.limites_costo or fallo_tecnico or veri.get('ruteo_contexto_fallo') or arbitraje_pendiente)
     if not veri.get('activa') and not r.llamadas:
         estado = 'sin_verificacion'
         limites.append('sin_verificacion')

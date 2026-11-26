@@ -57,16 +57,17 @@ def aplicar(salida, lectura, contexto=''):
 def revisar(img, salida, perfil, contexto=''):
     if not perfil or perfil.modo not in {'alto', 'prueba'} or not requiere_revision(salida, contexto):
         return salida
+    import modos_analisis as modos
     import verificador as V
 
+    if not modos.caben_apoyos('rama_desprendida'):
+        return salida
     modelo = perfil.verificadores[1 if perfil.modo == 'prueba' else 0]
     mensajes = [{'role': 'system', 'content': PROMPT}, {'role': 'user', 'content': [
         {'type': 'image_url', 'image_url': {'url': V._imagen_data_url(img)}}]}]
     lectura, = V._map_modelos((modelo,), lambda m: V._extraer_json(V._llamar(
         m, mensajes, max_tokens=400, intentos=1, etapa='rama_desprendida', esquema=SCHEMA, esfuerzo='low')))
     if not lectura_valida(lectura):
-        import modos_analisis as modos
-
         modos.fallo('rama_desprendida')
         salida['detalle']['verificacion']['revision_ramas_fallo'] = True
         return salida
