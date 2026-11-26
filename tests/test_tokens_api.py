@@ -7,7 +7,7 @@ import sys
 import threading
 import unittest
 import urllib.error
-from contextlib import ExitStack
+from contextlib import ExitStack, redirect_stderr
 from unittest.mock import patch
 
 from PIL import Image
@@ -97,6 +97,42 @@ class TokensApi(unittest.TestCase):
             self.assertEqual(http.call_count, 3)
             self.assertEqual(V.tokens_total(), {'tokens_api': 23, 'tokens_api_completos': False})
             self.assertEqual(V.costo_total(), .002)
+
+    def test_registra_estado_http_sin_copiar_el_error(self):
+        def error_http(codigo):
+            return urllib.error.HTTPError(
+                'https://prueba.invalid/url-privada', codigo, 'mensaje-privado',
+                {'x-prueba': 'encabezado-privado'}, io.BytesIO(b'cuerpo-privado'))
+
+        casos = [(error_http(402), 402), (error_http(502), 502),
+                 (error_http('codigo-privado'), None), (TimeoutError('mensaje-privado'), None)]
+        with patch.object(V, 'OPENROUTER_LOG_USO', True):
+            for error, codigo in casos:
+                salida = io.StringIO()
+                with (self.subTest(codigo=codigo),
+                      patch.object(V, '_pedir_http', side_effect=error) as http,
+                      redirect_stderr(salida)):
+                    with self.assertRaises(type(error)):
+                        V._llamar('m', [], intentos=1)
+                    http.assert_called_once()
+                    self.assertNotIn('-privado', salida.getvalue())
+                    self.assertNotIn('-privada', salida.getvalue())
+                    registro = json.loads(salida.getvalue())
+                    self.assertEqual(registro['error'], type(error).__name__)
+                    if codigo is None:
+                        self.assertNotIn('http_status', registro)
+                    else:
+                        self.assertEqual(registro['http_status'], codigo)
+                    self.assertIsNone(registro['id'])
+                    self.assertIsNone(registro['cost'])
+
+            salida = io.StringIO()
+            with (patch.object(V, '_pedir_http', return_value=respuesta(
+                      {'total_tokens': 23, 'cost': .002})), redirect_stderr(salida)):
+                self.assertEqual(V._llamar('m', [], intentos=1), '{"ok":true}')
+            registro = json.loads(salida.getvalue())
+            self.assertNotIn('http_status', registro)
+            self.assertEqual(registro['cost'], .002)
 
     def test_arbitro_directo_y_salida_corta_conservan_json(self):
         self.enterContext(patch.object(V, 'ARBITRO_SIN_RAZONAMIENTO', True))
