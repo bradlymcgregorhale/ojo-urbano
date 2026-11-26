@@ -2729,8 +2729,15 @@ function renderResultado(d){
   if(aviso)resumen+=`<div class="tardesc">${esc(aviso)}</div>`;
   if(probs.length)resumen+='<div class="minicats">'+probs.map(c=>renderProblema(c,d.verificacion_escombros)).join('')+'</div>';
   const cc=d.categorias_contexto||[];
-  if(cc.length)resumen+='<div class="minicats">'+cc.map(c=>
-    `<div class="minicat ctx"><b>${esc(c.nombre||c.key)}</b><span>Según tu texto, sin confirmar en la foto</span></div>`).join('')+'</div>';
+  const respaldos=d.modo==='prueba'?{
+    compatible:'Pedido por texto, con respaldo en la foto',
+    contradice:'Pedido por texto, la foto no coincide',
+  }:{};
+  if(cc.length)resumen+='<div class="minicats">'+cc.map(c=>{
+    const respaldo=Object.hasOwn(respaldos,c.respaldo_visual)
+      ?respaldos[c.respaldo_visual]:'Según tu texto, sin confirmar en la foto';
+    return `<div class="minicat ctx"><b>${esc(c.nombre||c.key)}</b><span>${esc(respaldo)}</span></div>`;
+  }).join('')+'</div>';
   let h='';
   const bolsones=d.observaciones_higiene?.bolsones;
   if(bolsones?.retiro_caba==='excluido_por_presentacion'){
