@@ -110,6 +110,8 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low'):
         if etapa == 'decision' and 'retiro_muebles' in lectura['confirmadas']:
             lectura['objetos'] = V._objetos_lista(valor.get('objetos')) or []
         return lectura
+    except modos.ConsultaSinSaldo:
+        return None
     except (AttributeError, TypeError, ValueError, OSError):
         modos.fallo(nombre)
         return None
@@ -235,8 +237,15 @@ def clasificar(img, local, categorias, modelos):
     if any(scores.get(k, 0) >= .20 for k in GRUPOS['contenedores']):
         tareas.append(lambda: _grupo(luna, 'contenedores', detalles))
     tareas.append(lambda: _leer(luna, _inicio(scores, claves), foto, 'inicio', claves))
-    with ThreadPoolExecutor(max_workers=len(tareas)) as pool:
-        lecturas = V._map_con_contexto(pool, lambda fn: fn(), tareas)
+    if modos.con_reservas():
+        retiro = tareas[0]()
+        inicio = tareas[-1]()
+        # Las dos lecturas base entran antes que los apoyos opcionales. El
+        # orden de los indicios que recibe la decisión sigue siendo el mismo.
+        lecturas = [retiro, *(fn() for fn in tareas[1:-1]), inicio]
+    else:
+        with ThreadPoolExecutor(max_workers=len(tareas)) as pool:
+            lecturas = V._map_con_contexto(pool, lambda fn: fn(), tareas)
     retiros = lecturas[0] or {}
     previas = [r for r in lecturas if r is not None]
     final = _leer(sol, _decision(previas, scores, claves), foto, 'decision', claves)
@@ -259,7 +268,8 @@ def clasificar(img, local, categorias, modelos):
             fuentes = {k: v for k, v in fuentes.items() if k not in TIPOS}
             fuentes.update({k: [luna] for k in tipos['confirmadas']})
     if ('retiro_escombros' not in fuentes and scores.get('retiro_escombros', 0) >= .98
-            and (local.get('escombros_mixtos') or 0) >= .95):
+            and (local.get('escombros_mixtos') or 0) >= .95
+            and modos.caben_apoyos('prueba_alcance', 'prueba_alcance')):
         alcances = V._map_modelos((luna, apoyo),
             lambda modelo: _leer(modelo, TEXTOS['alcance'], foto, 'alcance'))
         if all(r is not V._FALLO_MODELO for r in alcances) and _escombro_elegible(alcances):

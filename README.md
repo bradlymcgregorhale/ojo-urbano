@@ -90,6 +90,14 @@ La página de carga abre en Completo (prueba). También podés enviar `modo=prue
 
 Para conciliar los cargos de Completo (prueba), `consumo_api.pedido` identifica el pedido y `consumo_api.intentos` informa cuántas consultas hizo, aunque alguna haya fallado. `/trabajos` devuelve el identificador al encolar la foto. El total de intentos queda en `null` mientras el trabajo no tenga resultado. Si la respuesta viene de caché, el pedido informa cero intentos y `consumo_api.origen_cache` identifica el análisis cuyo resultado y costo histórico se muestran.
 
+### Reserva por foto
+
+Para evaluar Completo (prueba) con un límite de admisión de USD 0,01, configurá `PRUEBA_RESERVAS_USD` como un objeto JSON con un importe máximo estimado por consulta para cada etapa. Incluí `prueba_decision`, `prueba_inicio`, `prueba_retiros`, `prueba_contenedores`, `prueba_tipos`, `prueba_alcance`, `rama_desprendida` y `leer_chapa`. Usá importes positivos medidos para los modelos y las solicitudes de la evaluación. Para una etapa con varios lectores, usá el mayor importe por consulta observado en ese grupo. Decisión, inicio y retiros tienen que caber juntos en el centavo. Un objeto incompleto o inválido deshabilita el modo. Al cambiar las reservas, cambia `modo_version`.
+
+El flujo guarda saldo para la decisión mientras corre las lecturas previas. Antes de cada apoyo o reintento, toma en cuenta lo cobrado y lo reservado por los pedidos en curso. Si la revisión de alcance o de chapa requiere varios lectores, las consultas se admiten como grupo. Si falta un importe o se excede la reserva, detiene las llamadas siguientes. El JSON marca el resultado parcial con el motivo en `analisis_limitaciones`. La reserva controla qué consultas empiezan. El importe final de una consulta ya enviada lo informa el proveedor.
+
+En una evaluación, enviá una vez cada foto y esperá el resultado del mismo trabajo. Si falta conciliar un intento, guardá su estado antes de volver a enviarla. Sumá los cargos de todos los intentos de esa foto con [el informe de conciliación](eval/vision/README.md#conciliación-del-costo-facturado).
+
 ## Dónde ayuda el modelo local
 
 Su aporte más claro está en la identificación de contenedores. Detecta si hay uno y distingue entre húmedos de carga lateral, húmedos de carga bilateral y secos. En las fotos etiquetadas, la presencia y el tipo alcanzan F1 0,97.

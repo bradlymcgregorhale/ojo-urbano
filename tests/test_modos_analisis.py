@@ -15,6 +15,18 @@ import verificador as V
 
 _LLAMAR = V._llamar
 _VERIFICAR = V.verificar
+_RESERVAS = {
+    'prueba_decision': '.0084', 'prueba_retiros': '.00061', 'prueba_inicio': '.000405',
+    'prueba_contenedores': '.00105', 'prueba_tipos': '.00066', 'prueba_alcance': '.0008',
+    'rama_desprendida': '.0005', 'leer_chapa': '.001',
+}
+
+
+def perfil_con_reservas():
+    return M.cargar(V, {}, {
+        'VERIFICADORES_PRUEBA': 't/decision,t/dirigidos,t/alcance',
+        'PRUEBA_RESERVAS_USD': json.dumps(_RESERVAS),
+    })['prueba']
 
 
 def perfiles():
@@ -26,6 +38,36 @@ def perfiles():
 
 
 class Configuracion(unittest.TestCase):
+    def test_reservas_incompletas_o_inviables_deshabilitan_solo_prueba(self):
+        base = {'VERIFICADORES_PRUEBA': 't/decision,t/dirigidos,t/alcance'}
+        sin_reservas = M.cargar(V, {}, base)
+        valido = perfil_con_reservas()
+        self.assertIsNone(valido.motivo)
+        self.assertNotEqual(valido.version, sin_reservas['prueba'].version)
+        for reservas in ({}, _RESERVAS | {'prueba_tipos': 'NaN'},
+                         _RESERVAS | {'prueba_decision': '0.01'}):
+            p = M.cargar(V, {}, base | {'PRUEBA_RESERVAS_USD': json.dumps(reservas)})
+            self.assertEqual(p['prueba'].motivo, 'configuracion_invalida')
+            self.assertEqual(p['alto'].version, sin_reservas['alto'].version)
+
+    def test_no_gasta_en_una_lectura_suelta_si_las_dos_lecturas_no_caben(self):
+        import patentes
+
+        img = Image.new('RGB', (180, 60))
+        ocr = {'patente': 'A123BCD', 'lectura': 'A123BCD', 'confianza': .9}
+        detecciones = [{'caja': [0, 0, 158, 40], 'confianza': .9}]
+        with (M.usar(perfil_con_reservas()),
+              patch.object(patentes, 'detectar', return_value=detecciones),
+              patch.object(patentes, 'leer_local', return_value=ocr),
+              patch.object(patentes, 'leer_vlm') as lector):
+            reserva = M.reservar_consulta('prueba_decision')
+            M.liquidar_consulta(reserva, {'cost': .0084})
+            [chapa] = patentes.leer_chapas(img, ['t/chapa-a', 't/chapa-b'])
+            lector.assert_not_called()
+            self.assertFalse(chapa['legible'])
+            salida = M.completar({'detalle': {'verificacion': {'activa': True}}})
+            self.assertIn('presupuesto_api_insuficiente', salida['analisis_limitaciones'])
+
     def test_heredado_ausente_y_vacio_conservan_interpretacion(self):
         for legado in ([], ['t/a'], ['t/a', 't/a'], ['t/a', 't/b', 't/c', 't/d']):
             with patch.object(V, 'VERIFICADORES', legado):
@@ -296,6 +338,90 @@ class ApiModos(unittest.TestCase):
         self.assertEqual(r.json()['costo_api'], .002)
         self.assertFalse(r.json()['costo_api_completo'])
         self.assertEqual(r.json()['consumo_api']['intentos'], 3)
+
+    def test_prueba_con_reservas_conserva_el_limite_de_salida_de_la_etapa(self):
+        responder = V._pedir_http.side_effect
+
+        def http(req, *args):
+            respuesta = responder(req, *args)
+            respuesta['usage']['cost'] = .0002
+            return respuesta
+
+        for perfil, limite in ((perfil_con_reservas(), 550), (self.ps['prueba'], 1000)):
+            with self.subTest(limite=limite):
+                self.llamadas.clear()
+                with (patch.object(self.S, 'PERFILES', self.ps | {'prueba': perfil}),
+                      patch.object(V, 'MODELOS_MIN_1000', ('t/decision',)),
+                      patch.object(V, '_pedir_http', side_effect=http)):
+                    respuesta = self.post('prueba')
+                self.assertEqual(respuesta.status_code, 200, respuesta.text)
+                self.assertEqual([c['max_tokens'] for c in self.llamadas], [1400, 1400, limite])
+                self.assertEqual(respuesta.json()['analisis_estado'], 'completo')
+                self.assertEqual(respuesta.json()['consumo_api']['intentos'], 3)
+
+    def test_prueba_reserva_la_decision_antes_del_apoyo_de_contenedores(self):
+        perfil = perfil_con_reservas()
+        clave = 'contenedor_humedos_lateral'
+        local = {'predichas': [], 'probabilidades': [{'key': clave, 'score': .8}], 'gravedad': {}}
+        costos = {'prueba_inicio': .000393925, 'prueba_retiros': .000588925,
+                  'prueba_contenedores': .00101255, 'prueba_decision': .007686, 'prueba_tipos': .00063155}
+
+        def http(req, *_):
+            cuerpo = json.loads(req.data)
+            propiedades = cuerpo['response_format']['json_schema']['schema']['properties']
+            texto = cuerpo['messages'][0]['content']
+            if 'objetos' in propiedades:
+                etapa = 'prueba_decision'
+            elif 'bolsas_visibles' in propiedades:
+                etapa = 'prueba_retiros'
+            elif not texto.startswith('Evaluá sólo'):
+                etapa = 'prueba_inicio'
+            else:
+                etapa = 'prueba_contenedores' if 'reparacion_contenedor' in texto else 'prueba_tipos'
+            self.llamadas.append(etapa)
+            hallazgos = [{'key': clave, 'evidencia': 'Contenedor junto a la calle.'}]
+            return {'usage': {'cost': costos[etapa], 'total_tokens': 15}, 'choices': [{
+                'finish_reason': 'length' if etapa == 'prueba_contenedores' else 'stop',
+                'message': {'content': json.dumps({'confirmadas': hallazgos if etapa in (
+                    'prueba_decision', 'prueba_tipos') else [], 'dudosas': []})}}]}
+
+        for activo in (False, True):
+            with self.subTest(activo=activo):
+                self.llamadas.clear()
+                modos = self.ps | {'prueba': perfil} if activo else self.ps
+                with (patch.object(self.S, 'PERFILES', modos),
+                      patch.object(self.S, 'clasificar_local', return_value=local),
+                      patch.object(V, '_pedir_http', side_effect=http)):
+                    respuesta = self.post('prueba')
+                self.assertEqual(respuesta.status_code, 200, respuesta.text)
+                salida = respuesta.json()
+                omitidas = {'prueba_contenedores'} if activo else set()
+                self.assertCountEqual(self.llamadas, costos.keys() - omitidas)
+                self.assertEqual(salida['costo_api'], .0093 if activo else .010313)
+                self.assertTrue(salida['costo_api_completo'])
+                self.assertEqual(salida['analisis_estado'], 'parcial')
+                self.assertEqual('presupuesto_api_insuficiente' in salida['analisis_limitaciones'], activo)
+                self.assertEqual('etapa_fallida' in salida['analisis_limitaciones'], not activo)
+                self.assertEqual([x['key'] for x in salida['elementos_detectados']], [clave])
+
+    def test_prueba_corta_despues_de_un_cargo_desconocido_o_fuera_de_reserva(self):
+        perfil = perfil_con_reservas()
+        for cargo, completo, limite in (
+            (None, False, 'costo_api_sin_conciliar'),
+            (.010001, True, 'tope_api_excedido'),
+        ):
+            with self.subTest(cargo=cargo):
+                def http(req, *_):
+                    return {'usage': {'cost': cargo, 'total_tokens': 15}, 'choices': [
+                        {'finish_reason': 'stop', 'message': {'content': '{"confirmadas":[],"dudosas":[]}'}}]}
+                with (patch.object(self.S, 'PERFILES', self.ps | {'prueba': perfil}),
+                      patch.object(V, '_pedir_http', side_effect=http) as respuesta_externa):
+                    salida = self.post('prueba').json()
+                respuesta_externa.assert_called_once()
+                self.assertEqual(salida['costo_api'], cargo or 0)
+                self.assertEqual(salida['analisis_estado'], 'parcial')
+                self.assertIs(salida['costo_api_completo'], completo)
+                self.assertIn(limite, salida['analisis_limitaciones'])
 
     def test_prueba_pide_evidencia_independiente_de_obstruccion_en_un_puesto(self):
         from prueba_completo import _decision
