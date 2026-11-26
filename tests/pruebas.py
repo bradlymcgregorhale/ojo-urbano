@@ -1419,14 +1419,14 @@ import patentes as _patentes_219
 for _chapas, _esperada in (
     ([{"patente": "A123BCD", "legible": True}], "A123BCD"),
     ([{"patente": "A123BCD", "legible": True}, {"patente": "ABC123", "legible": True}], None),
-    ([{"patente": "A123BCD", "legible": True}, {"patente": None, "legible": False}], None),
+    ([{"patente": "A123BCD", "legible": True}, {"patente": None, "legible": False}], "A123BCD"),
 ):
     with patch.object(_patentes_219, "disponible", return_value=True), \
             patch.object(_patentes_219, "leer_chapas", return_value=_chapas) as _lectura_219:
         r = V.verificar(_Img(), CATS, SIN_LOCAL, "moto abandonada")
     _problemas_219 = S._publica({"problemas": r["confirmadas"]})["problemas"]
     check("dos claves de vehículo requieren una chapa legible por recorte" if _esperada
-          else "dos recortes dejan las dos claves sin atribución",
+          else "dos chapas legibles distintas dejan ambas claves sin atribución",
           _lectura_219.call_count == 1 and r.get("patente") == _esperada
           and {p["key"] for p in _problemas_219} == V.PATENTE_KEYS
           and all(p.get("patente") == _esperada for p in _problemas_219))

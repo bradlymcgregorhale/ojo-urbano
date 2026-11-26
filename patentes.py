@@ -51,6 +51,7 @@ MAX_CHAPAS = 4
 OCR_CONF_MINIMA = float(os.environ.get("OCR_CHAPAS_CONF_MINIMA", "0.6"))
 
 _ERRORES_LECTOR = (urllib.error.URLError, ValueError, KeyError, json.JSONDecodeError, OSError)
+_LECTURA_FALLIDA = object()
 _lock = threading.Lock()
 _modelos = {}
 
@@ -128,7 +129,7 @@ def leer_local(rec):
 
 
 def leer_vlm(modelo, rec):
-    """Una lectura de visión sobre el recorte; None si no la leyó o falló."""
+    """Distingue una chapa que no se pudo leer de una consulta fallida."""
     try:
         contenido = V._llamar(modelo, [
             {"role": "user", "content": [
@@ -136,9 +137,9 @@ def leer_vlm(modelo, rec):
                 {"type": "text", "text": _PROMPT_LEER_CHAPA},
             ]},
         ], max_tokens=400, etapa="leer_chapa")
-        return V._patente_normalizada(V._extraer_json(contenido).get("patente"))
+        return V._patente_normalizada(V._extraer_json(contenido)["patente"])
     except _ERRORES_LECTOR:
-        return None
+        return _LECTURA_FALLIDA
 
 
 def votar(lecturas):
@@ -168,13 +169,16 @@ def _nombres_lectores(lectores):
             for modelo, nombre in nombres.items()}
 
 
-def leer_chapas(img, lectores=None, *, solo_una=False):
-    """Lee las detecciones. Con solo_una, exige una única caja con ancho suficiente."""
+def leer_chapas(img, lectores=None, *, lectura_completa=False):
+    """Para atribuir una chapa entre varios recortes, exige completar todas las consultas."""
     nombres = _nombres_lectores(lectores)
     detecciones = detectar(img)
-    if solo_una:
-        detecciones = [det for det in detecciones if det["caja"][2] - det["caja"][0] >= ANCHO_MINIMO]
-        if len(detecciones) != 1:
+    consultas = ('leer_chapa',) * len(nombres)
+    varias = False
+    if lectura_completa and consultas:
+        aptas = sum(det["caja"][2] - det["caja"][0] >= ANCHO_MINIMO for det in detecciones)
+        varias = aptas > 1
+        if varias and not modos.caben_apoyos(*(consultas * aptas)):
             return []
     salida = []
     for det in detecciones:
@@ -191,10 +195,17 @@ def leer_chapas(img, lectores=None, *, solo_una=False):
         local = leer_local(rec)
         chapa["lecturas"]["ocr_local"] = local["patente"]
         chapa["ocr_local"] = {"lectura": local["lectura"], "confianza": local["confianza"]}
-        if nombres and modos.caben_apoyos(*('leer_chapa',) * len(nombres)):
+        if consultas and modos.caben_apoyos(*consultas):
             with concurrent.futures.ThreadPoolExecutor(len(nombres)) as pool:
                 vistas = V._map_con_contexto(pool, lambda m: leer_vlm(m, rec), nombres)
-            chapa["lecturas"].update(zip(nombres.values(), vistas))
+            if varias and _LECTURA_FALLIDA in vistas:
+                modos.fallo('leer_chapa')
+                return []
+            chapa["lecturas"].update(
+                (nombre, None if vista is _LECTURA_FALLIDA else vista)
+                for nombre, vista in zip(nombres.values(), vistas))
+        elif varias:
+            return []
         chapa["patente"], chapa["fuentes"], chapa["motivo"] = votar(chapa["lecturas"])
         chapa["legible"] = chapa["patente"] is not None
         salida.append(chapa)

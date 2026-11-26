@@ -1333,15 +1333,13 @@ def _leer_patente(img, *, solo_recorte=False):
     nada: la duda no se vota."""
     # Con el detector de chapas instalado (#215) la lectura va por recorte:
     # ubica la chapa, la amplía y vota entre el OCR local y los lectores de
-    # `patentes.LECTORES`. Publica una sola chapa legible; dos legibles en la
-    # misma foto son dos vehículos y no se publica ninguna. Si el detector no
+    # `patentes.LECTORES`. Publica una sola cadena corroborada entre los
+    # recortes. Si hay dos cadenas distintas, descarta ambas. Si el detector no
     # está, sigue la lectura de la foto entera de siempre.
     try:
         import patentes
         if patentes.disponible():
-            chapas = patentes.leer_chapas(img, solo_una=solo_recorte)
-            if solo_recorte and len(chapas) != 1:
-                return None
+            chapas = patentes.leer_chapas(img, lectura_completa=solo_recorte)
             legibles = {c["patente"] for c in chapas if c.get("legible")}
             return next(iter(legibles)) if len(legibles) == 1 else None
     except ImportError:
@@ -4284,8 +4282,8 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         and (umbral_local is None or p.get("score", 0) >= umbral_local)}
     varias_claves = len(con_vehiculo) > 1
     if varias_claves:
-        # Las claves describen infracciones. Para compartir la chapa hace falta
-        # un solo recorte que alcance el ancho mínimo, aunque los lectores ya coincidan.
+        # Las claves describen infracciones. Para compartir la chapa hay que
+        # comprobar que sólo se pudo corroborar una entre todos los recortes.
         patente_escena = None
     if patente_escena is None and vistos_vehiculo and len(lecturas_totales) <= 1:
         leida = _leer_patente(img, solo_recorte=varias_claves)
