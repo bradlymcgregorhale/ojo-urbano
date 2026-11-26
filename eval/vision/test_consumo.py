@@ -29,6 +29,15 @@ def recibo(generacion, costo):
     return {"data": {"id": generacion, "total_cost": costo}}
 
 
+def caso_con_recuento(esperado, problema, revision=None, **datos):
+    respuesta = {"modo": "prueba", "modo_version": "version-de-prueba",
+                 "problemas": [problema], "verificacion_escombros": revision,
+                 "consumo_api": {"pedido": "web", "intentos": 1}, **datos}
+    return {"id": "a", "entrada": "ojo_urbano", "modo": respuesta["modo"],
+            "modo_version": respuesta["modo_version"], "esperado": {"retiro_escombros": True},
+            "recuento_esperado": esperado, "respuestas": [respuesta]}
+
+
 class PruebaConsumo(unittest.TestCase):
     def test_extrae_los_pedidos_y_las_etiquetas_de_los_dos_recorridos(self):
         base = {"id": "a", "modo": "prueba", "modo_version": "v", "esperado": {"recoleccion": True}}
@@ -88,6 +97,36 @@ class PruebaConsumo(unittest.TestCase):
         self.assertFalse(detalles[1]["supera_tope"])
         self.assertFalse(detalles[2]["conciliado"])
         self.assertIsNone(detalles[2]["diferencias"])
+
+    def test_recuento_con_diferencias_aunque_acierten_la_categoria_y_el_costo(self):
+        escombros = {"key": "retiro_escombros"}
+        for esperado, publicado in (({"bolsas": 0}, escombros | {"bolsas": None}),
+                                    ({"bolsas": None}, escombros),
+                                    ({"bolsas": 0}, escombros | {"bolsas": False})):
+            with self.subTest(esperado=esperado, publicado=publicado):
+                resumen, [foto] = conciliar([caso_con_recuento(esperado, publicado)], [uso("web", "g", .009)])
+                self.assertTrue(foto["conciliado"])
+                self.assertEqual(foto["diferencias"], [])
+                self.assertEqual(foto["diferencias_recuento"], ["bolsas"])
+                self.assertEqual(resumen["casos_con_diferencias_recuento"], 1)
+
+    def test_recuento_acepta_rangos_y_cantidad_nula_con_minimo_corrobado(self):
+        problema = {"key": "retiro_escombros", "bolsas": None}
+        revision = {"bolsas_minimo": 13, "bolsas_recuento_completo": False}
+        for intervalo, diferencias in (([5, None], []), ([12, 15], []), ([14, None], ["bolsas_minimo"])):
+            with self.subTest(intervalo=intervalo):
+                esperado = {"bolsas": None, "bolsas_minimo": intervalo, "bolsas_recuento_completo": False}
+                [foto] = conciliar([caso_con_recuento(esperado, problema, revision)], [uso("web", "g", .009)])[1]
+                self.assertEqual(foto["diferencias_recuento"], diferencias)
+                self.assertEqual(foto["recuento_observado"], revision | {"bolsas": None})
+
+    def test_recuento_sin_analisis_verificado_no_se_puntua(self):
+        problema = {"key": "retiro_escombros", "bolsas": None}
+        datos = caso_con_recuento({"bolsas": None}, problema, verificacion_activa=False)
+        resumen, [foto] = conciliar([datos], [uso("web", "g", .009)])
+        self.assertIsNone(foto["diferencias_recuento"])
+        self.assertIsNone(foto["recuento_observado"])
+        self.assertEqual(resumen["casos_sin_puntuar_recuento"], 1)
 
     def test_un_importe_conocido_puede_superar_el_tope_aunque_falten_cargos(self):
         [foto] = conciliar([caso("a", {"p": 2})], [uso("p", "g", .010000001)])[1]
