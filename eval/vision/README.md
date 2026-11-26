@@ -28,6 +28,8 @@ En Completo (prueba), agregá `"bolsas_fuentes": 2` a `recuento_esperado` si tam
 
 En `respuestas`, incluí en orden los JSON devueltos por Completo (prueba) para esa foto. La herramienta toma del último análisis sus etiquetas y lee `consumo_api.pedido` e `intentos` de cada resultado. En la carga web, guardá el JSON final de `/trabajos/`. Si falta el resultado, conservá el último estado del trabajo. Bacollab guarda el JSON de `/clasificar/` en `image_api_calls.response_text`. Incluí `null` si un envío se cortó sin devolver el JSON. Eso deja la conciliación pendiente incluso si otro envío terminó. Corré ambos recorridos con `CACHE_MAX=0` en una instancia de evaluación para que cada uno ejecute el análisis.
 
+Si guardaste una respuesta de caché, incluí el resultado identificado por `consumo_api.origen_cache` en el mismo caso. El informe registra cero intentos para la copia y cuenta el cargo del original una sola vez. Si el origen falta o pertenece a otro recorrido, el costo de ese caso queda pendiente.
+
 Si una tarjeta web queda con consumo pendiente, descargá el JSON. Cuando figure `trabajo_aceptado`, usá ese objeto como respuesta del caso. Conserva el pedido de consumo y la versión de modo. Si figura `consumo_pendiente` sin `trabajo_aceptado`, usá `null` como respuesta. Los intentos quedan pendientes hasta conciliarlos con el registro de uso.
 
 Para respuestas anteriores a `consumo_api`, podés armar `pedidos` y `etiquetas` a mano en lugar de `respuestas`. En `pedidos` vinculá cada ID del log con su número de intentos. Usá `null` si todavía no se pudo confirmar ese número. En `etiquetas` usá las claves confirmadas, `[]` si no hubo ninguna o `null` si falta el resultado.
