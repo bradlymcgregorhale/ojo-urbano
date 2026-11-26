@@ -157,7 +157,7 @@ El servidor escucha solo en loopback. Rechaza Host u Origin externos, enlaces fu
 
 ## Dependencias y seguridad
 
-`requirements.txt` y `requirements-test.txt` aplican `constraints-security.txt`. Ese archivo fija las versiones corregidas de Pillow, urllib3 y fsspec verificadas en la auditoría. Las dependencias transitivas reciben la misma restricción, sin instalar el conjunto pesado para ejecutar pruebas.
+`requirements.txt` y `requirements-test.txt` aplican `constraints-security.txt`. Ese archivo fija las versiones corregidas en la auditoría. Las restricciones también se aplican a las dependencias transitivas que requiere cada instalación.
 
 Una actualización debe contrastar el inventario realmente instalado con avisos del proveedor, resolver compatibilidad, ejecutar las pruebas y comprobar la versión después del reinicio. Conservar un respaldo de las versiones anteriores para revertir. No usar `pip-audit --fix` sobre el entorno productivo sin revisar su selección de cambios.
 
