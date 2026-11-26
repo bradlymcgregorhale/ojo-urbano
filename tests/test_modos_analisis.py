@@ -566,6 +566,21 @@ class ApiModos(unittest.TestCase):
                     self.assertEqual(set(fuentes), esperadas)
                     self.assertEqual(leer.call_count, 3)
 
+    def test_prueba_no_confirma_la_vidriera_como_puesto(self):
+        import prueba_completo as P
+
+        for evidencia, esperado in (
+            ('Muestras alineadas en la vidriera del local.', set()),
+            ('Puesto de peras en la vereda frente a la vidriera.', {'manteros'}),
+        ):
+            lectura = {'confirmadas': {'manteros': evidencia}, 'dudosas': {}}
+            with self.subTest(evidencia=evidencia), patch.object(P, '_vistas', return_value=[]), \
+                    patch.object(P, '_leer', return_value=lectura) as leer:
+                fuentes, _, _ = P.clasificar(Image.new('RGB', (24, 24)), {}, ('manteros',),
+                                             ('decision', 'dirigidos', 'alcance'))
+                self.assertEqual(set(fuentes), esperado)
+                self.assertEqual(leer.call_count, 3)
+
     def test_prueba_pide_describir_el_paso_si_hay_indicios_de_obra(self):
         from prueba_completo import _decision
         claves = ('retiro_escombros', 'obstruccion')

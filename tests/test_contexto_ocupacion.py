@@ -92,6 +92,23 @@ class ContextoOcupacionTest(unittest.TestCase):
         self.assertEqual(revision_omisiones.interpretar_objetos({"hallazgos": [hallazgo]})["hallazgos"][0],
                          hallazgo)
 
+    def test_venta_en_vidriera_no_es_ambulante_y_el_puesto_en_la_vereda_se_conserva(self):
+        for ubicacion, evidencia, mercaderia, publicado in (
+            ("vidriera", "Muestras alineadas en la vidriera del negocio", "telas de colores", False),
+            ("frente al local", "Exhibición del mostrador del local", "telas", False),
+            ("frente al local", "Muestras detrás del vidrio", "telas", False),
+            ("vereda frente a la vidriera", "Puesto con peras y un vendedor en la vereda", "peras", True),
+        ):
+            with self.subTest(ubicacion=ubicacion, evidencia=evidencia):
+                hallazgo = {"tipo": "venta_ambulante", "uso": "venta", "objeto": mercaderia,
+                            "evidencia": evidencia, "ubicacion": ubicacion, "mercaderia_visible": mercaderia}
+                omisiones = revision_omisiones.interpretar_objetos({"hallazgos": [hallazgo]})
+                self.assertEqual(bool(omisiones["hallazgos"]), publicado)
+                categoria = {"key": "manteros", "evidencia": evidencia, "mercaderia_visible": mercaderia}
+                with patch.object(verificador, "_llamar", return_value=json.dumps({"categorias": [categoria]})):
+                    lectura = verificador._verificar_uno("prueba/modelo", "", {"manteros": {}})
+                self.assertEqual(bool(lectura["categorias"]), publicado)
+
     def test_contenedor_lleno_con_el_mismo_texto_pide_otra_foto(self):
         resultado = {"problemas": [{"key": "contenedor_desbordado"}],
                      "categorias_contexto": MUEBLES["categorias_contexto"]}
