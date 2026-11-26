@@ -89,6 +89,21 @@ El comando usa la ruta real `/clasificar/` con la predicción local guardada. Ca
 
 Para reproducir la cola de la página, agregá `--ruta-prueba trabajos`. El evaluador exige un trabajo nuevo, consulta `/trabajos/?id=...` y comprueba que el resultado conserve el pedido de consumo asignado al recibir la foto. El informe JSON guarda `ruta_prueba`. Usá otro nombre de salida para conservar los informes de las dos rutas.
 
+### Medición con lecturas nuevas
+
+Una vez definido el presupuesto, usá la candidata con `PRUEBA_RESERVAS_USD` configurado y elegí los casos por ID. La medición parte de predicciones locales guardadas y ejecuta la ruta elegida con las llamadas reales del perfil.
+
+```sh
+.venv/bin/python -m eval.vision.pipeline run --modo prueba --live --budget "$tope_del_lote" \
+  --ruta-prueba trabajos --private "$banco" --ids "$caso" --out "$informe_nuevo"
+```
+
+Usá `--ruta-prueba clasificar` para la consulta directa con el contexto del caso. La medición cubre las rutas de la API. Para verificar la pantalla y los borradores, repetí los controles en el navegador y en una cola aislada de Bacollab dentro del presupuesto acordado.
+
+El evaluador guarda cada caso antes del envío. Junto al informe quedan `.consumo.json`, `.uso.jsonl` y `.intentos.jsonl` en la carpeta privada. Los dos primeros se pueden pasar a `eval.vision.consumo`. El tercero registra las huellas y respuestas del proveedor. Podés reproducir las respuestas de un informe facturado con `--baseline`, sin usar `--live`.
+
+Cada foto requiere USD 0,01 disponibles del presupuesto del lote. El saldo se actualiza con los importes registrados. Si falta conciliar un cargo, si el proveedor supera una reserva o si queda menos de un centavo, la medición se detiene y el informe identifica los casos pendientes. La reserva se calcula antes de la consulta. El importe real sólo se conoce al recibir la respuesta. Después de una interrupción, revisá el manifiesto y el registro de intentos antes de iniciar otra medición.
+
 Para capturar nuevas predicciones locales y completar peticiones pendientes:
 
 ```sh
