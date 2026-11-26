@@ -339,6 +339,7 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
         with ThreadPoolExecutor(max_workers=len(tareas)) as pool:
             lecturas = V._map_con_contexto(pool, lambda fn: fn(), tareas)
     retiros = lecturas[0] or {}
+    inicio = lecturas[-1] or {}
     previas = [r for r in lecturas if r is not None]
     entrada = foto
     observaciones = _observaciones_previas(previas)
@@ -362,7 +363,8 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
                 pedidos[clave] = 'contradice'
     ocupacion, obstruccion = 'ocupacion_comercial', 'obstruccion'
     if (ocupacion in confirmadas and obstruccion in confirmadas
-            and V._norm_texto(confirmadas[ocupacion]) == V._norm_texto(confirmadas[obstruccion])):
+            and (obstruccion in inicio.get('dudosas', {})
+                 or V._norm_texto(confirmadas[ocupacion]) == V._norm_texto(confirmadas[obstruccion]))):
         confirmadas.pop(obstruccion)
         dudas[obstruccion] = 'Falta corroborar una barrera separada del equipamiento comercial.'
         if pedidos.get(obstruccion) == 'compatible':

@@ -1089,18 +1089,24 @@ class ApiModos(unittest.TestCase):
         datos = {'modo': 'prueba', 'contexto': 'Ocupación de la vereda por local comercial'}
         ocupacion, obstruccion = 'ocupacion_comercial', 'obstruccion'
         equipo = 'La máquina de garra del local ocupa parte del paso.'
+        barrera = 'Una pizarra separada impide el paso junto al cordón.'
         casos = (
-            (equipo.lower(), [ocupacion], [obstruccion], 'neutral'),
-            ('Una pizarra separada impide el paso junto al cordón.', [ocupacion, obstruccion], [], 'compatible'),
+            (equipo.lower(), None, [ocupacion], [obstruccion], 'neutral'),
+            ('Un cartel y varias sillas ocupan parte del paso.', 'dudosas', [ocupacion], [obstruccion], 'neutral'),
+            (barrera, None, [ocupacion, obstruccion], [], 'compatible'),
+            (barrera, 'confirmadas', [ocupacion, obstruccion], [], 'compatible'),
         )
-        for evidencia, servicios, dudas, respaldo in casos:
-            with self.subTest(evidencia=evidencia):
+        for evidencia, inicio, servicios, dudas, respaldo in casos:
+            with self.subTest(evidencia=evidencia, inicio=inicio):
                 def responder(req, *_):
+                    cuerpo = json.loads(req.data)
                     lectura = {'confirmadas': [], 'dudosas': []}
-                    if json.loads(req.data)['model'] == 't/decision':
+                    if cuerpo['model'] == 't/decision':
                         lectura['confirmadas'] = [{'key': ocupacion, 'evidencia': equipo},
                                                   {'key': obstruccion, 'evidencia': evidencia}]
                         lectura['pedidos'] = [{'key': k, 'respaldo': 'compatible'} for k in (ocupacion, obstruccion)]
+                    elif inicio and 'Claves válidas' in cuerpo['messages'][0]['content']:
+                        lectura[inicio] = [{'key': obstruccion, 'evidencia': evidencia}]
                     return {'usage': {'cost': .001}, 'choices': [
                         {'finish_reason': 'stop', 'message': {'content': json.dumps(lectura)}}]}
 
