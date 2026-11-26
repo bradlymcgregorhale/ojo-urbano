@@ -1238,6 +1238,10 @@ check("la tarjeta muestra el costo y los tokens (#120)",
 check("  y distingue el costo pendiente del costo cero (#120)",
       "if(d.costo_api_completo===false)" in _src and "falta conciliar cargos" in _src
       and "if(typeof d.costo_api!=='number'||d.costo_api<=0)return ''" in _src)
+check("la tarjeta de prueba conserva la respuesta pendiente y omite volver a analizar (#259)",
+      "it.consumoPendiente=it.modoFijo==='prueba'&&resultado.costo_api_completo===false" in _src
+      and "if(it.consumoPendiente){\n      res.insertAdjacentHTML(" in _src
+      and "Descargá el JSON para conciliar el consumo antes de volver a analizar." in _src)
 check("  y el CSV exporta costo y tokens (#120)",
       "'costo_api','tokens_api','tokens_entrada','tokens_salida','tokens_api_completos','tokens_desglose_completo'" in _src
       and "d.costo_api??'',d.tokens_api??'',d.tokens_entrada??'',d.tokens_salida??'',d.tokens_api_completos??'',d.tokens_desglose_completo??''" in _src)

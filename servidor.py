@@ -2586,6 +2586,7 @@ async function quitar(it){
 function resolver(it,resultado){
   it.tFin=Date.now();
   if(it.tProc)it.dur=Math.max(1,Math.round((it.tFin-it.tProc)/1000));
+  it.consumoPendiente=it.modoFijo==='prueba'&&resultado.costo_api_completo===false;
   it.estado='listo';it.resultado=resultado;pintar(it);bombear();
 }
 
@@ -2650,8 +2651,8 @@ function pintar(it){
     const v=document.createElement('div');v.className='velo';v.innerHTML='<div class="spin"></div>';
     mini.appendChild(v);
   }else if(it.estado==='listo'){
-    banda.className='banda ok';
-    banda.innerHTML=`Análisis terminado<span class="der">${esc(it.dur?it.dur+' s':'')}</span>`;
+    banda.className=it.consumoPendiente?'banda':'banda ok';
+    banda.innerHTML=`${it.consumoPendiente?'Consumo pendiente':'Análisis terminado'}<span class="der">${esc(it.dur?it.dur+' s':'')}</span>`;
   }else{
     banda.className='banda mal';
     banda.innerHTML='Error<span class="der"></span>';
@@ -2681,15 +2682,19 @@ function pintar(it){
       reintentar(it);iniciado=true;bombear();arrancarPoll();};
   }else if(it.estado==='listo'){
     res.innerHTML=renderResultado(it.resultado);
-    const nuevo=document.createElement('div');nuevo.className='reanalisar';
-    nuevo.innerHTML=`<label>Modo del nuevo análisis <select data-modo>${opcionesModos(it.modoFijo||it.modo)}</select></label><p>Un nuevo análisis puede volver a consumir la API. El resultado anterior se conserva.</p><button class="btn">Volver a analizar</button>`;
-    nuevo.querySelector('button').onclick=()=>{
-      const elegido=nuevo.querySelector('select').value;
-      if(modoBloqueado(elegido))return;
-      agregar([it.file],elegido,it.ctx);items[items.length-1].armada=true;
-      iniciado=true;bombear();arrancarPoll();
-    };
-    res.appendChild(nuevo);
+    if(it.consumoPendiente){
+      res.insertAdjacentHTML('beforeend','<div class="tardesc">Descargá el JSON para conciliar el consumo antes de volver a analizar.</div>');
+    }else{
+      const nuevo=document.createElement('div');nuevo.className='reanalisar';
+      nuevo.innerHTML=`<label>Modo del nuevo análisis <select data-modo>${opcionesModos(it.modoFijo||it.modo)}</select></label><p>Un nuevo análisis puede volver a consumir la API. El resultado anterior se conserva.</p><button class="btn">Volver a analizar</button>`;
+      nuevo.querySelector('button').onclick=()=>{
+        const elegido=nuevo.querySelector('select').value;
+        if(modoBloqueado(elegido))return;
+        agregar([it.file],elegido,it.ctx);items[items.length-1].armada=true;
+        iniciado=true;bombear();arrancarPoll();
+      };
+      res.appendChild(nuevo);
+    }
   }else if(res.innerHTML){
     res.innerHTML='';
   }

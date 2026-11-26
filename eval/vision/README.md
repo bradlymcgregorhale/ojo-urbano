@@ -34,7 +34,7 @@ En la carga web, guardá el JSON final de `/trabajos/`. Si falta el resultado, c
 
 Si guardaste una respuesta de caché, incluí el resultado identificado por `consumo_api.origen_cache` en el mismo caso o en otra entrada con la misma huella, modo y versión. El informe registra cero intentos para la copia y cuenta el cargo del original una sola vez. Si falta ese origen, el costo queda pendiente.
 
-Si una tarjeta web queda con consumo pendiente, descargá el JSON. Cuando figure `trabajo_aceptado`, usá ese objeto como respuesta del caso. Conserva el pedido de consumo y la versión de modo. Si figura `consumo_pendiente` sin `trabajo_aceptado`, usá `null` como respuesta. Los intentos quedan pendientes hasta conciliarlos con el registro de uso.
+Si una tarjeta web queda con consumo pendiente, descargá el JSON. Usá su `resultado` si está presente, aunque sea parcial. Si el resultado no llegó, usá `trabajo_aceptado`, que conserva el pedido de consumo y la versión de modo. Si faltan ambos, usá `null`. La tarjeta de Completo (prueba) conserva la descarga y deja el nuevo análisis pendiente de conciliación.
 
 Para respuestas anteriores a `consumo_api`, podés armar `pedidos` y `etiquetas` a mano en lugar de `respuestas`. En `pedidos` vinculá cada ID del log con su número de intentos. Usá `null` si todavía no se pudo confirmar ese número. En `etiquetas` usá las claves confirmadas, `[]` si no hubo ninguna o `null` si falta el resultado.
 
