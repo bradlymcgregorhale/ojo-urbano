@@ -11,7 +11,9 @@ import os
 import re
 import sys
 import threading
+import time
 import types
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
@@ -151,11 +153,37 @@ def evaluation_row(case):
            'review_updates': case.get('review_updates', [])}
 
 
-def evaluate_prueba(case, private, identity, server, respuestas):
+def _leer_respuesta_prueba(respuesta):
+    datos = respuesta.json()
+    if not respuesta.is_success:
+        raise ValueError(f'HTTP {respuesta.status_code}: {datos.get("detail", "")}')
+    return datos
+
+
+def _esperar_trabajo_prueba(client, respuesta):
+    estado = _leer_respuesta_prueba(respuesta)
+    trabajo = estado.get('trabajo')
+    pedido = (estado.get('consumo_api') or {}).get('pedido')
+    if respuesta.status_code != 202 or not trabajo or not pedido:
+        raise ValueError('La cola no devolvió un trabajo nuevo con su pedido de consumo.')
+    limite = time.monotonic() + 10
+    while estado['estado'] in ('en_cola', 'procesando') and time.monotonic() < limite:
+        estado = _leer_respuesta_prueba(client.get('/trabajos/', params={'id': trabajo}))
+        if estado['estado'] in ('en_cola', 'procesando'):
+            time.sleep(.02)
+    if estado['estado'] != 'listo':
+        raise ValueError(f"El trabajo no terminó listo ({estado['estado']}): {estado.get('detail', '')}")
+    resultado = estado['resultado']
+    if (resultado.get('consumo_api') or {}).get('pedido') != pedido:
+        raise ValueError('El resultado no conserva el pedido de consumo del trabajo.')
+    return resultado
+
+
+def evaluate_prueba(case, private, identity, server, respuestas, *, ruta='clasificar'):
     from fastapi.testclient import TestClient
 
     row = evaluation_row(case)
-    row.update(cost_usd=0, requests=[], response={'source': 'archivo'})
+    row.update(cost_usd=0, requests=[], response={'source': 'archivo'}, ruta_prueba=ruta)
     lock = threading.Lock()
 
     def contestar(pedido, *_):
@@ -174,19 +202,21 @@ def evaluate_prueba(case, private, identity, server, respuestas):
         raw = verified_photo(private, case)
         local = read_local(private, case, identity)
         row['local_hash'] = R.fingerprint(local['prediction'])
+        row.update(modo='prueba', modo_version=server.PERFILES['prueba'].version)
         headers = {'x-api-token': server.API_TOKEN} if server.API_TOKEN else {}
         with patch.object(server, 'clasificar_local', side_effect=lambda _: copy.deepcopy(local['prediction'])), \
                 patch.multiple(server, CACHE_MAX=0, RATE_LIMITE=0), patch.object(server, '_hay_cuota', return_value=True), \
                 patch.object(R.V, 'api_key', return_value='reproduccion-sin-red'), \
                 patch.object(R.V, 'OPENROUTER_LOG_USO', False), \
-                patch.object(R.V, '_pedir_http', side_effect=contestar), TestClient(server.app, headers=headers) as client:
-            respuesta = client.post('/clasificar?verificar=1', data={
+                patch.object(R.V, '_pedir_http', side_effect=contestar), \
+                ThreadPoolExecutor(max_workers=1) as pool, patch.object(server, '_pool', pool), \
+                TestClient(server.app, headers=headers) as client:
+            # El pool termina antes de retirar el transporte de archivo, incluso si la consulta vence.
+            endpoint = '/trabajos/' if ruta == 'trabajos' else '/clasificar'
+            respuesta = client.post(endpoint, params={'verificar': '1'}, data={
                 'modo': 'prueba', 'contexto': case.get('context', '')}, files={'file': ('foto.jpg', raw, 'image/jpeg')})
-        if not respuesta.is_success:
-            row.update(status='error', error=f'HTTP {respuesta.status_code}: {respuesta.json().get("detail", "")}',
-                       modo='prueba', modo_version=server.PERFILES['prueba'].version)
-            return row
-        public = respuesta.json()
+            public = (_esperar_trabajo_prueba(client, respuesta) if ruta == 'trabajos'
+                      else _leer_respuesta_prueba(respuesta))
         row.update(prediction=public, modo=public.get('modo'), modo_version=public.get('modo_version'))
         if any(r['source'] == 'missing' for r in row['requests']):
             row.update(status='uncached', error='Faltan respuestas para las huellas indicadas.')
@@ -332,12 +362,16 @@ def main(argv=None):
     parser.add_argument('--initial-fixture', type=Path, help='Explicit recorded first-pass votes for one reported case')
     parser.add_argument('--modo', choices=['alto', 'prueba'], default='alto')
     parser.add_argument('--respuestas-prueba', type=Path, help='Respuestas de OpenRouter guardadas por huella exacta')
+    parser.add_argument('--ruta-prueba', choices=['clasificar', 'trabajos'],
+                        help='Ruta de Completo (prueba) a reproducir. Por defecto, clasificar.')
     args = parser.parse_args(argv)
     prueba = args.modo == 'prueba'
     if prueba and (args.live or args.initial_fixture):
         parser.error('La reproducción de prueba usa exclusivamente respuestas archivadas.')
     if args.respuestas_prueba and not prueba:
         parser.error('--respuestas-prueba requiere --modo prueba.')
+    if args.ruta_prueba and (not prueba or args.command != 'run'):
+        parser.error('--ruta-prueba requiere run --modo prueba.')
     R.load_env()
     if 'servidor' not in sys.modules:
         # Configuration constants are evaluated when verificador is imported.
@@ -404,10 +438,11 @@ def main(argv=None):
     if prueba:
         perfil = server.PERFILES['prueba']
         report.update(modo_version=perfil.version, models=list(perfil.verificadores), arbiter=perfil.arbitro,
-                      evidence_policy='archivo-por-huella', budget_usd=0)
+                      evidence_policy='archivo-por-huella', budget_usd=0,
+                      ruta_prueba=args.ruta_prueba or 'clasificar')
     for case in cases:
         if prueba:
-            row = evaluate_prueba(case, args.private, identity, server, respuestas)
+            row = evaluate_prueba(case, args.private, identity, server, respuestas, ruta=report['ruta_prueba'])
         else:
             row = evaluate(case, args.private, identity, server, transport, args.allow_initial_live, fixture)
         report['rows'].append(row)
