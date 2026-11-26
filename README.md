@@ -86,7 +86,7 @@ En `.env.example` están las opciones de OpenRouter. Las revisiones dirigidas de
 
 Las comprobaciones que un modo no ejecuta aparecen en `analisis_limitaciones` (`modo_reducido`, `especialista_desactivado`, `corroboracion_insuficiente`) y las categorías que quedaron sin corroborar por esa omisión pasan a `posibles`; no se bajan los requisitos de evidencia para compensar. Cada respuesta lleva `modo` y `modo_version`, y la caché distingue los modos entre sí. Los lectores de cada modo se configuran con `VERIFICADORES_BAJO`, `VERIFICADORES_MEDIO` y `VERIFICADORES_ALTO`; un modo sin lista válida figura como no disponible en `GET /salud`.
 
-La página de carga abre en Completo (prueba). También podés enviar `modo=prueba` a `/clasificar` y `/trabajos`. Admite una foto sin comentario y devuelve las categorías y el `costo_api` facturado. Configurá `VERIFICADORES_PRUEBA` con tres lectores distintos en este orden: decisión, consultas dirigidas y segundo lector para el alcance de escombros.
+La página de carga abre en Completo (prueba). También podés enviar `modo=prueba` a `/clasificar` y `/trabajos`. Admite una foto sin comentario y devuelve las categorías y la suma de los cargos informados en `costo_api`. Si algún intento no informa el importe, `costo_api_completo` es `false` y el total queda pendiente de conciliación. Configurá `VERIFICADORES_PRUEBA` con tres lectores distintos en este orden: decisión, consultas dirigidas y segundo lector para el alcance de escombros.
 
 ## Dónde ayuda el modelo local
 

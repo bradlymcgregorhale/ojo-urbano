@@ -1227,15 +1227,16 @@ check("  y chip() ya no trata fuentes como lista",
 # costo por millón de tokens; el CSV exporta las mismas columnas.
 check("la tarjeta muestra el costo y los tokens (#120)",
       "Costo de procesamiento (API): US$" in _src and "function lineaCosto(d)" in _src
-      and "esc(lineaCosto(d))" in _src and "por millón de tokens" in _src
+      and "const linea=lineaCosto(d)" in _src and "esc(linea)" in _src and "por millón de tokens" in _src
       and "entrada '+fmtNum(d.tokens_entrada)" in _src and "salida '+fmtNum(d.tokens_salida)" in _src)
-check("  y solo cuando hubo costo (#120)",
-      "if(typeof d.costo_api==='number'&&d.costo_api>0)h+=`<div class=\"tarcosto\">" in _src)
+check("  y distingue el costo pendiente del costo cero (#120)",
+      "if(d.costo_api_completo===false)" in _src and "falta conciliar cargos" in _src
+      and "if(typeof d.costo_api!=='number'||d.costo_api<=0)return ''" in _src)
 check("  y el CSV exporta costo y tokens (#120)",
       "'costo_api','tokens_api','tokens_entrada','tokens_salida','tokens_api_completos','tokens_desglose_completo'" in _src
       and "d.costo_api??'',d.tokens_api??'',d.tokens_entrada??'',d.tokens_salida??'',d.tokens_api_completos??'',d.tokens_desglose_completo??''" in _src)
 check("  y la foto rechazada también muestra el costo (#120)",
-      _src.count("esc(lineaCosto(d))") == 2)
+      "${resultadoJSON(d)}</div></details>`+\n      costo;" in _src and "return h+costo;" in _src)
 # #122: conclusión preliminar en Económico, sin tocar problemas ni invariantes.
 check("la tarjeta titula la lectura preliminar (#122)",
       "d.conclusion?.estado==='preliminar'?'Lectura preliminar: requiere corroboración'" in _src
