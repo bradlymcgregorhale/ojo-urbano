@@ -197,6 +197,9 @@ def evaluate_prueba(case, private, identity, server, respuestas, *, ruta='clasif
     if case.get('principal_esperado') is not None:
         row.update(principal_esperado=case['principal_esperado'], principal_observado=None,
                    diferencia_principal=None)
+    if 'contexto_esperado' in case:
+        row.update(contexto_esperado=case['contexto_esperado'], contexto_observado=None,
+                   diferencias_contexto=None)
     lock = threading.Lock()
     pedir_http = R.V._pedir_http
 
@@ -262,8 +265,15 @@ def evaluate_prueba(case, private, identity, server, respuestas, *, ruta='clasif
                     row.update(status='error', error='Falta una decisión verificable del problema principal.')
                     return row
                 row.update(principal_observado=principal, diferencia_principal=principal != row['principal_esperado'])
+            if 'contexto_esperado' in row:
+                observado, diferencias = C.comparar_contexto(row['contexto_esperado'], public)
+                if diferencias is None:
+                    row.update(status='error', error='Falta una respuesta evaluable del pedido vecinal.')
+                    return row
+                row.update(contexto_observado=observado, diferencias_contexto=diferencias)
             row['status'] = 'fail' if any(row.get(k) for k in (
-                'missing', 'unexpected', 'contract_issues', 'diferencias_recuento', 'diferencia_principal')) else 'pass'
+                'missing', 'unexpected', 'contract_issues', 'diferencias_recuento', 'diferencia_principal',
+                'diferencias_contexto')) else 'pass'
     except R.NotAvailable as error:
         row.update(status='uncached', error=str(error))
     except Exception as error:
@@ -316,6 +326,8 @@ class MedicionPrueba:
                      'modo_version': self.version, 'esperado': case['expected']}
         if 'recuento_esperado' in case:
             self.caso['recuento_esperado'] = case['recuento_esperado']
+        if 'contexto_esperado' in case:
+            self.caso['contexto_esperado'] = case['contexto_esperado']
         self.datos['casos'].append(self.caso)
         self.guardar_respuesta(None)
         with self.uso.open('a', encoding='utf-8') as archivo, redirect_stderr(archivo):
@@ -509,6 +521,11 @@ def main(argv=None):
         parser.error('Unknown or unscorable case IDs: ' + ', '.join(sorted(unknown)))
     if prueba:
         for caso in cases:
+            if 'contexto_esperado' in caso:
+                try:
+                    C.validar_contexto_esperado(caso['contexto_esperado'])
+                except ValueError as error:
+                    parser.error(str(error))
             principal = caso.get('principal_esperado')
             if principal is not None and (
                     not isinstance(principal, str) or principal not in regresiones.SERVICIOS | {'indeterminado'}
