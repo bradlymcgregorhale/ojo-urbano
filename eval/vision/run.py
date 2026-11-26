@@ -387,7 +387,10 @@ def compare(before, after):
     regressions, improvements, incomparable = [], [], []
     for key in sorted(set(old) | set(new)):
         a, b = old.get(key), new.get(key)
-        same = a and b and all(a.get(k) == b.get(k) for k in ['label_hash', 'photo_sha256', 'context_hash', 'local_hash', 'initial_fixture_hash'])
+        same = a and b and all(a.get(k) == b.get(k) for k in (
+            'label_hash', 'photo_sha256', 'context_hash', 'local_hash', 'initial_fixture_hash', 'recuento_esperado'))
+        if same and 'recuento_esperado' in a:
+            same = all(row.get('diferencias_recuento') is not None for row in (a, b))
         reference = a.get('expected') if a else None
         scorable = reference is None or any(isinstance(value, bool) for value in reference.values())
         if not same or not scorable or a['status'] not in {'pass', 'fail'} or b['status'] not in {'pass', 'fail'}:
@@ -401,6 +404,8 @@ def compare(before, after):
         current = {(kind, k) for kind, k in current if k not in pendientes}
         previous |= {('contract', k) for k in a.get('contract_issues', [])}
         current |= {('contract', k) for k in b.get('contract_issues', [])}
+        previous |= {('recuento', k) for k in a.get('diferencias_recuento') or ()}
+        current |= {('recuento', k) for k in b.get('diferencias_recuento') or ()}
         regressions.extend({'case': key[0], 'model': key[1], 'stage': key[2], 'kind': kind, 'category': cat}
                            for kind, cat in sorted(current - previous))
         improvements.extend({'case': key[0], 'model': key[1], 'stage': key[2], 'kind': kind, 'category': cat}
@@ -430,6 +435,10 @@ def write_report(path, report):
             details += '<br>' + esc('; '.join(row['contract_issues']))
         if row['status'] not in {'pass', 'fail'}:
             details = esc(row.get('error', ''))
+        if row.get('diferencias_recuento'):
+            details += '<br><b>Diferencias de recuento:</b> ' + esc(', '.join(row['diferencias_recuento']))
+        elif 'recuento_esperado' in row and row.get('diferencias_recuento') is None:
+            details += '<br>Recuento sin puntuar'
         pendientes = set(row.get('uncertain_labels', [])) | {
             k for k, v in row.get('expected', {}).items() if v is None}
         if pendientes:
