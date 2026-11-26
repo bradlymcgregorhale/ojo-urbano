@@ -50,6 +50,37 @@ class Configuracion(unittest.TestCase):
             self.assertEqual(p['prueba'].motivo, 'configuracion_invalida')
             self.assertEqual(p['alto'].version, sin_reservas['alto'].version)
 
+    def test_proveedor_de_reserva_se_aplica_solo_a_los_lectores_de_prueba(self):
+        base = {'VERIFICADORES_PRUEBA': 't/decision,t/dirigidos,t/alcance', 'VERIFICADORES_BAJO': 't/decision'}
+        reservas = base | {'PRUEBA_RESERVAS_USD': json.dumps(_RESERVAS)}
+        flex = {'PRUEBA_PROVEEDOR_OPENROUTER': 'openai/flex'}
+        normal = M.cargar(V, {}, reservas)
+        ps = M.cargar(V, {}, reservas | flex)
+        self.assertIsNone(ps['prueba'].motivo)
+        self.assertNotEqual(ps['prueba'].version, normal['prueba'].version)
+        self.assertEqual(ps['bajo'].version, normal['bajo'].version)
+        for entorno in (base | flex, reservas | {'PRUEBA_PROVEEDOR_OPENROUTER': 'openai/flex,azure'}):
+            self.assertEqual(M.cargar(V, {}, entorno)['prueba'].motivo, 'configuracion_invalida')
+
+        datos = {'usage': {'cost': .0002}, 'choices': [{'finish_reason': 'stop',
+                                                       'message': {'content': '{}'}}]}
+        for perfil, etapa, elegido in ((ps['prueba'], 'prueba_decision', ['openai/flex']),
+                                       (ps['prueba'], 'leer_chapa', None),
+                                       (ps['bajo'], 'verificar_uno', None),
+                                       (normal['prueba'], 'prueba_decision', None)):
+            with (self.subTest(modo=perfil.modo, etapa=etapa), M.usar(perfil),
+                  patch.object(V, 'api_key', return_value='simulada'),
+                  patch.object(V, 'OPENROUTER_PROVEEDORES_EXCLUIDOS', 'OpenInference'),
+                  patch.object(V, '_pedir_http', return_value=datos) as http):
+                _LLAMAR('t/decision', [], max_tokens=400, etapa=etapa, esquema={'type': 'object'})
+                [req, *_] = http.call_args.args
+                provider = json.loads(req.data)['provider']
+                self.assertEqual(provider.get('only'), elegido)
+                self.assertTrue(provider['require_parameters'])
+                self.assertEqual(provider['ignore'], ['OpenInference'])
+                if elegido:
+                    self.assertIs(provider['allow_fallbacks'], False)
+
     def test_no_gasta_en_una_lectura_suelta_si_las_dos_lecturas_no_caben(self):
         import patentes
 

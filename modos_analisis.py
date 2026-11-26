@@ -61,6 +61,7 @@ class Perfil:
     version: str
     motivo: str | None = None
     reservas_prueba: MappingProxyType | None = None
+    proveedor_prueba: str | None = None
 
     def metadatos(self):
         return {'modo': self.modo, 'modo_version': self.version}
@@ -108,6 +109,7 @@ def cargar(verificador, opciones_servidor, entorno=None):
         nombre = 'VERIFICADORES_' + modo.upper()
         motivo = None
         reservas = None
+        proveedor = None
         if nombre in env:
             modelos = tuple(m.strip() for m in env[nombre].split(','))
             if (len(modelos) != cantidad or len(set(modelos)) != cantidad
@@ -121,6 +123,10 @@ def cargar(verificador, opciones_servidor, entorno=None):
             try:
                 reservas = _leer_reservas_prueba(env['PRUEBA_RESERVAS_USD'])
             except (ArithmeticError, ValueError, TypeError):
+                motivo = 'configuracion_invalida'
+        if modo == 'prueba':
+            proveedor = env.get('PRUEBA_PROVEEDOR_OPENROUTER') or None
+            if proveedor and (reservas is None or not re.fullmatch(r'[a-z0-9-]+(?:/[a-z0-9-]+)*', proveedor)):
                 motivo = 'configuracion_invalida'
         arbitro = '' if modo in {'bajo', 'prueba'} else verificador.ARBITRO
         foto = bool(modo == 'alto' and verificador.ARBITRO_VE_FOTO)
@@ -147,8 +153,11 @@ def cargar(verificador, opciones_servidor, entorno=None):
             datos.append(hashlib.sha256((raiz / 'prueba_completo.py').read_bytes()).hexdigest())
             if reservas is not None:
                 datos.append({k: str(v.normalize()) for k, v in reservas.items()})
+            if proveedor:
+                datos.append(proveedor)
         version = hashlib.sha256(json.dumps(datos, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:24]
-        perfiles[modo] = Perfil(modo, modelos, arbitro, foto, confirma, especialista, version, motivo, reservas)
+        perfiles[modo] = Perfil(modo, modelos, arbitro, foto, confirma, especialista, version, motivo, reservas,
+                               proveedor)
     return MappingProxyType(perfiles)
 
 
