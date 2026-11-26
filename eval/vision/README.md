@@ -26,6 +26,8 @@ Si revisaste el recuento de bolsas, agregá `recuento_esperado` al caso con sól
 
 En `respuestas`, incluí en orden los JSON devueltos por Completo (prueba) para esa foto. La herramienta toma del último análisis sus etiquetas y lee `consumo_api.pedido` e `intentos` de cada resultado. En la carga web, guardá el JSON final de `/trabajos/`. Si falta el resultado, conservá el último estado del trabajo. Bacollab guarda el JSON de `/clasificar/` en `image_api_calls.response_text`. Incluí `null` si un envío se cortó sin devolver el JSON. Eso deja la conciliación pendiente incluso si otro envío terminó. Corré ambos recorridos con `CACHE_MAX=0` en una instancia de evaluación para que cada uno ejecute el análisis.
 
+Si una tarjeta web queda con consumo pendiente, descargá el JSON y usá su objeto `trabajo_aceptado` como respuesta del caso. Conserva el pedido de consumo y la versión de modo. Los intentos quedan pendientes hasta conciliarlos con el registro de uso.
+
 Para respuestas anteriores a `consumo_api`, podés armar `pedidos` y `etiquetas` a mano en lugar de `respuestas`. En `pedidos` vinculá cada ID del log con su número de intentos. Usá `null` si todavía no se pudo confirmar ese número. En `etiquetas` usá las claves confirmadas, `[]` si no hubo ninguna o `null` si falta el resultado.
 
 ```sh
