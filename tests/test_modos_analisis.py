@@ -562,6 +562,47 @@ class ApiModos(unittest.TestCase):
         self.assertIn('nombrá las asas', _decision([], {'retiro_escombros': .85}, claves))
         self.assertNotIn('nombrá las asas', _decision([], {'retiro_escombros': .05}, claves))
 
+    def test_prueba_pasa_las_observaciones_previas_como_datos(self):
+        decisiones = []
+        for color in ('azul', 'verde', None):
+            with self.subTest(color=color):
+                evidencia = f'Cajón "{color}" junto al cordón.' if color else None
+
+                def responder(req, *_):
+                    cuerpo = json.loads(req.data)
+                    self.llamadas.append(cuerpo)
+                    if cuerpo['model'] == 't/decision':
+                        hallazgos = [{'key': 'retiro_muebles', 'evidencia': 'Cajón descartado.'}]
+                    else:
+                        hallazgos = [{'key': 'retiro_muebles', 'evidencia': f'{evidencia} 1234'}] if evidencia else []
+                    valor = {'confirmadas': hallazgos, 'dudosas': []}
+                    return {'usage': {'cost': .001}, 'choices': [
+                        {'finish_reason': 'stop', 'message': {'content': json.dumps(valor)}}]}
+
+                self.llamadas.clear()
+                with (patch.object(self.S, 'CACHE_MAX', 0),
+                      patch.object(V, '_pedir_http', side_effect=responder)):
+                    r = self.post('prueba')
+                self.assertEqual(r.status_code, 200, r.text)
+                self.assertEqual([p['key'] for p in r.json()['problemas']], ['retiro_muebles'])
+                self.assertEqual(len(self.llamadas), 3)
+                [final] = [c for c in self.llamadas if c['model'] == 't/decision']
+                sistema, usuario = final['messages']
+                self.assertEqual((sistema['role'], usuario['role']), ('system', 'user'))
+                self.assertEqual(sum(p['type'] == 'image_url' for p in usuario['content']), 1)
+                datos = [json.loads(p['text']) for p in usuario['content'] if p['type'] == 'text']
+                if evidencia:
+                    self.assertNotIn(evidencia, sistema['content'])
+                    self.assertEqual(datos, [{'observaciones_previas': [
+                        {'key': 'retiro_muebles', 'estado': 'confirmadas', 'evidencia': evidencia}]}])
+                    decisiones.append(final)
+                else:
+                    self.assertEqual(datos, [])
+        a, b = decisiones
+        self.assertEqual(V._clave_cache_prompt(a['model'], a['messages']),
+                         V._clave_cache_prompt(b['model'], b['messages']))
+        self.assertNotEqual(a, b)
+
     def test_prueba_rechaza_contexto_y_otros_usos_antes_de_llamar(self):
         f = ('foto.jpg', self.foto, 'image/jpeg')
         self.assertEqual(self.cliente.post('/trabajos', files={'file': f},
