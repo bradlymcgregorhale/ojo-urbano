@@ -1309,7 +1309,7 @@ def _patente_normalizada(texto):
 
 
 @modos.minimo_fuentes(2, None, ())
-def _leer_patente(img):
+def _leer_patente(img, *, solo_recorte=False):
     """Segunda pasada, solo para la patente: la foto a mayor resolución
     (LADO_PATENTE) a hasta tres verificadores EN PARALELO, con un prompt
     que mira únicamente la chapa del vehículo infractor. Publica solo con
@@ -1325,10 +1325,15 @@ def _leer_patente(img):
     try:
         import patentes
         if patentes.disponible():
-            legibles = {c["patente"] for c in patentes.leer_chapas(img) if c.get("legible")}
+            chapas = patentes.leer_chapas(img)
+            if solo_recorte and len(chapas) != 1:
+                return None
+            legibles = {c["patente"] for c in chapas if c.get("legible")}
             return next(iter(legibles)) if len(legibles) == 1 else None
     except ImportError:
         pass
+    if solo_recorte:
+        return None
     # Únicos, por si la config repite un modelo: el mismo lector dos veces
     # no son dos lecturas independientes.
     lectores = list(dict.fromkeys(modelos_activos()))[:3]
@@ -4263,15 +4268,18 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         p["key"] for p in prediccion_local["predichas"]
         if p["key"] in PATENTE_KEYS
         and (umbral_local is None or p.get("score", 0) >= umbral_local)}
-    if (patente_escena is None and vistos_vehiculo
-            and len(con_vehiculo) <= 1 and len(lecturas_totales) <= 1):
-        leida = _leer_patente(img)
+    varias_claves = len(con_vehiculo) > 1
+    if varias_claves:
+        # Las claves describen infracciones. Para compartir la chapa hace falta
+        # ubicar un solo recorte en la foto, incluso si los lectores ya coinciden.
+        patente_escena = None
+    if patente_escena is None and vistos_vehiculo and len(lecturas_totales) <= 1:
+        leida = _leer_patente(img, solo_recorte=varias_claves)
         if leida and (not lecturas_totales or leida in lecturas_totales):
             patente_escena = leida
-    # En la entrada confirmada la patente va solo si el vehículo es UNO:
-    # con dos problemas de vehículo no hay a cuál atribuírsela.
-    if patente_escena and len(con_vehiculo) == 1:
-        con_vehiculo[0]["patente"] = patente_escena
+    if patente_escena:
+        for entrada in con_vehiculo:
+            entrada["patente"] = patente_escena
 
     # Lo que quedó sin confirmar: una sola fuente lo vio. Se devuelve como
     # POSIBLE, con quién lo vio y qué dijo el árbitro, para que quien consume

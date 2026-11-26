@@ -2924,7 +2924,7 @@ $('#csvbtn').onclick=()=>{
     const d=it.resultado||{};
     const probs=(d.problemas||[]).map(p=>
       (p.key||'')+(p.gravedad?' (g'+p.gravedad+(p.confianza?', '+p.confianza:'')+')':'')).join(' | ');
-    const pat=(d.problemas||[]).map(p=>p.patente).filter(Boolean).join(' | ')||d.patente||'';
+    const pat=[...new Set((d.problemas||[]).map(p=>p.patente).filter(Boolean))].join(' | ')||d.patente||'';
     filas.push([it.file.name,(it.ctx||'').trim(),it.estado,d.hay_problema??'',d.gravedad_maxima??'',d.predominante??'',
       probs,pat,(d.elementos_detectados||[]).map(e=>e.key).join(' | '),
       (d.posibles||[]).map(p=>p.key||p.codigo).join(' | '),(d.en_duda||[]).join(' | '),
