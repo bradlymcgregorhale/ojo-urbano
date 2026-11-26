@@ -629,6 +629,53 @@ class ApiModos(unittest.TestCase):
                 pendiente = cordon and not excluir and (dirigida, final) != (False, False)
                 self.assertEqual('corroboracion_insuficiente' in salida['analisis_limitaciones'], pendiente)
 
+    def test_prueba_contrasta_la_cubierta_del_unico_contenedor(self):
+        reparacion = 'reparacion_contenedor'
+        lateral = 'contenedor_humedos_lateral'
+        local = {'predichas': [], 'gravedad': {}, 'probabilidades': [{'key': lateral, 'score': 1.0}]}
+        datos = {'modo': 'prueba', 'contexto': 'Falta la cubierta del contenedor'}
+        archivos = {'file': ('foto.jpg', self.foto, 'image/jpeg')}
+        for dirigida, final, varios, cuerpo, respaldo, duda in (
+                ('fuera_del_encuadre', 'suelto_afuera', False, False, 'neutral', True),
+                (None, 'fuera_del_encuadre', False, False, 'neutral', True),
+                (None, 'indeterminado', False, False, 'neutral', True),
+                ('articulado_abierto', 'ausente', False, False, 'contradice', False),
+                ('suelto_adentro', 'ausente', False, False, 'compatible', False),
+                ('montado_cerrado', 'ausente', False, True, 'compatible', False),
+                ('montado_cerrado', 'ausente', True, False, 'compatible', False),
+                ('montado_cerrado', ['ausente'], False, False, 'compatible', False)):
+            with self.subTest(dirigida=dirigida, final=final, varios=varios, cuerpo=cuerpo):
+                etapas = []
+
+                def responder(modelo, mensajes, **opciones):
+                    etapa = opciones['etapa']
+                    etapas.append(etapa)
+                    usa_montaje = etapa in ('prueba_contenedores', 'prueba_decision')
+                    self.assertEqual('montaje_cubierta' in opciones['esquema']['required'], usa_montaje)
+                    valor = {'confirmadas': [], 'dudosas': []}
+                    if usa_montaje:
+                        valor['montaje_cubierta'] = dirigida if etapa == 'prueba_contenedores' else final
+                    if etapa == 'prueba_decision':
+                        evidencia = 'Cuerpo quemado y cubierta ausente.' if cuerpo else 'Cubierta ausente.'
+                        valor['confirmadas'] = [{'key': lateral, 'evidencia': 'Cuerpo negro lateral.'},
+                                                {'key': reparacion, 'evidencia': evidencia}]
+                        if varios:
+                            valor['confirmadas'].append({'key': 'contenedor_secos', 'evidencia': 'Otro cuerpo verde.'})
+                        valor['pedidos'] = [{'key': reparacion, 'respaldo': 'compatible'}]
+                    return json.dumps(valor)
+
+                with (patch.object(self.S, 'CACHE_MAX', 0),
+                      patch.object(self.S, 'clasificar_local', return_value=local),
+                      patch.object(V, '_llamar', side_effect=responder)):
+                    r = self.cliente.post('/clasificar', files=archivos, data=datos)
+                self.assertEqual(r.status_code, 200, r.text)
+                esperadas = ['prueba_inicio', 'prueba_retiros', 'prueba_contenedores', 'prueba_decision']
+                self.assertCountEqual(etapas, esperadas + (['prueba_tipos'] if varios else []))
+                salida = r.json()
+                self.assertEqual(reparacion in {p['key'] for p in salida['problemas']}, respaldo == 'compatible')
+                self.assertEqual(reparacion in salida['en_duda'], duda)
+                self.assertEqual(salida['categorias_contexto'][0]['respaldo_visual'], respaldo)
+
     def test_prueba_distingue_evidencia_de_la_escena(self):
         import prueba_completo as P
         for poda, piso, comunes, esperadas in (

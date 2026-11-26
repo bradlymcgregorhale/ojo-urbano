@@ -6,6 +6,7 @@ import re
 from contexto_ocupacion import mercaderia_en_interior
 import modos_analisis as modos
 from prompts import cargar_prompt
+import revision_omisiones
 import verificador as V
 
 TIPOS = ('contenedor_humedos_lateral', 'contenedor_humedos_bilateral', 'contenedor_secos')
@@ -31,6 +32,11 @@ RESIDUOS_BOLSON = ('Marcá solo_residuos_del_bolson como true si los residuos es
 FRAGMENTOS_CORDON = ('Marcá fragmentos_del_propio_cordon como true si los únicos restos minerales '
                     'son piezas que encajan con el faltante o la fractura del cordón. La cercanía '
                     'no alcanza. Usá false si ves un acopio independiente y null si no se distingue la relación.')
+CUBIERTA = ('Si hay un solo contenedor y la reparación posible es por su cubierta, indicá montaje_cubierta. '
+            'Articulado_abierto exige ver el eje o la unión. Un panel caído debajo del borde fijo está suelto. '
+            'Para afirmar ausencia, tienen que verse los apoyos. Usá fuera_del_encuadre si la zona queda '
+            'cortada. No atribuyas piezas por cercanía. Usá null si hay varios cuerpos u otro daño.')
+ESTADOS_CUBIERTA = revision_omisiones.MONTAJES | {'fuera_del_encuadre'}
 OBJETOS = ('Si confirmás retiro_muebles, enumerá en objetos hasta ocho voluminosos descartados que se '
            'distingan en la foto. Usá nombres cortos, por ejemplo "lavarropas", "armario" o "silla plástica". '
            'Excluí el contenedor, los objetos en uso y lo que no se distingue. Si no confirmás retiro_muebles '
@@ -52,6 +58,8 @@ _TEXTO = {'type': 'string'}
 _HALLAZGO = _objeto({'key': _TEXTO, 'evidencia': _TEXTO})
 _LECTURA = _objeto({campo: {'type': 'array', 'items': _HALLAZGO}
                    for campo in ('confirmadas', 'dudosas')})
+_MONTAJE_CUBIERTA = {'type': ['string', 'null'], 'enum': [*sorted(ESTADOS_CUBIERTA), None]}
+_LECTURA_CONTENEDORES = _objeto({**_LECTURA['properties'], 'montaje_cubierta': _MONTAJE_CUBIERTA})
 _LECTURA_CON_RECUENTO = _objeto({
     **_LECTURA['properties'],
     'bolsas_visibles': {'type': ['integer', 'null']},
@@ -61,6 +69,7 @@ _LECTURA_CON_RECUENTO = _objeto({
 })
 _LECTURA_FINAL = _objeto({
     **_LECTURA_CON_RECUENTO['properties'],
+    'montaje_cubierta': _MONTAJE_CUBIERTA,
     'objetos': {'type': 'array', 'items': _TEXTO},
 })
 _RESPALDOS = ('compatible', 'contradice', 'neutral')
@@ -102,10 +111,12 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, cont
     nombre = 'prueba_' + etapa
     try:
         schema = _ALCANCE if permitidas is None else {
-            'retiros': _LECTURA_CON_RECUENTO, 'decision': _LECTURA_FINAL,
+            'retiros': _LECTURA_CON_RECUENTO, 'contenedores': _LECTURA_CONTENEDORES, 'decision': _LECTURA_FINAL,
         }.get(etapa, _LECTURA)
         if etapa in ('retiros', 'decision'):
             texto += '\n' + RECUENTO + '\n' + RESIDUOS_BOLSON + '\n' + FRAGMENTOS_CORDON
+        if etapa in ('contenedores', 'decision'):
+            texto += '\n' + CUBIERTA
         if etapa == 'decision':
             texto += '\n' + OBJETOS
             if contexto:
@@ -135,6 +146,9 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, cont
                 respuesta = valor.get(clave)
                 if isinstance(respuesta, bool):
                     lectura[clave] = respuesta
+        estado = valor.get('montaje_cubierta')
+        if etapa in ('contenedores', 'decision') and isinstance(estado, str) and estado in ESTADOS_CUBIERTA:
+            lectura['montaje_cubierta'] = estado
         if etapa == 'decision' and 'retiro_muebles' in lectura['confirmadas']:
             lectura['objetos'] = V._objetos_lista(valor.get('objetos')) or []
         if contexto:
@@ -254,6 +268,27 @@ def _recuento(retiros, final):
     return {'bolsas_minimo': minimo, 'bolsas_recuento_completo': exacto}
 
 
+def _revisar_cubierta(final, previas):
+    clave = 'reparacion_contenedor'
+    confirmadas = final['confirmadas']
+    estado = final.get('montaje_cubierta')
+    if (estado is None or clave not in confirmadas or len(set(TIPOS).intersection(confirmadas)) > 1
+            or not V._evidencias_de_cubierta([V._norm_texto(confirmadas[clave])])):
+        return
+    estados = {estado, *(lectura.get('montaje_cubierta') for lectura in previas)}
+    dudas, pedidos = final['dudosas'], final.get('pedidos', {})
+    if 'fuera_del_encuadre' in estados or estado == 'indeterminado':
+        confirmadas.pop(clave)
+        dudas[clave] = ('La zona de montaje quedó fuera de cuadro.' if 'fuera_del_encuadre' in estados
+                        else 'No se pudo corroborar el montaje de la cubierta.')
+        if clave in pedidos:
+            pedidos[clave] = 'neutral'
+    elif estados & revision_omisiones.MONTADO:
+        confirmadas.pop(clave)
+        if clave in pedidos:
+            pedidos[clave] = 'contradice'
+
+
 def _excluir_indicios_insuficientes(fuentes, confirmadas):
     if mercaderia_en_interior(confirmadas.get('manteros')):
         fuentes.pop('manteros', None)
@@ -296,6 +331,7 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
     final = _leer(sol, _decision(previas, scores, claves), foto, 'decision', claves, contexto=contexto)
     if final is None:
         return {}, {}, None
+    _revisar_cubierta(final, previas)
     confirmadas, dudas = final['confirmadas'], final['dudosas']
     solo_bolson = retiros.get('solo_residuos_del_bolson') and final.get('solo_residuos_del_bolson')
     votos_fragmentos = tuple(lectura.get('fragmentos_del_propio_cordon') for lectura in (retiros, final))
