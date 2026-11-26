@@ -343,24 +343,50 @@ class ApiModos(unittest.TestCase):
         self.assertEqual(r.json()['consumo_api']['intentos'], 3)
 
     def test_prueba_con_reservas_conserva_el_limite_de_salida_de_la_etapa(self):
-        responder = V._pedir_http.side_effect
+        import patentes
 
-        def http(req, *args):
-            respuesta = responder(req, *args)
-            respuesta['usage']['cost'] = .0002
-            return respuesta
+        lectores = ('t/chapa-a', 't/chapa-b')
+        hallazgos = ('retiro_poda', 'vehiculo_abandonado', 'vehiculo_mal_estacionado')
 
-        for perfil, limite in ((perfil_con_reservas(), 550), (self.ps['prueba'], 1000)):
-            with self.subTest(limite=limite):
+        def http(req, *_):
+            cuerpo = json.loads(req.data)
+            self.llamadas.append((cuerpo['model'], cuerpo['max_tokens']))
+            contenido = {'confirmadas': [], 'dudosas': []}
+            if cuerpo['model'] in lectores:
+                contenido = {'patente': 'A123BCD'}
+            else:
+                propiedades = cuerpo['response_format']['json_schema']['schema']['properties']
+                if 'rama_desprendida' in propiedades:
+                    contenido = {'rama_desprendida': 'si', 'problemas_arbolado': 'no',
+                                 'obstruccion': 'no', 'evidencia': 'Rama suelta en la vereda.'}
+                elif 'objetos' in propiedades:
+                    contenido = {'confirmadas': [{'key': k, 'evidencia': 'Rama suelta y una moto.'} for k in hallazgos],
+                                 'dudosas': [{'key': 'problemas_arbolado', 'evidencia': 'Tronco al fondo.'}]}
+            return {'usage': {'cost': .0002}, 'choices': [
+                {'finish_reason': 'stop', 'message': {'content': json.dumps(contenido)}}]}
+
+        caja = [{'caja': [2, 4, 20, 14], 'confianza': .9}]
+        ocr = {'patente': 'A123BCD', 'lectura': 'A123BCD', 'confianza': .9}
+        for perfil, decision, apoyo in ((perfil_con_reservas(), 550, 400), (self.ps['prueba'], 1000, 1000)):
+            with self.subTest(reservas=perfil.reservas_prueba is not None):
                 self.llamadas.clear()
-                with (patch.object(self.S, 'PERFILES', self.ps | {'prueba': perfil}),
-                      patch.object(V, 'MODELOS_MIN_1000', ('t/decision',)),
+                with (patch.multiple(self.S, PERFILES=self.ps | {'prueba': perfil}, CACHE_MAX=0),
+                      patch.object(V, 'MODELOS_MIN_1000', ('t/decision', 't/dirigidos', *lectores)),
+                      patch.multiple(patentes, LECTORES=lectores, ANCHO_MINIMO=15),
+                      patch.object(patentes, 'disponible', return_value=True),
+                      patch.object(patentes, 'detectar', return_value=caja),
+                      patch.object(patentes, 'leer_local', return_value=ocr),
                       patch.object(V, '_pedir_http', side_effect=http)):
                     respuesta = self.post('prueba')
                 self.assertEqual(respuesta.status_code, 200, respuesta.text)
-                self.assertEqual([c['max_tokens'] for c in self.llamadas], [1400, 1400, limite])
-                self.assertEqual(respuesta.json()['analisis_estado'], 'completo')
-                self.assertEqual(respuesta.json()['consumo_api']['intentos'], 3)
+                self.assertCountEqual(self.llamadas, [
+                    ('t/dirigidos', 1400), ('t/dirigidos', 1400), ('t/decision', decision),
+                    ('t/dirigidos', apoyo), *((m, apoyo) for m in lectores)])
+                salida = respuesta.json()
+                self.assertEqual(salida['analisis_estado'], 'completo')
+                self.assertEqual(salida['consumo_api']['intentos'], 6)
+                self.assertEqual(salida['costo_api'], .0012)
+                self.assertEqual([p.get('patente') for p in salida['problemas']], [None, 'A123BCD', 'A123BCD'])
 
     def test_prueba_reserva_la_decision_antes_del_apoyo_de_contenedores(self):
         perfil = perfil_con_reservas()
