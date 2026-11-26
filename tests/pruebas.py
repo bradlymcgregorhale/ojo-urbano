@@ -5694,6 +5694,7 @@ from tests import test_prioridad
 from tests import test_observaciones_higiene
 from eval.vision import test_runner as test_vision_runner
 from eval.vision import test_pipeline as test_vision_pipeline
+from eval.vision import test_consumo as test_vision_consumo
 _suite_alcance = unittest.defaultTestLoader.loadTestsFromModule(test_politica_escombros)
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_contenedores))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_recoleccion_pertenencias))
@@ -5720,6 +5721,7 @@ _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_modo
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_revision_escombros_publica))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_vision_runner))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_vision_pipeline))
+_suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_vision_consumo))
 _resultado_alcance = unittest.TextTestRunner(verbosity=2).run(_suite_alcance)
 _fallas_alcance = len(_resultado_alcance.errors) + len(_resultado_alcance.failures)
 _ok += _resultado_alcance.testsRun - _fallas_alcance
