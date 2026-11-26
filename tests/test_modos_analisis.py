@@ -747,13 +747,14 @@ class ApiModos(unittest.TestCase):
                     self.assertEqual(salida['verificacion_escombros']['bolsas_fuentes'],
                                      sum(type(cuenta) is int for cuenta in (dirigida, final)))
 
-    def test_prueba_excluye_recoleccion_si_ambas_lecturas_ubican_los_residuos_en_el_bolson(self):
+    def test_prueba_distingue_exclusion_y_duda_de_recoleccion_junto_al_bolson(self):
         datos = {'modo': 'prueba', 'contexto': 'Recolección de basura y barrido de la vereda'}
         archivos = {'file': ('foto.jpg', self.foto, 'image/jpeg')}
-        for dirigida, final in ((True, True), (True, False), (False, True), (True, None), (None, None), (1, True)):
+        for dirigida, final in ((True, True), (True, False), (False, True), (True, None), (None, True),
+                                (False, False), (None, None), (1, True)):
             with self.subTest(dirigida=dirigida, final=final):
                 llamadas = []
-                excluir = dirigida is True and final is True
+                votos_dentro = sum(voto is True for voto in (dirigida, final))
 
                 def responder(modelo, mensajes, **opciones):
                     etapa = opciones['etapa']
@@ -778,13 +779,15 @@ class ApiModos(unittest.TestCase):
                 self.assertEqual(r.status_code, 200, r.text)
                 self.assertCountEqual(llamadas, ['prueba_inicio', 'prueba_retiros', 'prueba_decision'])
                 salida = r.json()
-                esperados = {'barrido'} if excluir else {'recoleccion', 'barrido'}
+                esperados = {'barrido'} if votos_dentro else {'recoleccion', 'barrido'}
                 self.assertEqual({p['key'] for p in salida['problemas']}, esperados)
+                self.assertEqual(salida['en_duda'], ['recoleccion'] if votos_dentro == 1 else [])
                 propuesta = salida['solicitudes_sugeridas']
                 self.assertEqual(set(propuesta['candidatos']), esperados)
-                self.assertEqual(propuesta['servicios'], ['barrido'] if excluir else [])
+                self.assertEqual(propuesta['servicios'], ['barrido'] if votos_dentro else [])
+                self.assertEqual(propuesta.get('criterio'), 'pedidos_explicitos' if votos_dentro == 1 else None)
                 respaldo = {p['key']: p['respaldo_visual'] for p in salida['categorias_contexto']}
-                self.assertEqual(respaldo['recoleccion'], 'contradice' if excluir else 'compatible')
+                self.assertEqual(respaldo['recoleccion'], ('compatible', 'neutral', 'contradice')[votos_dentro])
 
     def test_prueba_excluye_los_fragmentos_del_cordon_con_dos_lecturas(self):
         archivos = {'file': ('foto.jpg', self.foto, 'image/jpeg')}

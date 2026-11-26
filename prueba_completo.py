@@ -369,16 +369,23 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
         return {}, {}, None
     _revisar_cubierta(final, previas)
     confirmadas, dudas = final['confirmadas'], final['dudosas']
-    solo_bolson = retiros.get('solo_residuos_del_bolson') and final.get('solo_residuos_del_bolson')
+    votos_bolson = tuple(lectura.get('solo_residuos_del_bolson') for lectura in (retiros, final))
     votos_fragmentos = tuple(lectura.get('fragmentos_del_propio_cordon') for lectura in (retiros, final))
     solo_fragmentos = 'reparacion_cordon' in confirmadas and votos_fragmentos == (True, True)
     pedidos = final.get('pedidos', {})
-    for clave, excluir in (('recoleccion', solo_bolson), ('retiro_escombros', solo_fragmentos)):
+    for clave, excluir in (('recoleccion', votos_bolson == (True, True)), ('retiro_escombros', solo_fragmentos)):
         if excluir:
             confirmadas.pop(clave, None)
             dudas.pop(clave, None)
             if clave in pedidos:
                 pedidos[clave] = 'contradice'
+    recoleccion = 'recoleccion'
+    if (votos_bolson.count(True) == 1
+            and (recoleccion in confirmadas or recoleccion in dudas or pedidos.get(recoleccion) == 'compatible')):
+        confirmadas.pop(recoleccion, None)
+        dudas.setdefault(recoleccion, 'Falta corroborar residuos separados del bolsón.')
+        if pedidos.get(recoleccion) == 'compatible':
+            pedidos[recoleccion] = 'neutral'
     ocupacion, obstruccion = 'ocupacion_comercial', 'obstruccion'
     if (ocupacion in confirmadas and obstruccion in confirmadas
             and (obstruccion in inicio.get('dudosas', {})

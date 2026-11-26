@@ -223,8 +223,9 @@ def proponer_solicitudes(publica):
             return dict(resultado, criterio='pedidos_explicitos',
                         motivo='La foto no permite corroborar el pedido vecinal.')
         # Este par puede describir los mismos residuos. Si no hay otro
-        # pedido respaldado, conservá la selección habitual.
-        if limpieza <= pedidos.keys() and not set(pedidos_respaldados) - limpieza:
+        # pedido respaldado ni uno en duda, conservá la selección habitual.
+        if (limpieza <= pedidos.keys() and not set(pedidos_respaldados) - limpieza
+                and not any(pedidos[k] == 'neutral' for k in limpieza & posibles_foto)):
             pedidos_respaldados = []
     if not candidatos:
         return dict(resultado, estado='sin_confirmados',
