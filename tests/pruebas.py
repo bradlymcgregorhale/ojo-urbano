@@ -2885,8 +2885,9 @@ def _fake_analizar_vehiculos_distintos(imgs):
 
 patentes.analizar = _fake_analizar_vehiculos_distintos
 _c, _r = pedir("/vehiculo/", *_multipart_vehiculo(_VA, _VB, contexto="chapas distintas"))
-check("dos chapas confirmadas dejan marca y modelo en null",
+check("dos chapas confirmadas distintas dejan en duda la identidad común",
       _c == 200 and _r["escena"]["marca"] is None and _r["escena"]["modelo"] is None
+      and _r["escena"]["mismo_vehiculo"] == "duda"
       and _r["escena"]["color"] == "negro" and _r["fotos"][1]["patente"] == "AA123BB", f"HTTP {_c}")
 
 patentes.analizar = _prev_215[5]
@@ -2905,15 +2906,18 @@ _c, _r = pedir("/vehiculo/", *_multipart_vehiculo(_VA, _VB, contexto="dos chapas
 check("ninguna chapa coincide aunque una foto tenga dos",
       _c == 200 and _r["patente"] is None and _r["escena"]["marca"] is None
       and _r["escena"]["modelo"] is None and _r["escena"]["color"] == "negro"
+      and _r["escena"]["mismo_vehiculo"] == "duda"
       and len(_r["fotos"][0]["chapas"]) == 2 and _r["fotos"][1]["patente"] == "AA123BB")
 _veh_segunda = ["A123BCD"]
 _c, _r = pedir("/vehiculo/", *_multipart_vehiculo(_VA, _VB, contexto="una chapa corroborada en las dos fotos"))
 check("una chapa coincide con la segunda aunque la primera tenga otra",
-      _c == 200 and _r["patente"] == "A123BCD" and _r["escena"]["marca"] == "Zanella")
+      _c == 200 and _r["patente"] == "A123BCD" and _r["escena"]["marca"] == "Zanella"
+      and _r["escena"]["mismo_vehiculo"] == "si")
 _veh_primera = []
 _c, _r = pedir("/vehiculo/", *_multipart_vehiculo(_VA, _VB, contexto="una sola foto con chapa"))
 check("si una foto no tiene chapa legible se conserva la lectura de la otra",
-      _c == 200 and _r["patente"] == "A123BCD" and _r["escena"]["marca"] == "Zanella")
+      _c == 200 and _r["patente"] == "A123BCD" and _r["escena"]["marca"] == "Zanella"
+      and _r["escena"]["mismo_vehiculo"] == "si")
 patentes.leer_chapas = _veh_leer_antes
 
 patentes.analizar = _fake_analizar
