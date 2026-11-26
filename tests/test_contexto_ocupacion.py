@@ -149,6 +149,32 @@ class ContextoOcupacionTest(unittest.TestCase):
                 contexto_ocupacion.aplicar(resultado, texto)
                 self.assertEqual(resultado, MUEBLES)
 
+    def test_pedido_explicito_con_retiro_se_resuelve_en_prueba(self):
+        texto = "Ocupación comercial y retiro de muebles"
+        ocupacion = {"key": "ocupacion_comercial", "nombre": "Ocupación comercial"}
+        retiro = {"key": "retiro_muebles", "nombre": "Retiro de muebles"}
+        for respaldo in ("compatible", "contradice"):
+            with self.subTest(respaldo=respaldo):
+                problemas = [ocupacion, retiro] if respaldo == "compatible" else [retiro]
+                resultado = {"modo": "prueba", "foto_valida": True, "problemas": problemas,
+                             "categorias_contexto": [ocupacion | {"respaldo_visual": respaldo},
+                                                     retiro | {"respaldo_visual": "compatible"}]}
+                resultado["solicitudes_sugeridas"] = prioridad.proponer_solicitudes(resultado)
+                contexto_ocupacion.aplicar(resultado, texto)
+                self.assertEqual(resultado["reclamo_foto"]["estado"],
+                                 "compatible" if respaldo == "compatible" else "no_corresponde")
+                self.assertEqual(resultado["solicitudes_sugeridas"]["servicios"], [p["key"] for p in problemas])
+
+        for modo, pedido, categorias in (
+                ("alto", texto, [ocupacion, retiro]),
+                ("prueba", "No es ocupación comercial. Pido retiro de muebles.", [ocupacion, retiro]),
+                ("prueba", "Ocupación del espacio público y retiro de muebles", [ocupacion, retiro]),
+                ("prueba", texto, [retiro])):
+            with self.subTest(modo=modo, pedido=pedido, categorias=categorias):
+                resultado = {"modo": modo, "categorias_contexto": categorias}
+                contexto_ocupacion.aplicar(resultado, pedido)
+                self.assertNotIn("reclamo_foto", resultado)
+
     def test_falta_de_evidencia_se_distingue_de_foto_distinta(self):
         resultado = {}
         contexto_ocupacion.aplicar(resultado, PEDIDO)

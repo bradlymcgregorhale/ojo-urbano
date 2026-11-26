@@ -54,16 +54,21 @@ def mercaderia_en_interior(*descripciones):
                for texto in descripciones if isinstance(texto, str))
 
 
-def _pide_ocupacion(contexto):
+def _pide_ocupacion(contexto, *, pedido_mixto=False):
     texto = _normalizar(contexto)
-    pedido = _EXPLICITO.search(texto) or _GENERICO.search(texto)
+    explicito = _EXPLICITO.search(texto)
+    pedido = explicito or _GENERICO.search(texto)
     return (pedido is not None and not _NEGACION.search(texto[:pedido.start()])
-            and not _OTRO_PEDIDO.search(texto))
+            and ((pedido_mixto and explicito is not None) or not _OTRO_PEDIDO.search(texto)))
 
 
 def aplicar(publica, contexto):
     """Propone el servicio del vecino según lo que la foto permite verificar."""
-    if not _pide_ocupacion(contexto):
+    pedido_mixto = False
+    if publica.get("modo") == "prueba":
+        claves = {c["key"] for c in publica.get("categorias_contexto", []) if c.get("key")}
+        pedido_mixto = _TIPO in claves and bool(claves - _SERVICIOS.keys())
+    if not _pide_ocupacion(contexto, pedido_mixto=pedido_mixto):
         return
 
     problemas = {c.get("key") for c in publica.get("problemas", [])}
