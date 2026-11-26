@@ -98,8 +98,11 @@ def read_local(private, case, identity):
     if not path.is_file():
         raise R.NotAvailable('Missing current local prediction. Run pipeline.py local first.')
     record = json.loads(path.read_text())
-    if record.get('identity') != identity or record.get('photo_sha256') != case['sha256']:
+    if (not isinstance(record, dict) or record.get('identity') != identity
+            or record.get('photo_sha256') != case['sha256']):
         raise R.NotAvailable('Local prediction provenance mismatch.')
+    if not isinstance(record.get('prediction'), dict):
+        raise R.NotAvailable('La predicción local no contiene un resultado válido.')
     return record
 
 
@@ -558,6 +561,13 @@ def main(argv=None):
         return 0
     if args.live and not R.V.api_key():
         parser.error('Missing OPENROUTER_API_KEY')
+    if facturada:
+        for caso in cases:
+            try:
+                verified_photo(args.private, caso)
+                read_local(args.private, caso, identity)
+            except (R.NotAvailable, ValueError, OSError) as error:
+                parser.error(f"{caso['id']}: {error}")
     stamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     output = args.out or args.private / 'runs' / ('pipeline-' + stamp + '.json')
     if output.exists():

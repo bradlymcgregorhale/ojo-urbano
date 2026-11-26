@@ -269,6 +269,39 @@ class PipelineTests(unittest.TestCase):
         self.assertIn('segundo: La referencia debe tener etiquetas true, false o null', stderr.getvalue())
         cargar.assert_not_called()
 
+    def test_medicion_verifica_las_fotos_y_predicciones_antes_de_cargar_el_servidor(self):
+        foto = self.root / 'segunda.jpg'
+        P.Image.new('RGB', (40, 40), 'red').save(foto)
+        original = foto.read_bytes()
+        segundo = self.case | {'id': 'segundo', 'aliases': ['segundo'], 'photo': foto.name,
+                               'sha256': R.D.digest(original)}
+        (self.root / 'cases.json').write_text(json.dumps({'cases': [self.case, segundo]}))
+        salida = self.root / 'lote.json'
+        argumentos = ['run', '--private', str(self.root), '--ids', self.case['id'], 'segundo',
+                      '--modo', 'prueba', '--live', '--budget', '0.02', '--out', str(salida)]
+        prediccion = P.local_path(self.root, segundo, self.identity)
+        casos = [
+            (b'foto alterada', None, 'Photo SHA-256 mismatch.'),
+            (original, None, 'Missing current local prediction.'),
+            (original, [], 'La predicción local no contiene un resultado válido.'),
+        ]
+        for datos, resultado, mensaje in casos:
+            with self.subTest(mensaje=mensaje):
+                foto.write_bytes(datos)
+                if resultado is not None:
+                    R.D.write_json(prediccion, {'identity': self.identity, 'photo_sha256': segundo['sha256'],
+                                                 'prediction': resultado})
+                with (patch.object(R, 'load_env'), patch.object(P.importlib, 'reload'),
+                      patch.object(R.V, 'api_key', return_value='simulada'),
+                      patch.object(P, 'local_identity', return_value=self.identity),
+                      patch.object(P, 'load_server') as cargar, redirect_stderr(io.StringIO()) as stderr,
+                      self.assertRaises(SystemExit) as error):
+                    P.main(argumentos)
+                self.assertEqual(error.exception.code, 2)
+                self.assertIn(f'segundo: {mensaje}', stderr.getvalue())
+                cargar.assert_not_called()
+                self.assertFalse(salida.with_suffix('.consumo.json').exists())
+
     def test_prueba_registra_la_regresion_del_respaldo_sin_cambiar_las_categorias(self):
         self.server.app = FastAPI()
         self.server.CACHE_MAX = self.server.RATE_LIMITE = 0
