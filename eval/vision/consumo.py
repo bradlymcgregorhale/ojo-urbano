@@ -122,7 +122,7 @@ def _desde_respuestas(caso):
     respuestas = caso["respuestas"]
     if any(k in caso for k in ("pedidos", "etiquetas")) or not isinstance(respuestas, list) or not respuestas:
         raise ValueError("Las respuestas archivadas reemplazan los pedidos y las etiquetas manuales")
-    pedidos, etiquetas, sin_traza, recuento, contexto = {}, None, 0, None, None
+    pedidos, sin_traza, verificada = {}, 0, None
     origenes_cache = {}
     for respuesta in respuestas:
         if respuesta is None:
@@ -155,17 +155,18 @@ def _desde_respuestas(caso):
             if intentos is not None and anterior is not None and intentos != anterior:
                 raise ValueError("El mismo pedido tiene dos totales de intentos")
             pedidos[pedido] = anterior if intentos is None else intentos
-        if "problemas" in resultado:
-            contexto = resultado
         if ("problemas" in resultado and resultado.get("verificacion_activa") is not False
-                and resultado.get("analisis_estado") != "sin_verificacion"):
-            etiquetas = [p["key"] for campo in ("problemas", "elementos_detectados")
-                         for p in resultado.get(campo, [])]
-            if "recuento_esperado" in caso:
-                recuento = medidas_bolsas(resultado)
+                and resultado.get("analisis_estado") in (None, "completo")):
+            verificada = resultado
+    etiquetas = recuento = None
+    if verificada is not None:
+        etiquetas = [p["key"] for campo in ("problemas", "elementos_detectados")
+                     for p in verificada.get(campo, [])]
+        if "recuento_esperado" in caso:
+            recuento = medidas_bolsas(verificada)
     return caso | {"pedidos": pedidos, "etiquetas": etiquetas,
                    "respuestas_sin_traza": sin_traza, "recuento_observado": recuento,
-                   "respuesta_contexto": contexto, "origenes_cache": origenes_cache}
+                   "respuesta_contexto": verificada, "origenes_cache": origenes_cache}
 
 
 def _validar(casos):
