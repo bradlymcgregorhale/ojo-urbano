@@ -561,6 +561,17 @@ def _cache_guardar(huella, respuesta):
             _cache.popitem(last=False)
 
 
+def _traza_cache(respuesta, pedido=None):
+    origen = respuesta.get('consumo_api')
+    if origen is None:
+        return respuesta
+    return dict(respuesta, consumo_api={
+        'pedido': pedido or secrets.token_hex(12),
+        'intentos': 0,
+        'origen_cache': origen['pedido'],
+    })
+
+
 def _calidad_segura(img):
     try:
         return verificador.calidad_foto(img)
@@ -600,7 +611,7 @@ def _procesar_prueba(img, local, perfil, verificar, contexto):
     salida = revision_ramas.revisar(img, salida, perfil)
     if contexto and lector is not None:
         _pedidos_prueba(salida, lector.get('pedidos', {}))
-    salida.update(verificador.costo_total(con_estado=True))
+    salida.update(verificador.costo_total(con_estado=True, con_traza=True))
     salida.update(verificador.tokens_total(desglose=True))
     return modos.completar(salida)
 
@@ -1403,7 +1414,7 @@ async def clasificar(request: Request, file: UploadFile = File(...),
     # por el serializador v4. No hay escotilla que devuelva los internals.
     respuesta = _cache_leer(huella)
     if respuesta is not None:
-        return JSONResponse(_publica(respuesta, contexto))
+        return JSONResponse(_publica(_traza_cache(respuesta), contexto))
 
     # Acá hubo una deduplicación de pedidos en vuelo (que el segundo pedido
     # de la misma foto se colgara del primero en vez de pagarla dos veces).
@@ -1419,7 +1430,7 @@ async def clasificar(request: Request, file: UploadFile = File(...),
     if turno == "cache":
         respuesta = _cache_leer(huella)
         if respuesta is not None:
-            return JSONResponse(_publica(respuesta, contexto))
+            return JSONResponse(_publica(_traza_cache(respuesta), contexto))
         # Entre el aviso y la lectura la caché se vació (rarísimo: CACHE_MAX
         # entradas nuevas en milisegundos). Antes que complicar la cola:
         raise _503("el servidor está ocupado; reintentá en un momento")
@@ -1435,7 +1446,7 @@ async def clasificar(request: Request, file: UploadFile = File(...),
     return JSONResponse(_publica(respuesta, contexto))
 
 
-async def _correr_con_cupo(datos, contexto, verificar, huella, perfil=None, funcion=None):
+async def _correr_con_cupo(datos, contexto, verificar, huella, perfil=None, funcion=None, *, pedido_consumo=None):
     """Corre el pipeline con el cupo YA tomado, fuera del event loop.
 
     funcion: callable sin argumentos que reemplaza a procesar() (lo usa
@@ -1510,7 +1521,7 @@ async def _correr_con_cupo(datos, contexto, verificar, huella, perfil=None, func
     # estaba encolado, el finally de trabajo() nunca se ejecuta y el cupo se
     # perdería para siempre.
     def ejecutar():
-        with modos.usar(perfil):
+        with modos.usar(perfil, pedido_consumo=pedido_consumo):
             return trabajo()
 
     try:
@@ -1764,13 +1775,15 @@ async def _correr_trabajo(t):
             # el trabajo muere con error aunque el hilo siga por ahí.
             respuesta = await asyncio.wait_for(
                 _correr_con_cupo(datos, t["contexto"], t["verificar"],
-                                 t["huella"], t.get("perfil")),
+                                 t["huella"], t.get("perfil"),
+                                 pedido_consumo=(t.get("consumo_api") or {}).get("pedido")),
                 TECHO_TRABAJO + 30)
         else:
             # "cache": un pedido idéntico terminó mientras esperábamos.
             respuesta = _cache_leer(t["huella"])
             if respuesta is None:
                 raise _503("el servidor está ocupado; reintentá en un momento")
+            respuesta = _traza_cache(respuesta, (t.get("consumo_api") or {}).get("pedido"))
         t["resultado"] = _publica(respuesta, t["contexto"])
         t["estado"] = "listo"
     except HTTPException as e:
@@ -1807,7 +1820,7 @@ async def crear_trabajo(request: Request, file: UploadFile = File(...),
     respuesta = _cache_leer(huella)
     if respuesta is not None:
         return JSONResponse({"trabajo": None, "estado": "listo",
-                             **perfil.metadatos(), "resultado": _publica(respuesta, contexto)})
+                             **perfil.metadatos(), "resultado": _publica(_traza_cache(respuesta), contexto)})
     if _saturado():
         raise _503("el servidor está degradado; reintentá más tarde", 30)
     _podar_trabajos()
@@ -1824,12 +1837,13 @@ async def crear_trabajo(request: Request, file: UploadFile = File(...),
     t = {"id": tid, "ip": ip, "estado": "en_cola", "creado": time.monotonic(),
          "fin": None, "resultado": None, "detalle": None, "datos": datos,
          "contexto": contexto, "verificar": verificar, "huella": huella, "perfil": perfil}
+    if perfil.modo == "prueba":
+        t["consumo_api"] = {"pedido": secrets.token_hex(12), "intentos": None}
     _trabajos[tid] = t
     # La referencia a la tarea vive en el registro: sin ella, una excepción
     # en una tarea ya recolectada se loguea como "never retrieved".
     t["tarea"] = asyncio.create_task(_correr_trabajo(t))
-    return JSONResponse({"trabajo": tid, "estado": "en_cola", **perfil.metadatos(),
-                         "posicion": _posicion_trabajo(t)}, status_code=202)
+    return JSONResponse(_estado_trabajo(tid), status_code=202)
 
 
 def _estado_trabajo(tid):
@@ -1846,6 +1860,10 @@ def _estado_trabajo(tid):
         r["resultado"] = revision_publica.completar_historico(t["resultado"])
     elif t["estado"] in ("error", "cancelado"):
         r["detail"] = t["detalle"]
+    if "consumo_api" in t and t["estado"] != "listo":
+        r["consumo_api"] = t["consumo_api"]
+        if t["estado"] == "cancelado":
+            r["consumo_api"] = dict(t["consumo_api"], intentos=0)
     return r
 
 

@@ -125,6 +125,7 @@ def cargar(verificador, opciones_servidor, entorno=None):
 @dataclass
 class Registro:
     perfil: Perfil
+    pedido_consumo: str | None = None
     fallos: set = field(default_factory=set)
     omitidas: set = field(default_factory=set)
     pendientes: set = field(default_factory=set)
@@ -140,9 +141,14 @@ def perfil_actual():
     return r.perfil if r else None
 
 
+def pedido_consumo_actual():
+    r = _actual.get()
+    return r.pedido_consumo if r else None
+
+
 @contextmanager
-def usar(perfil):
-    token = _actual.set(Registro(perfil) if perfil else None)
+def usar(perfil, *, pedido_consumo=None):
+    token = _actual.set(Registro(perfil, pedido_consumo) if perfil else None)
     try:
         yield
     finally:

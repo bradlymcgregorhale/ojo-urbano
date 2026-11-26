@@ -899,7 +899,8 @@ check("registra el fallo de transporte y detiene el envío tras recibir la trunc
       and [r["error"] for r in _cache_registros] == ["URLError", "RespuestaNoUtilizableError"]
       and _cache_registros[1]["finish_reason"] == "length")
 check("el costo incluye la respuesta paga rechazada sin duplicarla",
-      _total_cache == 0.002 and V._costo_foto.get()["llamadas"] == 1)
+      _total_cache == 0.002 and [r["cost"] for r in _cache_registros if r["cost"] is not None] == [0.002]
+      and V.costo_total(con_estado=True, con_traza=True)["consumo_api"]["intentos"] == 2)
 check("un fallo sin usage es desconocido, no costo ni tokens cero",
       _cache_registros[0]["cost"] is None and _cache_registros[0]["cached_tokens"] is None
       and "ERROR_PRIVADO" not in _cache_log.getvalue())

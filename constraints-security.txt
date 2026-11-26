@@ -1,5 +1,8 @@
-# Versiones corregidas verificadas en la auditoría del 11/10/2026.
+# Versiones corregidas registradas en la auditoría de dependencias.
 # Mantener estas restricciones en instalaciones nuevas y actualizaciones.
-pillow==12.3.0
-urllib3==2.8.0
+certifi==2026.10.18
+filelock==4.2.1
 fsspec==2026.6.0
+pillow==13.0.0
+setuptools==84.1.0
+urllib3==2.8.0
