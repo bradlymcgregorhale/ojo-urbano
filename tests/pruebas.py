@@ -103,6 +103,9 @@ guard_modelo.adquirir_singleton = lambda *a, **k: None
 import servidor as S  # noqa: E402
 import servidor
 guard_modelo.adquirir_singleton = _adquirir_real
+# Las pruebas con imágenes ficticias activan su propio detector simulado.
+_disponible_chapas = S.patentes.disponible
+S.patentes.disponible = lambda: False
 S_ROOT = AQUI
 import verificador as V  # noqa: E402
 from tests import test_modos_analisis
@@ -5755,6 +5758,7 @@ _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_revi
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_vision_runner))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_vision_pipeline))
 _suite_alcance.addTests(unittest.defaultTestLoader.loadTestsFromModule(test_vision_consumo))
+S.patentes.disponible = _disponible_chapas
 _resultado_alcance = unittest.TextTestRunner(verbosity=2).run(_suite_alcance)
 _fallas_alcance = len(_resultado_alcance.errors) + len(_resultado_alcance.failures)
 _ok += _resultado_alcance.testsRun - _fallas_alcance
