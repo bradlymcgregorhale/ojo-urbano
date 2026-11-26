@@ -624,10 +624,8 @@ def _procesar_prueba(img, local, perfil, verificar, contexto):
 
 
 def _pedidos_prueba(salida, pedidos):
-    vistas = {p['key'] for p in salida['problemas']}
     salida['categorias_contexto'] = [
-        {'key': clave, 'nombre': nombre_de(clave), 'fuentes': 1,
-         'respaldo_visual': 'compatible' if clave in vistas else respaldo}
+        {'key': clave, 'nombre': nombre_de(clave), 'fuentes': 1, 'respaldo_visual': respaldo}
         for clave, respaldo in pedidos.items()
     ]
     respaldos = {c['respaldo_visual'] for c in salida['categorias_contexto']}

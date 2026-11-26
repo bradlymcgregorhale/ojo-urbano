@@ -928,6 +928,37 @@ class ApiModos(unittest.TestCase):
             data={'modo': 'prueba'}).status_code, 422)
         self.assertEqual(self.llamadas, [])
 
+    def test_prueba_un_hallazgo_de_la_misma_categoria_no_cambia_el_respaldo_del_pedido(self):
+        foto = ('foto.jpg', self.foto, 'image/jpeg')
+        retiro, vereda = 'retiro_muebles', 'reparacion_vereda'
+        for respaldo, mixto in (('contradice', True), ('neutral', True), ('compatible', True), ('contradice', False)):
+            with self.subTest(respaldo=respaldo, mixto=mixto):
+                objeto = 'ropero' if respaldo == 'compatible' else 'heladera blanca'
+                contexto = f'Retiro de {objeto}' + (' y reparación de baldosas' if mixto else '')
+
+                def responder(req, *_):
+                    lectura = {'confirmadas': [], 'dudosas': []}
+                    if json.loads(req.data)['model'] == 't/decision':
+                        lectura['confirmadas'] = [{'key': retiro, 'evidencia': 'Ropero descartado.'}]
+                        lectura['pedidos'] = [{'key': retiro, 'respaldo': respaldo}]
+                        if mixto:
+                            lectura['confirmadas'].append({'key': vereda, 'evidencia': 'Faltan baldosas.'})
+                            lectura['pedidos'].append({'key': vereda, 'respaldo': 'compatible'})
+                    return {'usage': {'cost': .001}, 'choices': [
+                        {'finish_reason': 'stop', 'message': {'content': json.dumps(lectura)}}]}
+
+                with patch.object(self.S, 'CACHE_MAX', 0), patch.object(V, '_pedir_http', side_effect=responder):
+                    r = self.cliente.post('/clasificar', files={'file': foto},
+                                          data={'modo': 'prueba', 'contexto': contexto})
+                self.assertEqual(r.status_code, 200, r.text)
+                salida = r.json()
+                self.assertEqual(salida['categorias_contexto'][0]['respaldo_visual'], respaldo)
+                self.assertIs(salida['foto_valida'], mixto)
+                self.assertEqual([p['key'] for p in salida['problemas']], [retiro, vereda] if mixto else [])
+                self.assertEqual([p['key'] for p in salida['descartados_por_foto']], [] if mixto else [retiro])
+                servicios = [retiro, vereda] if respaldo == 'compatible' else [vereda] if mixto else []
+                self.assertEqual(salida['solicitudes_sugeridas']['servicios'], servicios)
+
     def test_prueba_conserva_el_pedido_de_ocupacion_y_distingue_otra_foto(self):
         foto = ('foto.jpg', self.foto, 'image/jpeg')
         datos = {'modo': 'prueba', 'contexto': 'Uso indebido del espacio público'}
