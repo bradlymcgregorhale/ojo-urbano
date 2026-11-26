@@ -26,7 +26,9 @@ Si revisaste el recuento de bolsas, agregá `recuento_esperado` al caso con sól
 
 En Completo (prueba), agregá `"bolsas_fuentes": 2` a `recuento_esperado` si también necesitás que dos lectores respalden el mínimo. Una respuesta anterior que omite el campo queda sin acreditar ese requisito.
 
-En `respuestas`, incluí en orden los JSON devueltos por Completo (prueba) para esa foto. La herramienta toma del último análisis sus etiquetas y lee `consumo_api.pedido` e `intentos` de cada resultado. En la carga web, guardá el JSON final de `/trabajos/`. Si falta el resultado, conservá el último estado del trabajo. Bacollab guarda el JSON de `/clasificar/` en `image_api_calls.response_text`. Incluí `null` si un envío se cortó sin devolver el JSON. Eso deja la conciliación pendiente incluso si otro envío terminó. Corré ambos recorridos con `CACHE_MAX=0` en una instancia de evaluación para que cada uno ejecute el análisis.
+En `respuestas`, incluí en orden los JSON devueltos por Completo (prueba) para esa foto. Las etiquetas, el recuento y el respaldo del pedido salen del mismo último análisis completo con verificación activa. Si sólo hay análisis parciales o sin verificación, quedan sin puntuar. El costo incluye los intentos de todas las respuestas. Las respuestas archivadas anteriores al campo `analisis_estado` siguen sirviendo para comparar etiquetas y recuento cuando contienen un resultado verificado.
+
+En la carga web, guardá el JSON final de `/trabajos/`. Si falta el resultado, conservá el último estado del trabajo. Bacollab guarda el JSON de `/clasificar/` en `image_api_calls.response_text`. Incluí `null` si un envío se cortó sin devolver el JSON. Eso deja la conciliación pendiente incluso si otro envío terminó. Corré ambos recorridos con `CACHE_MAX=0` en una instancia de evaluación para que cada uno ejecute el análisis.
 
 Si guardaste una respuesta de caché, incluí el resultado identificado por `consumo_api.origen_cache` en el mismo caso. El informe registra cero intentos para la copia y cuenta el cargo del original una sola vez. Si el origen falta o pertenece a otro recorrido, el costo de ese caso queda pendiente.
 
