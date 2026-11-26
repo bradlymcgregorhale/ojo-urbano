@@ -602,10 +602,11 @@ def _procesar_prueba(img, local, perfil, verificar):
     recuento = lector.get('recuento_escombros') if lector else None
     if recuento is not None:
         salida['verificacion_escombros'] = recuento
-        if recuento['bolsas_recuento_completo']:
+        minimo = recuento['bolsas_minimo']
+        if recuento['bolsas_recuento_completo'] and minimo <= verificador.CUENTA_MAX:
             for problema in problemas:
                 if problema['key'] == 'retiro_escombros':
-                    problema['bolsas'] = verificador._cuenta_1_a_15(recuento['bolsas_minimo'])
+                    problema['bolsas'] = minimo
     salida = revision_ramas.revisar(img, salida, perfil)
     salida.update(verificador.costo_total(con_estado=True, con_traza=True))
     salida.update(verificador.tokens_total(desglose=True))
@@ -2191,7 +2192,7 @@ PAGINA = r"""<!DOCTYPE html>
         0 (sin verificación: respuesta degradada).</div>
 
       <div class="apinota"><b>Detalle de los problemas confirmados.</b> Solo <code>problemas[]</code>
-        incluye los campos de retiro: <code>retiro_escombros.bolsas</code> (1 a 15 o null, sin contar);
+        incluye los campos de retiro: <code>retiro_escombros.bolsas</code> (1 a 15, 0 para material suelto corroborado en Completo (prueba), o null);
         <code>retiro_muebles.objeto_tipo</code>, <code>objeto_tam</code> (chico o grande),
         <code>objeto_cant</code> (1 a 15 o null) y <code>objetos</code> (hasta 8 descripciones);
         <code>retiro_objetos.elemento</code> (tipo de elemento o null). Estos nombres de categoría
