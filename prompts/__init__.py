@@ -14,7 +14,6 @@ REGLA_SUBTIPO_HUMEDOS = cargar_prompt('compartidos/subtipo_humedos')
 
 RUBRICA_CATEGORIAS = (
     'retiro_muebles',
-    'retiro_objetos',
     'retiro_escombros',
     'recoleccion',
     'barrido',
