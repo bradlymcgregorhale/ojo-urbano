@@ -257,6 +257,18 @@ class PipelineTests(unittest.TestCase):
         self.assertIn('recuento', stderr.getvalue())
         cargar.assert_not_called()
 
+    def test_prueba_valida_las_etiquetas_de_todo_el_lote_antes_de_cargar_el_servidor(self):
+        segundo = self.case | {'id': 'segundo', 'aliases': ['segundo'],
+                               'expected': {'recoleccion': True, 'retiro_muebles': 'duda'}}
+        (self.root / 'cases.json').write_text(json.dumps({'cases': [self.case, segundo]}))
+        with (patch.object(R, 'load_env'), patch.object(P.importlib, 'reload'),
+              patch.object(P, 'load_server') as cargar, redirect_stderr(io.StringIO()) as stderr,
+              self.assertRaises(SystemExit) as salida):
+            P.main(['run', '--private', str(self.root), '--ids', self.case['id'], 'segundo', '--modo', 'prueba'])
+        self.assertEqual(salida.exception.code, 2)
+        self.assertIn('segundo: La referencia debe tener etiquetas true, false o null', stderr.getvalue())
+        cargar.assert_not_called()
+
     def test_prueba_registra_la_regresion_del_respaldo_sin_cambiar_las_categorias(self):
         self.server.app = FastAPI()
         self.server.CACHE_MAX = self.server.RATE_LIMITE = 0
