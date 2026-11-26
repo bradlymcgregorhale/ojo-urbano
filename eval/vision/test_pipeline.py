@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from urllib.request import Request
 
-from fastapi import FastAPI, Form, UploadFile
+from fastapi import FastAPI, Form, Header, UploadFile
 
 from eval.vision import pipeline as P
 from eval.vision import run as R
@@ -57,14 +57,16 @@ class PipelineTests(unittest.TestCase):
     def test_replay_prueba_scores_only_exact_archived_http_requests(self):
         self.server.app = FastAPI()
         self.server.CACHE_MAX = 10
+        self.server.API_TOKEN = 'test-only-token'
         url = 'https://openrouter.example/chat/completions'
         cuerpo = {'model': 'lector', 'response_format': {'type': 'json_schema'}}
         resultado = dict(self.public, modo='prueba', modo_version='version-prueba', analisis_estado='completo',
                          problemas=[{'key': 'recoleccion'}], hay_problema=True, hay_reclamo=True)
 
         @self.server.app.post('/clasificar')
-        async def clasificar(file: UploadFile, modo: str = Form(), contexto: str = Form('')):
+        async def clasificar(file: UploadFile, modo: str = Form(), contexto: str = Form(''), x_api_token: str = Header()):
             self.assertEqual(modo, 'prueba')
+            self.assertEqual(x_api_token, self.server.API_TOKEN)
             self.assertEqual((await file.read()), (self.root / self.case['photo']).read_bytes())
             solicitud = Request(url, data=json.dumps(cuerpo | {'contexto': contexto}).encode())
             try:
@@ -77,6 +79,7 @@ class PipelineTests(unittest.TestCase):
         archivadas = {huella: {'usage': {'cost': .003}}}
         row = P.evaluate_prueba(self.case, self.root, self.identity, self.server, archivadas)
         self.assertEqual((row['status'], row['modo_version'], row['cost_usd']), ('pass', 'version-prueba', 0))
+        self.assertNotIn(self.server.API_TOKEN, json.dumps(row))
         self.assertEqual(row['requests'][0]['raw'], archivadas[huella])
         distinto = dict(self.case, context='Otro pedido')
         row = P.evaluate_prueba(distinto, self.root, self.identity, self.server, archivadas)
