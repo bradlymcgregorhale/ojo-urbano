@@ -1149,6 +1149,46 @@ class ApiModos(unittest.TestCase):
                     self.assertEqual(salida['solicitudes_sugeridas']['estado'], 'pendiente')
                     self.assertEqual(salida['solicitudes_sugeridas']['criterio'], 'pedidos_explicitos')
 
+    def test_prueba_considera_la_lectura_previa_para_el_pedido_de_ocupacion(self):
+        ocupacion = {'key': 'ocupacion_comercial', 'evidencia': 'Sillas y ropa exhibidas frente al local.'}
+        muebles = {'key': 'retiro_muebles', 'evidencia': 'Sillón junto al cordón.'}
+        foto = ('foto.jpg', self.foto, 'image/jpeg')
+        casos = (
+            (True, True, 'compatible', ['ocupacion_comercial']),
+            (False, True, 'compatible', []),
+            (True, False, 'compatible', []),
+            (True, True, 'neutral', []),
+            (True, True, None, ['retiro_muebles']),
+        )
+        for previa, duda, respaldo, servicios in casos:
+            with self.subTest(previa=previa, duda=duda, respaldo=respaldo):
+                def responder(req, *_):
+                    cuerpo = json.loads(req.data)
+                    inicial = 'Aclaraciones para esta escena' in cuerpo['messages'][0]['content']
+                    lectura = {'confirmadas': [ocupacion] if previa and inicial else [], 'dudosas': []}
+                    if cuerpo['model'] == 't/decision':
+                        lectura['confirmadas'] = [muebles]
+                        lectura['dudosas'] = [ocupacion] if duda else []
+                        if respaldo:
+                            lectura['pedidos'] = [{'key': 'ocupacion_comercial', 'respaldo': respaldo}]
+                    return {'usage': {'cost': .001}, 'choices': [
+                        {'finish_reason': 'stop', 'message': {'content': json.dumps(lectura)}}]}
+
+                texto = 'Uso indebido del espacio público' if respaldo else ''
+                with patch.object(self.S, 'CACHE_MAX', 0), patch.object(V, '_pedir_http', side_effect=responder):
+                    r = self.cliente.post('/clasificar', files={'file': foto},
+                                          data={'modo': 'prueba', 'contexto': texto})
+                self.assertEqual(r.status_code, 200, r.text)
+                salida = r.json()
+                self.assertEqual(salida['analisis_estado'], 'completo')
+                self.assertEqual([p['key'] for p in salida['problemas']], ['retiro_muebles'])
+                self.assertEqual('ocupacion_comercial' in salida['en_duda'], duda)
+                self.assertEqual(salida['solicitudes_sugeridas']['servicios'], servicios)
+                if servicios == ['ocupacion_comercial']:
+                    self.assertEqual(salida['reclamo_foto']['codigo'], '118001')
+                    self.assertTrue(salida['solicitudes_sugeridas']['requiere_confirmacion'])
+                    self.assertTrue(salida['conclusion']['requiere_revision'])
+
     def test_prueba_conserva_el_pedido_de_ocupacion_y_distingue_otra_foto(self):
         foto = ('foto.jpg', self.foto, 'image/jpeg')
         datos = {'modo': 'prueba', 'contexto': 'Uso indebido del espacio público'}

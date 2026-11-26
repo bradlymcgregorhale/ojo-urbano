@@ -416,6 +416,9 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
               'categorias': [{'key': k, 'evidencia': e} for k, e in confirmadas.items()]}
     if 'pedidos' in final:
         modelo['pedidos'] = final['pedidos']
+    if (sol != luna and pedidos.get(ocupacion) == 'compatible' and ocupacion in dudas
+            and ocupacion in inicio.get('confirmadas', {})):
+        modelo['respaldo_previo_ocupacion'] = True
     if 'retiro_escombros' in fuentes:
         modelo['recuento_escombros'] = _recuento(retiros, final)
     if 'retiro_muebles' in fuentes:

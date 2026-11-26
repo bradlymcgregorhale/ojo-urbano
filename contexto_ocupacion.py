@@ -58,7 +58,7 @@ def _pide_ocupacion(contexto, *, prueba=False, pedido_mixto=False):
             and ((pedido_mixto and explicito is not None) or not _OTRO_PEDIDO.search(texto)))
 
 
-def aplicar(publica, contexto):
+def aplicar(publica, contexto, *, respaldo_previo=False):
     """Propone el servicio del vecino según lo que la foto permite verificar."""
     prueba = publica.get("modo") == "prueba"
     pedido_mixto = False
@@ -106,7 +106,7 @@ def aplicar(publica, contexto):
         estado, motivo = "sin_evidencia", "En la foto no se alcanza a ver la ocupación de la vereda."
     elif solo_contenedor:
         estado, motivo = "no_corresponde", "La foto muestra un contenedor. No se ve la ocupación reportada."
-    elif indicio_de_venta:
+    elif indicio_de_venta or (prueba and respaldo_previo and publica.get("analisis_estado") == "completo"):
         servicios = [_TIPO]
         estado = "compatible"
         motivo = "Lo que se ve en la vereda es compatible con el pedido de ocupación."

@@ -1217,7 +1217,8 @@ def _publica(r, contexto=""):
     pub['conclusion'] = _conclusion(pub)
     if pub['conclusion']['estado'] == 'preliminar':
         pub['descripcion'] = pub['conclusion']['texto']
-    contexto_ocupacion.aplicar(pub, contexto)
+    contexto_ocupacion.aplicar(pub, contexto, respaldo_previo=any(
+        v.get("respaldo_previo_ocupacion") for v in (veri.get("verificadores") or [])))
     return pub
 
 
