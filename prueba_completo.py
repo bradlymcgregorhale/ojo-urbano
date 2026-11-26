@@ -41,10 +41,11 @@ OBJETOS = ('Si confirmás retiro_muebles, enumerá en objetos hasta ocho volumin
            'distingan en la foto. Usá nombres cortos, por ejemplo "lavarropas", "armario" o "silla plástica". '
            'Excluí el contenedor, los objetos en uso y lo que no se distingue. Si no confirmás retiro_muebles '
            'o no podés identificar ningún objeto, devolvé [].')
+MATERIALES_OBRA = ('obra_visible', 'obra_por_presentacion')
 ESTADOS_ALCANCE = {
     'ubicacion': ('publica', 'privada', 'indeterminada'),
     'presentacion': ('sacos_portables_o_suelto', 'solo_bolson_izado', 'sin_pila', 'indeterminada'),
-    'material': ('obra_visible', 'tapado_o_ambiguo', 'incompatible_visible', 'indeterminado'),
+    'material': (*MATERIALES_OBRA, 'tapado_o_ambiguo', 'incompatible_visible', 'indeterminado'),
     'residuos_comunes_aparte': ('si', 'no', 'indeterminado'),
 }
 
@@ -250,11 +251,18 @@ def _decision(lecturas, scores, claves):
     return texto
 
 
-def _escombro_elegible(lecturas):
-    return all(r is not None and r['ubicacion'] == 'publica'
+def _respaldo_alcance_escombros(lecturas):
+    if not all(r is not None and r['ubicacion'] == 'publica'
                and r['presentacion'] == 'sacos_portables_o_suelto'
-               and r['material'] in {'obra_visible', 'tapado_o_ambiguo'}
-               and r['residuos_comunes_aparte'] == 'si' for r in lecturas)
+               and r['residuos_comunes_aparte'] == 'si' for r in lecturas):
+        return None
+    materiales = {r['material'] for r in lecturas}
+    obra = set(MATERIALES_OBRA)
+    if materiales <= obra:
+        return 'compatible'
+    if materiales <= obra | {'tapado_o_ambiguo'}:
+        return 'neutral'
+    return None
 
 
 def _recuento(retiros, final):
@@ -364,8 +372,14 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
             and modos.caben_apoyos('prueba_alcance', 'prueba_alcance')):
         alcances = V._map_modelos((luna, apoyo),
             lambda modelo: _leer(modelo, TEXTOS['alcance'], foto, 'alcance'))
-        if all(r is not V._FALLO_MODELO for r in alcances) and _escombro_elegible(alcances):
-            fuentes['retiro_escombros'] = ['modelo_local', luna, apoyo]
+        if all(r is not V._FALLO_MODELO for r in alcances):
+            respaldo = _respaldo_alcance_escombros(alcances)
+            if respaldo == 'compatible':
+                fuentes['retiro_escombros'] = ['modelo_local', luna, apoyo]
+            elif respaldo == 'neutral':
+                dudas.setdefault('retiro_escombros', 'No se pudo corroborar el contenido de las bolsas.')
+                if 'retiro_escombros' in pedidos:
+                    pedidos['retiro_escombros'] = respaldo
     if {'reparacion_cordon', 'retiro_escombros'} <= fuentes.keys() and votos_fragmentos != (False, False):
         modos.omitir('fragmentos_cordon', ('retiro_escombros',))
     evidencia = confirmadas.get('obstruccion', '').casefold()
