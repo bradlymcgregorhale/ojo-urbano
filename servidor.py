@@ -1404,7 +1404,7 @@ async def _perfil_formulario(request, *, admite_prueba=False):
 @app.post("/clasificar")
 async def clasificar(request: Request, file: UploadFile = File(...),
                      verificar: str = "auto", contexto: str = Form(""),
-                     modo: Any = Form("alto", description="Modo de análisis: bajo, medio o alto.")):
+                     modo: Any = Form("alto", description="Modo de análisis: bajo, medio, alto o prueba.")):
     perfil = await _perfil_formulario(request, admite_prueba=True)
     datos = await _leer_acotado(file)
     contexto = (contexto or "").strip()[:CONTEXTO_MAX]
@@ -1811,7 +1811,7 @@ async def _correr_trabajo(t):
 @app.post("/trabajos/")
 async def crear_trabajo(request: Request, file: UploadFile = File(...),
                         verificar: str = "auto", contexto: str = Form(""),
-                     modo: Any = Form("alto", description="Modo de análisis: bajo, medio o alto.")):
+                        modo: Any = Form("alto", description="Modo de análisis: bajo, medio, alto o prueba.")):
     perfil = await _perfil_formulario(request, admite_prueba=True)
     datos = await _leer_acotado(file)
     contexto = (contexto or "").strip()[:CONTEXTO_MAX]
@@ -2138,7 +2138,7 @@ PAGINA = r"""<!DOCTYPE html>
         </select>
       </div>
       <p id="modo-ayuda">Las fotos empiezan en Completo (prueba), que evalúa categorías y muestra el costo de la API.
-        Si agregás un comentario, elegí otro modo antes de analizar. Completo puede costar más.</p>
+        Completo puede costar más.</p>
       <p id="modo-estado" role="status" aria-live="polite"></p>
     </div>
   </section>
@@ -2180,7 +2180,7 @@ PAGINA = r"""<!DOCTYPE html>
           <code class="ruta" data-ep="clasificar"></code>
           <div class="epdesc">Una foto, esperando el resultado en la misma conexión (25-60 s).
             multipart/form-data con <b>file</b> (JPG/PNG/WEBP, máx. 10 MB), <b>contexto</b> opcional
-            (máx. 2000 caracteres) y <b>modo</b>: bajo, medio o alto (predeterminado). Ocupado: <code>503</code> con <b>Retry-After</b>.</div></div>
+            (máx. 2000 caracteres) y <b>modo</b>: bajo, medio, alto (predeterminado) o prueba. Ocupado: <code>503</code> con <b>Retry-After</b>.</div></div>
         <div class="ep1"><span class="met met-post">POST</span>
           <code class="ruta" data-ep="trabajos"></code>
           <div class="epdesc">Mismos campos, respuesta inmediata: <code>202 {"trabajo": id, "estado":
@@ -2324,7 +2324,7 @@ while t["estado"] not in ("listo", "error"):
 print(t.get("resultado") or t)`,
  js:`const fd = new FormData();
 fd.append("file", fileInput.files[0]);
-fd.append("modo", "alto"); // bajo, medio o alto
+fd.append("modo", "alto"); // bajo, medio, alto o prueba
 fd.append("contexto", "vidrios rotos en la vereda"); // opcional, por foto
 let t = await (await fetch("${T}", { method: "POST", body: fd })).json();
 while (t.estado !== "listo" && t.estado !== "error") {

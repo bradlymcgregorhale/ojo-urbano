@@ -139,15 +139,15 @@ Si el texto pide ocupación de la vereda o del espacio público y apunta a un lo
 En `servicios` aparecen `ocupacion_comercial` cuando hay productos visibles ofrecidos a la venta
 (`118001`), `obstruccion` cuando hay un elemento que ocupa el paso (`118020`), o ambos si se
 trata de elementos distintos. La foto compatible también propone los servicios en
-`solicitudes_sugeridas` para confirmar. Una foto que no corresponde o
-carece de evidencia deja la lista de servicios vacía. `problemas` conserva el diagnóstico
-visual. Sin pedido de ocupación, el análisis sigue usando las señales de la foto.
+`solicitudes_sugeridas` para confirmar. Si falta respaldo de ocupación, `reclamo_foto.servicios`
+queda vacío. En Completo (prueba), un pedido mixto puede conservar otros servicios solicitados
+que la foto sí respalda. Sin pedido de ocupación, el análisis sigue usando las señales de la foto.
 
 Recibe `multipart/form-data` con estos campos:
 
 - `file`: la foto.
 - `contexto`: texto opcional de hasta 2000 caracteres. Lo que pasa de ese tope se recorta; el pedido no falla.
-- `modo`: `bajo` (Económico), `medio` (Equilibrado) o `alto` (Completo). Se envía como campo del formulario; si lo omitís, se usa `alto`. Qué hace cada uno está en [Modos de análisis](#modos-de-análisis).
+- `modo`: `bajo` (Económico), `medio` (Equilibrado), `alto` (Completo) o `prueba` (Completo de prueba). Se envía como campo del formulario; si lo omitís, se usa `alto`. Qué hace cada uno está en [Modos de análisis](#modos-de-análisis).
 - `verificar`: `auto`, `1` o `0`. El valor por defecto es `auto`, que verifica cuando hay una clave configurada. `1` fuerza la verificación y `0` devuelve una respuesta degradada, sin clasificación.
 
 Los modelos usan `contexto` para interpretar la imagen y decidir si respalda lo que se describió. La API nunca devuelve ese texto porque puede contener nombres o patentes.
