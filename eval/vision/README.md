@@ -2,6 +2,22 @@
 
 Esta suite envía fotos reales a los verificadores de producción y compara sus respuestas con categorías revisadas por una persona. Usa las funciones y los prompts actuales de `verificador.py`. `run.py` evalúa lecturas individuales sin cargar el clasificador local. `pipeline.py` evalúa el resultado final, con predicciones locales reales guardadas previamente.
 
+## Reproducción del ensayo de USD 0,01
+
+`centavo.py` aplica los últimos ajustes a la referencia local guardada. Omite revisiones de poda sin indicios de vegetación y de vereda en propiedad privada. Para voluminosos pide dos caras rígidas que se encuentren en una esquina, apoyo sobre el pavimento y corroboración del mismo objeto. Descarta el recorte de un posible cajón si queda dentro del cuerpo del contenedor y por encima de su base.
+
+La medición está en [centavo_resultado.json](centavo_resultado.json). Coinciden todas las etiquetas revisadas en **749 de 834 fotos**. Quedan 93 diferencias de etiqueta. Se conservaron los seis controles de WhatsApp. El costo máximo de **USD 0,00999350** es simulado. La clasificación de un caso depende de las etiquetas que sí se revisaron.
+
+En los recibos históricos, el costo varió por nivel de servicio y cantidad de tokens. En la simulación actual, 16 tokens más de salida en la primera lectura habrían puesto 70 fotos por encima de USD 0,01 antes del ajuste de poda. El ensayo de JSON compacto quedó afuera por un cambio incorrecto de escombros a recolección en un control. Falta conciliar el gasto del recorrido completo y verificar en otra muestra que la revisión de la pieza rígida recupere voluminosos.
+
+```sh
+python -m unittest eval.vision.test_centavo
+python -m eval.vision.centavo --evidencia "$EVIDENCIA_VISION" \
+  --lector "$LECTOR_ARCHIVADO" --corroborador "$CORROBORADOR_ARCHIVADO"
+```
+
+`EVIDENCIA_VISION` apunta al directorio privado del ensayo. Los dos lectores corresponden a claves distintas del archivo de respuestas guardadas. El programa comprueba las huellas de los recortes y devuelve un resumen sin datos de fotos individuales. Esta evaluación usa lecturas archivadas, se ejecuta sin red y queda separada de la API.
+
 ## Comprobación de regresiones del resultado final
 
 Estas comprobaciones no hacen llamadas a OpenRouter:
