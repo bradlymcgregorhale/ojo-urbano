@@ -200,6 +200,14 @@ def _resumen_foto(chapas):
     return None, chapas[0]["motivo"]
 
 
+def chapas_distintas_entre_fotos(fotos):
+    """Devuelve las chapas corroboradas cuando ambas fotos leen chapas y ninguna coincide."""
+    if len(fotos) != 2:
+        return set()
+    a, b = ({c["patente"] for c in f["chapas"] if c["legible"]} for f in fotos)
+    return a | b if a and b and a.isdisjoint(b) else set()
+
+
 def analizar(imgs, lectores=None):
     """Una o dos fotos -> {fotos: [{chapas, patente, motivo}], patente, motivo}.
 
@@ -211,10 +219,11 @@ def analizar(imgs, lectores=None):
         patente, motivo = _resumen_foto(chapas)
         fotos.append({"chapas": chapas, "patente": patente, "motivo": motivo})
     leidas = {f["patente"] for f in fotos if f["patente"]}
-    if len(leidas) == 1:
+    distintas = chapas_distintas_entre_fotos(fotos)
+    if distintas or len(leidas) > 1:
+        patente, motivo = None, "las fotos muestran chapas distintas: " + " / ".join(sorted(distintas or leidas))
+    elif len(leidas) == 1:
         patente, motivo = next(iter(leidas)), None
-    elif len(leidas) > 1:
-        patente, motivo = None, "las fotos muestran chapas distintas: " + " / ".join(sorted(leidas))
     else:
         patente, motivo = None, next((f["motivo"] for f in fotos if f["motivo"]), "sin chapa visible")
     return {"fotos": fotos, "patente": patente, "motivo": motivo,

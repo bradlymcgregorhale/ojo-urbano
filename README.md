@@ -754,7 +754,7 @@ Para cada foto ubica las chapas con un detector ONNX en CPU, recorta cada una co
 
 `escena` sale del consenso de los verificadores configurados (al menos dos coincidencias por campo): `vehiculos_protagonistas`, `tipo`, `color`, `mismo_vehiculo` (solo con dos fotos), `infraccion` (`vereda`, `ochava`, `sumidero`, `doble_fila`, `senda_peatonal`, `rampa`, `garaje`, `cordon_amarillo`, `parada_colectivo`, `prohibido_estacionar`, `ciclovia`, `ninguna_visible`), `abandono` (`senales` y `nivel`), `personas_visibles` y `conductor_adentro`. `misma_escena` reutiliza `/comparar`. Lo que sostiene un solo lector queda en `en_duda`.
 
-`escena.marca` y `escena.modelo` se devuelven por separado. Cada dato necesita al menos dos lecturas coincidentes del mismo vehículo protagonista. Una lectura insuficiente o un empate deja ese campo en `null`. Si la escena tiene varios protagonistas o las fotos muestran vehículos distintos, los dos campos quedan en `null`.
+`escena.marca` y `escena.modelo` se devuelven por separado. Cada dato necesita al menos dos lecturas coincidentes del mismo vehículo protagonista. Una lectura insuficiente o un empate deja ese campo en `null`. Si la escena tiene varios protagonistas o las fotos muestran vehículos distintos, los dos campos quedan en `null`. Si ambas fotos tienen chapas corroboradas, el servicio compara las lecturas de cada chapa, incluidas las de una foto con varias. Si ninguna coincide entre las dos fotos, también queda vacía la patente del conjunto.
 
 ```bash
 curl -s -F "file=@atras.jpg" -F "file_b=@contexto.jpg" -F "contexto=moto sobre la vereda" http://127.0.0.1:8080/vehiculo/

@@ -2878,6 +2878,7 @@ check("otro contexto es otro análisis (y /vehiculo sin barra sirve)", _c3 == 20
 def _fake_analizar_vehiculos_distintos(imgs):
     resultado = _fake_analizar(imgs)
     resultado["fotos"][1]["patente"] = "AA123BB"
+    resultado["fotos"][1]["chapas"] = [dict(resultado["fotos"][1]["chapas"][0], patente="AA123BB")]
     resultado["patente"] = None
     return resultado
 
@@ -2887,6 +2888,34 @@ _c, _r = pedir("/vehiculo/", *_multipart_vehiculo(_VA, _VB, contexto="chapas dis
 check("dos chapas confirmadas dejan marca y modelo en null",
       _c == 200 and _r["escena"]["marca"] is None and _r["escena"]["modelo"] is None
       and _r["escena"]["color"] == "negro" and _r["fotos"][1]["patente"] == "AA123BB", f"HTTP {_c}")
+
+patentes.analizar = _prev_215[5]
+_veh_leer_antes = patentes.leer_chapas
+_veh_primera = ["A123BCD", "A234CDE"]
+_veh_segunda = ["AA123BB"]
+
+
+def _fake_chapas_por_foto(img, lectores=None):
+    valores = _veh_primera if img.width == 823 else _veh_segunda
+    return [{"patente": p, "legible": True, "motivo": None} for p in valores]
+
+
+patentes.leer_chapas = _fake_chapas_por_foto
+_c, _r = pedir("/vehiculo/", *_multipart_vehiculo(_VA, _VB, contexto="dos chapas en la primera foto"))
+check("ninguna chapa coincide aunque una foto tenga dos",
+      _c == 200 and _r["patente"] is None and _r["escena"]["marca"] is None
+      and _r["escena"]["modelo"] is None and _r["escena"]["color"] == "negro"
+      and len(_r["fotos"][0]["chapas"]) == 2 and _r["fotos"][1]["patente"] == "AA123BB")
+_veh_segunda = ["A123BCD"]
+_c, _r = pedir("/vehiculo/", *_multipart_vehiculo(_VA, _VB, contexto="una chapa corroborada en las dos fotos"))
+check("una chapa coincide con la segunda aunque la primera tenga otra",
+      _c == 200 and _r["patente"] == "A123BCD" and _r["escena"]["marca"] == "Zanella")
+_veh_primera = []
+_c, _r = pedir("/vehiculo/", *_multipart_vehiculo(_VA, _VB, contexto="una sola foto con chapa"))
+check("si una foto no tiene chapa legible se conserva la lectura de la otra",
+      _c == 200 and _r["patente"] == "A123BCD" and _r["escena"]["marca"] == "Zanella")
+patentes.leer_chapas = _veh_leer_antes
+
 patentes.analizar = _fake_analizar
 _c, _r = pedir("/vehiculo/", *_multipart_vehiculo(_VA))
 check("una sola foto: 200 sin mismo_vehiculo ni misma_escena",
