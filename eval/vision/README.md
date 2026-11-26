@@ -89,6 +89,8 @@ El comando usa la ruta real `/clasificar/` con la predicción local guardada. Ca
 
 Para reproducir la cola de la página, agregá `--ruta-prueba trabajos`. El evaluador exige un trabajo nuevo, consulta `/trabajos/?id=...` y comprueba que el resultado conserve el pedido de consumo asignado al recibir la foto. El informe JSON guarda `ruta_prueba`. Usá otro nombre de salida para conservar los informes de las dos rutas.
 
+Si hay una elección humana explícita, fijá `principal_esperado` en ese caso. Puede ser la clave del servicio confirmado o `indeterminado` si la revisión eligió que no se distingue una prioridad. Un valor ausente o `null` deja el principal sin puntuar. El informe muestra `principal_observado` y `diferencia_principal` aparte de las categorías. Para comparar el resultado se necesita la misma referencia en ambos informes y una decisión verificable en cada respuesta.
+
 ### Medición con lecturas nuevas
 
 Una vez definido el presupuesto, usá la candidata con `PRUEBA_RESERVAS_USD` configurado y elegí los casos por ID. La medición parte de predicciones locales guardadas y ejecuta la ruta elegida con las llamadas reales del perfil.

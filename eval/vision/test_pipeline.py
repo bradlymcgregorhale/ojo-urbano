@@ -185,6 +185,58 @@ class PipelineTests(unittest.TestCase):
         for row in (incompleto, referencia_distinta, sin_recuento):
             self.assertEqual(R.compare({'rows': [original]}, {'rows': [row]})['comparable'], 0)
 
+    def test_prueba_compara_el_problema_principal_por_separado(self):
+        self.server.app = FastAPI()
+        self.server.CACHE_MAX = self.server.RATE_LIMITE = 0
+        self.server.API_TOKEN = ''
+        caso = self.case | {'expected': {'barrido': True, 'reparacion_cordon': True},
+                            'principal_esperado': 'reparacion_cordon'}
+        solicitud = Request('https://openrouter.example/chat/completions', data=b'{"model":"lector"}')
+        huella = R.fingerprint({'endpoint': solicitud.full_url, 'body': {'model': 'lector'}})
+
+        @self.server.app.post('/clasificar')
+        def clasificar():
+            lectura = R.V._pedir_http(solicitud, 10, 20)
+            return self.public | {
+                'modo': 'prueba', 'modo_version': 'version-prueba', 'analisis_estado': 'completo',
+                'problemas': [{'key': 'barrido'}, {'key': 'reparacion_cordon'}],
+                'hay_problema': True, 'hay_reclamo': True, 'problema_principal': lectura['principal'],
+            }
+
+        def evaluar(referencia, principal):
+            return P.evaluate_prueba(referencia, self.root, self.identity, self.server,
+                                     {huella: {'principal': principal}})
+
+        cordon = {'estado': 'seleccionado', 'criterio': 'escena', 'key': 'reparacion_cordon'}
+        barrido = cordon | {'key': 'barrido'}
+        original, cambiado = evaluar(caso, cordon), evaluar(caso, barrido)
+        self.assertEqual((original['status'], cambiado['status']), ('pass', 'fail'))
+        self.assertEqual(cambiado['principal_observado'], 'barrido')
+        self.assertTrue(cambiado['diferencia_principal'])
+        self.assertEqual((cambiado['missing'], cambiado['unexpected']), ([], []))
+        comparacion = R.compare({'rows': [original]}, {'rows': [cambiado]})
+        self.assertEqual(comparacion['regressions'], [
+            {'case': 'test', 'model': 'final-api', 'stage': 'pipeline',
+             'kind': 'prioridad', 'category': 'reparacion_cordon'}])
+
+        sin_respuesta = evaluar(caso, None)
+        self.assertEqual(sin_respuesta['status'], 'error')
+        self.assertIsNone(sin_respuesta['diferencia_principal'])
+        sin_referencia = evaluar(caso | {'principal_esperado': None}, barrido)
+        self.assertEqual(sin_referencia['status'], 'pass')
+        self.assertNotIn('diferencia_principal', sin_referencia)
+        indeterminado = evaluar(caso | {'principal_esperado': 'indeterminado'},
+                                {'estado': 'indeterminado', 'key': None})
+        self.assertEqual(indeterminado['status'], 'pass')
+        for row in (sin_respuesta, sin_referencia, indeterminado):
+            self.assertEqual(R.compare({'rows': [original]}, {'rows': [row]})['comparable'], 0)
+
+        solo_principal = caso | {'expected': {}}
+        self.assertEqual(R.select([solo_principal], 'all'), [])
+        self.assertEqual(R.select([solo_principal], 'all', incluir_prioridad=True), [solo_principal])
+        a, b = evaluar(solo_principal, cordon), evaluar(solo_principal, barrido)
+        self.assertEqual(R.compare({'rows': [a]}, {'rows': [b]})['regressions'], comparacion['regressions'])
+
     def test_replay_prueba_drena_el_trabajo_si_vence_la_espera(self):
         self.server.app = FastAPI()
         self.server.CACHE_MAX = self.server.RATE_LIMITE = 0
