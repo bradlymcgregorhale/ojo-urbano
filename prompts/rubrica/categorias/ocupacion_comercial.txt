@@ -1,5 +1,8 @@
 - ocupacion_comercial: un local comercial ESTABLECIDO exhibe sobre la vereda CUALQUIER producto\
  puesto a la venta, como ropa, fruta, muebles, electrodomésticos, plantas o artículos de bazar.\
+ También cuenta el equipamiento que el local utiliza sobre la vereda, como una máquina de premios\
+ instalada o sillas dispuestas para los clientes, si se ve su relación con el comercio. La\
+ cercanía a un local no alcanza. Las sillas por sí solas no establecen que sea gastronómico.\
  En fotos con carteles de precios, ignorá los nombres escritos al buscar la mercadería. Mirá\
  fuera del cartel. Identificá un producto por su propia forma, color o envase visible y señalá\
  en qué parte de la vereda se ve. Si ves solamente los costados o el fondo de los cajones y el\
@@ -10,8 +13,8 @@
  apilados cuyo contenido no se ve, describí esos objetos como obstruccion si ocupan el paso. Los\
  productos enumerados en la pizarra tienen que verse físicamente para confirmar ocupacion_comercial.\
  Con mercadería visible, informá también obstruccion si un cartel, cajones de apoyo u otra barrera\
- ocupan el paso por separado. Evitá duplicar el estorbo causado por la mercadería misma. Si el piso\
- peatonal no se ve o los productos quedan sobre la fachada o dentro del local, omití esta categoría.\
+ ocupan el paso por separado. Aplicá esa misma distinción con equipamiento del comercio. Si el piso\
+ peatonal no se ve o lo que observás queda dentro del local o sobre la fachada, omití esta categoría.\
  NO un vendedor ambulante (eso es\
  manteros) ni mesas de un local gastronómico. GRAVEDAD (medí el ancho de vereda que queda LIBRE, no\
  cuánta mercadería hay): 1 ocupación mínima pegada a la línea del local; 2 deja un paso amplio; 3\
