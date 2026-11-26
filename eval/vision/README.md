@@ -6,7 +6,7 @@ Esta suite envía fotos reales a los verificadores de producción y compara sus 
 
 `centavo.py` aplica los últimos ajustes a la referencia local guardada. Omite revisiones de poda sin indicios de vegetación y de vereda en propiedad privada. Para voluminosos pide dos caras rígidas que se encuentren en una esquina, apoyo sobre el pavimento y corroboración del mismo objeto. Descarta el recorte de un posible cajón si queda dentro del cuerpo del contenedor y por encima de su base.
 
-La medición está en [centavo_resultado.json](centavo_resultado.json). Coinciden todas las etiquetas revisadas en **749 de 834 fotos**. Quedan 93 diferencias de etiqueta. Se conservaron los seis controles de WhatsApp. El costo máximo de **USD 0,00999350** es simulado. La clasificación de un caso depende de las etiquetas que sí se revisaron.
+La medición está en [centavo_resultado.json](centavo_resultado.json). Coinciden todas las etiquetas de categoría revisadas en **749 de 834 fotos**. Quedan 93 diferencias de etiqueta. Se conservaron los seis controles de WhatsApp. El costo máximo de **USD 0,00999350** es simulado. El banco histórico contiene etiquetas de categoría. Los recuentos de bolsas se puntúan con referencias numéricas separadas.
 
 En los recibos históricos, el costo varió por nivel de servicio y cantidad de tokens. En la simulación actual, 16 tokens más de salida en la primera lectura habrían puesto 70 fotos por encima de USD 0,01 antes del ajuste de poda. El ensayo de JSON compacto quedó afuera por un cambio incorrecto de escombros a recolección en un control. Falta conciliar el gasto del recorrido completo y verificar en otra muestra que la revisión de la pieza rígida recupere voluminosos.
 
@@ -22,6 +22,8 @@ python -m eval.vision.centavo --evidencia "$EVIDENCIA_VISION" \
 
 En una evaluación con cargos, guardá un manifiesto privado `{"casos": [...]}`. Por cada foto y recorrido (`entrada`, por ejemplo `ojo_urbano` o `bacollab`), anotá un `id` del banco, `modo`, `modo_version` y la referencia en `esperado`. Usá `true` o `false` sólo en etiquetas revisadas. Las dudas pueden quedar en `null`.
 
+Si revisaste el recuento de bolsas, agregá `recuento_esperado` al caso con sólo los campos revisados. Podés exigir `{"bolsas": 0}` para material suelto o `{"bolsas": null, "bolsas_minimo": [5, null], "bolsas_recuento_completo": false}` para un recuento abierto de al menos cinco. Un intervalo cerrado como `[12, 15]` incluye ambos extremos. Un campo omitido queda sin evaluar. El informe compara esos campos de la última respuesta verificada, mantiene las diferencias de recuento separadas de las categorías y deja el recuento pendiente si falta la respuesta.
+
 En `respuestas`, incluí en orden los JSON devueltos por Completo (prueba) para esa foto. La herramienta toma del último análisis sus etiquetas y lee `consumo_api.pedido` e `intentos` de cada resultado. En la carga web, guardá el JSON final de `/trabajos/`. Si falta el resultado, conservá el último estado del trabajo. Bacollab guarda el JSON de `/clasificar/` en `image_api_calls.response_text`. Incluí `null` si un envío se cortó sin devolver el JSON. Eso deja la conciliación pendiente incluso si otro envío terminó. Corré ambos recorridos con `CACHE_MAX=0` en una instancia de evaluación para que cada uno ejecute el análisis.
 
 Para respuestas anteriores a `consumo_api`, podés armar `pedidos` y `etiquetas` a mano en lugar de `respuestas`. En `pedidos` vinculá cada ID del log con su número de intentos. Usá `null` si todavía no se pudo confirmar ese número. En `etiquetas` usá las claves confirmadas, `[]` si no hubo ninguna o `null` si falta el resultado.
@@ -31,6 +33,8 @@ python -m eval.vision.consumo --casos "$manifiesto" --uso "$log" --detalle "$det
 ```
 
 Usá un log capturado con `OPENROUTER_LOG_USO=1` y repetí `--uso` si abarca más de un archivo. El informe suma `usage.cost` una sola vez por ID de generación, incluidos los intentos cobrados con salida inválida. Cuando faltan importes, IDs o intentos, el monto que aparece es el conocido hasta el momento. El detalle queda en un archivo nuevo, privado. La salida de la terminal muestra totales agregados y marca por separado los casos sin conciliar, los excesos de USD 0,01 y las diferencias de etiqueta. El código de salida es 1 cuando queda alguna de esas condiciones o hay casos sin puntuar, y 2 cuando el informe no se pudo generar.
+
+Si ya guardaste los recibos de OpenRouter, agregá `--recibos "$archivo"`. Usá el JSON de [Get generation](https://openrouter.ai/docs/api/api-reference/generations/get-generation) o una lista de esas respuestas. Podés repetir la opción. El informe cruza `data.id` y `data.total_cost` con el intento identificado en el log y completa el importe si faltaba. El detalle cuenta cuántas generaciones tienen recibo. Sin un ID vinculado, el intento sigue pendiente. Si dos importes difieren para la misma generación, la herramienta devuelve un error para que se pueda revisar la diferencia. No hace consultas de red.
 
 ## Comprobación de regresiones del resultado final
 
