@@ -23,6 +23,7 @@ import os
 import re
 import threading
 import urllib.error
+from collections import Counter
 from pathlib import Path
 
 import modos_analisis as modos
@@ -160,9 +161,16 @@ def _nombre(modelo):
     return re.sub(r"[^a-z0-9]+", "_", modelo.split("/")[-1].lower()).strip("_")
 
 
+def _nombres_lectores(lectores):
+    nombres = {modelo: _nombre(modelo) for modelo in (LECTORES if lectores is None else lectores)}
+    repeticiones = Counter(nombres.values())
+    return {modelo: modelo if nombre == "ocr_local" or repeticiones[nombre] > 1 else nombre
+            for modelo, nombre in nombres.items()}
+
+
 def leer_chapas(img, lectores=None):
     """Todas las chapas detectadas en la foto, cada una con sus lecturas."""
-    lectores = list(dict.fromkeys(LECTORES if lectores is None else lectores))
+    nombres = _nombres_lectores(lectores)
     salida = []
     for det in detectar(img):
         x1, y1, x2, y2 = det["caja"]
@@ -178,11 +186,10 @@ def leer_chapas(img, lectores=None):
         local = leer_local(rec)
         chapa["lecturas"]["ocr_local"] = local["patente"]
         chapa["ocr_local"] = {"lectura": local["lectura"], "confianza": local["confianza"]}
-        if lectores:
-            with concurrent.futures.ThreadPoolExecutor(len(lectores)) as pool:
-                vistas = V._map_con_contexto(pool, lambda m: leer_vlm(m, rec), lectores)
-            for modelo, p in zip(lectores, vistas):
-                chapa["lecturas"][_nombre(modelo)] = p
+        if nombres:
+            with concurrent.futures.ThreadPoolExecutor(len(nombres)) as pool:
+                vistas = V._map_con_contexto(pool, lambda m: leer_vlm(m, rec), nombres)
+            chapa["lecturas"].update(zip(nombres.values(), vistas))
         chapa["patente"], chapa["fuentes"], chapa["motivo"] = votar(chapa["lecturas"])
         chapa["legible"] = chapa["patente"] is not None
         salida.append(chapa)
@@ -213,9 +220,10 @@ def analizar(imgs, lectores=None):
 
     La patente del conjunto sale cuando las fotos que leyeron algo coinciden
     en una sola cadena; dos distintas significan dos vehículos y no se publica."""
+    nombres = _nombres_lectores(lectores)
     fotos = []
     for img in imgs:
-        chapas = leer_chapas(img, lectores)
+        chapas = leer_chapas(img, nombres)
         patente, motivo = _resumen_foto(chapas)
         fotos.append({"chapas": chapas, "patente": patente, "motivo": motivo})
     leidas = {f["patente"] for f in fotos if f["patente"]}
@@ -227,5 +235,5 @@ def analizar(imgs, lectores=None):
     else:
         patente, motivo = None, next((f["motivo"] for f in fotos if f["motivo"]), "sin chapa visible")
     return {"fotos": fotos, "patente": patente, "motivo": motivo,
-            "lectores": [_nombre(m) for m in (LECTORES if lectores is None else lectores)],
+            "lectores": list(nombres.values()),
             "detector": DETECTOR, "ocr": OCR_LOCAL}
