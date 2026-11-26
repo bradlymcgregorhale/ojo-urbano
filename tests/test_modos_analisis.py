@@ -296,6 +296,18 @@ class ApiModos(unittest.TestCase):
         self.assertIn('barrera independiente', _decision([{'confirmadas': {
             'manteros': 'Puesto con mercadería exhibida.'}, 'dudosas': {}}], {}, claves))
 
+    def test_prueba_pide_distinguir_el_cordon_sin_depender_de_un_indicio_previo(self):
+        from prueba_completo import CRITERIOS, _decision, _inicio
+
+        claves = ('reparacion_cordon', 'reparacion_vereda', 'barrido')
+        regla = CRITERIOS['reparacion_cordon']
+        self.assertIn('borde contra la calzada', regla)
+        self.assertIn('rebaje', regla)
+        self.assertIn('dudosas', regla)
+        self.assertIn('Evaluá barrido por separado', regla)
+        self.assertIn(regla, _decision([], {}, claves))
+        self.assertIn(regla, _inicio({'reparacion_cordon': .6}, claves))
+
     def test_prueba_publica_objetos_visibles_en_la_misma_lectura(self):
         casos = (
             ('retiro_muebles', 'Junto al cordón hay un lavarropas y una silla.',
