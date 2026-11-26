@@ -513,22 +513,28 @@ _costo_foto = contextvars.ContextVar("costo_foto", default=None)
 
 
 def costo_reset():
-    """Abre un costo independiente; el identificador solo se registra localmente."""
+    """Abre un costo independiente. Los trabajos de prueba conocen su ID al entrar en la cola."""
     import secrets
-    _costo_foto.set({"usd": 0.0, "llamadas": 0, "completo": True, "entregado": None,
-                     "id": secrets.token_hex(12), "lock": threading.Lock()})
+    _costo_foto.set({"usd": 0.0, "intentos": 0, "completo": True, "entregado": None,
+                     "id": modos.pedido_consumo_actual() or secrets.token_hex(12),
+                     "lock": threading.Lock()})
 
 
-def costo_total(*, con_estado=False):
+def costo_total(*, con_estado=False, con_traza=False):
     """Congela el total entregado; el uso tardío no modifica esa respuesta."""
     estado = _costo_foto.get()
-    total, completo = 0.0, True
+    total, completo, intentos = 0.0, True, 0
     if estado is not None:
         with estado["lock"]:
             if estado["entregado"] is None:
-                estado["entregado"] = (round(estado["usd"], 6), estado["completo"])
-            total, completo = estado["entregado"]
-    return {"costo_api": total, "costo_api_completo": completo} if con_estado else total
+                estado["entregado"] = (round(estado["usd"], 6), estado["completo"], estado["intentos"])
+            total, completo, intentos = estado["entregado"]
+    if not con_estado:
+        return total
+    resultado = {"costo_api": total, "costo_api_completo": completo}
+    if con_traza and estado is not None:
+        resultado["consumo_api"] = {"pedido": estado["id"], "intentos": intentos}
+    return resultado
 
 
 def _costo_sumar(usage):
@@ -537,11 +543,11 @@ def _costo_sumar(usage):
     if estado is None:
         return
     with estado["lock"]:
+        estado["intentos"] += 1
         if type(c) not in (int, float) or not math.isfinite(c) or c < 0:
             estado["completo"] = False
             return
         estado["usd"] += float(c)
-        estado["llamadas"] += 1
         tardio = estado["entregado"] is not None
     if tardio:
         try:
