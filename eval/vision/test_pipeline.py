@@ -3,9 +3,11 @@ import concurrent.futures
 import io
 import json
 import tempfile
+import threading
 import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from urllib.request import Request
 
 from fastapi import FastAPI, Form, Header, UploadFile
@@ -34,6 +36,7 @@ class PipelineTests(unittest.TestCase):
                          'detalle': {'verificacion': {'activa': True, 'en_duda': []}}}
         self.server = types.SimpleNamespace(
             CATEGORIAS={}, clasificar_local=lambda img: None, _hay_cuota=lambda: True,
+            PERFILES={'prueba': types.SimpleNamespace(version='version-prueba')}, _pool=None,
             procesar=lambda *a: self.internal, _publica=lambda r: self.public,
             _cacheable=lambda r: not r['en_duda'])
 
@@ -89,6 +92,84 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual((row['status'], row['requests'][0]['source']), ('uncached', 'missing'))
         self.assertNotEqual(row['requests'][0]['request_hash'], huella)
         self.assertNotIn('predicted', row)
+
+    def test_replay_prueba_verifica_el_trabajo_y_su_pedido_de_consumo(self):
+        self.server.app = FastAPI()
+        self.server.CACHE_MAX = 10
+        self.server.RATE_LIMITE = 60
+        self.server.API_TOKEN = 'test-only-token'
+        solicitud = Request('https://openrouter.example/chat/completions', data=b'{"model":"lector"}')
+        huella = R.fingerprint({'endpoint': solicitud.full_url, 'body': {'model': 'lector'}})
+        archivadas = {huella: {'usage': {'cost': .003}}}
+        pedido_final = 'pedido-original'
+        consultas = []
+
+        @self.server.app.post('/trabajos/', status_code=202)
+        async def crear(file: UploadFile, modo: str = Form(), x_api_token: str = Header()):
+            self.assertEqual(modo, 'prueba')
+            self.assertEqual(x_api_token, self.server.API_TOKEN)
+            self.assertEqual(await file.read(), (self.root / self.case['photo']).read_bytes())
+            return {'trabajo': 'enviado', 'estado': 'en_cola', 'consumo_api': {'pedido': 'pedido-original'}}
+
+        @self.server.app.get('/trabajos/')
+        async def consultar(id: str, x_api_token: str = Header()):
+            self.assertEqual(x_api_token, self.server.API_TOKEN)
+            consultas.append(id)
+            if len(consultas) == 1:
+                return {'estado': 'procesando'}
+            completo = True
+            try:
+                R.V._pedir_http(solicitud, 10, 20)
+            except FileNotFoundError:
+                completo = False
+            resultado = dict(self.public, modo='prueba', modo_version='version-prueba',
+                             analisis_estado='completo' if completo else 'parcial',
+                             problemas=[{'key': 'recoleccion'}], hay_problema=True, hay_reclamo=True,
+                             consumo_api={'pedido': pedido_final})
+            return {'estado': 'listo', 'resultado': resultado}
+
+        row = P.evaluate_prueba(self.case, self.root, self.identity, self.server, archivadas, ruta='trabajos')
+        self.assertEqual((row['status'], row['ruta_prueba'], row['cost_usd']), ('pass', 'trabajos', 0))
+        self.assertEqual(consultas, ['enviado', 'enviado'])
+        self.assertEqual(row['prediction']['consumo_api']['pedido'], pedido_final)
+
+        row = P.evaluate_prueba(self.case, self.root, self.identity, self.server, {}, ruta='trabajos')
+        self.assertEqual((row['status'], row['requests'][0]['source']), ('uncached', 'missing'))
+        self.assertEqual(row['requests'][0]['request_hash'], huella)
+
+        pedido_final = 'otro-pedido'
+        row = P.evaluate_prueba(self.case, self.root, self.identity, self.server, archivadas, ruta='trabajos')
+        self.assertEqual(row['status'], 'error')
+        self.assertIn('no conserva el pedido de consumo', row['error'])
+        self.assertNotIn('predicted', row)
+
+    def test_replay_prueba_drena_el_trabajo_si_vence_la_espera(self):
+        self.server.app = FastAPI()
+        self.server.CACHE_MAX = self.server.RATE_LIMITE = 0
+        self.server.API_TOKEN = ''
+        solicitud = Request('https://openrouter.example/chat/completions', data=b'{"model":"lector"}')
+        huella = R.fingerprint({'endpoint': solicitud.full_url, 'body': {'model': 'lector'}})
+        archivadas = {huella: {'usage': {'cost': .003}}}
+        continuar = threading.Event()
+
+        @self.server.app.post('/trabajos/', status_code=202)
+        async def crear():
+            def leer():
+                if continuar.wait(timeout=2):
+                    R.V._pedir_http(solicitud, 10, 20)
+            self.server._pool.submit(leer)
+            return {'estado': 'en_cola'}
+
+        def vencer(*_):
+            continuar.set()
+            raise TimeoutError('Venció la espera del control.')
+
+        with patch.object(P, '_esperar_trabajo_prueba', side_effect=vencer), \
+                patch.object(R.V, '_pedir_http', side_effect=AssertionError('transporte externo')) as original:
+            row = P.evaluate_prueba(self.case, self.root, self.identity, self.server, archivadas, ruta='trabajos')
+            original.assert_not_called()
+        self.assertEqual(row['status'], 'error')
+        self.assertEqual([r['source'] for r in row['requests']], ['archivo'])
 
     def test_replay_prueba_rejects_conflicting_responses_for_the_same_request(self):
         huella = 'c' * 64

@@ -83,6 +83,8 @@ Para reproducir Completo (prueba), usá el perfil `prueba` configurado en la can
 
 El comando usa la ruta real `/clasificar/` con la predicción local guardada. Cada respuesta HTTP original de OpenRouter se guarda bajo `respuestas` en un objeto indexado por SHA-256. Calculá la huella con `eval.vision.run.fingerprint` de `{"endpoint": URL, "body": JSON_de_la_consulta}`. Incluye los mensajes, la imagen, el esquema y los parámetros que recibió el proveedor. El verificador procesa los recibos archivados para aplicar sus reglas de costo y el informe registra cero cargos nuevos. Si falta alguna huella, el caso queda sin puntuar. Podés correr sin `--respuestas-prueba` para identificar qué solicitudes faltan o usar `--baseline` para reutilizar una reproducción anterior del mismo modo.
 
+Para reproducir la cola de la página, agregá `--ruta-prueba trabajos`. El evaluador exige un trabajo nuevo, consulta `/trabajos/?id=...` y comprueba que el resultado conserve el pedido de consumo asignado al recibir la foto. El informe JSON guarda `ruta_prueba`. Usá otro nombre de salida para conservar los informes de las dos rutas.
+
 Para capturar nuevas predicciones locales y completar peticiones pendientes:
 
 ```sh
