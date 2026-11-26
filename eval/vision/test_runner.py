@@ -292,11 +292,31 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(len(self.requests), 1)
 
     def test_unreviewed_categories_are_neither_passes_nor_false_positives(self):
-        result = R.assess({'expected': {'yes': True, 'no': False}},
-                          {'categorias': [{'key': 'no'}, {'key': 'unknown'}]})
+        case = {'expected': {'yes': True, 'no': False, 'pending_seen': None, 'pending_unseen': None}}
+        result = R.assess(case, {'categorias': [{'key': 'no'}, {'key': 'unknown'}, {'key': 'pending_seen'}]})
         self.assertEqual(result['missing'], ['yes'])
         self.assertEqual(result['unexpected'], ['no'])
-        self.assertEqual(result['unreviewed_predictions'], ['unknown'])
+        self.assertEqual(result['unreviewed_predictions'], ['pending_seen', 'unknown'])
+        summary = R.summarize([result | case | {'status': 'fail', 'model': 'final-api'}])
+        self.assertEqual(set(summary['categories']), {'yes', 'no'})
+        self.assertEqual(summary['categories']['yes']['fn'], 1)
+        self.assertEqual(summary['categories']['no']['fp'], 1)
+
+    def test_selection_requires_a_reviewed_label_and_contrast_requires_its_target(self):
+        pending = {'aliases': ['green-TC03772'], 'expected': {'contenedor_humedos_lateral': None}}
+        mixed = dict(pending, expected=pending['expected'] | {'barrido': False})
+        self.assertEqual(R.select([pending, mixed], 'all'), [mixed])
+        self.assertEqual(R.contrast_cases([mixed]), [])
+
+    def test_compare_ignores_an_old_false_positive_on_an_unreviewed_label(self):
+        row = {'case': 'a', 'model': 'm', 'status': 'fail', 'expected': {'reviewed': False, 'pending': None},
+               'missing': [], 'unexpected': ['reviewed', 'pending']}
+        after = dict(row, unexpected=['reviewed'])
+        self.assertEqual(R.compare({'rows': [row]}, {'rows': [after]}),
+                         {'regressions': [], 'improvements': [], 'incomparable': [], 'comparable': 1})
+        pending = dict(row, expected={'pending': None}, unexpected=['pending'])
+        result = R.compare({'rows': [pending]}, {'rows': [pending]})
+        self.assertEqual(result['incomparable'], [('a', 'm', 'initial')])
 
     def test_compare_detects_new_error_even_if_case_already_failed(self):
         row = {'case': 'a', 'model': 'm', 'status': 'fail', 'label_hash': 'l',

@@ -234,7 +234,7 @@ def select(cases, suite='smoke', tags=(), ids=(), limit=None):
             continue
         if ids and not set(ids) & set(c['aliases']):
             continue
-        if not c['expected']:
+        if not any(isinstance(value, bool) for value in c['expected'].values()):
             continue
         selected.append(c)
     return selected[:limit] if limit is not None else selected
@@ -242,7 +242,7 @@ def select(cases, suite='smoke', tags=(), ids=(), limit=None):
 
 def assess(case, prediction):
     keys = {c['key'] for c in prediction.get('categorias', [])}
-    expected = case['expected']
+    expected = {k: v for k, v in case['expected'].items() if isinstance(v, bool)}
     return {'missing': sorted(k for k, v in expected.items() if v and k not in keys),
             'unexpected': sorted(k for k, v in expected.items() if not v and k in keys),
             'unreviewed_predictions': sorted(keys - set(expected)),
@@ -257,7 +257,7 @@ def contrast_cases(cases):
     for case in cases:
         for alias in case['aliases']:
             key = probes.get(alias)
-            if key and key in case['expected']:
+            if key and isinstance(case['expected'].get(key), bool):
                 result.append(dict(case, expected={key: case['expected'][key]}, target=key))
                 break
     return result
@@ -363,6 +363,8 @@ def summarize(rows):
             continue
         keys = set(row['predicted'])
         for k, truth in row['expected'].items():
+            if not isinstance(truth, bool):
+                continue
             categories[k]['tp' if truth and k in keys else 'fn' if truth else 'fp' if k in keys else 'tn'] += 1
     metrics = {}
     for k, c in categories.items():
@@ -386,11 +388,17 @@ def compare(before, after):
     for key in sorted(set(old) | set(new)):
         a, b = old.get(key), new.get(key)
         same = a and b and all(a.get(k) == b.get(k) for k in ['label_hash', 'photo_sha256', 'context_hash', 'local_hash', 'initial_fixture_hash'])
-        if not same or a['status'] not in {'pass', 'fail'} or b['status'] not in {'pass', 'fail'}:
+        reference = a.get('expected') if a else None
+        scorable = reference is None or any(isinstance(value, bool) for value in reference.values())
+        if not same or not scorable or a['status'] not in {'pass', 'fail'} or b['status'] not in {'pass', 'fail'}:
             incomparable.append(key)
             continue
         previous = {('missing', k) for k in a['missing']} | {('unexpected', k) for k in a['unexpected']}
         current = {('missing', k) for k in b['missing']} | {('unexpected', k) for k in b['unexpected']}
+        # Los informes anteriores podían guardar un falso positivo para una etiqueta null.
+        pendientes = {k for k, v in (reference or {}).items() if v is None}
+        previous = {(kind, k) for kind, k in previous if k not in pendientes}
+        current = {(kind, k) for kind, k in current if k not in pendientes}
         previous |= {('contract', k) for k in a.get('contract_issues', [])}
         current |= {('contract', k) for k in b.get('contract_issues', [])}
         regressions.extend({'case': key[0], 'model': key[1], 'stage': key[2], 'kind': kind, 'category': cat}
@@ -422,8 +430,10 @@ def write_report(path, report):
             details += '<br>' + esc('; '.join(row['contract_issues']))
         if row['status'] not in {'pass', 'fail'}:
             details = esc(row.get('error', ''))
-        if row.get('uncertain_labels'):
-            details += '<br><b>Etiqueta pendiente de revisión (sin puntuar):</b> ' + esc(names(row['uncertain_labels']))
+        pendientes = set(row.get('uncertain_labels', [])) | {
+            k for k, v in row.get('expected', {}).items() if v is None}
+        if pendientes:
+            details += '<br><b>Etiqueta pendiente de revisión (sin puntuar):</b> ' + esc(names(sorted(pendientes)))
         if row.get('notes'):
             details += '<br><b>Notas de revisión:</b> ' + esc(' '.join(row['notes']))
         source = (row.get('response') or {}).get('source', '')
