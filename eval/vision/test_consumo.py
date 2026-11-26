@@ -71,6 +71,43 @@ class PruebaConsumo(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "otro modo o versión"):
             conciliar([referencia | {"respuestas": [salida | {"modo_version": "otra"}]}], [])
 
+    def test_una_respuesta_de_cache_sin_el_origen_del_caso_no_acredita_el_costo(self):
+        meta = {"modo": "prueba", "modo_version": "v"}
+        caso = meta | {"id": "foto", "entrada": "bacollab", "esperado": {"recoleccion": True}}
+        copia = meta | {"problemas": [{"key": "recoleccion"}], "costo_api": .011,
+                       "consumo_api": {"pedido": "copia", "intentos": 0, "origen_cache": "original"}}
+        resumen, [detalle] = conciliar([caso | {"respuestas": [copia]}], [])
+        self.assertFalse(detalle["conciliado"])
+        self.assertEqual(detalle["pedidos"][0]["origen_cache"], "original")
+        self.assertEqual(detalle["diferencias"], [])
+        self.assertIsNone(resumen["maximo_conciliado_usd"])
+
+    def test_la_cache_no_duplica_el_cargo_ni_lo_atribuye_a_otro_recorrido(self):
+        meta = {"modo": "prueba", "modo_version": "v"}
+        base = meta | {"id": "foto", "esperado": {}}
+        inicio = meta | {"estado": "en_cola", "consumo_api": {"pedido": "original", "intentos": None}}
+        original = meta | {"problemas": [], "consumo_api": {"pedido": "original", "intentos": 1}}
+        copia = meta | {"problemas": [], "costo_api": .0076,
+                       "consumo_api": {"pedido": "copia", "intentos": 0, "origen_cache": "original"}}
+        uso_original = [uso("original", "g1", None)]
+        recibos = [recibo("g1", .0076)]
+        for mismo_caso in (True, False):
+            with self.subTest(mismo_caso=mismo_caso):
+                web = base | {"entrada": "ojo_urbano", "respuestas": [inicio, original]}
+                bot = base | {"entrada": "bacollab", "respuestas": [copia]}
+                casos = [web]
+                if mismo_caso:
+                    web["respuestas"].append(copia)
+                else:
+                    casos.append(bot)
+                resumen, detalle = conciliar(casos, uso_original, recibos)
+                self.assertTrue(detalle[0]["conciliado"])
+                self.assertEqual(detalle[0]["costo_conocido_usd"], "0.0076")
+                self.assertEqual(resumen["casos_con_consumo_pendiente"], 0 if mismo_caso else 1)
+                if not mismo_caso:
+                    self.assertFalse(detalle[1]["conciliado"])
+                    self.assertEqual(detalle[1]["costo_conocido_usd"], "0")
+
     def test_presupuesto_y_etiquetas_se_puntuan_por_separado(self):
         casos = [
             caso("correcta", {"p1": 2, "p2": 1}),
