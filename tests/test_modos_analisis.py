@@ -242,6 +242,8 @@ class ApiModos(unittest.TestCase):
         self.assertTrue(all(not {'temperature', 'top_p', 'seed'} & x.keys() for x in self.llamadas))
         self.assertEqual(d['costo_api'], .003)
         self.assertTrue(d['costo_api_completo'])
+        self.assertEqual(d['consumo_api']['intentos'], 3)
+        self.assertRegex(d['consumo_api']['pedido'], r'^[0-9a-f]{24}$')
         self.assertEqual(self.post('prueba', '/trabajos').json()['resultado'], d)
         self.assertEqual(len(self.llamadas), 3)
 
@@ -284,6 +286,7 @@ class ApiModos(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json()['costo_api'], .002)
         self.assertFalse(r.json()['costo_api_completo'])
+        self.assertEqual(r.json()['consumo_api']['intentos'], 3)
 
     def test_prueba_pide_evidencia_independiente_de_obstruccion_en_un_puesto(self):
         from prueba_completo import _decision
@@ -486,6 +489,29 @@ class ApiModos(unittest.TestCase):
                     self.assertEqual(d['costo_api'], cantidad * .001)
                     self.assertFalse(self.S._cache)
 
+    def test_cola_de_prueba_vincula_el_pedido_con_el_log_y_el_resultado(self):
+        import contextlib
+        import time
+
+        salida = io.StringIO()
+        with patch.object(V, 'OPENROUTER_LOG_USO', True), contextlib.redirect_stderr(salida):
+            creacion = self.post('prueba', '/trabajos')
+            self.assertEqual(creacion.status_code, 202, creacion.text)
+            en_cola = creacion.json()
+            consumo = en_cola['consumo_api']
+            self.assertIsNone(consumo['intentos'])
+            self.assertNotEqual(consumo['pedido'], en_cola['trabajo'])
+            for _ in range(100):
+                estado = self.cliente.get('/trabajos', params={'id': en_cola['trabajo']}).json()
+                if estado['estado'] in {'listo', 'error'}:
+                    break
+                time.sleep(.01)
+        self.assertEqual(estado['estado'], 'listo', estado)
+        self.assertEqual(estado['resultado']['consumo_api'], dict(consumo, intentos=3))
+        eventos = [json.loads(l) for l in salida.getvalue().splitlines() if l.startswith('{')]
+        self.assertEqual(len(eventos), 3)
+        self.assertEqual({e['pedido'] for e in eventos}, {consumo['pedido']})
+
     def test_cola_conserva_perfil_capturado_y_error(self):
         inicio = threading.Event();seguir = threading.Event()
         async def espera(*args, **kwargs):
@@ -494,11 +520,11 @@ class ApiModos(unittest.TestCase):
                 await asyncio.sleep(.005)
             raise self.S.HTTPException(503, 'prueba de error en cola')
         with patch.object(self.S, '_esperar_cupo', side_effect=espera):
-            r = self.post('medio', '/trabajos')
+            r = self.post('prueba', '/trabajos')
             self.assertEqual(r.status_code, 202)
             d = r.json();tid = d['trabajo']
             self.assertTrue(inicio.wait(timeout=3))
-            ps = dict(self.ps);ps['medio'] = replace(ps['medio'], version='nueva')
+            ps = dict(self.ps);ps['prueba'] = replace(ps['prueba'], version='nueva')
             with patch.object(self.S, 'PERFILES', ps):
                 pendiente = self.cliente.get('/trabajos/' + tid).json()
                 self.assertEqual(pendiente['modo_version'], d['modo_version'])
@@ -510,8 +536,9 @@ class ApiModos(unittest.TestCase):
                         break
                     time.sleep(.01)
                 self.assertEqual(final['estado'], 'error')
-                self.assertEqual(final['modo'], 'medio')
+                self.assertEqual(final['modo'], 'prueba')
                 self.assertEqual(final['modo_version'], d['modo_version'])
+                self.assertEqual(final['consumo_api'], d['consumo_api'])
         self.assertEqual(self.llamadas, [])
 
     def test_economico_publica_conclusion_preliminar_sin_confirmar(self):

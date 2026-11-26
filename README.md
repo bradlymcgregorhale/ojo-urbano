@@ -88,6 +88,8 @@ Las comprobaciones que un modo no ejecuta aparecen en `analisis_limitaciones` (`
 
 La página de carga abre en Completo (prueba). También podés enviar `modo=prueba` a `/clasificar` y `/trabajos`. Admite una foto sin comentario y devuelve las categorías y la suma de los cargos informados en `costo_api`. Si algún intento no informa el importe, `costo_api_completo` es `false` y el total queda pendiente de conciliación. Configurá `VERIFICADORES_PRUEBA` con tres lectores distintos en este orden: decisión, consultas dirigidas y segundo lector para el alcance de escombros.
 
+Para conciliar los cargos de Completo (prueba), `consumo_api.pedido` identifica el análisis en el log de uso y `consumo_api.intentos` informa cuántas consultas llegó a hacer, incluso si alguna falló. `/trabajos` devuelve el identificador al encolar la foto. El total de intentos queda en `null` mientras el trabajo no tenga resultado. Una respuesta de caché conserva el identificador del análisis original.
+
 ## Dónde ayuda el modelo local
 
 Su aporte más claro está en la identificación de contenedores. Detecta si hay uno y distingue entre húmedos de carga lateral, húmedos de carga bilateral y secos. En las fotos etiquetadas, la presencia y el tipo alcanzan F1 0,97.

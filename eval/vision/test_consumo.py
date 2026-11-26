@@ -26,6 +26,38 @@ def uso(pedido, generacion, costo, **datos):
 
 
 class PruebaConsumo(unittest.TestCase):
+    def test_extrae_los_pedidos_y_las_etiquetas_de_los_dos_recorridos(self):
+        base = {"id": "a", "modo": "prueba", "modo_version": "v", "esperado": {"recoleccion": True}}
+        metadatos = {"modo": "prueba", "modo_version": "v"}
+        cola = metadatos | {"estado": "en_cola", "consumo_api": {"pedido": "web", "intentos": None}}
+        clasificacion = metadatos | {"problemas": [{"key": "recoleccion"}]}
+        web = clasificacion | {"consumo_api": {"pedido": "web", "intentos": 2}}
+        bot = clasificacion | {"consumo_api": {"pedido": "bot", "intentos": 1}}
+        eventos = [uso("web", "1", .007), uso("web", "2", .002), uso("bot", "3", .0091)]
+        casos = [
+            base | {"entrada": "ojo_urbano", "respuestas": [cola, {"estado": "listo", "resultado": web}]},
+            base | {"entrada": "bacollab", "respuestas": [None, {"detail": "respuesta interrumpida"}, bot]},
+        ]
+        resumen, (primero, segundo) = conciliar(casos, eventos)
+        self.assertEqual(resumen["casos_conciliados"], 1)
+        self.assertEqual(resumen["casos_con_consumo_pendiente"], 1)
+        self.assertEqual(resumen["casos_con_diferencias"], 0)
+        self.assertEqual(primero["costo_conocido_usd"], "0.009")
+        self.assertEqual(segundo["costo_conocido_usd"], "0.0091")
+        self.assertEqual(segundo["respuestas_sin_traza"], 2)
+        self.assertFalse(segundo["conciliado"])
+
+    def test_un_caso_sin_verificacion_o_con_otro_modo_no_se_puntua(self):
+        metadatos = {"modo": "prueba", "modo_version": "v"}
+        referencia = metadatos | {"id": "a", "entrada": "ojo_urbano", "esperado": {"recoleccion": True}}
+        salida = metadatos | {"problemas": [], "verificacion_activa": False,
+                             "consumo_api": {"pedido": "web", "intentos": 0}}
+        [detalle] = conciliar([referencia | {"respuestas": [salida]}], [])[1]
+        self.assertTrue(detalle["conciliado"])
+        self.assertIsNone(detalle["diferencias"])
+        with self.assertRaisesRegex(ValueError, "otro modo o versión"):
+            conciliar([referencia | {"respuestas": [salida | {"modo_version": "otra"}]}], [])
+
     def test_presupuesto_y_etiquetas_se_puntuan_por_separado(self):
         casos = [
             caso("correcta", {"p1": 2, "p2": 1}),
