@@ -18,6 +18,16 @@ python -m eval.vision.centavo --evidencia "$EVIDENCIA_VISION" \
 
 `EVIDENCIA_VISION` apunta al directorio privado del ensayo. Los dos lectores corresponden a claves distintas del archivo de respuestas guardadas. El programa comprueba las huellas de los recortes y devuelve un resumen sin datos de fotos individuales. Esta evaluación usa lecturas archivadas, se ejecuta sin red y queda separada de la API.
 
+## Conciliación del costo facturado
+
+En una evaluación con cargos, guardá un manifiesto privado `{"casos": [...]}`. Por cada foto y recorrido (`entrada`, por ejemplo `ojo_urbano` o `bacollab`), anotá un `id` del banco, el `modo` y `modo_version` devueltos por la API, y `pedidos` como un objeto que vincule cada ID del log con el número de intentos registrados durante ese pedido. Incluí los pedidos repetidos de esa foto en el mismo recorrido. Si el número de intentos no se pudo verificar, usá `null`. En `esperado`, guardá sólo las etiquetas revisadas con `true` o `false`; las dudas pueden quedar en `null`. En `etiquetas`, guardá las claves confirmadas de la respuesta, `[]` si no confirmó ninguna o `null` si falta el resultado.
+
+```sh
+python -m eval.vision.consumo --casos "$manifiesto" --uso "$log" --detalle "$detalle_nuevo"
+```
+
+Usá un log capturado con `OPENROUTER_LOG_USO=1` y repetí `--uso` si abarca más de un archivo. El informe suma `usage.cost` una sola vez por ID de generación, incluidos los intentos cobrados con salida inválida. Cuando faltan importes, IDs o intentos, el monto que aparece es el conocido hasta el momento. El detalle queda en un archivo nuevo, privado. La salida de la terminal muestra totales agregados y marca por separado los casos sin conciliar, los excesos de USD 0,01 y las diferencias de etiqueta. El código de salida es 1 cuando queda alguna de esas condiciones o hay casos sin puntuar, y 2 cuando el informe no se pudo generar.
+
 ## Comprobación de regresiones del resultado final
 
 Estas comprobaciones no hacen llamadas a OpenRouter:
