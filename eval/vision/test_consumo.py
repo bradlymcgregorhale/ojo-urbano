@@ -144,6 +144,35 @@ class PruebaConsumo(unittest.TestCase):
         self.assertFalse(foto["conciliado"])
         self.assertTrue(foto["supera_tope"])
 
+    def test_conserva_el_minimo_sin_id_y_no_duplica_una_copia_identificada(self):
+        casos = [caso("a", {"p": 2})]
+        decision = uso("p", "g", .009, modelo="laboratorio/decision")
+        apoyo = uso("p", None, .0012, modelo="laboratorio/retiros", etapa="prueba_retiros")
+        resumen, [foto] = conciliar(casos, [apoyo, decision, apoyo])
+        self.assertEqual(foto["costo_conocido_usd"], "0.0102")
+        self.assertEqual(foto["pedidos"][0]["costo_sin_generacion_usd"], "0.0012")
+        self.assertEqual(foto["pedidos"][0]["generaciones_con_importe"], 1)
+        self.assertFalse(foto["conciliado"])
+        self.assertTrue(foto["supera_tope"])
+        self.assertEqual(resumen["casos_sobre_el_tope"], 1)
+
+        copia = apoyo | {"id": "g2", "cost": None}
+        for eventos in ([apoyo, decision, copia], [copia, apoyo, decision]):
+            [foto] = conciliar(casos, eventos, [recibo("g2", .0012)])[1]
+            self.assertEqual(foto["costo_conocido_usd"], "0.0102")
+            self.assertNotIn("costo_sin_generacion_usd", foto["pedidos"][0])
+            self.assertEqual(foto["pedidos"][0]["generaciones_con_recibo"], 1)
+            self.assertFalse(foto["conciliado"])
+
+    def test_no_suma_dos_cargos_sin_id_que_pueden_ser_el_mismo_intento(self):
+        casos = [caso("a", {"p": 2})]
+        apoyo = uso("p", None, .0012, modelo="laboratorio/retiros", etapa="prueba_retiros")
+        [foto] = conciliar(casos, [apoyo, apoyo | {"cost": .0013}])[1]
+        self.assertEqual(foto["costo_conocido_usd"], "0.0013")
+        [foto] = conciliar(casos, [apoyo, uso("p", "legado", .0012)])[1]
+        self.assertEqual(foto["costo_conocido_usd"], "0.0012")
+        self.assertFalse(foto["conciliado"])
+
     def test_recibo_completa_el_cargo_de_una_respuesta_fallida(self):
         casos = [caso("a", {"p": 2})]
         eventos = [uso("p", "decision", .009),

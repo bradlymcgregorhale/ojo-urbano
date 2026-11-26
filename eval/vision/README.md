@@ -40,6 +40,8 @@ Usá un log capturado con `OPENROUTER_LOG_USO=1` y repetí `--uso` si abarca má
 
 Si ya guardaste los recibos de OpenRouter, agregá `--recibos "$archivo"`. Usá el JSON de [Get generation](https://openrouter.ai/docs/api/api-reference/generations/get-generation) o una lista de esas respuestas. Podés repetir la opción. El informe cruza `data.id` y `data.total_cost` con el intento identificado en el log y completa el importe si faltaba. El detalle cuenta cuántas generaciones tienen recibo. Sin un ID vinculado, el intento sigue pendiente. Si dos importes difieren para la misma generación, la herramienta devuelve un error para que se pueda revisar la diferencia. No hace consultas de red.
 
+Si una línea trae importe sin ID de generación pero identifica el pedido, modelo, etapa e intento, el informe conserva el mínimo adicional en `costo_sin_generacion_usd`. Evita sumar dos veces los importes que pueden venir de copias del mismo intento. El pedido sigue pendiente de conciliación.
+
 ## Comprobación de regresiones del resultado final
 
 Estas comprobaciones no hacen llamadas a OpenRouter:

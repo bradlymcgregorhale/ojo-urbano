@@ -136,6 +136,9 @@ def _importes_recibos(recibos):
 def _cargos(eventos, pedidos, recibos):
     intentos = defaultdict(set)
     cargos = defaultdict(dict)
+    sin_generacion = {}
+    generaciones_por_intento = defaultdict(set)
+    generaciones_con_firma = set()
     pendientes = set()
     vinculados = {}
     for evento in eventos:
@@ -143,17 +146,25 @@ def _cargos(eventos, pedidos, recibos):
         if pedido not in pedidos:
             continue
         generacion = evento.get("id")
+        modelo = evento.get("modelo")
         etapa, numero = evento.get("etapa"), evento.get("intento")
         monto = _importe(evento.get("cost"))
+        intento_valido = _identificador(etapa) and type(numero) is int and numero > 0
+        firma = (pedido, modelo, etapa, numero) if intento_valido and _identificador(modelo) else None
         if not _identificador(generacion):
             pendientes.add(pedido)
+            if firma is not None and monto is not None:
+                sin_generacion[firma] = max(monto, sin_generacion.get(firma, 0))
             continue
         if vinculados.setdefault(generacion, pedido) != pedido:
             raise ValueError("Un ID de generación figura en dos pedidos")
-        if _identificador(etapa) and type(numero) is int and numero > 0:
+        if intento_valido:
             intentos[pedido].add((generacion, etapa, numero))
         else:
             pendientes.add(pedido)
+        if firma is not None:
+            generaciones_por_intento[firma].add(generacion)
+            generaciones_con_firma.add(generacion)
         recibo = recibos.get(generacion)
         if recibo is not None:
             if monto is not None and monto != recibo:
@@ -165,7 +176,16 @@ def _cargos(eventos, pedidos, recibos):
         previo = cargos[pedido].setdefault(generacion, monto)
         if previo != monto:
             raise ValueError("Un ID de generación tiene importes distintos")
-    return intentos, cargos, pendientes
+    minimos_sin_generacion = defaultdict(Decimal)
+    for firma, monto in sin_generacion.items():
+        pedido = firma[0]
+        # Si una copia del intento trae ID, contá sólo el mínimo adicional.
+        asociado = sum(cargos[pedido].get(g, 0) for g in generaciones_por_intento[firma])
+        minimos_sin_generacion[pedido] += max(0, monto - asociado)
+    for pedido, minimo in minimos_sin_generacion.items():
+        sin_firma = sum(monto for g, monto in cargos[pedido].items() if g not in generaciones_con_firma)
+        minimos_sin_generacion[pedido] = max(0, minimo - sin_firma)
+    return intentos, cargos, pendientes, minimos_sin_generacion
 
 
 def _diferencias(caso):
@@ -220,7 +240,7 @@ def diferencias_recuento(esperado, medidas):
 def conciliar(casos, eventos, recibos=()):
     fichas, pedidos = _validar(casos)
     importes_recibos = _importes_recibos(recibos)
-    intentos, cargos, pendientes = _cargos(eventos, pedidos, importes_recibos)
+    intentos, cargos, pendientes, sin_generacion = _cargos(eventos, pedidos, importes_recibos)
     detalle = []
     resumen = Counter(dict.fromkeys((
         "casos", "casos_conciliados", "casos_con_consumo_pendiente", "casos_sobre_el_tope",
@@ -233,12 +253,14 @@ def conciliar(casos, eventos, recibos=()):
         costo = Decimal(0)
         for pedido, esperados in vinculados.items():
             observados = len(intentos[pedido])
-            subtotal = sum(cargos[pedido].values(), Decimal(0))
+            adicional = sin_generacion[pedido]
+            subtotal = sum(cargos[pedido].values(), Decimal(0)) + adicional
             registros.append({
                 "pedido": pedido, "intentos_esperados": esperados, "intentos_identificados": observados,
                 "generaciones_con_importe": len(cargos[pedido]), "costo_conocido_usd": str(subtotal),
                 "generaciones_con_recibo": len(cargos[pedido].keys() & importes_recibos.keys()),
                 "conciliado": observados == esperados and pedido not in pendientes,
+                **({"costo_sin_generacion_usd": str(adicional)} if adicional else {}),
             })
             costo += subtotal
         sin_traza = caso.get("respuestas_sin_traza", 0)
