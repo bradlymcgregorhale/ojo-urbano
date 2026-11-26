@@ -39,6 +39,35 @@ def perfiles():
 
 
 class Configuracion(unittest.TestCase):
+    def test_bolsas_opacas_sin_respaldo_de_recoleccion_quedan_en_duda(self):
+        from prueba_completo import _excluir_indicios_insuficientes
+
+        duda = 'Bolsas cerradas con el contenido oculto. No se distingue qué residuos contienen.'
+        casos = (
+            (duda, 'Bolsas negras de residuos fuera del contenedor.', True),
+            (duda, 'Cartón y envases a un lado del contenedor.', False),
+            (duda, 'Bolsas cerradas en un grupo aparte.', False),
+            ('No se distingue de qué color es el contenedor.', 'Bolsas negras juntadas.', False),
+            (None, 'Bolsas negras de residuos fuera del contenedor.', False),
+        )
+        for anterior, final, pendiente in casos:
+            with self.subTest(anterior=anterior, final=final):
+                fuentes = {'recoleccion': ['sim/final'], 'retiro_muebles': ['sim/final']}
+                confirmadas = {'recoleccion': final, 'retiro_muebles': 'Tapa descartada.'}
+                dudas = {}
+                pedidos = {'recoleccion': 'compatible'}
+                retiros = {'dudosas': {'recoleccion': anterior}} if anterior else {}
+
+                _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos, retiros)
+
+                self.assertIn('retiro_muebles', fuentes)
+                self.assertEqual('recoleccion' not in fuentes, pendiente)
+                self.assertEqual(pedidos['recoleccion'], 'neutral' if pendiente else 'compatible')
+                if pendiente:
+                    self.assertIn('¿Qué hay en las bolsas?', dudas['recoleccion'])
+                else:
+                    self.assertEqual(dudas, {})
+
     def test_respaldo_de_retiro_conserva_la_clave_canonica(self):
         import prueba_completo as P
 
