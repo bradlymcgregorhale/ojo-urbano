@@ -640,8 +640,9 @@ check("/trabajos recorta con el mismo tope",
       código == 202 and bool(_tid_ctx) and len(S._trabajos[_tid_ctx]["contexto"]) == 2000,
       f"HTTP {código}")
 check("la demo anuncia el tope nuevo",
-      "2000 caracteres" in S.PAGINA and "maxLength=2000" in S.PAGINA
-      and "slice(0,2000)" in S.PAGINA and "500 caracteres" not in S.PAGINA)
+      f"{S.CONTEXTO_MAX} caracteres" in S.PAGINA
+      and f"Array.from(texto.trim()).slice(0,{S.CONTEXTO_MAX})" in S.PAGINA
+      and "500 caracteres" not in S.PAGINA)
 check("el README documenta el tope nuevo",
       "hasta 2000 caracteres" in (AQUI / "README.md").read_text(encoding="utf-8"))
 S.procesar = _contando
