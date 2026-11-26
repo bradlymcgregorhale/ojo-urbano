@@ -6,6 +6,7 @@ from decimal import Decimal, ROUND_DOWN
 import json
 import os
 from pathlib import Path
+import re
 
 from eval.vision.centavo import TOPE, errores
 
@@ -182,6 +183,11 @@ def _validar(casos):
         if not all(_identificador(caso[k]) for k in ("id", "entrada", "modo", "modo_version")):
             raise ValueError("Cada caso requiere ID, entrada, modo y versión")
         ficha = (caso["id"], caso["entrada"])
+        if "foto_sha256" in caso:
+            huella = caso["foto_sha256"]
+            if not isinstance(huella, str) or not re.fullmatch(r"[0-9a-f]{64}", huella):
+                raise ValueError("foto_sha256 requiere la huella SHA-256 del archivo enviado")
+            ficha += (caso["modo"], caso["modo_version"])
         if (ficha in fichas or not isinstance(caso["pedidos"], dict)
                 or not (caso["pedidos"] or caso.get("respuestas_sin_traza"))):
             raise ValueError("Caso repetido o sin pedidos vinculados")
@@ -323,19 +329,52 @@ def diferencias_recuento(esperado, medidas):
     return None if medidas is None else sorted(diferencias)
 
 
+def _clave_foto_modo(caso):
+    return caso["foto_sha256"], caso["modo"], caso["modo_version"]
+
+
+def _resumir_fotos(resumen, detalle):
+    grupos = defaultdict(list)
+    for i, fila in enumerate(detalle):
+        grupos[fila.get("foto_sha256", i)].append(fila)
+    if any("foto_sha256" in fila for fila in detalle):
+        resumen.update(fotos_con_huella=0, fotos_con_consumo_pendiente=0, fotos_sobre_el_tope=0)
+    maximo = None
+    for huella, filas in grupos.items():
+        importe = sum((Decimal(fila["costo_conocido_usd"]) for fila in filas), Decimal(0))
+        conciliada = all(fila["conciliado"] for fila in filas)
+        if isinstance(huella, str):
+            exceso = importe > TOPE
+            resumen["fotos_con_huella"] += 1
+            resumen["fotos_con_consumo_pendiente"] += not conciliada
+            resumen["fotos_sobre_el_tope"] += exceso
+            for fila in filas:
+                fila.update(foto_costo_conocido_usd=str(importe), foto_conciliada=conciliada,
+                            foto_supera_tope=exceso)
+        if conciliada:
+            maximo = importe if maximo is None else max(importe, maximo)
+    resumen["maximo_conciliado_usd"] = str(maximo) if maximo is not None else None
+
+
 def conciliar(casos, eventos, recibos=()):
     fichas, pedidos = _validar(casos)
     importes_recibos = _importes_recibos(recibos)
     intentos, cargos, pendientes, sin_generacion = _cargos(eventos, pedidos, importes_recibos)
+    originales_por_foto = defaultdict(set)
+    for caso in fichas.values():
+        if "foto_sha256" in caso:
+            originales = caso["pedidos"].keys() - caso["origenes_cache"].keys()
+            originales_por_foto[_clave_foto_modo(caso)].update(originales)
     detalle = []
     resumen = Counter(dict.fromkeys((
         "casos", "casos_conciliados", "casos_con_consumo_pendiente", "casos_sobre_el_tope",
         "casos_sin_puntuar", "casos_con_diferencias", "diferencias_de_etiqueta",
     ), 0))
-    maximo = None
     for caso in fichas.values():
         vinculados = caso["pedidos"]
         origenes_cache = caso["origenes_cache"]
+        originales = (originales_por_foto[_clave_foto_modo(caso)] if "foto_sha256" in caso
+                      else vinculados.keys() - origenes_cache.keys())
         registros = []
         costo = Decimal(0)
         for pedido, esperados in vinculados.items():
@@ -343,7 +382,7 @@ def conciliar(casos, eventos, recibos=()):
             adicional = sin_generacion[pedido]
             subtotal = sum(cargos[pedido].values(), Decimal(0)) + adicional
             origen = origenes_cache.get(pedido)
-            origen_presente = origen is None or (origen in vinculados and origen not in origenes_cache)
+            origen_presente = origen is None or origen in originales
             registros.append({
                 "pedido": pedido, "intentos_esperados": esperados, "intentos_identificados": observados,
                 "generaciones_con_importe": len(cargos[pedido]), "costo_conocido_usd": str(subtotal),
@@ -362,6 +401,8 @@ def conciliar(casos, eventos, recibos=()):
             "pedidos": registros, "supera_tope": sobre_tope,
             "diferencias": diferencias, "respuestas_sin_traza": sin_traza,
         })
+        if "foto_sha256" in caso:
+            detalle[-1]["foto_sha256"] = caso["foto_sha256"]
         resumen["casos"] += 1
         resumen["casos_conciliados"] += conciliado
         resumen["casos_con_consumo_pendiente"] += not conciliado
@@ -369,8 +410,6 @@ def conciliar(casos, eventos, recibos=()):
         resumen["casos_sin_puntuar"] += diferencias is None
         resumen["casos_con_diferencias"] += bool(diferencias)
         resumen["diferencias_de_etiqueta"] += len(diferencias or [])
-        if conciliado:
-            maximo = costo if maximo is None else max(costo, maximo)
         if "recuento_esperado" in caso:
             diferencias_bolsas = diferencias_recuento(caso["recuento_esperado"], caso["recuento_observado"])
             detalle[-1].update(recuento_esperado=caso["recuento_esperado"],
@@ -387,7 +426,8 @@ def conciliar(casos, eventos, recibos=()):
             resumen["casos_con_contexto_revisado"] += 1
             resumen["casos_sin_puntuar_contexto"] += diferencias_contexto is None
             resumen["casos_con_diferencias_contexto"] += bool(diferencias_contexto)
-    return dict(resumen) | {"maximo_conciliado_usd": str(maximo) if maximo is not None else None}, detalle
+    _resumir_fotos(resumen, detalle)
+    return dict(resumen), detalle
 
 
 def main():
@@ -410,6 +450,7 @@ def main():
     print(json.dumps(resumen, ensure_ascii=False, indent=2))
     return int(any(resumen.get(k) for k in (
         "casos_con_consumo_pendiente", "casos_sobre_el_tope", "casos_sin_puntuar", "casos_con_diferencias",
+        "fotos_sobre_el_tope",
         "casos_sin_puntuar_recuento", "casos_con_diferencias_recuento",
         "casos_sin_puntuar_contexto", "casos_con_diferencias_contexto",
     )))

@@ -135,6 +135,49 @@ class PruebaConsumo(unittest.TestCase):
         self.assertFalse(detalles[2]["conciliado"])
         self.assertIsNone(detalles[2]["diferencias"])
 
+    def test_suma_la_misma_foto_entre_rutas_y_versiones(self):
+        huella = "a" * 64
+        casos = [caso("a", {"web": 1}, foto_sha256=huella),
+                 caso("b", {"bot": 1}, foto_sha256=huella, entrada="bacollab"),
+                 caso("a", {"nuevo": 1}, foto_sha256=huella, modo_version="actual"),
+                 caso("c", {"otra": 1}, foto_sha256="b" * 64)]
+        eventos = [uso("web", "g1", .006), uso("bot", "g2", .002),
+                   uso("nuevo", "g3", .003), uso("otra", "g4", .009)]
+        resumen, filas = conciliar(casos, eventos)
+        self.assertEqual(resumen["maximo_conciliado_usd"], "0.011")
+        self.assertEqual(resumen["fotos_con_huella"], 2)
+        self.assertEqual(resumen["casos_sobre_el_tope"], 0)
+        self.assertEqual(resumen["fotos_sobre_el_tope"], 1)
+        self.assertEqual([r["foto_supera_tope"] for r in filas], [True, True, True, False])
+        self.assertEqual([r["foto_costo_conocido_usd"] for r in filas], ["0.011"] * 3 + ["0.009"])
+        self.assertTrue(all(r["diferencias"] == [] for r in filas))
+
+        resumen, filas = conciliar(casos, [e for e in eventos if e["pedido"] != "bot"])
+        self.assertEqual(resumen["fotos_con_consumo_pendiente"], 1)
+        self.assertEqual(resumen["maximo_conciliado_usd"], "0.009")
+        self.assertEqual([r["foto_conciliada"] for r in filas], [False, False, False, True])
+
+    def test_cache_cruzada_exige_la_misma_huella_modo_y_version(self):
+        huella = "a" * 64
+        original = caso("web", {"origen": 1}, foto_sha256=huella)
+        copia = {"id": "bot", "entrada": "bacollab", "modo": "prueba",
+                 "modo_version": original["modo_version"], "foto_sha256": huella}
+        for ajuste in ({}, {"foto_sha256": "b" * 64}, {"modo_version": "otra"}, {"modo": "alto"}):
+            with self.subTest(ajuste=ajuste):
+                entrada = copia | ajuste
+                entrada["respuestas"] = [
+                    {"modo": entrada["modo"], "modo_version": entrada["modo_version"],
+                     "consumo_api": {"pedido": "copia", "intentos": 0, "origen_cache": "origen"}}]
+                resumen, (_, fila) = conciliar([original, entrada], [uso("origen", "g", .0076)])
+                self.assertEqual(fila["conciliado"], not ajuste)
+                self.assertEqual(fila["costo_conocido_usd"], "0")
+                self.assertEqual(resumen["maximo_conciliado_usd"], None if ajuste and "foto_sha256" not in ajuste
+                                 else "0.0076")
+
+    def test_huella_invalida_no_acredita_cargos_de_la_misma_foto(self):
+        with self.assertRaisesRegex(ValueError, "foto_sha256"):
+            conciliar([caso("a", {"p": 0}, foto_sha256="inválida")], [])
+
     def test_recuento_con_diferencias_aunque_acierten_la_categoria_y_el_costo(self):
         escombros = {"key": "retiro_escombros"}
         for esperado, publicado in (({"bolsas": 0}, escombros | {"bolsas": None}),
