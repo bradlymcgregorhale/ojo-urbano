@@ -240,6 +240,9 @@ class ApiModos(unittest.TestCase):
         self.assertEqual([x['max_tokens'] for x in self.llamadas], [1400, 1400, 550])
         self.assertTrue(all(x['provider']['require_parameters'] for x in self.llamadas))
         self.assertTrue(all(not {'temperature', 'top_p', 'seed'} & x.keys() for x in self.llamadas))
+        textos = [x['messages'][0]['content'] for x in self.llamadas]
+        self.assertIn('dentro del contenedor o del bolsón de izado siguen siendo parte', textos[-1])
+        self.assertTrue(any('del bolsón de izado y pequeños papeles' in t for t in textos[:-1]))
         self.assertEqual(d['costo_api'], .003)
         self.assertTrue(d['costo_api_completo'])
         self.assertEqual(d['consumo_api']['intentos'], 3)
