@@ -339,6 +339,26 @@ class ApiModos(unittest.TestCase):
         self.assertFalse(r.json()['costo_api_completo'])
         self.assertEqual(r.json()['consumo_api']['intentos'], 3)
 
+    def test_prueba_con_reservas_conserva_el_limite_de_salida_de_la_etapa(self):
+        responder = V._pedir_http.side_effect
+
+        def http(req, *args):
+            respuesta = responder(req, *args)
+            respuesta['usage']['cost'] = .0002
+            return respuesta
+
+        for perfil, limite in ((perfil_con_reservas(), 550), (self.ps['prueba'], 1000)):
+            with self.subTest(limite=limite):
+                self.llamadas.clear()
+                with (patch.object(self.S, 'PERFILES', self.ps | {'prueba': perfil}),
+                      patch.object(V, 'MODELOS_MIN_1000', ('t/decision',)),
+                      patch.object(V, '_pedir_http', side_effect=http)):
+                    respuesta = self.post('prueba')
+                self.assertEqual(respuesta.status_code, 200, respuesta.text)
+                self.assertEqual([c['max_tokens'] for c in self.llamadas], [1400, 1400, limite])
+                self.assertEqual(respuesta.json()['analisis_estado'], 'completo')
+                self.assertEqual(respuesta.json()['consumo_api']['intentos'], 3)
+
     def test_prueba_reserva_la_decision_antes_del_apoyo_de_contenedores(self):
         perfil = perfil_con_reservas()
         clave = 'contenedor_humedos_lateral'

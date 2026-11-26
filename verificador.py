@@ -798,9 +798,9 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa",
             raise ValueError("Modelo fuera del modo elegido")
         if etapa == "arbitrar" and perfil.modo == "bajo":
             raise ValueError("Económico no usa árbitro")
-    # Las preguntas cortas también consumen tokens de razonamiento. Con 400,
-    # Mini podía agotar la salida antes de entregar el JSON.
-    if modelo in MODELOS_MIN_1000 and max_tokens < 1000:
+    # Las preguntas cortas también consumen tokens de razonamiento. Con
+    # reservas, el límite elegido para la etapa forma parte del costo estimado.
+    if modelo in MODELOS_MIN_1000 and max_tokens < 1000 and not modos.con_reservas():
         max_tokens = 1000
     cuerpo = {"model": modelo, "max_tokens": max_tokens,
               # Pide a OpenRouter el costo real de la llamada (usage.cost, USD).
