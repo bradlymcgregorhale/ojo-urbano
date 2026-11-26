@@ -25,6 +25,7 @@ sys.path.insert(0, str(ROOT))
 from eval.vision import run as R
 from eval.vision import dataset as D
 from eval.vision import consumo as C
+from eval.revision_lotes import regresiones
 from PIL import Image
 
 TRIAGE = ['green-TC03772', 'r4-T008', 'r4-T017', 'r4-T050', 'r4-T109',
@@ -193,6 +194,9 @@ def evaluate_prueba(case, private, identity, server, respuestas, *, ruta='clasif
     if 'recuento_esperado' in case:
         row.update(recuento_esperado=case['recuento_esperado'], recuento_observado=None,
                    diferencias_recuento=None)
+    if case.get('principal_esperado') is not None:
+        row.update(principal_esperado=case['principal_esperado'], principal_observado=None,
+                   diferencia_principal=None)
     lock = threading.Lock()
     pedir_http = R.V._pedir_http
 
@@ -252,8 +256,14 @@ def evaluate_prueba(case, private, identity, server, respuestas, *, ruta='clasif
                 medidas = C.medidas_bolsas(public)
                 row.update(recuento_observado=medidas,
                            diferencias_recuento=C.diferencias_recuento(row['recuento_esperado'], medidas))
+            if 'principal_esperado' in row:
+                principal = regresiones.observado(public, 'problema_principal')
+                if principal is None:
+                    row.update(status='error', error='Falta una decisión verificable del problema principal.')
+                    return row
+                row.update(principal_observado=principal, diferencia_principal=principal != row['principal_esperado'])
             row['status'] = 'fail' if any(row.get(k) for k in (
-                'missing', 'unexpected', 'contract_issues', 'diferencias_recuento')) else 'pass'
+                'missing', 'unexpected', 'contract_issues', 'diferencias_recuento', 'diferencia_principal')) else 'pass'
     except R.NotAvailable as error:
         row.update(status='uncached', error=str(error))
     except Exception as error:
@@ -493,10 +503,17 @@ def main(argv=None):
         parser.error(str(error))
     ids = args.ids or ([r['case'] for r in baseline['rows']] if baseline else TRIAGE)
     manifest = json.loads((args.private / 'cases.json').read_text())
-    cases = R.select(manifest['cases'], 'all', ids=ids)
+    cases = R.select(manifest['cases'], 'all', ids=ids, incluir_prioridad=prueba)
     unknown = set(ids) - {a for c in cases for a in c['aliases']}
     if unknown:
         parser.error('Unknown or unscorable case IDs: ' + ', '.join(sorted(unknown)))
+    if prueba:
+        for caso in cases:
+            principal = caso.get('principal_esperado')
+            if principal is not None and (
+                    not isinstance(principal, str) or principal not in regresiones.SERVICIOS | {'indeterminado'}
+                    or caso['expected'].get(principal) is False):
+                parser.error('principal_esperado debe ser un servicio confirmado o indeterminado.')
     if facturada and len({c['id'] for c in cases}) != len(cases):
         parser.error('El lote contiene IDs de caso repetidos.')
     if args.allow_initial_live and not args.live:
