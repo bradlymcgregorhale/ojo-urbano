@@ -2733,6 +2733,8 @@ function renderProblema(c,revisionEscombros){
     const bolsas=Number.isInteger(minimo)&&(minimo>0||(completo&&minimo===0))
       ?(completo?String(minimo):'al menos '+minimo):cantidad(c.bolsas);
     campos.push('Bolsas: '+bolsas);
+    if(!completo&&revisionEscombros?.bolsas_fuentes===1)
+      campos.push('Una lectura. Falta corroborar el recuento.');
   }
   if(c.key==='retiro_muebles'){
     const tam=['chico','grande'].includes(c.objeto_tam)?c.objeto_tam:'tamaño sin informar';

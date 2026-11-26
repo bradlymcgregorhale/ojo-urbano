@@ -565,6 +565,8 @@ class ApiModos(unittest.TestCase):
                 else:
                     self.assertEqual(salida['verificacion_escombros']['bolsas_minimo'], minimo)
                     self.assertIs(salida['verificacion_escombros']['bolsas_recuento_completo'], exacto)
+                    self.assertEqual(salida['verificacion_escombros']['bolsas_fuentes'],
+                                     sum(type(cuenta) is int for cuenta in (dirigida, final)))
 
     def test_prueba_excluye_recoleccion_si_ambas_lecturas_ubican_los_residuos_en_el_bolson(self):
         datos = {'modo': 'prueba', 'contexto': 'Recolección de basura y barrido de la vereda'}
