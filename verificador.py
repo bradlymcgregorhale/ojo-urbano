@@ -836,6 +836,7 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa",
             break
         inicio = time.monotonic()
         data, error = None, None
+        reserva = modos.reservar_consulta(etapa)
         try:
             modos.llamada()
             data = _pedir_http(req, min(TIMEOUT, resto), vence)
@@ -850,7 +851,9 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa",
             ultimo = e
             error = e
         finally:
-            _costo_sumar(data.get("usage") if isinstance(data, dict) else None)
+            uso = data.get("usage") if isinstance(data, dict) else None
+            modos.liquidar_consulta(reserva, uso)
+            _costo_sumar(uso)
             _tokens_sumar(data)
             _registrar_uso(modelo, etapa, clave, intento, inicio, data, error)
     modos.fallo(etapa)
