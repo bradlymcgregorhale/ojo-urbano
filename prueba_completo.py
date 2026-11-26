@@ -156,13 +156,11 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, cont
                 modos.fallo('pedido_vecinal')
             else:
                 lectura['pedidos'] = {}
-                for pedido in pedidos:
-                    if not isinstance(pedido, dict):
-                        continue
+                validos = [p for p in pedidos if isinstance(p, dict) and p.get('respaldo') in _RESPALDOS]
+                for pedido in V.preferir_retiro_canonico(validos):
                     clave, respaldo = pedido.get('key'), pedido.get('respaldo')
                     clave = V.clave_contexto_retiro(clave, contexto)
-                    if isinstance(clave, str) and clave in permitidas and clave not in V.PRESENCIA \
-                            and respaldo in _RESPALDOS:
+                    if isinstance(clave, str) and clave in permitidas and clave not in V.PRESENCIA:
                         anterior = lectura['pedidos'].get(clave, respaldo)
                         lectura['pedidos'][clave] = respaldo if anterior == respaldo else 'neutral'
         return lectura

@@ -39,6 +39,33 @@ def perfiles():
 
 
 class Configuracion(unittest.TestCase):
+    def test_respaldo_de_retiro_conserva_la_clave_canonica(self):
+        import prueba_completo as P
+
+        categorias = {'retiro_muebles': {'nombre': 'Retiro de residuos voluminosos'}}
+        contexto = 'Hay un caño grueso tirado en la vereda.'
+        legado = {'key': 'retiro_objetos', 'respaldo': 'compatible', 'motivo': 'Hay un voluminoso.'}
+        actual = {'key': 'retiro_muebles', 'respaldo': 'contradice', 'motivo': 'Se ve un ropero.'}
+        esperado = {'key': 'retiro_muebles', 'respaldo': 'contradice'}
+
+        for pedidos in ([legado, actual], [actual, legado]):
+            with self.subTest(pedidos=pedidos):
+                datos = {'categorias_contexto': pedidos, 'categorias': []}
+                with patch.object(V, '_llamar', return_value=json.dumps(datos)):
+                    veredicto = V._verificar_uno('simulado', '', categorias, contexto)
+                self.assertEqual(veredicto['categorias_contexto'], [esperado])
+
+                datos = {'confirmadas': [], 'dudosas': [], 'pedidos': pedidos}
+                with patch.object(V, '_llamar', return_value=json.dumps(datos)):
+                    lectura = P._leer('simulado', 'texto', [], 'decision', categorias, contexto=contexto)
+                self.assertEqual(lectura['pedidos'], {'retiro_muebles': 'contradice'})
+
+                with patch.object(V, 'ARBITRO', 'simulado'), \
+                        patch.object(V, '_llamar', return_value=json.dumps({'categorias': pedidos})):
+                    ruteo = V._clasificar_contexto(contexto, categorias)
+                self.assertEqual([(c['key'], c['motivo']) for c in ruteo],
+                                 [('retiro_muebles', 'Se ve un ropero.')])
+
     def test_saldo_restante_de_la_foto_limita_la_reserva_del_mismo_perfil(self):
         perfil = perfil_con_reservas()
         for saldo, espera_apoyo in ((Decimal('.01'), True), (Decimal('.0095'), False)):
