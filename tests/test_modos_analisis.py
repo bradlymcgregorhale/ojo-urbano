@@ -68,6 +68,25 @@ class Configuracion(unittest.TestCase):
             salida = M.completar({'detalle': {'verificacion': {'activa': True}}})
             self.assertIn('presupuesto_api_insuficiente', salida['analisis_limitaciones'])
 
+    def test_no_empieza_si_el_saldo_alcanza_para_una_sola_chapa(self):
+        import patentes
+
+        img = Image.new('RGB', (360, 60))
+        detecciones = [{'caja': [0, 0, 158, 40], 'confianza': .9},
+                       {'caja': [170, 0, 326, 40], 'confianza': .8}]
+        with (M.usar(perfil_con_reservas()),
+              patch.object(patentes, 'detectar', return_value=detecciones),
+              patch.object(patentes, 'leer_local') as ocr,
+              patch.object(patentes, 'leer_vlm') as lector):
+            reserva = M.reservar_consulta('prueba_decision')
+            M.liquidar_consulta(reserva, {'cost': .007})
+            self.assertEqual(patentes.leer_chapas(img, ['t/chapa-a', 't/chapa-b'],
+                                                lectura_completa=True), [])
+            ocr.assert_not_called()
+            lector.assert_not_called()
+            salida = M.completar({'detalle': {'verificacion': {'activa': True}}})
+            self.assertIn('presupuesto_api_insuficiente', salida['analisis_limitaciones'])
+
     def test_heredado_ausente_y_vacio_conservan_interpretacion(self):
         for legado in ([], ['t/a'], ['t/a', 't/a'], ['t/a', 't/b', 't/c', 't/d']):
             with patch.object(V, 'VERIFICADORES', legado):
@@ -459,33 +478,43 @@ class ApiModos(unittest.TestCase):
         una = [{'caja': [2, 4, 20, 14], 'confianza': .9}]
         chica = [{'caja': [4, 16, 18, 23], 'confianza': .95}]
         otra = [{'caja': [4, 16, 19, 23], 'confianza': .8}]
-        ocr = {'patente': 'A123BCD', 'lectura': 'A123BCD', 'confianza': .9}
         lector_chapa = 't/chapa'
-        for cajas, lectura, esperado, consultas_chapa in (
-                (una, 'A123BCD', 'A123BCD', 1),
-                (una, 'A128BCD', None, 1),
-                (chica, 'A123BCD', None, 0),
-                (chica + una, 'A123BCD', 'A123BCD', 1),
-                (una + otra, 'A123BCD', None, 0)):
-            with self.subTest(cajas=len(cajas), lectura=lectura):
+        coincide = ('A123BCD', 'A123BCD')
+        for cajas, lecturas, esperado in (
+                (una, (coincide,), 'A123BCD'),
+                (una, (('A123BCD', 'A128BCD'),), None),
+                (chica, (), None),
+                (chica + una, (coincide,), 'A123BCD'),
+                (una + otra, (coincide, (None, None)), 'A123BCD'),
+                (una + otra, (coincide, ('AB123CD', 'AB123CD')), None),
+                (una + otra, (coincide, (None, 'respuesta_inutilizable')), None),
+                (una + otra, (coincide, (None, 'sin_campo_patente')), None)):
+            with self.subTest(cajas=len(cajas), lecturas=lecturas):
                 self.llamadas.clear()
+                votos_ocr = [{'patente': p, 'lectura': p, 'confianza': .9}
+                             for p, _ in lecturas]
+                votos_externos = iter(v for _, v in lecturas)
 
                 def http(req, *_):
                     cuerpo = json.loads(req.data)
                     self.llamadas.append(cuerpo['model'])
+                    fin = 'stop'
                     if cuerpo['model'] == lector_chapa:
-                        contenido = {'patente': lectura}
+                        lectura = next(votos_externos)
+                        if lectura == 'respuesta_inutilizable':
+                            fin = 'length'
+                        contenido = {} if lectura == 'sin_campo_patente' else {'patente': lectura}
                     else:
                         hallazgos = [{'key': k, 'evidencia': 'Una moto junto al poste.'} for k in claves]
                         contenido = {'confirmadas': hallazgos if cuerpo['model'] == 't/decision' else [],
                                      'dudosas': []}
                     return {'usage': {'cost': .001, 'total_tokens': 10}, 'choices': [
-                        {'finish_reason': 'stop', 'message': {'content': json.dumps(contenido)}}]}
+                        {'finish_reason': fin, 'message': {'content': json.dumps(contenido)}}]}
 
                 with (patch.multiple(patentes, LECTORES=(lector_chapa,), ANCHO_MINIMO=15),
                       patch.object(patentes, 'disponible', return_value=True),
                       patch.object(patentes, 'detectar', return_value=cajas),
-                      patch.object(patentes, 'leer_local', return_value=ocr),
+                      patch.object(patentes, 'leer_local', side_effect=votos_ocr),
                       patch.object(V, '_pedir_http', side_effect=http),
                       patch.object(self.S, '_cache', __import__('collections').OrderedDict())):
                     r = self.post('prueba')
@@ -493,8 +522,10 @@ class ApiModos(unittest.TestCase):
                 salida = r.json()
                 self.assertEqual({p['key']: p.get('patente') for p in salida['problemas']},
                                  dict.fromkeys(claves, esperado))
-                self.assertEqual(self.llamadas.count(lector_chapa), consultas_chapa)
-                self.assertEqual(salida['costo_api'], .004 if consultas_chapa else .003)
+                self.assertEqual(self.llamadas.count(lector_chapa), len(lecturas))
+                self.assertAlmostEqual(salida['costo_api'], .003 + .001 * len(lecturas))
+                fallo_recorte = any(v in ('respuesta_inutilizable', 'sin_campo_patente') for _, v in lecturas)
+                self.assertEqual('etapa_fallida' in salida['analisis_limitaciones'], fallo_recorte)
 
     def test_prueba_pide_evidencia_independiente_de_obstruccion_en_un_puesto(self):
         from prueba_completo import _decision
