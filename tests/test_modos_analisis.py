@@ -789,6 +789,40 @@ class ApiModos(unittest.TestCase):
                 respaldo = {p['key']: p['respaldo_visual'] for p in salida['categorias_contexto']}
                 self.assertEqual(respaldo['recoleccion'], ('compatible', 'neutral', 'contradice')[votos_dentro])
 
+    def test_prueba_deja_en_duda_el_pedido_si_las_bolsas_no_corroboran_recoleccion_aparte(self):
+        recoleccion, escombros = 'recoleccion', 'retiro_escombros'
+        casos = (('compatible', False, False, []), ('neutral', False, False, []),
+                 ('compatible', False, True, [escombros]), ('compatible', True, True, [recoleccion, escombros]))
+        for respaldo, separados, mixto, servicios in casos:
+            with self.subTest(respaldo=respaldo, separados=separados, mixto=mixto):
+                contexto = 'Pido recolección' + (' y retiro de escombros.' if mixto else '.')
+                fotos = {'file': ('foto.jpg', self.foto, 'image/jpeg')}
+                evidencia = ('Bolsas negras separadas de los cascotes.' if separados
+                             else 'Bolsas negras sobre el pavimento.')
+
+                def responder(_modelo, _mensajes, **opciones):
+                    salida = {'confirmadas': [], 'dudosas': []}
+                    if opciones['etapa'] == 'prueba_decision':
+                        salida['confirmadas'] = [{'key': recoleccion, 'evidencia': evidencia},
+                                                 {'key': escombros, 'evidencia': 'Cascotes visibles.'}]
+                        salida['pedidos'] = [{'key': recoleccion, 'respaldo': respaldo}]
+                        if mixto:
+                            salida['pedidos'].append({'key': escombros, 'respaldo': 'compatible'})
+                    return json.dumps(salida)
+
+                with patch.object(self.S, 'CACHE_MAX', 0), patch.object(V, '_llamar', side_effect=responder):
+                    r = self.cliente.post('/clasificar/', files=fotos, data={'modo': 'prueba', 'contexto': contexto})
+                self.assertEqual(r.status_code, 200, r.text)
+                v = r.json()
+                self.assertEqual({p['key'] for p in v['problemas']},
+                                 {recoleccion, escombros} if separados else {escombros})
+                self.assertEqual(v['en_duda'], [] if separados else [recoleccion])
+                pedidos = {p['key']: p['respaldo_visual'] for p in v['categorias_contexto']}
+                self.assertEqual(pedidos[recoleccion], 'compatible' if separados else 'neutral')
+                propuesta = v['solicitudes_sugeridas']
+                self.assertEqual(propuesta['criterio'], 'pedidos_explicitos')
+                self.assertEqual(propuesta['servicios'], servicios)
+
     def test_prueba_excluye_los_fragmentos_del_cordon_con_dos_lecturas(self):
         archivos = {'file': ('foto.jpg', self.foto, 'image/jpeg')}
         datos = {'modo': 'prueba', 'contexto': 'Reparación de cordón y retiro de escombros'}

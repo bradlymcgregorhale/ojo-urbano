@@ -335,6 +335,9 @@ def _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos):
             and not re.search(r'\b(?:separad[ao]s?|aparte|cart[oó]n|cartones|cajas?|envoltorios?|'
                               r'comida|envases?|papeles?|botellas?)\b', comunes)):
         fuentes.pop('recoleccion', None)
+        if pedidos.get('recoleccion') in ('compatible', 'neutral'):
+            pedidos['recoleccion'] = 'neutral'
+            dudas.setdefault('recoleccion', 'Falta corroborar residuos comunes separados de los escombros.')
 
 
 def clasificar(img, local, categorias, modelos, *, contexto=''):
