@@ -660,6 +660,9 @@ def _registrar_uso(modelo, etapa, clave, intento, inicio, data=None, error=None)
                     "error": type(error).__name__ if error else None}
         if isinstance(error, urllib.error.HTTPError) and type(error.code) is int:
             registro["http_status"] = error.code
+        error_api = data.get("error")
+        if isinstance(error_api, dict) and type(error_api.get("code")) is int:
+            registro["codigo_error_api"] = error_api["code"]
         for campo in ("prompt_tokens", "completion_tokens", "total_tokens", "cost"):
             valor = usage.get(campo)
             registro[campo] = valor if type(valor) in (int, float) else None

@@ -134,6 +134,30 @@ class TokensApi(unittest.TestCase):
             self.assertNotIn('http_status', registro)
             self.assertEqual(registro['cost'], .002)
 
+    def test_registra_codigo_de_respuesta_sin_reenviar_ni_inventar_costo(self):
+        for codigo in (429, 'codigo-privado', True):
+            with self.subTest(codigo=codigo):
+                salida = io.StringIO()
+                data = {'id': 'gen-prueba', 'error': {'code': codigo,
+                        'message': 'mensaje-privado', 'metadata': {'raw': 'cuerpo-privado'}}}
+                V.costo_reset()
+                with (patch.object(V, 'OPENROUTER_LOG_USO', True),
+                      patch.object(V, '_pedir_http', return_value=data) as http,
+                      redirect_stderr(salida)):
+                    with self.assertRaises(V.RespuestaNoUtilizableError):
+                        V._llamar('m', [], etapa='prueba_contenedores')
+                http.assert_called_once()
+                self.assertNotIn('-privado', salida.getvalue())
+                registro = json.loads(salida.getvalue())
+                self.assertNotIn('http_status', registro)
+                if type(codigo) is int:
+                    self.assertEqual(registro['codigo_error_api'], codigo)
+                else:
+                    self.assertNotIn('codigo_error_api', registro)
+                self.assertEqual(registro['id'], 'gen-prueba')
+                self.assertIsNone(registro['cost'])
+                self.assertFalse(V.costo_total(con_estado=True)['costo_api_completo'])
+
     def test_arbitro_directo_y_salida_corta_conservan_json(self):
         self.enterContext(patch.object(V, 'ARBITRO_SIN_RAZONAMIENTO', True))
         self.enterContext(patch.object(V, 'MODELOS_MIN_1000', ('prueba/minimo',)))
