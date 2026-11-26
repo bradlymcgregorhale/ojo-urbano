@@ -1116,6 +1116,15 @@ class ApiModos(unittest.TestCase):
             self.assertEqual(d['tokens_api'], 0)
         self.assertEqual(self.llamadas, [])
 
+    def test_clasificar_acepta_multipart_con_barra_final_sin_redirigir(self):
+        archivos = {'file': ('foto.jpg', self.foto, 'image/jpeg')}
+        for ruta in ('/clasificar', '/clasificar/'):
+            respuesta = self.cliente.post(ruta, params={'verificar': '0'}, data={'modo': 'prueba'},
+                                          files=archivos, follow_redirects=False)
+            self.assertEqual(respuesta.status_code, 200)
+            self.assertEqual(respuesta.json()['modo'], 'prueba')
+        self.assertEqual(self.llamadas, [])
+
     def test_fallo_reducido_no_escala_ni_cachea(self):
         with patch.object(V, '_pedir_http', side_effect=TimeoutError):
             a = self.post('bajo').json()

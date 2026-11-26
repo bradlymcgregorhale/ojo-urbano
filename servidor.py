@@ -1408,6 +1408,7 @@ async def _perfil_formulario(request, *, admite_prueba=False):
 
 
 @app.post("/clasificar")
+@app.post("/clasificar/", include_in_schema=False)
 async def clasificar(request: Request, file: UploadFile = File(...),
                      verificar: str = "auto", contexto: str = Form(""),
                      modo: Any = Form("alto", description="Modo de análisis: bajo, medio, alto o prueba.")):
