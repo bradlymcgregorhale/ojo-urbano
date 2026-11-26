@@ -190,6 +190,9 @@ def evaluate_prueba(case, private, identity, server, respuestas, *, ruta='clasif
     row = evaluation_row(case)
     fuente = 'live' if medicion is not None else 'archivo'
     row.update(cost_usd=0, requests=[], response={'source': fuente}, ruta_prueba=ruta)
+    if 'recuento_esperado' in case:
+        row.update(recuento_esperado=case['recuento_esperado'], recuento_observado=None,
+                   diferencias_recuento=None)
     lock = threading.Lock()
     pedir_http = R.V._pedir_http
 
@@ -239,12 +242,18 @@ def evaluate_prueba(case, private, identity, server, respuestas, *, ruta='clasif
         row.update(prediction=public, modo=public.get('modo'), modo_version=public.get('modo_version'))
         if any(r['source'] == 'missing' for r in row['requests']):
             row.update(status='uncached', error='Faltan respuestas para las huellas indicadas.')
-        elif not row['requests'] or public.get('analisis_estado') != 'completo':
+        elif (not row['requests'] or public.get('analisis_estado') != 'completo'
+              or public.get('verificacion_activa') is False):
             row.update(status='error', error='El análisis publicado quedó incompleto.')
         else:
             row.update(R.assess(case, {'categorias': public['problemas'] + public['elementos_detectados']}))
             row['contract_issues'] = contract_issues(public)
-            row['status'] = 'fail' if row['missing'] or row['unexpected'] or row['contract_issues'] else 'pass'
+            if 'recuento_esperado' in row:
+                medidas = C.medidas_bolsas(public)
+                row.update(recuento_observado=medidas,
+                           diferencias_recuento=C.diferencias_recuento(row['recuento_esperado'], medidas))
+            row['status'] = 'fail' if any(row.get(k) for k in (
+                'missing', 'unexpected', 'contract_issues', 'diferencias_recuento')) else 'pass'
     except R.NotAvailable as error:
         row.update(status='uncached', error=str(error))
     except Exception as error:
