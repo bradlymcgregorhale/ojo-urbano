@@ -145,6 +145,7 @@ class TokensApi(unittest.TestCase):
                 self.assertIsInstance(log.call_args.args[-1], V.RespuestaNoUtilizableError)
                 self.assertEqual(V.tokens_total(), {'tokens_api': 11, 'tokens_api_completos': True})
                 self.assertEqual(V.costo_total(), .001)
+                self.assertEqual(V.costo_total(con_estado=True), {'costo_api': .001, 'costo_api_completo': True})
 
     def test_cuerpo_http_ilegible_no_reenvia_ni_inventa_consumo(self):
         for body, error in [(b'{"choices":', json.JSONDecodeError),
@@ -161,6 +162,7 @@ class TokensApi(unittest.TestCase):
                 self.assertIsInstance(log.call_args.args[-1], error)
                 self.assertEqual(V.tokens_total(), {'tokens_api': 0, 'tokens_api_completos': False})
                 self.assertEqual(V.costo_total(), 0)
+                self.assertEqual(V.costo_total(con_estado=True), {'costo_api': 0, 'costo_api_completo': False})
 
     def test_formas_invalidas_y_terminacion_nativa(self):
         base = respuesta({'total_tokens': 0, 'cost': 0})

@@ -580,7 +580,7 @@ def _procesar_prueba(img, local, perfil, verificar):
         (elementos if key in verificador.PRESENCIA else problemas).append(entrada)
     posibles = [{'key': k, 'nombre': nombre_de(k), 'fuentes': [perfil.verificadores[0]],
                  'origen': 'foto', 'motivo': e} for k, e in dudas.items()]
-    salida = {'version': VERSION_API, 'costo_api': verificador.costo_total(),
+    salida = {'version': VERSION_API,
               'problemas': problemas, 'elementos_detectados': elementos,
               'posibles': posibles, 'en_duda': list(dudas), 'categorias_contexto': [],
               'descartados_por_foto': [], 'foto_valida': None, 'foto_valida_estado': 'sin_contexto',
@@ -596,7 +596,7 @@ def _procesar_prueba(img, local, perfil, verificar):
                 if problema['key'] == 'retiro_escombros':
                     problema['bolsas'] = verificador._cuenta_1_a_15(recuento['bolsas_minimo'])
     salida = revision_ramas.revisar(img, salida, perfil)
-    salida['costo_api'] = verificador.costo_total()
+    salida.update(verificador.costo_total(con_estado=True))
     salida.update(verificador.tokens_total(desglose=True))
     return modos.completar(salida)
 
@@ -2621,6 +2621,11 @@ function pintar(it){
 const fmtNum=n=>Number(n).toLocaleString('es-AR');
 function lineaCosto(d){
   // Texto de una línea: importe, tokens (entrada y salida) y costo por millón de tokens.
+  if(d.costo_api_completo===false){
+    if(!d.costo_api)return 'Costo de procesamiento (API) pendiente de conciliación';
+    return 'Costo informado (API): US$ '+d.costo_api.toLocaleString('es-AR',{minimumFractionDigits:4,maximumFractionDigits:4})+' · falta conciliar cargos';
+  }
+  if(typeof d.costo_api!=='number'||d.costo_api<=0)return '';
   let t='Costo de procesamiento (API): US$ '+d.costo_api.toLocaleString('es-AR',{minimumFractionDigits:4,maximumFractionDigits:4});
   const tok=typeof d.tokens_api==='number'&&d.tokens_api>0?d.tokens_api:null;
   if(tok){
@@ -2672,12 +2677,14 @@ function resultadoJSON(d){
     '<pre class="json">'+esc(JSON.stringify(d,null,2))+'</pre>';
 }
 function renderResultado(d){
+  const linea=lineaCosto(d);
+  const costo=linea?`<div class="tarcosto">${esc(linea)}</div>`:'';
   if(d.evaluacion_foto?.rechazada){
     return `<div class="resultado-cab"><div><div class="etiqueta">Resultado</div><h3 class="tarconcl">Foto rechazada: ${d.evaluacion_foto.ambito==='interior'?'interior':'calidad insuficiente'}</h3></div></div>`+
       `<div class="tardesc">${esc(d.evaluacion_foto.indicacion||'Necesitamos otra foto para evaluar el reclamo.')}</div>`+
       `<div class="modo-nota">Modo: ${esc(nombresModos[d.modo]||d.modo||'Sin informar')} · Análisis: ${esc(d.analisis_estado||'Sin informar')}</div>`+
       `<details class="tardet"><summary>Más detalle</summary><div class="detbody">${resultadoJSON(d)}</div></details>`+
-      (typeof d.costo_api==='number'&&d.costo_api>0?`<div class="tarcosto">${esc(lineaCosto(d))}</div>`:'');
+      costo;
   }
   const probs=d.problemas||[];
   const aviso=(d.foto_valida===false&&d.hay_problema)
@@ -2830,8 +2837,7 @@ function renderResultado(d){
   // La descripción y los avisos quedan a la vista; el detalle largo (posibles,
   // modelos, materiales, JSON) va plegado.
   h=resumen+h+`<details class="tardet"><summary>Más detalle</summary><div class="detbody">${det}</div></details>`;
-  if(typeof d.costo_api==='number'&&d.costo_api>0)h+=`<div class="tarcosto">${esc(lineaCosto(d))}</div>`;
-  return h;
+  return h+costo;
 }
 
 function actualizarBarra(){

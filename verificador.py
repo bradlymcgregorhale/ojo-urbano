@@ -515,27 +515,31 @@ _costo_foto = contextvars.ContextVar("costo_foto", default=None)
 def costo_reset():
     """Abre un costo independiente; el identificador solo se registra localmente."""
     import secrets
-    _costo_foto.set({"usd": 0.0, "llamadas": 0, "entregado": None,
+    _costo_foto.set({"usd": 0.0, "llamadas": 0, "completo": True, "entregado": None,
                      "id": secrets.token_hex(12), "lock": threading.Lock()})
 
 
-def costo_total():
+def costo_total(*, con_estado=False):
     """Congela el total entregado; el uso tardío no modifica esa respuesta."""
     estado = _costo_foto.get()
-    if estado is None:
-        return 0.0
-    with estado["lock"]:
-        if estado["entregado"] is None:
-            estado["entregado"] = round(estado["usd"], 6)
-        return estado["entregado"]
+    total, completo = 0.0, True
+    if estado is not None:
+        with estado["lock"]:
+            if estado["entregado"] is None:
+                estado["entregado"] = (round(estado["usd"], 6), estado["completo"])
+            total, completo = estado["entregado"]
+    return {"costo_api": total, "costo_api_completo": completo} if con_estado else total
 
 
 def _costo_sumar(usage):
     estado = _costo_foto.get()
     c = usage.get("cost") if isinstance(usage, dict) else None
-    if estado is None or type(c) not in (int, float) or not math.isfinite(c) or c < 0:
+    if estado is None:
         return
     with estado["lock"]:
+        if type(c) not in (int, float) or not math.isfinite(c) or c < 0:
+            estado["completo"] = False
+            return
         estado["usd"] += float(c)
         estado["llamadas"] += 1
         tardio = estado["entregado"] is not None
@@ -835,7 +839,6 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa",
         try:
             modos.llamada()
             data = _pedir_http(req, min(TIMEOUT, resto), vence)
-            _costo_sumar(data.get("usage") if isinstance(data, dict) else None)
             return _contenido_final(data)
         except (RespuestaNoUtilizableError, json.JSONDecodeError, UnicodeDecodeError) as e:
             # Ya llegó una respuesta paga: conservar el consumo y devolver el
@@ -847,6 +850,7 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa",
             ultimo = e
             error = e
         finally:
+            _costo_sumar(data.get("usage") if isinstance(data, dict) else None)
             _tokens_sumar(data)
             _registrar_uso(modelo, etapa, clave, intento, inicio, data, error)
     modos.fallo(etapa)

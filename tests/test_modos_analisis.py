@@ -241,8 +241,49 @@ class ApiModos(unittest.TestCase):
         self.assertTrue(all(x['provider']['require_parameters'] for x in self.llamadas))
         self.assertTrue(all(not {'temperature', 'top_p', 'seed'} & x.keys() for x in self.llamadas))
         self.assertEqual(d['costo_api'], .003)
+        self.assertTrue(d['costo_api_completo'])
         self.assertEqual(self.post('prueba', '/trabajos').json()['resultado'], d)
         self.assertEqual(len(self.llamadas), 3)
+
+    def test_prueba_incluye_en_el_costo_el_apoyo_posterior_a_la_decision(self):
+        def http(req, *_):
+            cuerpo = json.loads(req.data)
+            propiedades = cuerpo['response_format']['json_schema']['schema']['properties']
+            if 'rama_desprendida' in propiedades:
+                contenido = {'rama_desprendida': 'si', 'problemas_arbolado': 'no',
+                             'obstruccion': 'no', 'evidencia': 'Rama suelta sobre la vereda.'}
+            else:
+                contenido = {'confirmadas': [{'key': 'retiro_poda', 'evidencia': 'Rama cortada.'}],
+                             'dudosas': []}
+                if 'objetos' in propiedades:
+                    contenido['dudosas'].append({'key': 'problemas_arbolado', 'evidencia': 'Tronco al fondo.'})
+            self.llamadas.append(cuerpo)
+            return {'usage': {'cost': .001, 'total_tokens': 15}, 'choices': [
+                {'finish_reason': 'stop', 'message': {'content': json.dumps(contenido)}}]}
+
+        with patch.object(V, '_pedir_http', side_effect=http):
+            r = self.post('prueba')
+        self.assertEqual(r.status_code, 200, r.text)
+        salida = r.json()
+        self.assertEqual(len(self.llamadas), 4)
+        self.assertEqual(salida['revision_ramas']['descartadas'], ['problemas_arbolado', 'obstruccion'])
+        self.assertEqual(salida['costo_api'], .004)
+        self.assertTrue(salida['costo_api_completo'])
+
+    def test_prueba_informa_si_falta_el_costo_de_una_consulta(self):
+        original = V._pedir_http
+
+        def http(req, *args):
+            respuesta = original(req, *args)
+            if json.loads(req.data)['model'] == 't/decision':
+                del respuesta['usage']['cost']
+            return respuesta
+
+        with patch.object(V, '_pedir_http', side_effect=http):
+            r = self.post('prueba')
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()['costo_api'], .002)
+        self.assertFalse(r.json()['costo_api_completo'])
 
     def test_prueba_pide_evidencia_independiente_de_obstruccion_en_un_puesto(self):
         from prueba_completo import _decision
