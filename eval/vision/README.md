@@ -74,6 +74,15 @@ T109 está incluido como corrección de entrenamiento y como regresión del pipe
 
 El replay sin red fija las respuestas históricas guardadas dentro de la referencia, aunque haya vencido la caché normal. Esto prueba cambios de código con evidencia constante. Un cambio de prompt que genera una petición distinta necesita nueva evidencia. Un cambio de pesos, extracción de características o dependencias invalida la predicción local; la comparación también detecta cambios de foto, etiquetas, contexto o lectura local.
 
+Para reproducir Completo (prueba), usá el perfil `prueba` configurado en la candidata y los archivos privados de la misma ejecución:
+
+```sh
+.venv/bin/python -m eval.vision.pipeline run --modo prueba --private "$banco" \
+  --ids "$caso" --respuestas-prueba "$respuestas_guardadas" --out "$informe_nuevo"
+```
+
+El comando usa la ruta real `/clasificar/` con la predicción local guardada. Cada respuesta HTTP original de OpenRouter se guarda bajo `respuestas` en un objeto indexado por SHA-256. Calculá la huella con `eval.vision.run.fingerprint` de `{"endpoint": URL, "body": JSON_de_la_consulta}`. Incluye los mensajes, la imagen, el esquema y los parámetros que recibió el proveedor. El verificador procesa los recibos archivados para aplicar sus reglas de costo y el informe registra cero cargos nuevos. Si falta alguna huella, el caso queda sin puntuar. Podés correr sin `--respuestas-prueba` para identificar qué solicitudes faltan o usar `--baseline` para reutilizar una reproducción anterior del mismo modo.
+
 Para capturar nuevas predicciones locales y completar peticiones pendientes:
 
 ```sh
