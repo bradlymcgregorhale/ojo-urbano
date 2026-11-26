@@ -25,6 +25,10 @@ def uso(pedido, generacion, costo, **datos):
     }
 
 
+def recibo(generacion, costo):
+    return {"data": {"id": generacion, "total_cost": costo}}
+
+
 class PruebaConsumo(unittest.TestCase):
     def test_extrae_los_pedidos_y_las_etiquetas_de_los_dos_recorridos(self):
         base = {"id": "a", "modo": "prueba", "modo_version": "v", "esperado": {"recoleccion": True}}
@@ -89,6 +93,36 @@ class PruebaConsumo(unittest.TestCase):
         [foto] = conciliar([caso("a", {"p": 2})], [uso("p", "g", .010000001)])[1]
         self.assertFalse(foto["conciliado"])
         self.assertTrue(foto["supera_tope"])
+
+    def test_recibo_completa_el_cargo_de_una_respuesta_fallida(self):
+        casos = [caso("a", {"p": 2})]
+        eventos = [uso("p", "decision", .009),
+                   uso("p", "apoyo", None, etapa="prueba_retiros", finish_reason="length")]
+        facturas = [recibo("decision", .009), recibo("apoyo", .00101), recibo("apoyo", .00101),
+                    recibo("fuera-del-banco", .008)]
+        [antes] = conciliar(casos, eventos)[1]
+        self.assertFalse(antes["conciliado"])
+        resumen, [foto] = conciliar(casos, eventos, facturas)
+        self.assertTrue(foto["conciliado"])
+        self.assertTrue(foto["supera_tope"])
+        self.assertEqual(resumen["maximo_conciliado_usd"], "0.01001")
+        self.assertEqual(foto["pedidos"][0]["generaciones_con_recibo"], 2)
+
+    def test_recibo_sin_vinculo_no_cubre_un_intento_sin_identificador(self):
+        casos = [caso("a", {"p": 1})]
+        eventos = [uso("p", None, None, error="TimeoutError")]
+        [foto] = conciliar(casos, eventos, [recibo("sin-vinculo", .002)])[1]
+        self.assertFalse(foto["conciliado"])
+        self.assertEqual(foto["costo_conocido_usd"], "0")
+        self.assertEqual(foto["pedidos"][0]["generaciones_con_recibo"], 0)
+
+    def test_rechaza_importes_de_recibo_incompatibles(self):
+        casos = [caso("a", {"p": 1})]
+        eventos = [uso("p", "g", .008)]
+        with self.assertRaisesRegex(ValueError, "difiere del registro"):
+            conciliar(casos, eventos, [recibo("g", .009)])
+        with self.assertRaisesRegex(ValueError, "recibos con importes distintos"):
+            conciliar(casos, eventos, [recibo("g", .008), recibo("g", .009)])
 
     def test_descarta_importes_invalidos_y_detecta_dos_cargos_para_la_misma_generacion(self):
         casos = [caso("a", {"p": 1, "q": 1})]
