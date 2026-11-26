@@ -134,8 +134,9 @@ El servicio está escrito en Python.
 
 Si el texto pide ocupación de la vereda o del espacio público y apunta a un local comercial,
 `reclamo_foto` devuelve un `estado` de `compatible`, `no_corresponde` o `sin_evidencia`.
-En `servicios` aparecen `ocupacion_comercial` cuando hay productos visibles ofrecidos a la venta
-(`118001`), `obstruccion` cuando hay un elemento que ocupa el paso (`118020`), o ambos si se
+En `servicios` aparecen `ocupacion_comercial` cuando un local ocupa la vereda con mercadería
+ofrecida a la venta o equipamiento que usa el comercio (`118001`),
+`obstruccion` cuando hay una barrera que ocupa el paso (`118020`), o ambos si se
 trata de elementos distintos. La foto compatible también propone los servicios en
 `solicitudes_sugeridas` para confirmar. Una foto que no corresponde o
 carece de evidencia deja la lista de servicios vacía. `problemas` conserva el diagnóstico

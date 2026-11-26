@@ -1111,6 +1111,8 @@ def _publica(r, contexto=""):
                          "evidencia": c.get("evidencia"),
                          **({"mercaderia_visible": c["mercaderia_visible"]}
                             if c.get("mercaderia_visible") else {}),
+                         **({"equipamiento_visible": c["equipamiento_visible"]}
+                            if c.get("key") == "ocupacion_comercial" and c.get("equipamiento_visible") else {}),
                          **({"anulada_por": c["anulada_por"]}
                             if c.get("anulada_por") else {})}
                         for c in (v.get("categorias") or [])],

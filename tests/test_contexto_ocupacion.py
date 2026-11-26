@@ -84,6 +84,29 @@ class ContextoOcupacionTest(unittest.TestCase):
                     lectura = verificador._verificar_uno("prueba/modelo", "", {clave: {"nombre": clave}})
                 self.assertEqual(lectura["categorias"][0]["mercaderia_visible"], "naranjas y peras")
 
+    def test_equipamiento_de_un_local_respalda_la_ocupacion_sin_mercaderia(self):
+        categorias = {clave: {"nombre": clave} for clave in ("ocupacion_comercial", "manteros")}
+        equipo = "Máquina de garra instalada en la vereda junto al kiosco"
+        veredicto = {"categorias": [{"key": clave, "equipamiento_visible": equipo}
+                                   for clave in categorias]}
+        with patch.object(verificador, "_llamar", return_value=json.dumps(veredicto)):
+            lectura = verificador._verificar_uno("prueba/modelo", "", categorias)
+        self.assertEqual([c["key"] for c in lectura["categorias"]], ["ocupacion_comercial"])
+        self.assertEqual(lectura["categorias"][0]["equipamiento_visible"], equipo)
+        resultado = {"modelos": [lectura]}
+        contexto_ocupacion.aplicar(resultado, "ocupación por local comercial")
+        self.assertEqual(resultado["reclamo_foto"]["codigo"], "118001")
+        self.assertEqual(resultado["solicitudes_sugeridas"]["servicios"], ["ocupacion_comercial"])
+
+    def test_cartel_y_cajones_vacios_no_cuentan_como_equipamiento(self):
+        for equipo in ("Cartel de precios en la vereda", "Cajones de apoyo vacíos", "Pizarra aislada",
+                       "No se ve equipamiento comercial", None):
+            with self.subTest(equipo=equipo):
+                categoria = {"key": "ocupacion_comercial", "equipamiento_visible": equipo}
+                with patch.object(verificador, "_llamar", return_value=json.dumps({"categorias": [categoria]})):
+                    lectura = verificador._verificar_uno("prueba/modelo", "", {"ocupacion_comercial": {}})
+                self.assertEqual(lectura["categorias"], [])
+
     def test_revision_de_objetos_no_recupera_venta_ambulante_sin_productos(self):
         hallazgo = {"tipo": "venta_ambulante", "uso": "venta", "objeto": "pizarra",
                     "evidencia": "lista de precios y cajones", "ubicacion": "vereda"}

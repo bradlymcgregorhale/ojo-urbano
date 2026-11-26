@@ -2573,10 +2573,15 @@ def _verificar_uno(modelo, data_url, categorias, contexto=""):
             c["key"] = FOLD.get(c.get("key"), c.get("key"))
             if c["key"] in categorias and c["key"] not in {v["key"] for v in vistas}:
                 if c["key"] in {"ocupacion_comercial", "manteros"}:
-                    producto = contexto_ocupacion.mercaderia_visible(c.get("mercaderia_visible"))
-                    if not producto:
+                    producto = contexto_ocupacion.mercaderia_visible(c.pop("mercaderia_visible", None))
+                    equipo = _texto_limpio(
+                        contexto_ocupacion.equipamiento_visible(c.pop("equipamiento_visible", None)), EVID_MAX)
+                    if not producto and not (c["key"] == "ocupacion_comercial" and equipo):
                         continue
-                    c["mercaderia_visible"] = producto
+                    if producto:
+                        c["mercaderia_visible"] = producto
+                    if c["key"] == "ocupacion_comercial" and equipo:
+                        c["equipamiento_visible"] = equipo
                 c["evidencia"] = _texto_limpio(c.get("evidencia"), EVID_MAX)
                 # La patente se normaliza y valida ACÁ: lo que no matchea un
                 # formato argentino completo no entra ni al detalle.
