@@ -10,4 +10,5 @@ contenedor_humedos_lateral: cuerpo negro con postes o apoyos laterales de izado 
 contenedor_humedos_bilateral: contenedor de húmedos con diseño gris de carga bilateral y herrajes visibles; no supongas un segundo recipiente.
 contenedor_secos: verde de reciclables; el color de un recipiente no se deduce del reflejo ni de la tapa de otro.
 reparacion_vereda: rotura física de baldosas o pavimento peatonal, sin confundir grietas de la calzada.
+reparacion_cordon: identificá un quiebre, hundimiento accidental o faltante del borde contra la calzada. Una separación con el pavimento detrás del cordón, desgaste menor o un rebaje de acceso no bastan. Si no distinguís el daño del diseño o del pavimento, dejalo en dudosas. Evaluá barrido por separado.
 obstruccion: obstáculo que impide o desvía el paso; no dupliques la categoría de retiro por un objeto que deja paso suficiente.
