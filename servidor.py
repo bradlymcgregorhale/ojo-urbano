@@ -561,6 +561,17 @@ def _cache_guardar(huella, respuesta):
             _cache.popitem(last=False)
 
 
+def _traza_cache(respuesta, pedido=None):
+    origen = respuesta.get('consumo_api')
+    if origen is None:
+        return respuesta
+    return dict(respuesta, consumo_api={
+        'pedido': pedido or secrets.token_hex(12),
+        'intentos': 0,
+        'origen_cache': origen['pedido'],
+    })
+
+
 def _calidad_segura(img):
     try:
         return verificador.calidad_foto(img)
@@ -1379,7 +1390,7 @@ async def clasificar(request: Request, file: UploadFile = File(...),
     # por el serializador v4. No hay escotilla que devuelva los internals.
     respuesta = _cache_leer(huella)
     if respuesta is not None:
-        return JSONResponse(_publica(respuesta, contexto))
+        return JSONResponse(_publica(_traza_cache(respuesta), contexto))
 
     # Acá hubo una deduplicación de pedidos en vuelo (que el segundo pedido
     # de la misma foto se colgara del primero en vez de pagarla dos veces).
@@ -1395,7 +1406,7 @@ async def clasificar(request: Request, file: UploadFile = File(...),
     if turno == "cache":
         respuesta = _cache_leer(huella)
         if respuesta is not None:
-            return JSONResponse(_publica(respuesta, contexto))
+            return JSONResponse(_publica(_traza_cache(respuesta), contexto))
         # Entre el aviso y la lectura la caché se vació (rarísimo: CACHE_MAX
         # entradas nuevas en milisegundos). Antes que complicar la cola:
         raise _503("el servidor está ocupado; reintentá en un momento")
@@ -1748,6 +1759,7 @@ async def _correr_trabajo(t):
             respuesta = _cache_leer(t["huella"])
             if respuesta is None:
                 raise _503("el servidor está ocupado; reintentá en un momento")
+            respuesta = _traza_cache(respuesta, (t.get("consumo_api") or {}).get("pedido"))
         t["resultado"] = _publica(respuesta, t["contexto"])
         t["estado"] = "listo"
     except HTTPException as e:
@@ -1784,7 +1796,7 @@ async def crear_trabajo(request: Request, file: UploadFile = File(...),
     respuesta = _cache_leer(huella)
     if respuesta is not None:
         return JSONResponse({"trabajo": None, "estado": "listo",
-                             **perfil.metadatos(), "resultado": _publica(respuesta, contexto)})
+                             **perfil.metadatos(), "resultado": _publica(_traza_cache(respuesta), contexto)})
     if _saturado():
         raise _503("el servidor está degradado; reintentá más tarde", 30)
     _podar_trabajos()
