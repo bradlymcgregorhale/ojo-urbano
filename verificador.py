@@ -1213,6 +1213,14 @@ def clave_contexto_retiro(clave, contexto):
     return clave
 
 
+def preferir_retiro_canonico(entradas):
+    """Conserva el respaldo de retiro_muebles si el lector usa ambas claves."""
+    pares = [(c.get("key") if isinstance(c, dict) else c, c) for c in entradas]
+    if any(clave == "retiro_muebles" for clave, _ in pares):
+        return [c for clave, c in pares if clave != RETIRO_OBJETOS_LEGADO]
+    return entradas
+
+
 CAMPOS_POR_CLAVE = {
     "retiro_escombros": {"bolsas": _cuenta_1_a_15},
     "retiro_muebles": {"objeto_tipo": _objeto_tipo, "objeto_tam": _objeto_tam,
@@ -2644,7 +2652,7 @@ def _verificar_uno(modelo, data_url, categorias, contexto=""):
                 _campos_validos(c)
                 vistas.append(c)
         ctx_cats = []
-        for item in veredicto.get("categorias_contexto") or []:
+        for item in preferir_retiro_canonico(veredicto.get("categorias_contexto") or []):
             # tolera claves sueltas (formato viejo), {key, respaldo} o
             # {codigo, respaldo} para prestaciones del catálogo completo
             respaldo = "neutral"
@@ -2930,9 +2938,8 @@ def _clasificar_contexto(contexto, categorias):
         # acá, un corte de OpenRouter quedaría cacheado como "no hay problema".
         return None
     salida, vistas = [], set()
-    for c in data.get("categorias", []) or []:
-        if not isinstance(c, dict):
-            continue
+    lecturas = [c for c in (data.get("categorias") or []) if isinstance(c, dict)]
+    for c in preferir_retiro_canonico(lecturas):
         k = clave_contexto_retiro(FOLD.get(c.get("key"), c.get("key")), contexto)
         if k in categorias and k != "sin_problema" and k not in vistas \
                 and k not in PRESENCIA:
