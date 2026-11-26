@@ -24,6 +24,23 @@ class PrioridadTest(unittest.TestCase):
                 self.assertEqual(sin_contexto['estado'], 'requiere_contexto')
                 self.assertEqual(sin_contexto['servicios'], [])
 
+    def test_prueba_deja_pendientes_varios_pedidos_sin_hallazgos_que_los_respalden(self):
+        retiro, vereda = 'retiro_muebles', 'reparacion_vereda'
+        for hallazgos in ([], [{'key': 'barrido'}]):
+            for respaldo in ('neutral', 'compatible'):
+                with self.subTest(hallazgos=hallazgos, respaldo=respaldo):
+                    corresponde = respaldo == 'compatible'
+                    publica = {'modo': 'prueba', 'analisis_estado': 'completo', 'problemas': hallazgos,
+                               'foto_valida': True if corresponde else None,
+                               'foto_valida_estado': 'corresponde' if corresponde else 'sin_opinion',
+                               'categorias_contexto': [{'key': retiro, 'respaldo_visual': 'neutral'},
+                                                       {'key': vereda, 'respaldo_visual': respaldo}]}
+                    propuesta = P.proponer_solicitudes(publica)
+                    self.assertEqual(propuesta['criterio'], 'pedidos_explicitos')
+                    self.assertEqual(propuesta['estado'], 'pendiente')
+                    self.assertEqual(propuesta['servicios'], [])
+                    self.assertEqual(propuesta['candidatos'], [h['key'] for h in hallazgos])
+
     def test_la_duda_entre_barrido_y_recoleccion_no_quita_otro_pedido(self):
         barrido, recoleccion, cordon = 'barrido', 'recoleccion', 'reparacion_cordon'
         for principal, respaldo_barrido, esperados in (

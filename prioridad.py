@@ -198,13 +198,10 @@ def proponer_solicitudes(publica):
                  'requiere_confirmacion': True, 'motivo': None}
     if evaluacion.get('rechazada'):
         return dict(resultado, estado='no_aplica', motivo='La foto requiere reemplazo.')
-    if not candidatos:
-        return dict(resultado, estado='sin_confirmados',
-                    motivo='No hay problemas confirmados para proponer un servicio.')
-    if (evaluacion.get('requiere_revision')
+    if (candidatos and (evaluacion.get('requiere_revision')
             or evaluacion.get('requiere_foto_complementaria')
             or evaluacion.get('ambito') in {'mixto', 'indeterminado'}
-            or (publica.get('contexto_visual') or {}).get('suficiente') is False):
+            or (publica.get('contexto_visual') or {}).get('suficiente') is False)):
         return dict(resultado, estado='requiere_contexto',
                     motivo='Falta confirmar la ubicación o el alcance antes de elegir servicios.')
     limpieza = {'barrido', 'recoleccion'}
@@ -212,17 +209,24 @@ def proponer_solicitudes(publica):
     if publica.get('modo') == 'prueba' and publica.get('analisis_estado') == 'completo':
         pedidos = {c['key']: c.get('respaldo_visual') for c in publica.get('categorias_contexto') or []
                    if c.get('key')}
-        if (publica.get('foto_valida_estado') == 'sin_opinion'
-                and any(pedidos.get(k) in {'neutral', 'contradice'} for k in candidatos)):
-            return dict(resultado, criterio='pedidos_explicitos',
-                        motivo='La foto no permite corroborar el pedido vecinal.')
-        if publica.get('foto_valida') is True and len(pedidos) > 1:
+        varios = len(pedidos) > 1
+        corresponde = publica.get('foto_valida') is True
+        sin_opinion = publica.get('foto_valida_estado') == 'sin_opinion'
+        if corresponde and varios:
             pedidos_respaldados = [k for k, respaldo in pedidos.items()
                                   if respaldo == 'compatible' and k in candidatos]
-            # Este par puede describir los mismos residuos. Si no hay otro
-            # pedido respaldado, conservá la selección habitual.
-            if limpieza <= pedidos.keys() and not set(pedidos_respaldados) - limpieza:
-                pedidos_respaldados = []
+        faltan_hallazgos = varios and (corresponde or sin_opinion) and not pedidos_respaldados
+        pedido_en_duda = sin_opinion and any(pedidos.get(k) in {'neutral', 'contradice'} for k in candidatos)
+        if faltan_hallazgos or pedido_en_duda:
+            return dict(resultado, criterio='pedidos_explicitos',
+                        motivo='La foto no permite corroborar el pedido vecinal.')
+        # Este par puede describir los mismos residuos. Si no hay otro
+        # pedido respaldado, conservá la selección habitual.
+        if limpieza <= pedidos.keys() and not set(pedidos_respaldados) - limpieza:
+            pedidos_respaldados = []
+    if not candidatos:
+        return dict(resultado, estado='sin_confirmados',
+                    motivo='No hay problemas confirmados para proponer un servicio.')
     if elegido not in candidatos:
         elegido = None
     if elegido and principal.get('criterio') == 'pedido_explicito':
