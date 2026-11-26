@@ -1,5 +1,6 @@
 """Clasificación visual de prueba con consultas dirigidas y resultado breve."""
 from concurrent.futures import ThreadPoolExecutor
+import json
 import re
 
 import modos_analisis as modos
@@ -53,6 +54,14 @@ _LECTURA_FINAL = _objeto({
     **_LECTURA_CON_RECUENTO['properties'],
     'objetos': {'type': 'array', 'items': _TEXTO},
 })
+_RESPALDOS = ('compatible', 'contradice', 'neutral')
+_LECTURA_CON_PEDIDOS = _objeto({
+    **_LECTURA_FINAL['properties'],
+    'pedidos': {'type': 'array', 'items': _objeto({
+        'key': _TEXTO, 'respaldo': {'type': 'string', 'enum': list(_RESPALDOS)},
+    })},
+})
+_REGLAS_PEDIDOS = cargar_prompt('prueba/pedidos')
 _ALCANCE = _objeto({**{k: {'type': 'string', 'enum': list(v)}
                       for k, v in ESTADOS_ALCANCE.items()}, 'evidencia': _TEXTO})
 
@@ -80,7 +89,7 @@ def _alcance(valor):
     return valor
 
 
-def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low'):
+def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, contexto=''):
     nombre = 'prueba_' + etapa
     try:
         schema = _ALCANCE if permitidas is None else {
@@ -90,6 +99,11 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low'):
             texto += '\n' + RECUENTO
         if etapa == 'decision':
             texto += '\n' + OBJETOS
+            if contexto:
+                schema = _LECTURA_CON_PEDIDOS
+                texto += '\n' + _REGLAS_PEDIDOS
+                vistas = [{'type': 'text', 'text': json.dumps({'contexto_vecinal': contexto}, ensure_ascii=False)},
+                          *vistas]
         mensajes = [{'role': 'system', 'content': texto},
                     {'role': 'user', 'content': vistas}]
         # El límite de salida incluye el razonamiento, además del JSON.
@@ -109,6 +123,20 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low'):
             lectura['recuento'] = (cuenta, tapadas if isinstance(tapadas, bool) else None)
         if etapa == 'decision' and 'retiro_muebles' in lectura['confirmadas']:
             lectura['objetos'] = V._objetos_lista(valor.get('objetos')) or []
+        if contexto:
+            pedidos = valor.get('pedidos')
+            if not isinstance(pedidos, list):
+                modos.fallo('pedido_vecinal')
+            else:
+                lectura['pedidos'] = {}
+                for pedido in pedidos:
+                    if not isinstance(pedido, dict):
+                        continue
+                    clave, respaldo = pedido.get('key'), pedido.get('respaldo')
+                    if isinstance(clave, str) and clave in permitidas and clave not in V.PRESENCIA \
+                            and respaldo in _RESPALDOS:
+                        anterior = lectura['pedidos'].get(clave, respaldo)
+                        lectura['pedidos'][clave] = respaldo if anterior == respaldo else 'neutral'
         return lectura
     except (AttributeError, TypeError, ValueError, OSError):
         modos.fallo(nombre)
@@ -225,7 +253,7 @@ def _excluir_indicios_insuficientes(fuentes, confirmadas):
         fuentes.pop('recoleccion', None)
 
 
-def clasificar(img, local, categorias, modelos):
+def clasificar(img, local, categorias, modelos, *, contexto=''):
     """Devuelve categorías y su procedencia, con las comprobaciones elegidas."""
     sol, luna, apoyo = modelos
     claves = tuple(k for k in categorias if k != 'sin_problema')
@@ -239,7 +267,7 @@ def clasificar(img, local, categorias, modelos):
         lecturas = V._map_con_contexto(pool, lambda fn: fn(), tareas)
     retiros = lecturas[0] or {}
     previas = [r for r in lecturas if r is not None]
-    final = _leer(sol, _decision(previas, scores, claves), foto, 'decision', claves)
+    final = _leer(sol, _decision(previas, scores, claves), foto, 'decision', claves, contexto=contexto)
     if final is None:
         return {}, {}, None
     confirmadas, dudas = final['confirmadas'], final['dudosas']
@@ -278,6 +306,8 @@ def clasificar(img, local, categorias, modelos):
     _excluir_indicios_insuficientes(fuentes, confirmadas)
     modelo = {'modelo': sol, 'ok': True,
               'categorias': [{'key': k, 'evidencia': e} for k, e in confirmadas.items()]}
+    if 'pedidos' in final:
+        modelo['pedidos'] = final['pedidos']
     if 'retiro_escombros' in fuentes:
         modelo['recuento_escombros'] = _recuento(retiros, final)
     if 'retiro_muebles' in fuentes:

@@ -568,10 +568,11 @@ def _calidad_segura(img):
         return None
 
 
-def _procesar_prueba(img, local, perfil, verificar):
+def _procesar_prueba(img, local, perfil, verificar, contexto):
     confirmadas, dudas, lector = {}, {}, None
     if verificar:
-        confirmadas, dudas, lector = prueba_completo.clasificar(img, local, CATEGORIAS, perfil.verificadores)
+        confirmadas, dudas, lector = prueba_completo.clasificar(
+            img, local, CATEGORIAS, perfil.verificadores, contexto=contexto)
     elementos, problemas = [], []
     for key, fuentes in confirmadas.items():
         entrada = {'key': key, 'nombre': nombre_de(key), 'fuentes': fuentes, 'gravedad': None}
@@ -583,7 +584,8 @@ def _procesar_prueba(img, local, perfil, verificar):
     salida = {'version': VERSION_API,
               'problemas': problemas, 'elementos_detectados': elementos,
               'posibles': posibles, 'en_duda': list(dudas), 'categorias_contexto': [],
-              'descartados_por_foto': [], 'foto_valida': None, 'foto_valida_estado': 'sin_contexto',
+              'descartados_por_foto': [], 'foto_valida': None,
+              'foto_valida_estado': 'no_evaluado' if contexto else 'sin_contexto',
               'descripcion': ', '.join(c['nombre'] for c in problemas) or None,
               'calidad_foto': _calidad_segura(img), 'detalle': {'modelo_local': local,
                   'verificacion': {'activa': lector is not None,
@@ -596,9 +598,31 @@ def _procesar_prueba(img, local, perfil, verificar):
                 if problema['key'] == 'retiro_escombros':
                     problema['bolsas'] = verificador._cuenta_1_a_15(recuento['bolsas_minimo'])
     salida = revision_ramas.revisar(img, salida, perfil)
+    if contexto and lector is not None:
+        _pedidos_prueba(salida, lector.get('pedidos', {}))
     salida.update(verificador.costo_total(con_estado=True))
     salida.update(verificador.tokens_total(desglose=True))
     return modos.completar(salida)
+
+
+def _pedidos_prueba(salida, pedidos):
+    vistas = {p['key'] for p in salida['problemas']}
+    salida['categorias_contexto'] = [
+        {'key': clave, 'nombre': nombre_de(clave), 'fuentes': 1,
+         'respaldo_visual': 'compatible' if clave in vistas else respaldo}
+        for clave, respaldo in pedidos.items()
+    ]
+    respaldos = {c['respaldo_visual'] for c in salida['categorias_contexto']}
+    if 'compatible' in respaldos:
+        salida['foto_valida'], salida['foto_valida_estado'] = True, 'corresponde'
+    elif respaldos == {'contradice'}:
+        salida['foto_valida'], salida['foto_valida_estado'] = False, 'no_corresponde'
+        salida['descartados_por_foto'] = [dict(p, motivo_descarte='la foto no corresponde a lo que se pidió')
+                                         for p in salida['problemas']]
+        salida['problemas'] = []
+        salida['descripcion'] = None
+    else:
+        salida['foto_valida_estado'] = 'sin_opinion'
 
 
 def procesar(datos, contexto, verificar):
@@ -615,7 +639,7 @@ def procesar(datos, contexto, verificar):
 
     perfil = modos.perfil_actual()
     if perfil and perfil.modo == 'prueba':
-        return _procesar_prueba(img, local, perfil, activar and verificador.disponible())
+        return _procesar_prueba(img, local, perfil, activar and verificador.disponible(), contexto)
 
     if activar and verificador.disponible():
         veri = verificador.verificar(img, CATEGORIAS, local, contexto)
@@ -1357,8 +1381,8 @@ async def _perfil_formulario(request, *, admite_prueba=False):
     valor = formulario.get("modo", "alto")
     if not isinstance(valor, str) or valor not in modos.NOMBRES:
         raise HTTPException(422, "Elegí un modo válido. Si lo omitís se usa Completo.")
-    if valor == 'prueba' and (not admite_prueba or str(formulario.get('contexto') or '').strip()):
-        raise HTTPException(422, "Completo (prueba) admite una foto sin comentario.")
+    if valor == 'prueba' and not admite_prueba:
+        raise HTTPException(422, "Completo (prueba) está disponible para clasificar fotos.")
     perfil = PERFILES[valor]
     if perfil.motivo:
         raise HTTPException(503, "El modo elegido no está disponible: " + perfil.motivo + ".")
