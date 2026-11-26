@@ -51,10 +51,10 @@ class LeerChapasTests(unittest.TestCase):
     """detectar/leer_local/leer_vlm se reemplazan; el resto es el código real."""
 
     def _correr(self, cajas, local, vlm, lectores=("x/grok", "y/gemini")):
-        lecturas_vlm = iter(vlm)
+        lecturas_vlm = dict(zip(lectores, vlm))
         with mock.patch.object(P, "detectar", return_value=cajas), \
              mock.patch.object(P, "leer_local", side_effect=lambda rec: {"patente": local, "lectura": local, "confianza": 0.9}), \
-             mock.patch.object(P, "leer_vlm", side_effect=lambda m, rec: next(lecturas_vlm)):
+             mock.patch.object(P, "leer_vlm", side_effect=lambda m, rec: lecturas_vlm[m]):
             return P.leer_chapas(_foto(), list(lectores))
 
     def test_chapa_chica_no_se_lee_y_explica_el_ancho(self):
@@ -80,6 +80,23 @@ class LeerChapasTests(unittest.TestCase):
         chapas = self._correr([{"caja": [100, 100, 300, 220], "confianza": 0.9}], "A123BCD", ["A123BCD", "A128BCD"])
         self.assertFalse(chapas[0]["legible"])
         self.assertIn("lecturas distintas", chapas[0]["motivo"])
+
+    def test_lectores_con_el_mismo_nombre_conservan_cada_voto(self):
+        cajas = [{"caja": [100, 100, 300, 220], "confianza": 0.9}]
+        lectores = ("x/recorte", "y/recorte")
+        [distinta] = self._correr(cajas, "A123BCD", ["A128BCD", "A123BCD"], lectores)
+        self.assertEqual(distinta["lecturas"], {
+            "ocr_local": "A123BCD", "x/recorte": "A128BCD", "y/recorte": "A123BCD"})
+        self.assertFalse(distinta["legible"])
+        [iguales] = self._correr(cajas, "A123BCD", ["A123BCD", "A123BCD"], lectores)
+        self.assertEqual((iguales["patente"], iguales["fuentes"]), ("A123BCD", 3))
+
+    def test_el_nombre_de_un_lector_no_reemplaza_el_ocr_local(self):
+        cajas = [{"caja": [100, 100, 300, 220], "confianza": 0.9}]
+        [chapa] = self._correr(cajas, "A123BCD", ["A128BCD", "A128BCD"], ("x/ocr-local", "y/lector"))
+        self.assertEqual(chapa["lecturas"], {
+            "ocr_local": "A123BCD", "x/ocr-local": "A128BCD", "lector": "A128BCD"})
+        self.assertFalse(chapa["legible"])
 
 
 class AnalizarTests(unittest.TestCase):
