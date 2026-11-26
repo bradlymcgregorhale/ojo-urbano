@@ -209,11 +209,14 @@ def proponer_solicitudes(publica):
                     motivo='Falta confirmar la ubicación o el alcance antes de elegir servicios.')
     limpieza = {'barrido', 'recoleccion'}
     pedidos_respaldados = []
-    if (publica.get('modo') == 'prueba' and publica.get('analisis_estado') == 'completo'
-            and publica.get('foto_valida') is True):
+    if publica.get('modo') == 'prueba' and publica.get('analisis_estado') == 'completo':
         pedidos = {c['key']: c.get('respaldo_visual') for c in publica.get('categorias_contexto') or []
                    if c.get('key')}
-        if len(pedidos) > 1:
+        if (publica.get('foto_valida_estado') == 'sin_opinion'
+                and any(pedidos.get(k) in {'neutral', 'contradice'} for k in candidatos)):
+            return dict(resultado, criterio='pedidos_explicitos',
+                        motivo='La foto no permite corroborar el pedido vecinal.')
+        if publica.get('foto_valida') is True and len(pedidos) > 1:
             pedidos_respaldados = [k for k, respaldo in pedidos.items()
                                   if respaldo == 'compatible' and k in candidatos]
             # Este par puede describir los mismos residuos. Si no hay otro

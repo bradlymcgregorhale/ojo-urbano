@@ -989,7 +989,14 @@ class ApiModos(unittest.TestCase):
     def test_prueba_un_hallazgo_de_la_misma_categoria_no_cambia_el_respaldo_del_pedido(self):
         foto = ('foto.jpg', self.foto, 'image/jpeg')
         retiro, vereda = 'retiro_muebles', 'reparacion_vereda'
-        for respaldo, mixto in (('contradice', True), ('neutral', True), ('compatible', True), ('contradice', False)):
+        casos = (
+            ('contradice', True, True, [retiro, vereda], [], [vereda]),
+            ('neutral', True, True, [retiro, vereda], [], [vereda]),
+            ('compatible', True, True, [retiro, vereda], [], [retiro, vereda]),
+            ('contradice', False, False, [], [retiro], []),
+            ('neutral', False, None, [retiro], [], []),
+        )
+        for respaldo, mixto, validez, hallazgos, descartados, servicios in casos:
             with self.subTest(respaldo=respaldo, mixto=mixto):
                 objeto = 'ropero' if respaldo == 'compatible' else 'heladera blanca'
                 contexto = f'Retiro de {objeto}' + (' y reparación de baldosas' if mixto else '')
@@ -1011,11 +1018,14 @@ class ApiModos(unittest.TestCase):
                 self.assertEqual(r.status_code, 200, r.text)
                 salida = r.json()
                 self.assertEqual(salida['categorias_contexto'][0]['respaldo_visual'], respaldo)
-                self.assertIs(salida['foto_valida'], mixto)
-                self.assertEqual([p['key'] for p in salida['problemas']], [retiro, vereda] if mixto else [])
-                self.assertEqual([p['key'] for p in salida['descartados_por_foto']], [] if mixto else [retiro])
-                servicios = [retiro, vereda] if respaldo == 'compatible' else [vereda] if mixto else []
+                self.assertIs(salida['foto_valida'], validez)
+                self.assertEqual([p['key'] for p in salida['problemas']], hallazgos)
+                self.assertEqual([p['key'] for p in salida['descartados_por_foto']], descartados)
                 self.assertEqual(salida['solicitudes_sugeridas']['servicios'], servicios)
+                if validez is None:
+                    self.assertEqual(salida['foto_valida_estado'], 'sin_opinion')
+                    self.assertEqual(salida['solicitudes_sugeridas']['estado'], 'pendiente')
+                    self.assertEqual(salida['solicitudes_sugeridas']['criterio'], 'pedidos_explicitos')
 
     def test_prueba_conserva_el_pedido_de_ocupacion_y_distingue_otra_foto(self):
         foto = ('foto.jpg', self.foto, 'image/jpeg')
