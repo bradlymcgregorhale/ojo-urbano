@@ -596,7 +596,7 @@ def _procesar_prueba(img, local, perfil, verificar):
                 if problema['key'] == 'retiro_escombros':
                     problema['bolsas'] = verificador._cuenta_1_a_15(recuento['bolsas_minimo'])
     salida = revision_ramas.revisar(img, salida, perfil)
-    salida.update(verificador.costo_total(con_estado=True))
+    salida.update(verificador.costo_total(con_estado=True, con_traza=True))
     salida.update(verificador.tokens_total(desglose=True))
     return modos.completar(salida)
 
@@ -1411,7 +1411,7 @@ async def clasificar(request: Request, file: UploadFile = File(...),
     return JSONResponse(_publica(respuesta, contexto))
 
 
-async def _correr_con_cupo(datos, contexto, verificar, huella, perfil=None, funcion=None):
+async def _correr_con_cupo(datos, contexto, verificar, huella, perfil=None, funcion=None, *, pedido_consumo=None):
     """Corre el pipeline con el cupo YA tomado, fuera del event loop.
 
     funcion: callable sin argumentos que reemplaza a procesar() (lo usa
@@ -1486,7 +1486,7 @@ async def _correr_con_cupo(datos, contexto, verificar, huella, perfil=None, func
     # estaba encolado, el finally de trabajo() nunca se ejecuta y el cupo se
     # perdería para siempre.
     def ejecutar():
-        with modos.usar(perfil):
+        with modos.usar(perfil, pedido_consumo=pedido_consumo):
             return trabajo()
 
     try:
@@ -1740,7 +1740,8 @@ async def _correr_trabajo(t):
             # el trabajo muere con error aunque el hilo siga por ahí.
             respuesta = await asyncio.wait_for(
                 _correr_con_cupo(datos, t["contexto"], t["verificar"],
-                                 t["huella"], t.get("perfil")),
+                                 t["huella"], t.get("perfil"),
+                                 pedido_consumo=(t.get("consumo_api") or {}).get("pedido")),
                 TECHO_TRABAJO + 30)
         else:
             # "cache": un pedido idéntico terminó mientras esperábamos.
@@ -1800,12 +1801,13 @@ async def crear_trabajo(request: Request, file: UploadFile = File(...),
     t = {"id": tid, "ip": ip, "estado": "en_cola", "creado": time.monotonic(),
          "fin": None, "resultado": None, "detalle": None, "datos": datos,
          "contexto": contexto, "verificar": verificar, "huella": huella, "perfil": perfil}
+    if perfil.modo == "prueba":
+        t["consumo_api"] = {"pedido": secrets.token_hex(12), "intentos": None}
     _trabajos[tid] = t
     # La referencia a la tarea vive en el registro: sin ella, una excepción
     # en una tarea ya recolectada se loguea como "never retrieved".
     t["tarea"] = asyncio.create_task(_correr_trabajo(t))
-    return JSONResponse({"trabajo": tid, "estado": "en_cola", **perfil.metadatos(),
-                         "posicion": _posicion_trabajo(t)}, status_code=202)
+    return JSONResponse(_estado_trabajo(tid), status_code=202)
 
 
 def _estado_trabajo(tid):
@@ -1822,6 +1824,10 @@ def _estado_trabajo(tid):
         r["resultado"] = revision_publica.completar_historico(t["resultado"])
     elif t["estado"] in ("error", "cancelado"):
         r["detail"] = t["detalle"]
+    if "consumo_api" in t and t["estado"] != "listo":
+        r["consumo_api"] = t["consumo_api"]
+        if t["estado"] == "cancelado":
+            r["consumo_api"] = dict(t["consumo_api"], intentos=0)
     return r
 
 

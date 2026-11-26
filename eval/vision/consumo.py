@@ -32,23 +32,64 @@ def _identificador(valor):
     return isinstance(valor, str) and bool(valor.strip())
 
 
+def _desde_respuestas(caso):
+    if "respuestas" not in caso:
+        return caso
+    respuestas = caso["respuestas"]
+    if any(k in caso for k in ("pedidos", "etiquetas")) or not isinstance(respuestas, list) or not respuestas:
+        raise ValueError("Las respuestas archivadas reemplazan los pedidos y las etiquetas manuales")
+    pedidos, etiquetas, sin_traza = {}, None, 0
+    for respuesta in respuestas:
+        if respuesta is None:
+            sin_traza += 1
+            continue
+        if not isinstance(respuesta, dict):
+            raise ValueError("Cada respuesta archivada debe ser un objeto o null")
+        resultado = respuesta.get("resultado", respuesta)
+        if not isinstance(resultado, dict):
+            raise ValueError("El resultado archivado debe ser un objeto")
+        if "detail" in resultado and not {"modo", "consumo_api"} & resultado.keys():
+            sin_traza += 1
+            continue
+        if any(resultado.get(k) != caso[k] for k in ("modo", "modo_version")):
+            raise ValueError("La respuesta corresponde a otro modo o versión")
+        consumo = resultado.get("consumo_api")
+        if not consumo:
+            sin_traza += 1
+        else:
+            pedido, intentos = consumo["pedido"], consumo["intentos"]
+            if not _identificador(pedido):
+                raise ValueError("La respuesta archivada tiene un ID de pedido inválido")
+            anterior = pedidos.get(pedido)
+            if intentos is not None and anterior is not None and intentos != anterior:
+                raise ValueError("El mismo pedido tiene dos totales de intentos")
+            pedidos[pedido] = anterior if intentos is None else intentos
+        if ("problemas" in resultado and resultado.get("verificacion_activa") is not False
+                and resultado.get("analisis_estado") != "sin_verificacion"):
+            etiquetas = [p["key"] for campo in ("problemas", "elementos_detectados")
+                         for p in resultado.get(campo, [])]
+    return caso | {"pedidos": pedidos, "etiquetas": etiquetas, "respuestas_sin_traza": sin_traza}
+
+
 def _validar(casos):
     if not isinstance(casos, list) or not casos:
         raise ValueError("El manifiesto requiere una lista de casos")
     fichas = {}
     pedidos = {}
-    for caso in casos:
+    for entrada in casos:
+        caso = _desde_respuestas(entrada)
         if not all(_identificador(caso[k]) for k in ("id", "entrada", "modo", "modo_version")):
             raise ValueError("Cada caso requiere ID, entrada, modo y versión")
         ficha = (caso["id"], caso["entrada"])
-        if ficha in fichas or not isinstance(caso["pedidos"], dict) or not caso["pedidos"]:
+        if (ficha in fichas or not isinstance(caso["pedidos"], dict)
+                or not (caso["pedidos"] or caso.get("respuestas_sin_traza"))):
             raise ValueError("Caso repetido o sin pedidos vinculados")
         fichas[ficha] = caso
         for pedido, intentos in caso["pedidos"].items():
             if not _identificador(pedido) or pedido in pedidos:
                 raise ValueError("Cada pedido debe pertenecer a un solo caso")
-            if intentos is not None and (type(intentos) is not int or intentos < 1):
-                raise ValueError("El total esperado de intentos debe ser positivo o null")
+            if intentos is not None and (type(intentos) is not int or intentos < 0):
+                raise ValueError("El total esperado de intentos debe ser no negativo o null")
             pedidos[pedido] = intentos
     return fichas, pedidos
 
@@ -121,13 +162,14 @@ def conciliar(casos, eventos):
                 "conciliado": observados == esperados and pedido not in pendientes,
             })
             costo += subtotal
-        conciliado = all(r["conciliado"] for r in registros)
+        sin_traza = caso.get("respuestas_sin_traza", 0)
+        conciliado = not sin_traza and all(r["conciliado"] for r in registros)
         sobre_tope = costo > TOPE
         diferencias = _diferencias(caso)
         detalle.append({k: caso[k] for k in ("id", "entrada", "modo", "modo_version")} | {
             "costo_conocido_usd": str(costo), "conciliado": conciliado,
             "pedidos": registros, "supera_tope": sobre_tope,
-            "diferencias": diferencias,
+            "diferencias": diferencias, "respuestas_sin_traza": sin_traza,
         })
         resumen["casos"] += 1
         resumen["casos_conciliados"] += conciliado
