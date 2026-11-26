@@ -42,7 +42,7 @@ def _identificador(valor):
     return isinstance(valor, str) and bool(valor.strip())
 
 
-def _medidas_bolsas(resultado):
+def medidas_bolsas(resultado):
     escombros = next((p for p in resultado["problemas"] if p["key"] == "retiro_escombros"), None)
     if escombros is None:
         return {}
@@ -90,7 +90,7 @@ def _desde_respuestas(caso):
             etiquetas = [p["key"] for campo in ("problemas", "elementos_detectados")
                          for p in resultado.get(campo, [])]
             if "recuento_esperado" in caso:
-                recuento = _medidas_bolsas(resultado)
+                recuento = medidas_bolsas(resultado)
     return caso | {"pedidos": pedidos, "etiquetas": etiquetas,
                    "respuestas_sin_traza": sin_traza, "recuento_observado": recuento}
 
@@ -196,7 +196,7 @@ def _intervalo_recuento(campo, esperado):
     return desde, hasta
 
 
-def _diferencias_recuento(esperado, medidas):
+def diferencias_recuento(esperado, medidas):
     campos = _RANGO_BOLSAS.keys() | {_CAMPO_COMPLETO}
     if not isinstance(esperado, dict) or not esperado or esperado.keys() - campos:
         raise ValueError("El recuento esperado debe indicar campos públicos de bolsas")
@@ -260,13 +260,13 @@ def conciliar(casos, eventos, recibos=()):
         if conciliado:
             maximo = costo if maximo is None else max(costo, maximo)
         if "recuento_esperado" in caso:
-            diferencias_recuento = _diferencias_recuento(caso["recuento_esperado"], caso["recuento_observado"])
+            diferencias_bolsas = diferencias_recuento(caso["recuento_esperado"], caso["recuento_observado"])
             detalle[-1].update(recuento_esperado=caso["recuento_esperado"],
                                recuento_observado=caso["recuento_observado"],
-                               diferencias_recuento=diferencias_recuento)
+                               diferencias_recuento=diferencias_bolsas)
             resumen["casos_con_recuento_revisado"] += 1
-            resumen["casos_sin_puntuar_recuento"] += diferencias_recuento is None
-            resumen["casos_con_diferencias_recuento"] += bool(diferencias_recuento)
+            resumen["casos_sin_puntuar_recuento"] += diferencias_bolsas is None
+            resumen["casos_con_diferencias_recuento"] += bool(diferencias_bolsas)
     return dict(resumen) | {"maximo_conciliado_usd": str(maximo) if maximo is not None else None}, detalle
 
 

@@ -143,6 +143,48 @@ class PipelineTests(unittest.TestCase):
         self.assertIn('no conserva el pedido de consumo', row['error'])
         self.assertNotIn('predicted', row)
 
+    def test_prueba_compara_el_recuento_sin_confundirlo_con_la_categoria(self):
+        self.server.app = FastAPI()
+        self.server.CACHE_MAX = self.server.RATE_LIMITE = 0
+        self.server.API_TOKEN = ''
+        caso = self.case | {'expected': {'retiro_escombros': True}, 'recuento_esperado': {'bolsas': 5}}
+        solicitud = Request('https://openrouter.example/chat/completions', data=b'{"model":"lector"}')
+        huella = R.fingerprint({'endpoint': solicitud.full_url, 'body': {'model': 'lector'}})
+
+        @self.server.app.post('/clasificar')
+        def clasificar():
+            lectura = R.V._pedir_http(solicitud, 10, 20)
+            return self.public | {
+                'modo': 'prueba', 'modo_version': 'version-prueba', 'analisis_estado': lectura['estado'],
+                'problemas': [{'key': 'retiro_escombros', 'bolsas': lectura['bolsas']}],
+                'hay_problema': True, 'hay_reclamo': True,
+            }
+
+        def evaluar(referencia, bolsas, estado='completo'):
+            return P.evaluate_prueba(referencia, self.root, self.identity, self.server,
+                                     {huella: {'bolsas': bolsas, 'estado': estado}})
+
+        original = evaluar(caso, 5)
+        cambiado = evaluar(caso, 4)
+        self.assertEqual((original['status'], cambiado['status']), ('pass', 'fail'))
+        self.assertEqual(cambiado['recuento_observado'], {'bolsas': 4})
+        self.assertEqual(cambiado['diferencias_recuento'], ['bolsas'])
+        self.assertEqual((cambiado['missing'], cambiado['unexpected']), ([], []))
+        comparacion = R.compare({'rows': [original]}, {'rows': [cambiado]})
+        self.assertEqual(comparacion['regressions'], [
+            {'case': 'test', 'model': 'final-api', 'stage': 'pipeline', 'kind': 'recuento', 'category': 'bolsas'}])
+
+        incompleto = evaluar(caso, 5, estado='parcial')
+        self.assertIsNone(incompleto['diferencias_recuento'])
+        referencia_distinta = evaluar(caso | {'recuento_esperado': {'bolsas': [3, 5]}}, 4)
+        self.assertEqual(referencia_distinta['status'], 'pass')
+        caso.pop('recuento_esperado')
+        sin_recuento = evaluar(caso, 4)
+        self.assertEqual(sin_recuento['status'], 'pass')
+        self.assertNotIn('diferencias_recuento', sin_recuento)
+        for row in (incompleto, referencia_distinta, sin_recuento):
+            self.assertEqual(R.compare({'rows': [original]}, {'rows': [row]})['comparable'], 0)
+
     def test_replay_prueba_drena_el_trabajo_si_vence_la_espera(self):
         self.server.app = FastAPI()
         self.server.CACHE_MAX = self.server.RATE_LIMITE = 0
