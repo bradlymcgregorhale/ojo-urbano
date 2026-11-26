@@ -11,6 +11,8 @@ from eval.vision.centavo import TOPE, errores
 
 _RANGO_BOLSAS = {"bolsas": 15, "bolsas_minimo": None, "bolsas_fuentes": 2}
 _CAMPO_COMPLETO = "bolsas_recuento_completo"
+_RESPALDOS = ("compatible", "neutral", "contradice")
+_ESTADOS_RECLAMO = ("compatible", "sin_evidencia", "no_corresponde")
 
 
 def leer_uso(rutas):
@@ -42,6 +44,67 @@ def _identificador(valor):
     return isinstance(valor, str) and bool(valor.strip())
 
 
+def _estado_valido(valor, opciones):
+    return valor is None or valor in opciones
+
+
+def _servicios_validos(servicios):
+    return (isinstance(servicios, list) and all(_identificador(s) for s in servicios)
+            and len(servicios) == len(set(servicios)))
+
+
+def validar_contexto_esperado(esperado):
+    if not isinstance(esperado, dict) or not esperado or esperado.keys() - {
+        "categorias_contexto", "solicitudes_sugeridas", "reclamo_foto_estado",
+    }:
+        raise ValueError("contexto_esperado requiere al menos un campo de contexto reconocido")
+    if "categorias_contexto" in esperado:
+        categorias = esperado["categorias_contexto"]
+        if not isinstance(categorias, dict) or not categorias or not all(
+            _identificador(k) and _estado_valido(v, _RESPALDOS) for k, v in categorias.items()
+        ):
+            raise ValueError("categorias_contexto requiere claves y respaldos válidos")
+    if "solicitudes_sugeridas" in esperado and not _servicios_validos(esperado["solicitudes_sugeridas"]):
+        raise ValueError("solicitudes_sugeridas requiere una lista de servicios sin repetidos")
+    if "reclamo_foto_estado" in esperado and not _estado_valido(esperado["reclamo_foto_estado"], _ESTADOS_RECLAMO):
+        raise ValueError("reclamo_foto_estado no es un estado reconocido")
+
+
+def comparar_contexto(esperado, resultado):
+    if (not resultado or resultado.get("analisis_estado") != "completo"
+            or resultado.get("verificacion_activa") is False):
+        return None, None
+    observado, diferencias = {}, []
+    if "categorias_contexto" in esperado:
+        categorias = resultado.get("categorias_contexto")
+        if not isinstance(categorias, list) or not all(isinstance(c, dict) for c in categorias):
+            return None, None
+        respaldo = {c["key"]: c.get("respaldo_visual") for c in categorias if _identificador(c.get("key"))}
+        claves = esperado["categorias_contexto"]
+        if any(k in respaldo and respaldo[k] not in _RESPALDOS for k in claves):
+            return None, None
+        observado["categorias_contexto"] = {k: respaldo.get(k) for k in claves}
+        diferencias.extend(f"categorias_contexto.{k}" for k in sorted(claves)
+                           if claves[k] != respaldo.get(k))
+    if "solicitudes_sugeridas" in esperado:
+        propuesta = resultado.get("solicitudes_sugeridas")
+        servicios = propuesta.get("servicios") if isinstance(propuesta, dict) else None
+        if not _servicios_validos(servicios):
+            return None, None
+        observado["solicitudes_sugeridas"] = sorted(servicios)
+        if observado["solicitudes_sugeridas"] != sorted(esperado["solicitudes_sugeridas"]):
+            diferencias.append("solicitudes_sugeridas")
+    if "reclamo_foto_estado" in esperado:
+        reclamo = resultado.get("reclamo_foto")
+        if reclamo is not None and (not isinstance(reclamo, dict) or reclamo.get("estado") not in _ESTADOS_RECLAMO):
+            return None, None
+        estado = (reclamo or {}).get("estado")
+        observado["reclamo_foto_estado"] = estado
+        if estado != esperado["reclamo_foto_estado"]:
+            diferencias.append("reclamo_foto_estado")
+    return observado, diferencias
+
+
 def medidas_bolsas(resultado):
     escombros = next((p for p in resultado["problemas"] if p["key"] == "retiro_escombros"), None)
     if escombros is None:
@@ -55,11 +118,11 @@ def medidas_bolsas(resultado):
 
 def _desde_respuestas(caso):
     if "respuestas" not in caso:
-        return caso | {"recuento_observado": None}
+        return caso | {"recuento_observado": None, "respuesta_contexto": None}
     respuestas = caso["respuestas"]
     if any(k in caso for k in ("pedidos", "etiquetas")) or not isinstance(respuestas, list) or not respuestas:
         raise ValueError("Las respuestas archivadas reemplazan los pedidos y las etiquetas manuales")
-    pedidos, etiquetas, sin_traza, recuento = {}, None, 0, None
+    pedidos, etiquetas, sin_traza, recuento, contexto = {}, None, 0, None, None
     for respuesta in respuestas:
         if respuesta is None:
             sin_traza += 1
@@ -85,6 +148,8 @@ def _desde_respuestas(caso):
             if intentos is not None and anterior is not None and intentos != anterior:
                 raise ValueError("El mismo pedido tiene dos totales de intentos")
             pedidos[pedido] = anterior if intentos is None else intentos
+        if "problemas" in resultado:
+            contexto = resultado
         if ("problemas" in resultado and resultado.get("verificacion_activa") is not False
                 and resultado.get("analisis_estado") != "sin_verificacion"):
             etiquetas = [p["key"] for campo in ("problemas", "elementos_detectados")
@@ -92,7 +157,8 @@ def _desde_respuestas(caso):
             if "recuento_esperado" in caso:
                 recuento = medidas_bolsas(resultado)
     return caso | {"pedidos": pedidos, "etiquetas": etiquetas,
-                   "respuestas_sin_traza": sin_traza, "recuento_observado": recuento}
+                   "respuestas_sin_traza": sin_traza, "recuento_observado": recuento,
+                   "respuesta_contexto": contexto}
 
 
 def _validar(casos):
@@ -102,6 +168,8 @@ def _validar(casos):
     pedidos = {}
     for entrada in casos:
         caso = _desde_respuestas(entrada)
+        if "contexto_esperado" in caso:
+            validar_contexto_esperado(caso["contexto_esperado"])
         if not all(_identificador(caso[k]) for k in ("id", "entrada", "modo", "modo_version")):
             raise ValueError("Cada caso requiere ID, entrada, modo y versión")
         ficha = (caso["id"], caso["entrada"])
@@ -289,6 +357,14 @@ def conciliar(casos, eventos, recibos=()):
             resumen["casos_con_recuento_revisado"] += 1
             resumen["casos_sin_puntuar_recuento"] += diferencias_bolsas is None
             resumen["casos_con_diferencias_recuento"] += bool(diferencias_bolsas)
+        if "contexto_esperado" in caso:
+            esperado = caso["contexto_esperado"]
+            contexto, diferencias_contexto = comparar_contexto(esperado, caso["respuesta_contexto"])
+            detalle[-1].update(contexto_esperado=esperado, contexto_observado=contexto,
+                               diferencias_contexto=diferencias_contexto)
+            resumen["casos_con_contexto_revisado"] += 1
+            resumen["casos_sin_puntuar_contexto"] += diferencias_contexto is None
+            resumen["casos_con_diferencias_contexto"] += bool(diferencias_contexto)
     return dict(resumen) | {"maximo_conciliado_usd": str(maximo) if maximo is not None else None}, detalle
 
 
@@ -313,6 +389,7 @@ def main():
     return int(any(resumen.get(k) for k in (
         "casos_con_consumo_pendiente", "casos_sobre_el_tope", "casos_sin_puntuar", "casos_con_diferencias",
         "casos_sin_puntuar_recuento", "casos_con_diferencias_recuento",
+        "casos_sin_puntuar_contexto", "casos_con_diferencias_contexto",
     )))
 
 

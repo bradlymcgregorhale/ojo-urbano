@@ -139,6 +139,48 @@ class PruebaConsumo(unittest.TestCase):
         self.assertIsNone(foto["recuento_observado"])
         self.assertEqual(resumen["casos_sin_puntuar_recuento"], 1)
 
+    def test_respaldos_y_servicios_se_puntuan_aparte_del_costo_y_las_etiquetas(self):
+        esperado = {"categorias_contexto": {"retiro_muebles": "neutral", "ocupacion_comercial": None},
+                    "solicitudes_sugeridas": ["reparacion_vereda", "barrido"], "reclamo_foto_estado": None}
+        categorias = [{"key": "retiro_muebles", "respaldo_visual": "neutral"},
+                      {"key": "reparacion_vereda", "respaldo_visual": "compatible"}]
+        respuesta = {
+            "modo": "prueba", "modo_version": "v", "analisis_estado": "completo",
+            "problemas": [{"key": "retiro_muebles"}, {"key": "reparacion_vereda"}],
+            "categorias_contexto": categorias,
+            "solicitudes_sugeridas": {"servicios": ["barrido", "reparacion_vereda"]},
+            "consumo_api": {"pedido": "web", "intentos": 1},
+        }
+        base = {"id": "a", "entrada": "trabajos", "modo": "prueba", "modo_version": "v",
+                "esperado": {"retiro_muebles": True, "reparacion_vereda": True}}
+        alternativa = respuesta | {
+            "categorias_contexto": [categorias[0] | {"respaldo_visual": "compatible"}, categorias[1]],
+            "solicitudes_sugeridas": {"servicios": ["retiro_muebles"]},
+            "reclamo_foto": {"estado": "no_corresponde"},
+        }
+        for resultado, diferencias in (
+            (respuesta, []),
+            (alternativa, ["categorias_contexto.retiro_muebles", "solicitudes_sugeridas", "reclamo_foto_estado"]),
+            (respuesta | {"analisis_estado": "parcial"}, None),
+            (respuesta | {"categorias_contexto": [categorias[0] | {"respaldo_visual": None}]}, None),
+        ):
+            with self.subTest(diferencias=diferencias):
+                caso = base | {"contexto_esperado": esperado, "respuestas": [{"resultado": resultado}]}
+                resumen, [foto] = conciliar([caso], [uso("web", "g", .009)])
+                self.assertEqual(foto["diferencias"], [])
+                self.assertEqual(foto["costo_conocido_usd"], "0.009")
+                self.assertEqual(foto["diferencias_contexto"], diferencias)
+                self.assertEqual(resumen["casos_sin_puntuar_contexto"], int(diferencias is None))
+                self.assertEqual(resumen["casos_con_diferencias_contexto"], int(bool(diferencias)))
+        parcial = {"categorias_contexto": {"ocupacion_comercial": None}}
+        _, [foto] = conciliar([base | {"contexto_esperado": parcial, "respuestas": [alternativa]}],
+                              [uso("web", "g", .009)])
+        self.assertEqual(foto["contexto_observado"], parcial)
+        self.assertEqual(foto["diferencias_contexto"], [])
+        with self.assertRaisesRegex(ValueError, "respaldos válidos"):
+            conciliar([base | {"contexto_esperado": {"categorias_contexto": {"barrido": True}},
+                              "respuestas": [respuesta]}], [uso("web", "g", .009)])
+
     def test_un_importe_conocido_puede_superar_el_tope_aunque_falten_cargos(self):
         [foto] = conciliar([caso("a", {"p": 2})], [uso("p", "g", .010000001)])[1]
         self.assertFalse(foto["conciliado"])

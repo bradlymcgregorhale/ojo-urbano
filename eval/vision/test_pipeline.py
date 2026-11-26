@@ -237,6 +237,37 @@ class PipelineTests(unittest.TestCase):
         a, b = evaluar(solo_principal, cordon), evaluar(solo_principal, barrido)
         self.assertEqual(R.compare({'rows': [a]}, {'rows': [b]})['regressions'], comparacion['regressions'])
 
+    def test_prueba_registra_la_regresion_del_respaldo_sin_cambiar_las_categorias(self):
+        self.server.app = FastAPI()
+        self.server.CACHE_MAX = self.server.RATE_LIMITE = 0
+        self.server.API_TOKEN = ''
+        caso = self.case | {'contexto_esperado': {'categorias_contexto': {'recoleccion': 'neutral'}}}
+        cuerpo = {'model': 'lector'}
+        solicitud = Request('https://openrouter.example/chat/completions', data=json.dumps(cuerpo).encode())
+        huella = R.fingerprint({'endpoint': solicitud.full_url, 'body': cuerpo})
+
+        @self.server.app.post('/clasificar')
+        def clasificar():
+            lectura = R.V._pedir_http(solicitud, 10, 20)
+            return self.public | {
+                'modo': 'prueba', 'modo_version': 'version-prueba', 'analisis_estado': 'completo',
+                'problemas': [{'key': 'recoleccion'}], 'hay_problema': True, 'hay_reclamo': True,
+                'categorias_contexto': [{'key': 'recoleccion', 'respaldo_visual': lectura['respaldo']}],
+            }
+
+        def evaluar(respaldo):
+            return P.evaluate_prueba(caso, self.root, self.identity, self.server, {huella: {'respaldo': respaldo}})
+
+        original, cambiado, pendiente = map(evaluar, ('neutral', 'compatible', None))
+        self.assertEqual([r['status'] for r in (original, cambiado, pendiente)], ['pass', 'fail', 'error'])
+        self.assertEqual((cambiado['missing'], cambiado['unexpected']), ([], []))
+        self.assertIsNone(pendiente['diferencias_contexto'])
+        comparacion = R.compare({'rows': [original]}, {'rows': [cambiado]})
+        self.assertEqual(comparacion['regressions'], [
+            {'case': 'test', 'model': 'final-api', 'stage': 'pipeline', 'kind': 'contexto',
+             'category': 'categorias_contexto.recoleccion'}])
+        self.assertEqual(R.compare({'rows': [original]}, {'rows': [pendiente]})['comparable'], 0)
+
     def test_replay_prueba_drena_el_trabajo_si_vence_la_espera(self):
         self.server.app = FastAPI()
         self.server.CACHE_MAX = self.server.RATE_LIMITE = 0

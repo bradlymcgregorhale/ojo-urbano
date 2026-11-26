@@ -95,6 +95,8 @@ Para reproducir la cola de la página, agregá `--ruta-prueba trabajos`. El eval
 
 Si hay una elección humana explícita, fijá `principal_esperado` en ese caso. Puede ser la clave del servicio confirmado o `indeterminado` si la revisión eligió que no se distingue una prioridad. Un valor ausente o `null` deja el principal sin puntuar. El informe muestra `principal_observado` y `diferencia_principal` aparte de las categorías. Para comparar el resultado se necesita la misma referencia en ambos informes y una decisión verificable en cada respuesta.
 
+También podés fijar `contexto_esperado` en los casos con texto vecinal. Por ejemplo, `{"categorias_contexto": {"retiro_muebles": "neutral"}, "solicitudes_sugeridas": ["reparacion_vereda"]}` comprueba que el pedido de retiro queda sin confirmación visual y que el único servicio sugerido es reparar la vereda. Omití los campos y categorías que quedaron sin revisar. Usá `null` para exigir que una categoría de contexto o `reclamo_foto_estado` estén ausentes, y una lista vacía para exigir que no se proponga ningún servicio. El orden de los servicios no influye. El evaluador y la conciliación muestran el contexto aparte de las etiquetas y lo dejan sin puntuar si falta una respuesta completa con los campos revisados.
+
 ### Medición con lecturas nuevas
 
 Una vez definido el presupuesto, usá la candidata con `PRUEBA_RESERVAS_USD` configurado y elegí los casos por ID. La medición parte de predicciones locales guardadas y ejecuta la ruta elegida con las llamadas reales del perfil.
