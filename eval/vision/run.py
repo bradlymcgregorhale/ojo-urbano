@@ -223,7 +223,7 @@ class Transport:
         return content
 
 
-def select(cases, suite='smoke', tags=(), ids=(), limit=None, *, incluir_prioridad=False):
+def select(cases, suite='smoke', tags=(), ids=(), limit=None, *, incluir_campos_de_prueba=False):
     selected = []
     for c in cases:
         if suite == 'smoke' and not c.get('smoke'):
@@ -234,8 +234,11 @@ def select(cases, suite='smoke', tags=(), ids=(), limit=None, *, incluir_priorid
             continue
         if ids and not set(ids) & set(c['aliases']):
             continue
-        if (not any(isinstance(value, bool) for value in c['expected'].values())
-                and not (incluir_prioridad and c.get('principal_esperado') is not None)):
+        tiene_categoria = any(isinstance(value, bool) for value in c['expected'].values())
+        tiene_campo_de_prueba = incluir_campos_de_prueba and any(
+            c.get(campo) is not None
+            for campo in ('principal_esperado', 'recuento_esperado', 'contexto_esperado'))
+        if not tiene_categoria and not tiene_campo_de_prueba:
             continue
         selected.append(c)
     return selected[:limit] if limit is not None else selected
