@@ -20,7 +20,11 @@ python -m eval.vision.centavo --evidencia "$EVIDENCIA_VISION" \
 
 ## Conciliación del costo facturado
 
-En una evaluación con cargos, guardá un manifiesto privado `{"casos": [...]}`. Por cada foto y recorrido (`entrada`, por ejemplo `ojo_urbano` o `bacollab`), anotá un `id` del banco, el `modo` y `modo_version` devueltos por la API, y `pedidos` como un objeto que vincule cada ID del log con el número de intentos registrados durante ese pedido. Incluí los pedidos repetidos de esa foto en el mismo recorrido. Si el número de intentos no se pudo verificar, usá `null`. En `esperado`, guardá sólo las etiquetas revisadas con `true` o `false`; las dudas pueden quedar en `null`. En `etiquetas`, guardá las claves confirmadas de la respuesta, `[]` si no confirmó ninguna o `null` si falta el resultado.
+En una evaluación con cargos, guardá un manifiesto privado `{"casos": [...]}`. Por cada foto y recorrido (`entrada`, por ejemplo `ojo_urbano` o `bacollab`), anotá un `id` del banco, `modo`, `modo_version` y la referencia en `esperado`. Usá `true` o `false` sólo en etiquetas revisadas. Las dudas pueden quedar en `null`.
+
+En `respuestas`, incluí en orden los JSON devueltos por Completo (prueba) para esa foto. La herramienta toma del último análisis sus etiquetas y lee `consumo_api.pedido` e `intentos` de cada resultado. En la carga web, guardá el JSON final de `/trabajos/`. Si falta el resultado, conservá el último estado del trabajo. Bacollab guarda el JSON de `/clasificar/` en `image_api_calls.response_text`. Incluí `null` si un envío se cortó sin devolver el JSON. Eso deja la conciliación pendiente incluso si otro envío terminó. Corré ambos recorridos con `CACHE_MAX=0` en una instancia de evaluación para que cada uno ejecute el análisis.
+
+Para respuestas anteriores a `consumo_api`, podés armar `pedidos` y `etiquetas` a mano en lugar de `respuestas`. En `pedidos` vinculá cada ID del log con su número de intentos. Usá `null` si todavía no se pudo confirmar ese número. En `etiquetas` usá las claves confirmadas, `[]` si no hubo ninguna o `null` si falta el resultado.
 
 ```sh
 python -m eval.vision.consumo --casos "$manifiesto" --uso "$log" --detalle "$detalle_nuevo"
