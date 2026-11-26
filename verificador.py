@@ -675,6 +675,13 @@ def _registrar_uso(modelo, etapa, clave, intento, inicio, data=None, error=None)
         for campo in ("id", "provider"):
             valor = data.get(campo)
             registro[campo] = valor[:160] if isinstance(valor, str) else None
+        if isinstance(error, urllib.error.HTTPError) and error.headers is not None:
+            for campo, encabezado, prefijo in (("id", "X-Generation-Id", "gen-"),
+                                                ("request_id", "X-Request-Id", "req-")):
+                valor = error.headers.get(encabezado)
+                if (not registro.get(campo) and isinstance(valor, str)
+                        and re.fullmatch(prefijo + r"[A-Za-z0-9_-]{1,156}", valor)):
+                    registro[campo] = valor
         choices = data.get("choices")
         choice = choices[0] if isinstance(choices, list) and choices else {}
         razon = choice.get("finish_reason") if isinstance(choice, dict) else None

@@ -8,6 +8,7 @@ import threading
 import unittest
 import urllib.error
 from contextlib import ExitStack, redirect_stderr
+from email.message import Message
 from unittest.mock import patch
 
 from PIL import Image
@@ -133,6 +134,37 @@ class TokensApi(unittest.TestCase):
             registro = json.loads(salida.getvalue())
             self.assertNotIn('http_status', registro)
             self.assertEqual(registro['cost'], .002)
+
+    def test_registra_identificadores_del_rechazo_http_si_son_validos(self):
+        casos = (
+            ('gen-1795702000-ejemplo', 'req-ejemplo_1', True),
+            ('gen-' + 'a' * 160, 'req-con espacios', False),
+        )
+        for generacion, pedido, valido in casos:
+            cabeceras = Message()
+            cabeceras['x-generation-id'] = generacion
+            cabeceras['X-Request-ID'] = pedido
+            cabeceras['Authorization'] = 'credencial-privada'
+            cuerpo = io.BytesIO(b'cuerpo-privado')
+            error = urllib.error.HTTPError('https://prueba.invalid/privada', 429,
+                                            'mensaje-privado', cabeceras, cuerpo)
+            salida = io.StringIO()
+            V.costo_reset()
+            with (self.subTest(valido=valido),
+                  patch.object(V, 'OPENROUTER_LOG_USO', True),
+                  patch.object(V, '_pedir_http', side_effect=error) as http,
+                  redirect_stderr(salida)):
+                with self.assertRaises(urllib.error.HTTPError):
+                    V._llamar('m', [], intentos=1, etapa='prueba_inicio')
+                http.assert_called_once()
+                self.assertEqual(cuerpo.tell(), 0)
+                self.assertNotIn('privad', salida.getvalue())
+                registro = json.loads(salida.getvalue())
+                self.assertEqual(registro['http_status'], 429)
+                self.assertEqual(registro['id'], generacion if valido else None)
+                self.assertEqual(registro.get('request_id'), pedido if valido else None)
+                self.assertIsNone(registro['cost'])
+                self.assertFalse(V.costo_total(con_estado=True)['costo_api_completo'])
 
     def test_registra_codigo_de_respuesta_sin_reenviar_ni_inventar_costo(self):
         for codigo in (429, 'codigo-privado', True):
