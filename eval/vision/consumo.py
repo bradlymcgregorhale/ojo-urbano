@@ -118,11 +118,12 @@ def medidas_bolsas(resultado):
 
 def _desde_respuestas(caso):
     if "respuestas" not in caso:
-        return caso | {"recuento_observado": None, "respuesta_contexto": None}
+        return caso | {"recuento_observado": None, "respuesta_contexto": None, "origenes_cache": {}}
     respuestas = caso["respuestas"]
     if any(k in caso for k in ("pedidos", "etiquetas")) or not isinstance(respuestas, list) or not respuestas:
         raise ValueError("Las respuestas archivadas reemplazan los pedidos y las etiquetas manuales")
     pedidos, etiquetas, sin_traza, recuento, contexto = {}, None, 0, None, None
+    origenes_cache = {}
     for respuesta in respuestas:
         if respuesta is None:
             sin_traza += 1
@@ -144,6 +145,12 @@ def _desde_respuestas(caso):
             pedido, intentos = consumo["pedido"], consumo["intentos"]
             if not _identificador(pedido):
                 raise ValueError("La respuesta archivada tiene un ID de pedido inválido")
+            if "origen_cache" in consumo:
+                origen = consumo["origen_cache"]
+                if not _identificador(origen) or origen == pedido or intentos != 0:
+                    raise ValueError("Una respuesta de caché requiere otro pedido de origen y cero intentos")
+                if origenes_cache.setdefault(pedido, origen) != origen:
+                    raise ValueError("El mismo pedido tiene dos orígenes de caché")
             anterior = pedidos.get(pedido)
             if intentos is not None and anterior is not None and intentos != anterior:
                 raise ValueError("El mismo pedido tiene dos totales de intentos")
@@ -158,7 +165,7 @@ def _desde_respuestas(caso):
                 recuento = medidas_bolsas(resultado)
     return caso | {"pedidos": pedidos, "etiquetas": etiquetas,
                    "respuestas_sin_traza": sin_traza, "recuento_observado": recuento,
-                   "respuesta_contexto": contexto}
+                   "respuesta_contexto": contexto, "origenes_cache": origenes_cache}
 
 
 def _validar(casos):
@@ -317,17 +324,21 @@ def conciliar(casos, eventos, recibos=()):
     maximo = None
     for caso in fichas.values():
         vinculados = caso["pedidos"]
+        origenes_cache = caso["origenes_cache"]
         registros = []
         costo = Decimal(0)
         for pedido, esperados in vinculados.items():
             observados = len(intentos[pedido])
             adicional = sin_generacion[pedido]
             subtotal = sum(cargos[pedido].values(), Decimal(0)) + adicional
+            origen = origenes_cache.get(pedido)
+            origen_presente = origen is None or (origen in vinculados and origen not in origenes_cache)
             registros.append({
                 "pedido": pedido, "intentos_esperados": esperados, "intentos_identificados": observados,
                 "generaciones_con_importe": len(cargos[pedido]), "costo_conocido_usd": str(subtotal),
                 "generaciones_con_recibo": len(cargos[pedido].keys() & importes_recibos.keys()),
-                "conciliado": observados == esperados and pedido not in pendientes,
+                "conciliado": observados == esperados and pedido not in pendientes and origen_presente,
+                **({"origen_cache": origen} if origen is not None else {}),
                 **({"costo_sin_generacion_usd": str(adicional)} if adicional else {}),
             })
             costo += subtotal
