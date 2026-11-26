@@ -515,17 +515,19 @@ def main(argv=None):
         parser.error(str(error))
     ids = args.ids or ([r['case'] for r in baseline['rows']] if baseline else TRIAGE)
     manifest = json.loads((args.private / 'cases.json').read_text())
-    cases = R.select(manifest['cases'], 'all', ids=ids, incluir_prioridad=prueba)
+    cases = R.select(manifest['cases'], 'all', ids=ids, incluir_campos_de_prueba=prueba)
     unknown = set(ids) - {a for c in cases for a in c['aliases']}
     if unknown:
         parser.error('Unknown or unscorable case IDs: ' + ', '.join(sorted(unknown)))
     if prueba:
         for caso in cases:
-            if 'contexto_esperado' in caso:
-                try:
+            try:
+                if 'contexto_esperado' in caso:
                     C.validar_contexto_esperado(caso['contexto_esperado'])
-                except ValueError as error:
-                    parser.error(str(error))
+                if 'recuento_esperado' in caso:
+                    C.diferencias_recuento(caso['recuento_esperado'], None)
+            except ValueError as error:
+                parser.error(str(error))
             principal = caso.get('principal_esperado')
             if principal is not None and (
                     not isinstance(principal, str) or principal not in regresiones.SERVICIOS | {'indeterminado'}

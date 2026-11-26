@@ -6,6 +6,7 @@ import tempfile
 import threading
 import types
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest.mock import patch
 from urllib.request import Request
@@ -233,9 +234,28 @@ class PipelineTests(unittest.TestCase):
 
         solo_principal = caso | {'expected': {}}
         self.assertEqual(R.select([solo_principal], 'all'), [])
-        self.assertEqual(R.select([solo_principal], 'all', incluir_prioridad=True), [solo_principal])
+        self.assertEqual(R.select([solo_principal], 'all', incluir_campos_de_prueba=True), [solo_principal])
         a, b = evaluar(solo_principal, cordon), evaluar(solo_principal, barrido)
         self.assertEqual(R.compare({'rows': [a]}, {'rows': [b]})['regressions'], comparacion['regressions'])
+
+    def test_prueba_selecciona_el_recuento_y_el_respaldo_sin_etiquetas_de_categoria(self):
+        sin_categorias = self.case | {'expected': {'recoleccion': None}}
+        recuento = sin_categorias | {'recuento_esperado': {'bolsas_fuentes': 2}}
+        respaldo = sin_categorias | {'contexto_esperado': {'solicitudes_sugeridas': []}}
+        casos = [recuento, respaldo, sin_categorias]
+        self.assertEqual(R.select(casos, 'all', incluir_campos_de_prueba=True), [recuento, respaldo])
+        self.assertEqual(R.select(casos, 'all'), [])
+
+    def test_prueba_rechaza_un_recuento_invalido_antes_de_cargar_el_servidor(self):
+        invalido = self.case | {'recuento_esperado': {'bolsas_fuentes': 3}}
+        (self.root / 'cases.json').write_text(json.dumps({'cases': [invalido]}))
+        with (patch.object(R, 'load_env'), patch.object(P.importlib, 'reload'),
+              patch.object(P, 'load_server') as cargar, redirect_stderr(io.StringIO()) as stderr,
+              self.assertRaises(SystemExit) as salida):
+            P.main(['run', '--private', str(self.root), '--ids', self.case['id'], '--modo', 'prueba'])
+        self.assertEqual(salida.exception.code, 2)
+        self.assertIn('recuento', stderr.getvalue())
+        cargar.assert_not_called()
 
     def test_prueba_registra_la_regresion_del_respaldo_sin_cambiar_las_categorias(self):
         self.server.app = FastAPI()
