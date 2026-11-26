@@ -244,7 +244,16 @@ class ApiModos(unittest.TestCase):
         self.assertTrue(d['costo_api_completo'])
         self.assertEqual(d['consumo_api']['intentos'], 3)
         self.assertRegex(d['consumo_api']['pedido'], r'^[0-9a-f]{24}$')
-        self.assertEqual(self.post('prueba', '/trabajos').json()['resultado'], d)
+        ids_cache = set()
+        for ruta in ('/clasificar', '/trabajos'):
+            cache = self.post('prueba', ruta).json()
+            cache = cache.get('resultado', cache)
+            traza = cache.pop('consumo_api')
+            self.assertEqual(traza['origen_cache'], d['consumo_api']['pedido'])
+            self.assertEqual(traza['intentos'], 0)
+            ids_cache.add(traza['pedido'])
+            self.assertEqual(cache, {k: v for k, v in d.items() if k != 'consumo_api'})
+        self.assertEqual(len(ids_cache | {d['consumo_api']['pedido']}), 3)
         self.assertEqual(len(self.llamadas), 3)
 
     def test_prueba_incluye_en_el_costo_el_apoyo_posterior_a_la_decision(self):
@@ -511,6 +520,57 @@ class ApiModos(unittest.TestCase):
         eventos = [json.loads(l) for l in salida.getvalue().splitlines() if l.startswith('{')]
         self.assertEqual(len(eventos), 3)
         self.assertEqual({e['pedido'] for e in eventos}, {consumo['pedido']})
+
+    def test_trabajo_que_espera_la_cache_cierra_su_traza_sin_cargos(self):
+        from contextlib import redirect_stderr
+        from hashlib import sha256
+        from time import monotonic, sleep
+        from eval.vision.consumo import conciliar
+
+        iniciado, continuar = threading.Event(), threading.Event()
+        http = V._pedir_http.side_effect
+
+        def esperar_segundo(*args):
+            iniciado.set()
+            if not continuar.wait(timeout=3):
+                raise AssertionError('El segundo trabajo no entró en la cola')
+            return dict(http(*args), id=sha256(args[0].data).hexdigest())
+
+        salida = io.StringIO()
+        with (patch.object(V, '_pedir_http', side_effect=esperar_segundo),
+              patch.object(V, 'OPENROUTER_LOG_USO', True),
+              patch.object(self.S, '_cupos', threading.Semaphore(1)), redirect_stderr(salida)):
+            try:
+                primero = self.post('prueba', '/trabajos')
+                self.assertEqual(primero.status_code, 202)
+                self.assertTrue(iniciado.wait(timeout=3))
+                segundo = self.post('prueba', '/trabajos')
+                self.assertEqual(segundo.status_code, 202)
+            finally:
+                continuar.set()
+            respuestas = [primero.json(), segundo.json()]
+            for inicio in respuestas[:]:
+                vence = monotonic() + 3
+                while monotonic() < vence:
+                    final = self.cliente.get('/trabajos/' + inicio['trabajo']).json()
+                    if final['estado'] == 'listo':
+                        break
+                    self.assertIn(final['estado'], ('en_cola', 'procesando'))
+                    sleep(.01)
+                self.assertEqual(final['estado'], 'listo')
+                respuestas.append(final)
+
+        origen = respuestas[2]['resultado']['consumo_api']['pedido']
+        self.assertEqual(respuestas[3]['resultado']['consumo_api'], {
+            'pedido': respuestas[1]['consumo_api']['pedido'], 'intentos': 0, 'origen_cache': origen})
+        eventos = [json.loads(l) for l in salida.getvalue().splitlines() if l.startswith('{')]
+        self.assertEqual(len(eventos), 3)
+        resumen, _ = conciliar([{'id': 'foto', 'entrada': 'web', 'modo': 'prueba',
+            'modo_version': self.ps['prueba'].version, 'esperado': {'retiro_muebles': True},
+            'respuestas': respuestas}], eventos)
+        self.assertEqual(resumen['casos_conciliados'], 1)
+        self.assertEqual(resumen['casos_con_consumo_pendiente'], 0)
+        self.assertEqual(resumen['maximo_conciliado_usd'], '0.003')
 
     def test_cola_conserva_perfil_capturado_y_error(self):
         inicio = threading.Event();seguir = threading.Event()
