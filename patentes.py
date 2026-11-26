@@ -178,7 +178,7 @@ def leer_chapas(img, lectores=None):
         local = leer_local(rec)
         chapa["lecturas"]["ocr_local"] = local["patente"]
         chapa["ocr_local"] = {"lectura": local["lectura"], "confianza": local["confianza"]}
-        if lectores:
+        if lectores and modos.caben_apoyos(*('leer_chapa',) * len(lectores)):
             with concurrent.futures.ThreadPoolExecutor(len(lectores)) as pool:
                 vistas = V._map_con_contexto(pool, lambda m: leer_vlm(m, rec), lectores)
             for modelo, p in zip(lectores, vistas):

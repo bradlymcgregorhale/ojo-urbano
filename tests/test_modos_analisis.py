@@ -18,7 +18,7 @@ _VERIFICAR = V.verificar
 _RESERVAS = {
     'prueba_decision': '.0084', 'prueba_retiros': '.00061', 'prueba_inicio': '.000405',
     'prueba_contenedores': '.00105', 'prueba_tipos': '.00066', 'prueba_alcance': '.0008',
-    'rama_desprendida': '.0005',
+    'rama_desprendida': '.0005', 'leer_chapa': '.001',
 }
 
 
@@ -49,6 +49,24 @@ class Configuracion(unittest.TestCase):
             p = M.cargar(V, {}, base | {'PRUEBA_RESERVAS_USD': json.dumps(reservas)})
             self.assertEqual(p['prueba'].motivo, 'configuracion_invalida')
             self.assertEqual(p['alto'].version, sin_reservas['alto'].version)
+
+    def test_no_gasta_en_una_lectura_suelta_si_las_dos_lecturas_no_caben(self):
+        import patentes
+
+        img = Image.new('RGB', (180, 60))
+        ocr = {'patente': 'A123BCD', 'lectura': 'A123BCD', 'confianza': .9}
+        detecciones = [{'caja': [0, 0, 158, 40], 'confianza': .9}]
+        with (M.usar(perfil_con_reservas()),
+              patch.object(patentes, 'detectar', return_value=detecciones),
+              patch.object(patentes, 'leer_local', return_value=ocr),
+              patch.object(patentes, 'leer_vlm') as lector):
+            reserva = M.reservar_consulta('prueba_decision')
+            M.liquidar_consulta(reserva, {'cost': .0084})
+            [chapa] = patentes.leer_chapas(img, ['t/chapa-a', 't/chapa-b'])
+            lector.assert_not_called()
+            self.assertFalse(chapa['legible'])
+            salida = M.completar({'detalle': {'verificacion': {'activa': True}}})
+            self.assertIn('presupuesto_api_insuficiente', salida['analisis_limitaciones'])
 
     def test_heredado_ausente_y_vacio_conservan_interpretacion(self):
         for legado in ([], ['t/a'], ['t/a', 't/a'], ['t/a', 't/b', 't/c', 't/d']):
