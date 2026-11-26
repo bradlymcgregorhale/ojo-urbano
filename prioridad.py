@@ -207,6 +207,17 @@ def proponer_solicitudes(publica):
             or (publica.get('contexto_visual') or {}).get('suficiente') is False):
         return dict(resultado, estado='requiere_contexto',
                     motivo='Falta confirmar la ubicación o el alcance antes de elegir servicios.')
+    if (publica.get('modo') == 'prueba' and publica.get('analisis_estado') == 'completo'
+            and publica.get('foto_valida') is True):
+        pedidos = {c['key']: c.get('respaldo_visual') for c in publica.get('categorias_contexto') or []
+                   if c.get('key')}
+        # Barrido y recolección pueden describir los mismos residuos. Conservá
+        # la selección habitual, incluso si la revisión de un bolsón no coincide.
+        if len(pedidos) > 1 and not {'barrido', 'recoleccion'} <= pedidos.keys():
+            servicios = [k for k, respaldo in pedidos.items() if respaldo == 'compatible' and k in candidatos]
+            if servicios:
+                return dict(resultado, estado='propuesta', servicios=servicios, criterio='pedidos_explicitos',
+                            motivo='Revisá los servicios solicitados que respalda la foto.')
     if elegido not in candidatos:
         elegido = None
     if elegido and principal.get('criterio') == 'pedido_explicito':

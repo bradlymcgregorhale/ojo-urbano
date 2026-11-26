@@ -5,6 +5,25 @@ import prioridad as P
 
 
 class PrioridadTest(unittest.TestCase):
+    def test_prueba_propone_solo_los_pedidos_confirmados_si_son_varios(self):
+        retiro, vereda = 'retiro_muebles', 'reparacion_vereda'
+        base = {'modo': 'prueba', 'analisis_estado': 'completo', 'foto_valida': True}
+        for respaldo in ('compatible', 'contradice', 'neutral'):
+            with self.subTest(respaldo=respaldo):
+                claves = [retiro, vereda] if respaldo == 'compatible' else [vereda]
+                publica = dict(base, problemas=[{'key': k} for k in [*claves, 'barrido']],
+                               categorias_contexto=[{'key': retiro, 'respaldo_visual': respaldo},
+                                                    {'key': vereda, 'respaldo_visual': 'compatible'}])
+                propuesta = P.proponer_solicitudes(publica)
+                self.assertEqual(propuesta['criterio'], 'pedidos_explicitos')
+                self.assertEqual(propuesta['servicios'], claves)
+                self.assertIn('barrido', propuesta['candidatos'])
+                parcial = P.proponer_solicitudes(dict(publica, analisis_estado='parcial'))
+                self.assertNotIn('criterio', parcial)
+                sin_contexto = P.proponer_solicitudes(dict(publica, contexto_visual={'suficiente': False}))
+                self.assertEqual(sin_contexto['estado'], 'requiere_contexto')
+                self.assertEqual(sin_contexto['servicios'], [])
+
     def test_solicitudes_multiples_sin_cambiar_hallazgos(self):
         r = {'problemas': [{'key': k} for k in ['retiro_escombros', 'retiro_muebles', 'recoleccion']],
              'problema_principal': {'key': 'retiro_muebles', 'estado': 'seleccionado', 'criterio': 'escena'}}
