@@ -1607,8 +1607,8 @@ def _vehiculo_sync(datos_lista, contexto, lectura_chapas=True):
         r.update(patentes.analizar(imgs))
     try:
         r["escena"] = vehiculo.escena(imgs, contexto)
-        if len({f["patente"] for f in r["fotos"] if f.get("patente")}) > 1:
-            # Dos chapas confirmadas contradicen una escena de un solo vehículo.
+        if patentes.chapas_distintas_entre_fotos(r["fotos"]):
+            # Las chapas confirmadas contradicen una identidad común a las dos fotos.
             for campo in ("marca", "modelo"):
                 r["escena"][campo] = None
                 r["escena"]["en_duda"].pop(campo, None)
