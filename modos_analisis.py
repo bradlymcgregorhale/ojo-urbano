@@ -19,7 +19,7 @@ IDENTIFICADOR = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.:-]+$')
 _TOPE_PRUEBA = Decimal('0.01')
 _DECISION_PRUEBA = 'prueba_decision'
 _ETAPAS_PRUEBA = {_DECISION_PRUEBA, 'prueba_inicio', 'prueba_retiros', 'prueba_contenedores',
-                 'prueba_tipos', 'prueba_alcance', 'rama_desprendida'}
+                 'prueba_tipos', 'prueba_alcance', 'rama_desprendida', 'leer_chapa'}
 
 
 class ConsultaSinSaldo(ValueError):
