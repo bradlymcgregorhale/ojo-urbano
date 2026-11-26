@@ -864,7 +864,8 @@ class ApiModos(unittest.TestCase):
         vereda = {'key': 'reparacion_vereda', 'evidencia': 'Varias baldosas rotas.'}
         casos = [(interior, [], 'contradice', []),
                  (interior, [vereda], 'contradice', ['reparacion_vereda']),
-                 (exterior, [], 'compatible', ['manteros'])]
+                 (exterior, [], 'compatible', ['manteros']),
+                 ('Puesto de peras en la vereda, no en la vidriera.', [], 'compatible', ['manteros'])]
         for evidencia, adicionales, respaldo, servicios in casos:
             def responder(req, *_):
                 lectura = {'confirmadas': [], 'dudosas': []}

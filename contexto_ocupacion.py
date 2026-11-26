@@ -16,9 +16,10 @@ _GENERICO = re.compile(r"\b(?:ocupacion(?:\s+indebida)?|uso\s+indebido)"
 _OTRO_PEDIDO = re.compile(r"\b(?:gastronom\w*|ambulantes?|manteros?|motos?|vehiculos?|"
                            r"mal estacionad\w*|retiro de|retirar|levantar)\b")
 _NEGACION = re.compile(r"\b(?:no (?:es|hay|denuncio)|sin)\s+(?:una?\s+)?$")
-_DENTRO_DEL_LOCAL = re.compile(r"\b(?:(?:adentro|dentro|en el interior) (?:del local|de la vidriera)|"
-                              r"detras (?:del vidrio|de la vidriera)|en la vidriera|"
-                              r"mostrador del local)\b|^vidriera$")
+_DENTRO_DEL_LOCAL = re.compile(
+    r"\b(?P<negado>(?:no|ni)\s+(?:(?:estan?|quedan?|se (?:ven?|encuentran?))\s+)?(?:en el )?)?"
+    r"(?:(?:adentro|dentro|en el interior) (?:del local|de la vidriera)|"
+    r"detras (?:del vidrio|de la vidriera)|en la vidriera|mostrador del local)\b|^vidriera$")
 _CONTENEDORES = {"contenedor_desbordado", "vaciado_contenedor", "reparacion_contenedor",
                  "reposicion_contenedor", "contenedor_secos", "contenedor_humedos_lateral",
                  "contenedor_humedos_bilateral", "contenedor_sobrecargado"}
@@ -50,8 +51,9 @@ def equipamiento_visible(valor):
 
 
 def mercaderia_en_interior(*descripciones):
-    return any(_DENTRO_DEL_LOCAL.search(_normalizar(texto.strip()))
-               for texto in descripciones if isinstance(texto, str))
+    return any(not ubicacion.group("negado")
+               for texto in descripciones if isinstance(texto, str)
+               for ubicacion in _DENTRO_DEL_LOCAL.finditer(_normalizar(texto.strip())))
 
 
 def _pide_ocupacion(contexto, *, pedido_mixto=False):
