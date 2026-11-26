@@ -16,6 +16,9 @@ _GENERICO = re.compile(r"\b(?:ocupacion(?:\s+indebida)?|uso\s+indebido)"
 _OTRO_PEDIDO = re.compile(r"\b(?:gastronom\w*|ambulantes?|manteros?|motos?|vehiculos?|"
                            r"mal estacionad\w*|retiro de|retirar|levantar)\b")
 _NEGACION = re.compile(r"\b(?:no (?:es|hay|denuncio)|sin)\s+(?:una?\s+)?$")
+_DENTRO_DEL_LOCAL = re.compile(r"\b(?:(?:adentro|dentro|en el interior) (?:del local|de la vidriera)|"
+                              r"detras (?:del vidrio|de la vidriera)|en la vidriera|"
+                              r"mostrador del local)\b|^vidriera$")
 _CONTENEDORES = {"contenedor_desbordado", "vaciado_contenedor", "reparacion_contenedor",
                  "reposicion_contenedor", "contenedor_secos", "contenedor_humedos_lateral",
                  "contenedor_humedos_bilateral", "contenedor_sobrecargado"}
@@ -35,6 +38,20 @@ def mercaderia_visible(valor):
                 r"(?:pizarra|cartel) de precios\b|cajones de apoyo\b)", _normalizar(nombre)):
         return None
     return nombre
+
+
+def equipamiento_visible(valor):
+    nombre = mercaderia_visible(valor)
+    if nombre and not re.match(r"^(?:(?:una?|el|la|los|las)\s+)?"
+                               r"(?:cartel(?:es)?|pizarras?|caballetes?|cajon(?:es)?)\b",
+                               _normalizar(nombre)):
+        return nombre
+    return None
+
+
+def mercaderia_en_interior(*descripciones):
+    return any(_DENTRO_DEL_LOCAL.search(_normalizar(texto.strip()))
+               for texto in descripciones if isinstance(texto, str))
 
 
 def _pide_ocupacion(contexto):
@@ -59,9 +76,10 @@ def aplicar(publica, contexto):
     respaldos = {c.get("respaldo_visual") for c in publica.get("categorias_contexto", [])
                  if c.get("key") == _TIPO or str(c.get("codigo")) == _SERVICIOS[_TIPO][0]}
     foto_rechazada = (publica.get("evaluacion_foto") or {}).get("rechazada")
-    indicio_de_venta = any(
+    indicio_comercial = any(
         c.get("key") == _TIPO and not c.get("anulada_por")
-        and mercaderia_visible(c.get("mercaderia_visible"))
+        and (mercaderia_visible(c.get("mercaderia_visible"))
+             or equipamiento_visible(c.get("equipamiento_visible")))
         for modelo in publica.get("modelos", []) for c in modelo.get("categorias", [])
     )
     solo_contenedor = (bool((problemas | elementos) & _CONTENEDORES)
@@ -77,7 +95,7 @@ def aplicar(publica, contexto):
         estado, motivo = "no_corresponde", "La foto no coincide con el pedido de ocupación de la vereda."
     elif solo_contenedor:
         estado, motivo = "no_corresponde", "La foto muestra un contenedor. No se ve la ocupación reportada."
-    elif indicio_de_venta:
+    elif indicio_comercial:
         servicios = [_TIPO]
         estado = "compatible"
         motivo = "Lo que se ve en la vereda es compatible con el pedido de ocupación."
@@ -102,16 +120,25 @@ def aplicar(publica, contexto):
         publica["categorias_contexto"] = [*(publica.get("categorias_contexto") or []), categoria]
     publica["hay_reclamo"] = True
     compatible = bool(servicios)
+    adicionales = []
+    propuesta = publica.get("solicitudes_sugeridas") or {}
+    if (publica.get("modo") == "prueba" and publica.get("foto_valida") is True
+            and propuesta.get("estado") in {"propuesta", "pendiente"}):
+        otros_candidatos = set(propuesta.get("candidatos", [])) - _SERVICIOS.keys()
+        adicionales = [c for c in publica.get("categorias_contexto", [])
+                       if c.get("respaldo_visual") == "compatible" and c.get("key") in otros_candidatos]
+    sugeridos = list(dict.fromkeys([*servicios, *(c["key"] for c in adicionales)]))
     publica["solicitudes_sugeridas"] = {
-        "estado": "propuesta" if compatible else "requiere_contexto",
-        "servicios": servicios,
-        "candidatos": servicios or [_TIPO],
+        "estado": "propuesta" if sugeridos else "requiere_contexto",
+        "servicios": sugeridos,
+        "candidatos": sugeridos or [_TIPO],
         "requiere_confirmacion": True,
-        "motivo": motivo,
+        "motivo": "Revisá los servicios solicitados que respalda la foto." if adicionales else motivo,
     }
     publica["conclusion"] = {
         "estado": "por_texto",
-        "categorias": [{"key": key, "nombre": _SERVICIOS[key][1]} for key in servicios or [_TIPO]],
+        "categorias": ([{"key": key, "nombre": _SERVICIOS[key][1]} for key in servicios or [_TIPO]]
+                       + [{"key": c["key"], "nombre": c["nombre"]} for c in adicionales]),
         "requiere_revision": not compatible or any(key not in problemas for key in servicios),
         "texto": motivo,
     }

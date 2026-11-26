@@ -86,7 +86,15 @@ En `.env.example` están las opciones de OpenRouter. Las revisiones dirigidas de
 
 Las comprobaciones que un modo no ejecuta aparecen en `analisis_limitaciones` (`modo_reducido`, `especialista_desactivado`, `corroboracion_insuficiente`) y las categorías que quedaron sin corroborar por esa omisión pasan a `posibles`; no se bajan los requisitos de evidencia para compensar. Cada respuesta lleva `modo` y `modo_version`, y la caché distingue los modos entre sí. Los lectores de cada modo se configuran con `VERIFICADORES_BAJO`, `VERIFICADORES_MEDIO` y `VERIFICADORES_ALTO`; un modo sin lista válida figura como no disponible en `GET /salud`.
 
-La página de carga abre en Completo (prueba). También podés enviar `modo=prueba` a `/clasificar` y `/trabajos`. Admite una foto sin comentario y devuelve las categorías y la suma de los cargos informados en `costo_api`. Si algún intento no informa el importe, `costo_api_completo` es `false` y el total queda pendiente de conciliación. Configurá `VERIFICADORES_PRUEBA` con tres lectores distintos en este orden: decisión, consultas dirigidas y segundo lector para el alcance de escombros.
+La página de carga abre en Completo (prueba). También podés enviar `modo=prueba` a `/clasificar` y `/trabajos`. Si mandás un comentario, el pedido queda en `categorias_contexto` y la foto se clasifica por su evidencia visual. El modo devuelve la suma de los cargos informados en `costo_api`. Si algún intento no informa el importe, `costo_api_completo` es `false` y el total queda pendiente de conciliación. Configurá `VERIFICADORES_PRUEBA` con tres lectores distintos en este orden: decisión, consultas dirigidas y segundo lector para el alcance de escombros.
+
+### Reserva por foto
+
+Para evaluar Completo (prueba) con un límite de admisión de USD 0,01, configurá `PRUEBA_RESERVAS_USD` como un objeto JSON con un importe máximo estimado por consulta para cada etapa. Incluí `prueba_decision`, `prueba_inicio`, `prueba_retiros`, `prueba_contenedores`, `prueba_tipos`, `prueba_alcance`, `rama_desprendida` y `leer_chapa`. Usá importes positivos medidos para los modelos y las solicitudes de la evaluación. Para una etapa con varios lectores, usá el mayor importe por consulta observado en ese grupo. Decisión, inicio y retiros tienen que caber juntos en el centavo. Un objeto incompleto o inválido deshabilita el modo. Al cambiar las reservas, cambia `modo_version`.
+
+El flujo guarda saldo para la decisión mientras corre las lecturas previas. Antes de cada apoyo o reintento, toma en cuenta lo cobrado y lo reservado por los pedidos en curso. Si la revisión de alcance o de chapa requiere varios lectores, las consultas se admiten como grupo. Si falta un importe o se excede la reserva, detiene las llamadas siguientes. El JSON marca el resultado parcial con el motivo en `analisis_limitaciones`. La reserva controla qué consultas empiezan. El importe final de una consulta ya enviada lo informa el proveedor.
+
+En una evaluación, enviá una vez cada foto y esperá el resultado del mismo trabajo. Si falta conciliar un intento, guardá su estado antes de volver a enviarla. Sumá los cargos de todos los intentos de esa foto con [el informe de conciliación](eval/vision/README.md#conciliación-del-costo-facturado).
 
 Para conciliar los cargos de Completo (prueba), `consumo_api.pedido` identifica el pedido y `consumo_api.intentos` informa cuántas consultas hizo, aunque alguna haya fallado. `/trabajos` devuelve el identificador al encolar la foto. El total de intentos queda en `null` mientras el trabajo no tenga resultado. Si la respuesta viene de caché, el pedido informa cero intentos y `consumo_api.origen_cache` identifica el análisis cuyo resultado y costo histórico se muestran.
 
@@ -136,18 +144,19 @@ El servicio está escrito en Python.
 
 Si el texto pide ocupación de la vereda o del espacio público y apunta a un local comercial,
 `reclamo_foto` devuelve un `estado` de `compatible`, `no_corresponde` o `sin_evidencia`.
-En `servicios` aparecen `ocupacion_comercial` cuando hay productos visibles ofrecidos a la venta
-(`118001`), `obstruccion` cuando hay un elemento que ocupa el paso (`118020`), o ambos si se
+En `servicios` aparecen `ocupacion_comercial` cuando un local ocupa la vereda con mercadería
+ofrecida a la venta o equipamiento que usa el comercio (`118001`),
+`obstruccion` cuando hay una barrera que ocupa el paso (`118020`), o ambos si se
 trata de elementos distintos. La foto compatible también propone los servicios en
-`solicitudes_sugeridas` para confirmar. Una foto que no corresponde o
-carece de evidencia deja la lista de servicios vacía. `problemas` conserva el diagnóstico
-visual. Sin pedido de ocupación, el análisis sigue usando las señales de la foto.
+`solicitudes_sugeridas` para confirmar. Si falta respaldo de ocupación, `reclamo_foto.servicios`
+queda vacío. En Completo (prueba), un pedido mixto puede conservar otros servicios solicitados
+que la foto sí respalda. Sin pedido de ocupación, el análisis sigue usando las señales de la foto.
 
 Recibe `multipart/form-data` con estos campos:
 
 - `file`: la foto.
 - `contexto`: texto opcional de hasta 2000 caracteres. Lo que pasa de ese tope se recorta; el pedido no falla.
-- `modo`: `bajo` (Económico), `medio` (Equilibrado) o `alto` (Completo). Se envía como campo del formulario; si lo omitís, se usa `alto`. Qué hace cada uno está en [Modos de análisis](#modos-de-análisis).
+- `modo`: `bajo` (Económico), `medio` (Equilibrado), `alto` (Completo) o `prueba` (Completo de prueba). Se envía como campo del formulario; si lo omitís, se usa `alto`. Qué hace cada uno está en [Modos de análisis](#modos-de-análisis).
 - `verificar`: `auto`, `1` o `0`. El valor por defecto es `auto`, que verifica cuando hay una clave configurada. `1` fuerza la verificación y `0` devuelve una respuesta degradada, sin clasificación.
 
 Los modelos usan `contexto` para interpretar la imagen y decidir si respalda lo que se describió. La API nunca devuelve ese texto porque puede contener nombres o patentes.
@@ -220,7 +229,7 @@ Ejemplo de respuesta:
 - Una entrada de `problemas` puede traer `codigo`, correspondiente a una prestación del catálogo de la Ciudad, en lugar de `key`. Para aceptar ambos formatos usá `p.get("key") or p.get("codigo")`.
 - Cada problema incluye `confianza`: `alta` con 3 o más fuentes y `media` con 2. La aceptación de escombros basada en contenido informado por el vecino usa una fuente y confianza `baja`. El campo superior `predominante` contiene la clave del problema de mayor gravedad. Si hay empate, elige el que tenga más fuentes. Vale `null` cuando no hay uno.
 - `verificacion_escombros`, cuando aparece, informa `estado`, `motivo`, `basado_en_contexto` y `requiere_nueva_foto`. Su estado `apto` significa que la ubicación y presentación sirven para el retiro, no que el material esté confirmado. Para decidir qué reclamo se acepta, usá `problemas`. Una contradicción de contenido puede requerir aclaración aunque `requiere_nueva_foto` sea `false`.
-- `patente` puede aparecer en escenas de `vehiculo_mal_estacionado` o `vehiculo_abandonado`. Acepta formatos argentinos como `AB123CD` y `ABC123`. Solo se devuelve cuando dos lectores independientes obtienen la misma cadena del vehículo protagonista. Cualquier lectura válida que discrepe la suprime. Si hace falta, la API vuelve a leer la foto a mayor resolución solo para la chapa. El valor aparece arriba y dentro del problema confirmado.
+- `patente` puede aparecer en escenas de `vehiculo_mal_estacionado` o `vehiculo_abandonado`. Acepta formatos argentinos como `AB123CD` y `ABC123`. Solo se devuelve cuando dos lectores independientes obtienen la misma cadena del vehículo protagonista. Cualquier lectura válida que discrepe la suprime. Si se confirman ambas incidencias, la API publica la patente en las dos cuando el detector ubica una sola chapa que alcanza el ancho mínimo y la lectura por recorte la confirma. Completo (prueba) usa el recorte de una sola chapa con los mismos lectores que `/vehiculo`. Los demás modos también pueden releer la foto entera para una sola incidencia si el detector no está disponible.
 - `bolsas` aparece solo en un `retiro_escombros` confirmado. Acepta valores de 1 a 15 y `null`. Completo (prueba) también devuelve `0` cuando dos lecturas coinciden en que sólo hay material suelto. `verificacion_escombros` informa `bolsas_minimo` y `bolsas_recuento_completo`. Si el total queda abierto, se informa el mínimo visible y `bolsas` queda en `null`. En Completo (prueba), un total mayor a 15 se conserva en el resumen y `bolsas` queda en `null`. En Completo, cuando falta un mínimo corroborado en alcance, se conserva el recuento de los lectores que votaron escombros y el desempate del árbitro. En `posibles` y `descartados_por_foto` no viaja.
 - `objeto_tipo`, `objeto_tam` y `objeto_cant` aparecen solo en un `retiro_muebles` confirmado. `objeto_tipo` es el objeto dominante con uno de estos rótulos: `heladera`, `lavarropas`, `cocina`, `televisor`, `electronica`, `colchon`, `somier`, `sillon`, `silla`, `mesa`, `placard`, `estanteria`, `puertas`, `ventanas`, `maderas`, `cajas`, `alfombra`, `sanitario`, `vidrios`, `chatarra`, `bidones` u `otros` (mezcla o nada que encaje); un rótulo fuera de la lista no cuenta. `objeto_tam` es `chico` si una persona lo carga sola o `grande` si hacen falta más de una (una carga mixta es `grande`). `objeto_cant` cuenta ítems, no pilas: entero de 1 a 15 o `null` si no se pudo contar. Los tres se resuelven como `bolsas`: la lectura más repetida entre los lectores que votaron la categoría, el empate lo decide el árbitro en su misma llamada y sin árbitro queda `null`.
 - `objetos` aparece solo en un `retiro_muebles` confirmado: lista de hasta 8 nombres cortos de los objetos voluminosos que se ven, en texto plano y uno por ítem (`["heladera", "colchón", "dos puertas"]`), para armar el detalle de un formulario sin recortar `descripcion`. Sale de la misma respuesta JSON de cada lector, sin llamadas extra, y se publica aunque haya un solo lector activo. Se unen las listas de los lectores que votaron la categoría, sin repetir, primero lo que más lectores nombraron. Sólo nombres de objetos: se descartan lugares, personas, nombres propios y cualquier ítem que esté en el `contexto` del vecino y que ningún lector mencione por su cuenta. Vacía (`[]`) si ningún lector nombró nada.

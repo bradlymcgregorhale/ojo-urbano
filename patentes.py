@@ -160,11 +160,16 @@ def _nombre(modelo):
     return re.sub(r"[^a-z0-9]+", "_", modelo.split("/")[-1].lower()).strip("_")
 
 
-def leer_chapas(img, lectores=None):
-    """Todas las chapas detectadas en la foto, cada una con sus lecturas."""
+def leer_chapas(img, lectores=None, *, solo_una=False):
+    """Lee las detecciones. Con solo_una, exige una única caja con ancho suficiente."""
     lectores = list(dict.fromkeys(LECTORES if lectores is None else lectores))
+    detecciones = detectar(img)
+    if solo_una:
+        detecciones = [det for det in detecciones if det["caja"][2] - det["caja"][0] >= ANCHO_MINIMO]
+        if len(detecciones) != 1:
+            return []
     salida = []
-    for det in detectar(img):
+    for det in detecciones:
         x1, y1, x2, y2 = det["caja"]
         chapa = {"caja": det["caja"], "confianza_deteccion": det["confianza"],
                  "ancho_px": x2 - x1, "lecturas": {}, "patente": None,
@@ -178,7 +183,7 @@ def leer_chapas(img, lectores=None):
         local = leer_local(rec)
         chapa["lecturas"]["ocr_local"] = local["patente"]
         chapa["ocr_local"] = {"lectura": local["lectura"], "confianza": local["confianza"]}
-        if lectores:
+        if lectores and modos.caben_apoyos(*('leer_chapa',) * len(lectores)):
             with concurrent.futures.ThreadPoolExecutor(len(lectores)) as pool:
                 vistas = V._map_con_contexto(pool, lambda m: leer_vlm(m, rec), lectores)
             for modelo, p in zip(lectores, vistas):

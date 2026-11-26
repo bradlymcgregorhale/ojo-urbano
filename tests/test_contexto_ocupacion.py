@@ -84,6 +84,29 @@ class ContextoOcupacionTest(unittest.TestCase):
                     lectura = verificador._verificar_uno("prueba/modelo", "", {clave: {"nombre": clave}})
                 self.assertEqual(lectura["categorias"][0]["mercaderia_visible"], "naranjas y peras")
 
+    def test_equipamiento_de_un_local_respalda_la_ocupacion_sin_mercaderia(self):
+        categorias = {clave: {"nombre": clave} for clave in ("ocupacion_comercial", "manteros")}
+        equipo = "Máquina de garra instalada en la vereda junto al kiosco"
+        veredicto = {"categorias": [{"key": clave, "equipamiento_visible": equipo}
+                                   for clave in categorias]}
+        with patch.object(verificador, "_llamar", return_value=json.dumps(veredicto)):
+            lectura = verificador._verificar_uno("prueba/modelo", "", categorias)
+        self.assertEqual([c["key"] for c in lectura["categorias"]], ["ocupacion_comercial"])
+        self.assertEqual(lectura["categorias"][0]["equipamiento_visible"], equipo)
+        resultado = {"modelos": [lectura]}
+        contexto_ocupacion.aplicar(resultado, "ocupación por local comercial")
+        self.assertEqual(resultado["reclamo_foto"]["codigo"], "118001")
+        self.assertEqual(resultado["solicitudes_sugeridas"]["servicios"], ["ocupacion_comercial"])
+
+    def test_cartel_y_cajones_vacios_no_cuentan_como_equipamiento(self):
+        for equipo in ("Cartel de precios en la vereda", "Cajones de apoyo vacíos", "Pizarra aislada",
+                       "No se ve equipamiento comercial", None):
+            with self.subTest(equipo=equipo):
+                categoria = {"key": "ocupacion_comercial", "equipamiento_visible": equipo}
+                with patch.object(verificador, "_llamar", return_value=json.dumps({"categorias": [categoria]})):
+                    lectura = verificador._verificar_uno("prueba/modelo", "", {"ocupacion_comercial": {}})
+                self.assertEqual(lectura["categorias"], [])
+
     def test_revision_de_objetos_no_recupera_venta_ambulante_sin_productos(self):
         hallazgo = {"tipo": "venta_ambulante", "uso": "venta", "objeto": "pizarra",
                     "evidencia": "lista de precios y cajones", "ubicacion": "vereda"}
@@ -91,6 +114,23 @@ class ContextoOcupacionTest(unittest.TestCase):
         hallazgo["mercaderia_visible"] = "peras sobre una mesa"
         self.assertEqual(revision_omisiones.interpretar_objetos({"hallazgos": [hallazgo]})["hallazgos"][0],
                          hallazgo)
+
+    def test_venta_en_vidriera_no_es_ambulante_y_el_puesto_en_la_vereda_se_conserva(self):
+        for ubicacion, evidencia, mercaderia, publicado in (
+            ("vidriera", "Muestras alineadas en la vidriera del negocio", "telas de colores", False),
+            ("frente al local", "Exhibición del mostrador del local", "telas", False),
+            ("frente al local", "Muestras detrás del vidrio", "telas", False),
+            ("vereda frente a la vidriera", "Puesto con peras y un vendedor en la vereda", "peras", True),
+        ):
+            with self.subTest(ubicacion=ubicacion, evidencia=evidencia):
+                hallazgo = {"tipo": "venta_ambulante", "uso": "venta", "objeto": mercaderia,
+                            "evidencia": evidencia, "ubicacion": ubicacion, "mercaderia_visible": mercaderia}
+                omisiones = revision_omisiones.interpretar_objetos({"hallazgos": [hallazgo]})
+                self.assertEqual(bool(omisiones["hallazgos"]), publicado)
+                categoria = {"key": "manteros", "evidencia": evidencia, "mercaderia_visible": mercaderia}
+                with patch.object(verificador, "_llamar", return_value=json.dumps({"categorias": [categoria]})):
+                    lectura = verificador._verificar_uno("prueba/modelo", "", {"manteros": {}})
+                self.assertEqual(bool(lectura["categorias"]), publicado)
 
     def test_contenedor_lleno_con_el_mismo_texto_pide_otra_foto(self):
         resultado = {"problemas": [{"key": "contenedor_desbordado"}],
