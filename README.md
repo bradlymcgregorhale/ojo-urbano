@@ -726,7 +726,7 @@ Otras reglas:
 - `TRABAJO_TTL` conserva el resultado durante `1800` segundos por defecto.
 - `TRABAJO_ESPERA` permite esperar el turno durante `900` segundos por defecto.
 - Los trabajos viven en la memoria del proceso y se pierden al reiniciar.
-- Un `404` al consultar significa que el trabajo es desconocido o venció. El cliente debe volver a enviar la foto.
+- Un `404` al consultar significa que el trabajo es desconocido o venció. En Completo (prueba), guardá la respuesta `202` con `consumo_api` y conciliá el cargo antes de reenviar la foto.
 - El `POST` usa las mismas protecciones que `/clasificar`. Consultar el estado no consume cuota.
 
 La portada, disponible en `GET /`, usa esta vía.

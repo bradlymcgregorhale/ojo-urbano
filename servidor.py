@@ -2191,8 +2191,9 @@ PAGINA = r"""<!DOCTYPE html>
           <code class="ruta" data-ep="consulta"></code>
           <div class="epdesc">Estado del trabajo. <code>en_cola</code> trae <b>posicion</b> (1 = el
             próximo); <code>listo</code> trae <b>resultado</b> con el contrato v4, idéntico al
-            sincrónico; <code>error</code> trae <b>detail</b>. Un <code>404</code> significa que el
-            servidor se reinició y perdió el registro: reenviá la foto. Forma directa:
+            sincrónico; <code>error</code> trae <b>detail</b>. Un <code>404</code> indica que el
+            trabajo ya no está disponible. En Completo (prueba), guardá el <code>202</code> y
+            conciliá el consumo antes de reenviar la foto. Forma directa:
             <code>GET /trabajos/{id}</code>.</div></div>
         <div class="ep1"><span class="met met-post">POST</span>
           <code class="ruta" data-ep="cancelar"></code>
@@ -2484,6 +2485,7 @@ async function enviar(it){
     }
     const d=await r.json();
     if(d.estado==='listo'&&d.resultado){it.tProc=it.tProc||Date.now();resolver(it,d.resultado);return;}
+    if(it.modoFijo==='prueba'&&d.consumo_api)it.trabajoAceptado=d;
     it.trabajo=d.trabajo;it.posicion=d.posicion;it.estado='en_cola';pintar(it);
     bombear();
   }catch(e){
@@ -2508,6 +2510,10 @@ async function sondear(){
       try{
         const r=await fetch(T+'?id='+encodeURIComponent(it.trabajo));
         if(r.status===404){
+          if(it.modoFijo==='prueba'){
+            fallar(it,'El trabajo ya no está disponible.',true);
+            continue;
+          }
           // el servidor se reinició y perdió el registro: se reenvía una vez
           it.trabajo=null;
           if(it.reenvios404){fallar(it,'el trabajo se perdió; reintentá a mano');}
@@ -2517,7 +2523,7 @@ async function sondear(){
         if(!r.ok)continue;
         const d=await r.json();
         if(d.estado==='listo')resolver(it,d.resultado);
-        else if(d.estado==='error')fallar(it,d.detail||'falla en el análisis');
+        else if(d.estado==='error')fallar(it,d.detail||'falla en el análisis',it.modoFijo==='prueba');
         else if(d.estado==='cancelado')fallar(it,'el trabajo fue cancelado');
         else{
           const cambio=it.estado!==d.estado||it.posicion!==d.posicion;
@@ -2559,10 +2565,13 @@ function resolver(it,resultado){
   it.estado='listo';it.resultado=resultado;pintar(it);bombear();
 }
 
-function fallar(it,motivo){
+function fallar(it,motivo,consumoPendiente=false){
   it.tFin=Date.now();
-  it.estado='error';it.detalle=motivo||'falla';pintar(it);bombear();
+  it.estado='error';it.detalle=motivo||'falla';it.consumoPendiente=consumoPendiente;
+  pintar(it);bombear();
 }
+
+const puedeReintentar=it=>it.estado==='error'&&!it.consumoPendiente;
 
 // cronómetro y espera estimada, refrescados por segundo sin repintar la tarjeta
 function tic(){
@@ -2641,8 +2650,10 @@ function pintar(it){
   }
   if(it.estado==='error'){
     res.innerHTML=`<div class="tardesc">${esc(it.detalle)}</div>`+
-      `<button class="btn retrybtn" style="align-self:flex-start">Reintentar</button>`;
-    res.querySelector('.retrybtn').onclick=()=>{
+      (it.consumoPendiente
+        ? '<div class="tardesc">Consumo pendiente. Descargá el JSON para conciliarlo antes de volver a analizar.</div>'
+        : '<button class="btn retrybtn" style="align-self:flex-start">Reintentar</button>');
+    if(puedeReintentar(it))res.querySelector('.retrybtn').onclick=()=>{
       reintentar(it);iniciado=true;bombear();arrancarPoll();};
   }else if(it.estado==='listo'){
     res.innerHTML=renderResultado(it.resultado);
@@ -2908,9 +2919,9 @@ function actualizarBarra(){
   ba.textContent=iniciado?'Analizar nuevas':'Analizar '+(n===1?'1 foto':n+' fotos');
   ba.disabled=!items.some(i=>i.estado==='espera'&&!i.armada);
   $('#csvbtn').disabled=!listas;
-  $('#jsonbtn').disabled=!listas;
-  $('#limpiar').disabled=!items.some(i=>i.estado==='listo'||i.estado==='error');
-  $('#reerr').style.display=errs>1?'':'none';
+  $('#jsonbtn').disabled=!listas&&!items.some(i=>i.consumoPendiente);
+  $('#limpiar').disabled=!listas&&!items.some(puedeReintentar);
+  $('#reerr').style.display=items.filter(puedeReintentar).length>1?'':'none';
 }
 
 // delegado: cada tarjeta se vuelve a dibujar al cambiar de estado, asi que
@@ -2930,18 +2941,18 @@ $('#analizar').onclick=()=>{items.forEach(i=>{if(i.estado==='espera')i.armada=tr
 
 function reintentar(it){
   it.estado='espera';it.armada=true;it.detalle='';it.nota='';it.trabajo=null;it.reenvios=0;it.reenvios404=0;
-  it.noAntes=null;it.tProc=null;it.tFin=null;it.dur=null;
+  it.trabajoAceptado=null;it.noAntes=null;it.tProc=null;it.tFin=null;it.dur=null;
   pintar(it);
 }
 
 $('#reerr').onclick=()=>{
-  items.filter(i=>i.estado==='error').forEach(reintentar);
+  items.filter(puedeReintentar).forEach(reintentar);
   iniciado=true;bombear();arrancarPoll();
 };
 
 $('#limpiar').onclick=()=>{
   items=items.filter(it=>{
-    if(it.estado==='listo'||it.estado==='error'){
+    if(it.estado==='listo'||puedeReintentar(it)){
       const img=it.card.querySelector('img');
       if(img&&img.src.startsWith('blob:'))URL.revokeObjectURL(img.src);
       it.card.remove();
@@ -2956,7 +2967,8 @@ $('#limpiar').onclick=()=>{
 $('#jsonbtn').onclick=()=>{
   const datos=items.map(it=>({archivo:it.file.name,contexto:(it.ctx||'').trim(),
     estado:it.estado,modo:it.modoFijo||it.modo,trabajo:it.trabajo,
-    resultado:it.resultado,error:it.estado==='error'?it.detalle:null}));
+    resultado:it.resultado,error:it.estado==='error'?it.detalle:null,
+    ...(it.consumoPendiente&&it.trabajoAceptado?{trabajo_aceptado:it.trabajoAceptado}:{})}));
   const blob=new Blob([JSON.stringify(datos,null,2)],{type:'application/json;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='ojo-urbano-resultados.json';a.click();
