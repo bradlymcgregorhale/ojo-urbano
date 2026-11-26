@@ -316,6 +316,22 @@ class PruebaConsumo(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "recibos con importes distintos"):
             conciliar(casos, eventos, [recibo("g", .008), recibo("g", .009)])
 
+    def test_recibo_truncado_conserva_la_precision_del_registro_de_uso(self):
+        casos = [caso("a", {"p": 1})]
+        cobrado = uso("p", "g", .0003728375)
+        sin_importe = cobrado | {"cost": None}
+        factura = recibo("g", .000372837)
+        for eventos in ([cobrado, sin_importe], [sin_importe, cobrado]):
+            with self.subTest(eventos=eventos):
+                _, [foto] = conciliar(casos, eventos, [factura])
+                self.assertTrue(foto["conciliado"])
+                self.assertEqual(foto["costo_conocido_usd"], "0.0003728375")
+                self.assertEqual(foto["pedidos"][0]["generaciones_con_recibo"], 1)
+        with self.assertRaisesRegex(ValueError, "difiere del registro"):
+            conciliar(casos, [cobrado], [recibo("g", .0003728369)])
+        with self.assertRaisesRegex(ValueError, "tiene importes distintos"):
+            conciliar(casos, [cobrado, cobrado | {"cost": .0003728376}], [factura])
+
     def test_descarta_importes_invalidos_y_detecta_dos_cargos_para_la_misma_generacion(self):
         casos = [caso("a", {"p": 1, "q": 1})]
         for costo in (None, -1, True, "0.01", float("inf"), float("nan")):
