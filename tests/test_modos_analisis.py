@@ -799,6 +799,38 @@ class ApiModos(unittest.TestCase):
                 self.assertEqual(set(fuentes), esperado)
                 self.assertEqual(leer.call_count, 3)
 
+    def test_prueba_la_vidriera_no_respalda_el_pedido_de_venta_ambulante(self):
+        interior = 'Muestras alineadas en la vidriera del local.'
+        exterior = 'Puesto de peras en la vereda frente a la vidriera.'
+        vereda = {'key': 'reparacion_vereda', 'evidencia': 'Varias baldosas rotas.'}
+        casos = [(interior, [], 'contradice', []),
+                 (interior, [vereda], 'contradice', ['reparacion_vereda']),
+                 (exterior, [], 'compatible', ['manteros'])]
+        for evidencia, adicionales, respaldo, servicios in casos:
+            def responder(req, *_):
+                lectura = {'confirmadas': [], 'dudosas': []}
+                if json.loads(req.data)['model'] == 't/decision':
+                    lectura['confirmadas'] = [{'key': 'manteros', 'evidencia': evidencia}, *adicionales]
+                    lectura['pedidos'] = [
+                        {'key': hallazgo['key'], 'respaldo': 'compatible'}
+                        for hallazgo in lectura['confirmadas']]
+                return {'usage': {'cost': .001}, 'choices': [
+                    {'finish_reason': 'stop', 'message': {'content': json.dumps(lectura)}}]}
+
+            contexto = 'Vendedor ambulante y vereda rota' if adicionales else 'Vendedor ambulante'
+            with (self.subTest(evidencia=evidencia, adicionales=bool(adicionales)),
+                  patch.object(self.S, 'CACHE_MAX', 0), patch.object(V, '_pedir_http', side_effect=responder)):
+                r = self.cliente.post('/clasificar', files={'file': ('foto.jpg', self.foto, 'image/jpeg')},
+                                      data={'modo': 'prueba', 'contexto': contexto})
+                self.assertEqual(r.status_code, 200, r.text)
+                salida = r.json()
+                estados = {c['key']: c['respaldo_visual'] for c in salida['categorias_contexto']}
+                self.assertEqual(estados['manteros'], respaldo)
+                self.assertEqual(salida['foto_valida'], bool(servicios))
+                self.assertEqual([p['key'] for p in salida['problemas']], servicios)
+                self.assertEqual(salida['solicitudes_sugeridas']['servicios'], servicios)
+                self.assertEqual(salida['consumo_api']['intentos'], 3)
+
     def test_prueba_pide_describir_el_paso_si_hay_indicios_de_obra(self):
         from prueba_completo import _decision
         claves = ('retiro_escombros', 'obstruccion')
