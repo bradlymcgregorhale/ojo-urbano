@@ -2419,6 +2419,7 @@ function bombear(){
 
 async function enviar(it){
   it.modoFijo=it.modoFijo||it.modo;
+  const enPrueba=it.modoFijo==='prueba';
   it.estado='enviando';it.nota='';pintar(it);
   await actualizarModos();
   if(modoBloqueado(it.modoFijo)){
@@ -2438,14 +2439,16 @@ async function enviar(it){
     }finally{
       clearTimeout(corteT);
     }
-    if(r.status===503){
-      const errorModo=await r.clone().json().catch(()=>null);
-      if(typeof errorModo?.detail==='string'&&errorModo.detail.startsWith('El modo elegido')){
-        await actualizarModos();fallar(it,errorModo.detail);bombear();return;
-      }
+    const detalle503=r.status===503?(await r.json().catch(()=>null))?.detail:null;
+    if(typeof detalle503==='string'&&detalle503.startsWith('El modo elegido')){
+      await actualizarModos();fallar(it,detalle503);bombear();return;
     }
-    if(r.status===429||r.status===503){
-      // servidor lleno: la tarjeta vuelve a la espera y se reintenta sola
+    // En prueba sólo se reintenta cuando la cola rechazó la carga antes de admitirla.
+    const rechazoDeCola=r.status===503&&(!enPrueba||[
+      'el servidor está degradado; reintentá más tarde',
+      'no hay lugar en la cola de trabajos; reintentá en un rato',
+    ].includes(detalle503));
+    if(r.status===429||rechazoDeCola){
       const ra=parseInt(r.headers.get('Retry-After'),10);
       const pausa=(isNaN(ra)||ra<1?15:Math.max(5,ra))*1000;
       it.reenvios++;
@@ -2455,17 +2458,23 @@ async function enviar(it){
       return;
     }
     if(!r.ok){
-      const e=await r.json().catch(()=>null);
-      fallar(it,(e&&e.detail)||('no se pudo enviar (HTTP '+r.status+')'));
+      const detalle=r.status===503?detalle503:(await r.json().catch(()=>null))?.detail;
+      fallar(it,detalle||('no se pudo enviar (HTTP '+r.status+')'),
+        enPrueba&&(r.status>=500||r.status===408));
       return;
     }
     const d=await r.json();
     if(d.estado==='listo'&&d.resultado){it.tProc=it.tProc||Date.now();resolver(it,d.resultado);return;}
-    if(it.modoFijo==='prueba'&&d.consumo_api)it.trabajoAceptado=d;
+    if(enPrueba){
+      if(r.status!==202||typeof d.trabajo!=='string'||!d.trabajo){
+        fallar(it,'El servidor no confirmó el envío.',true);return;
+      }
+      if(d.consumo_api)it.trabajoAceptado=d;
+    }
     it.trabajo=d.trabajo;it.posicion=d.posicion;it.estado='en_cola';pintar(it);
     bombear();
   }catch(e){
-    fallar(it,e.name==='AbortError'?'la subida tardó demasiado':'no se pudo enviar: '+e.message);
+    fallar(it,e.name==='AbortError'?'la subida tardó demasiado':'no se pudo enviar: '+e.message,enPrueba);
   }
   actualizarBarra();
 }
@@ -2944,6 +2953,7 @@ $('#jsonbtn').onclick=()=>{
   const datos=items.map(it=>({archivo:it.file.name,contexto:(it.ctx||'').trim(),
     estado:it.estado,modo:it.modoFijo||it.modo,trabajo:it.trabajo,
     resultado:it.resultado,error:it.estado==='error'?it.detalle:null,
+    ...(it.consumoPendiente?{consumo_pendiente:true}:{}),
     ...(it.consumoPendiente&&it.trabajoAceptado?{trabajo_aceptado:it.trabajoAceptado}:{})}));
   const blob=new Blob([JSON.stringify(datos,null,2)],{type:'application/json;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
