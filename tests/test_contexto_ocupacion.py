@@ -46,6 +46,27 @@ class ContextoOcupacionTest(unittest.TestCase):
         self.assertEqual(resultado["reclamo_foto"]["servicios"], ["ocupacion_comercial", "obstruccion"])
         self.assertEqual(resultado["problemas"], problemas)
 
+    def test_prueba_reconoce_ep_en_el_pedido_por_local_comercial(self):
+        texto = "Ocupación indebida del EP por local comercial"
+        problemas = [{"key": key, "fuentes": 1} for key in ("ocupacion_comercial", "obstruccion")]
+        resultado = {"modo": "prueba", "problemas": problemas}
+        contexto_ocupacion.aplicar(resultado, texto)
+        self.assertEqual(resultado["reclamo_foto"]["codigo"], "118001")
+        self.assertEqual(resultado["reclamo_foto"]["servicios"], ["ocupacion_comercial", "obstruccion"])
+
+        ajena = {"modo": "prueba", "problemas": [], "foto_valida": False,
+                 "categorias_contexto": [{"key": "ocupacion_comercial", "respaldo_visual": "contradice"}]}
+        contexto_ocupacion.aplicar(ajena, texto)
+        self.assertEqual(ajena["reclamo_foto"]["estado"], "no_corresponde")
+        self.assertEqual(ajena["solicitudes_sugeridas"]["servicios"], [])
+
+        for modo, mensaje in (("alto", texto), ("prueba", "No es " + texto),
+                              ("prueba", "Ocupación indebida del EP por vendedores ambulantes")):
+            with self.subTest(modo=modo, mensaje=mensaje):
+                resultado = {"modo": modo, "problemas": problemas}
+                contexto_ocupacion.aplicar(resultado, mensaje)
+                self.assertNotIn("reclamo_foto", resultado)
+
     def test_propuesta_sin_contexto_conserva_los_dos_servicios(self):
         problemas = [{"key": clave, "fuentes": 2} for clave in ("obstruccion", "ocupacion_comercial")]
         resultado = prioridad.proponer_solicitudes({"problemas": problemas})

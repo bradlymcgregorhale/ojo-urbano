@@ -11,6 +11,7 @@ _SERVICIOS = {
     _OBSTRUCCION: ("118020", "Obstrucción de calle / vereda"),
 }
 _EXPLICITO = re.compile(r"\bocupacion\s+(?:indebida\s+)?(?:comercial|(?:por (?:un )?)?local(?: comercial)?)\b")
+_EXPLICITO_EP = re.compile(r"\bocupacion\s+(?:indebida\s+)?del ep por (?:un )?local comercial\b")
 _GENERICO = re.compile(r"\b(?:ocupacion(?:\s+indebida)?|uso\s+indebido)"
                        r"\s+(?:de(?:l|\s+la)?\s+)?(?:espacio\s+pu(?:blico|bilco)|vereda)\b")
 _OTRO_PEDIDO = re.compile(r"\b(?:gastronom\w*|ambulantes?|manteros?|motos?|vehiculos?|"
@@ -47,9 +48,11 @@ def mercaderia_en_interior(*descripciones):
                for ubicacion in _DENTRO_DEL_LOCAL.finditer(_normalizar(texto.strip())))
 
 
-def _pide_ocupacion(contexto, *, pedido_mixto=False):
+def _pide_ocupacion(contexto, *, prueba=False, pedido_mixto=False):
     texto = _normalizar(contexto)
     explicito = _EXPLICITO.search(texto)
+    if prueba and explicito is None:
+        explicito = _EXPLICITO_EP.search(texto)
     pedido = explicito or _GENERICO.search(texto)
     return (pedido is not None and not _NEGACION.search(texto[:pedido.start()])
             and ((pedido_mixto and explicito is not None) or not _OTRO_PEDIDO.search(texto)))
@@ -57,11 +60,12 @@ def _pide_ocupacion(contexto, *, pedido_mixto=False):
 
 def aplicar(publica, contexto):
     """Propone el servicio del vecino según lo que la foto permite verificar."""
+    prueba = publica.get("modo") == "prueba"
     pedido_mixto = False
-    if publica.get("modo") == "prueba":
+    if prueba:
         claves = {c["key"] for c in publica.get("categorias_contexto", []) if c.get("key")}
         pedido_mixto = _TIPO in claves and bool(claves - _SERVICIOS.keys())
-    if not _pide_ocupacion(contexto, pedido_mixto=pedido_mixto):
+    if not _pide_ocupacion(contexto, prueba=prueba, pedido_mixto=pedido_mixto):
         return
 
     problemas = {c.get("key") for c in publica.get("problemas", [])}
