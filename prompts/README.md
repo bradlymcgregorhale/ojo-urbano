@@ -129,8 +129,8 @@ siguen disponibles. El motivo de un retiro posible explica la falta de descarte
 independiente, aun si el árbitro había recomendado confirmarlo. No modifica
 clasificación, prioridad, costo ni cantidad de inferencias.
 
-`rubrica/categorias/retiro_objetos.txt` (#204) corresponde a la prestación de la
-Ciudad 1645729658238, "Retiro de objetos en desuso": mobiliario urbano o resto de
-obra fijo o anclado que quedó en desuso. Su código queda en `categorias.json` como
-`prestacion`. La clase `retiro_objetos` del modelo local sigue plegándose a
-`retiro_muebles` (`FOLD_LOCAL`); la categoría se confirma con dos lectores.
+La rúbrica y los criterios de Completo (prueba) usan `retiro_muebles` para los
+voluminosos descartados, incluidos paneles gruesos, tapas de telgopor y objetos
+urbanos desmontados. Las piezas todavía instaladas o en uso quedan fuera del
+retiro. Las lecturas que usen la clave anterior tienen que describir un objeto
+grande descartado para aportar un voto a `retiro_muebles`.
