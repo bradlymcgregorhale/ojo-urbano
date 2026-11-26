@@ -852,7 +852,7 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa",
             break
         inicio = time.monotonic()
         data, error = None, None
-        reserva = modos.reservar_consulta(etapa)
+        reserva = modos.reservar_consulta(etapa, modelo=modelo)
         try:
             modos.llamada()
             data = _pedir_http(req, min(TIMEOUT, resto), vence)
