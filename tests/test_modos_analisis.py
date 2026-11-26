@@ -1053,6 +1053,35 @@ class ApiModos(unittest.TestCase):
                 self.assertEqual(r.json()['reclamo_foto']['estado'], estado)
                 self.assertEqual(r.json()['solicitudes_sugeridas']['servicios'], servicios)
 
+    def test_prueba_pide_evidencia_separada_para_sumar_obstruccion_a_ocupacion(self):
+        foto = ('foto.jpg', self.foto, 'image/jpeg')
+        datos = {'modo': 'prueba', 'contexto': 'Ocupación de la vereda por local comercial'}
+        ocupacion, obstruccion = 'ocupacion_comercial', 'obstruccion'
+        equipo = 'La máquina de garra del local ocupa parte del paso.'
+        casos = (
+            (equipo.lower(), [ocupacion], [obstruccion], 'neutral'),
+            ('Una pizarra separada impide el paso junto al cordón.', [ocupacion, obstruccion], [], 'compatible'),
+        )
+        for evidencia, servicios, dudas, respaldo in casos:
+            with self.subTest(evidencia=evidencia):
+                def responder(req, *_):
+                    lectura = {'confirmadas': [], 'dudosas': []}
+                    if json.loads(req.data)['model'] == 't/decision':
+                        lectura['confirmadas'] = [{'key': ocupacion, 'evidencia': equipo},
+                                                  {'key': obstruccion, 'evidencia': evidencia}]
+                        lectura['pedidos'] = [{'key': k, 'respaldo': 'compatible'} for k in (ocupacion, obstruccion)]
+                    return {'usage': {'cost': .001}, 'choices': [
+                        {'finish_reason': 'stop', 'message': {'content': json.dumps(lectura)}}]}
+
+                with patch.object(self.S, 'CACHE_MAX', 0), patch.object(V, '_pedir_http', side_effect=responder):
+                    respuesta = self.cliente.post('/clasificar/', files={'file': foto}, data=datos)
+                self.assertEqual(respuesta.status_code, 200, respuesta.text)
+                salida = respuesta.json()
+                self.assertEqual(salida['solicitudes_sugeridas']['servicios'], servicios)
+                self.assertEqual(salida['en_duda'], dudas)
+                self.assertEqual({c['key']: c['respaldo_visual'] for c in salida['categorias_contexto']},
+                                 {ocupacion: 'compatible', obstruccion: respaldo})
+
     def test_prueba_conserva_la_vereda_pedida_junto_con_la_revision_de_ocupacion(self):
         from time import monotonic, sleep
 

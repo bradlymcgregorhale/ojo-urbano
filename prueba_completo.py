@@ -360,6 +360,13 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
             dudas.pop(clave, None)
             if clave in pedidos:
                 pedidos[clave] = 'contradice'
+    ocupacion, obstruccion = 'ocupacion_comercial', 'obstruccion'
+    if (ocupacion in confirmadas and obstruccion in confirmadas
+            and V._norm_texto(confirmadas[ocupacion]) == V._norm_texto(confirmadas[obstruccion])):
+        confirmadas.pop(obstruccion)
+        dudas[obstruccion] = 'Falta corroborar una barrera separada del equipamiento comercial.'
+        if pedidos.get(obstruccion) == 'compatible':
+            pedidos[obstruccion] = 'neutral'
     fuentes = {k: [sol] for k in confirmadas}
     tipo_actual = set(confirmadas).intersection(TIPOS)
     ranking = sorted(((scores.get(k, 0), k) for k in TIPOS), reverse=True)
