@@ -2,7 +2,7 @@
 
 import argparse
 from collections import Counter, defaultdict
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 import json
 import os
 from pathlib import Path
@@ -13,6 +13,7 @@ _RANGO_BOLSAS = {"bolsas": 15, "bolsas_minimo": None, "bolsas_fuentes": 2}
 _CAMPO_COMPLETO = "bolsas_recuento_completo"
 _RESPALDOS = ("compatible", "neutral", "contradice")
 _ESTADOS_RECLAMO = ("compatible", "sin_evidencia", "no_corresponde")
+_PRECISION_RECIBO = Decimal("0.000000001")
 
 
 def leer_uso(rutas):
@@ -242,16 +243,21 @@ def _cargos(eventos, pedidos, recibos):
             generaciones_por_intento[firma].add(generacion)
             generaciones_con_firma.add(generacion)
         recibo = recibos.get(generacion)
-        if recibo is not None:
-            if monto is not None and monto != recibo:
-                raise ValueError("El importe del recibo difiere del registro de uso")
-            monto = recibo
         if monto is None:
-            pendientes.add(pedido)
+            if recibo is None:
+                pendientes.add(pedido)
             continue
+        # /generation puede truncar el importe a nueve decimales.
+        if (recibo is not None and monto != recibo
+                and (monto.as_tuple().exponent >= -9
+                     or monto.quantize(_PRECISION_RECIBO, rounding=ROUND_DOWN) != recibo)):
+            raise ValueError("El importe del recibo difiere del registro de uso")
         previo = cargos[pedido].setdefault(generacion, monto)
         if previo != monto:
             raise ValueError("Un ID de generación tiene importes distintos")
+    for generacion, recibo in recibos.items():
+        if generacion in vinculados:
+            cargos[vinculados[generacion]].setdefault(generacion, recibo)
     minimos_sin_generacion = defaultdict(Decimal)
     for firma, monto in sin_generacion.items():
         pedido = firma[0]
