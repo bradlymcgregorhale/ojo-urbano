@@ -832,8 +832,8 @@ def _llamar(modelo, mensajes, max_tokens=6000, intentos=3, *, etapa="sin_etapa",
         cuerpo["provider"] = {"allow_fallbacks": False}
     if OPENROUTER_PROVEEDORES_EXCLUIDOS:
         cuerpo.setdefault("provider", {})["ignore"] = OPENROUTER_PROVEEDORES_EXCLUIDOS.split(",")
-    if perfil and perfil.proveedor_prueba and etapa != "leer_chapa":
-        cuerpo.setdefault("provider", {}).update(only=[perfil.proveedor_prueba], allow_fallbacks=False)
+    if perfil and (proveedor := perfil.proveedor_para(etapa)):
+        cuerpo.setdefault("provider", {}).update(only=[proveedor], allow_fallbacks=False)
     if esquema is not None:
         cuerpo["response_format"] = {"type": "json_schema", "json_schema": {
             "name": "lectura_urbana", "strict": True, "schema": esquema}}

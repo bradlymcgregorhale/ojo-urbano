@@ -81,6 +81,43 @@ class Configuracion(unittest.TestCase):
                 if elegido:
                     self.assertIs(provider['allow_fallbacks'], False)
 
+    def test_proveedor_por_etapa_respeta_la_reserva_y_el_proveedor_predeterminado(self):
+        base = {'VERIFICADORES_PRUEBA': 't/decision,t/dirigidos,t/alcance'}
+        proveedores = {'predeterminado': 'openai/flex', 'prueba_contenedores': 'openai'}
+        reservas = base | {'PRUEBA_RESERVAS_USD': json.dumps(_RESERVAS)}
+        clave = 'PRUEBA_PROVEEDOR_OPENROUTER'
+        antes = M.cargar(V, {}, reservas | {clave: 'openai/flex'})
+        perfiles = M.cargar(V, {}, reservas | {clave: json.dumps(proveedores)})
+        perfil = perfiles['prueba']
+        self.assertIsNone(perfil.motivo)
+        self.assertNotEqual(perfil.version, antes['prueba'].version)
+        self.assertEqual(perfiles['alto'].version, antes['alto'].version)
+        self.assertIsNone(perfil.proveedor_para('leer_chapa'))
+        for env in (base | {clave: json.dumps(proveedores)},
+                    reservas | {clave: '{"prueba_contenedores":"openai"}'},
+                    reservas | {clave: '{"predeterminado":"openai/flex","leer_chapa":"openai"}'},
+                    reservas | {clave: '{"predeterminado":"openai/flex","prueba_inicio":null}'}):
+            self.assertEqual(M.cargar(V, {}, env)['prueba'].motivo, 'configuracion_invalida')
+
+        datos = {'usage': {'cost': .0002}, 'choices': [{'finish_reason': 'stop',
+                                                       'message': {'content': '{}'}}]}
+        with (M.usar(perfil), patch.object(V, 'api_key', return_value='simulada'),
+              patch.object(V, '_pedir_http', return_value=datos) as http):
+            for etapa, esperado in (('prueba_inicio', 'openai/flex'), ('prueba_contenedores', 'openai')):
+                _LLAMAR('t/dirigidos', [], etapa=etapa)
+                proveedor = json.loads(http.call_args.args[0].data)['provider']
+                self.assertEqual(proveedor['only'], [esperado])
+                self.assertIs(proveedor['allow_fallbacks'], False)
+
+        with (M.usar(perfil), patch.object(V, 'api_key', return_value='simulada'),
+              patch.object(V, '_pedir_http') as http):
+            for etapa in ('prueba_inicio', 'prueba_retiros'):
+                reserva = M.reservar_consulta(etapa)
+                M.liquidar_consulta(reserva, {'cost': float(reserva)})
+            with self.assertRaises(M.ConsultaSinSaldo):
+                _LLAMAR('t/dirigidos', [], etapa='prueba_contenedores')
+            http.assert_not_called()
+
     def test_no_gasta_en_una_lectura_suelta_si_las_dos_lecturas_no_caben(self):
         import patentes
 

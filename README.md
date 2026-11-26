@@ -96,6 +96,8 @@ El flujo guarda saldo para la decisión mientras corre las lecturas previas. Ant
 
 Si las reservas usan las tarifas de un endpoint específico, podés fijarlo para los tres lectores con `PRUEBA_PROVEEDOR_OPENROUTER`, por ejemplo `openai/flex`. El endpoint tiene que ofrecer los tres modelos. Si OpenRouter no lo puede usar, la consulta falla sin pasar al nivel estándar. La configuración de los lectores de chapa es independiente. Confirmá el endpoint y el importe en los recibos antes de usar esas reservas. https://openrouter.ai/docs/guides/routing/provider-selection
 
+Para evaluar una etapa de clasificación en otro endpoint, la misma variable admite un objeto JSON con `predeterminado` y el endpoint para cada etapa que quieras cambiar. Por ejemplo, `{"predeterminado":"openai/flex","prueba_contenedores":"openai"}` usa el nivel estándar para contenedores. Usá la tarifa de ese endpoint para la reserva de la etapa. Cada consulta sigue usando sólo el endpoint configurado.
+
 En una evaluación, enviá una vez cada foto y esperá el resultado del mismo trabajo. Si falta conciliar un intento, guardá su estado antes de volver a enviarla. Sumá los cargos de todos los intentos de esa foto con [el informe de conciliación](eval/vision/README.md#conciliación-del-costo-facturado).
 
 Para conciliar los cargos de Completo (prueba), `consumo_api.pedido` identifica el pedido y `consumo_api.intentos` informa cuántas consultas hizo, aunque alguna haya fallado. `/trabajos` devuelve el identificador al encolar la foto. El total de intentos queda en `null` mientras el trabajo no tenga resultado. Si la respuesta viene de caché, el pedido informa cero intentos y `consumo_api.origen_cache` identifica el análisis cuyo resultado y costo histórico se muestran.
