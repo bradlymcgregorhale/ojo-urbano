@@ -299,11 +299,13 @@ def _revisar_cubierta(final, previas):
             pedidos[clave] = 'contradice'
 
 
-def _excluir_indicios_insuficientes(fuentes, confirmadas, pedidos):
+def _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos):
     if mercaderia_en_interior(confirmadas.get('manteros')):
         fuentes.pop('manteros', None)
         if 'manteros' in pedidos:
             pedidos['manteros'] = 'contradice'
+    elif pedidos.get('manteros') == 'compatible' and mercaderia_en_interior(dudas.get('manteros')):
+        pedidos['manteros'] = 'neutral'
     piso = confirmadas.get('reparacion_vereda', '').casefold()
     if (re.search(r'\b(?:piso|baldosas?) (?:del balc[oó]n|del interior|del patio privado)\b', piso)
             and not re.search(r'\b(?:vereda|calzada|cord[oó]n|paso peatonal)\b', piso)):
@@ -411,7 +413,7 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
             and any(k in evidencia for k in ('sacos', 'bolsas', 'pila', 'tubos', 'bolson', 'bolsón'))
             and not any(k in evidencia for k in ('barrera', 'valla', 'cartel', 'anclad', 'colocad'))):
         fuentes.pop('obstruccion', None)
-    _excluir_indicios_insuficientes(fuentes, confirmadas, pedidos)
+    _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos)
     modelo = {'modelo': sol, 'ok': True,
               'categorias': [{'key': k, 'evidencia': e} for k, e in confirmadas.items()]}
     if 'pedidos' in final:

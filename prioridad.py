@@ -216,7 +216,9 @@ def proponer_solicitudes(publica):
             pedidos_respaldados = [k for k, respaldo in pedidos.items()
                                   if respaldo == 'compatible' and k in candidatos]
         faltan_hallazgos = varios and (corresponde or sin_opinion) and not pedidos_respaldados
-        pedido_en_duda = sin_opinion and any(pedidos.get(k) in {'neutral', 'contradice'} for k in candidatos)
+        posibles_foto = {c.get('key') for c in publica.get('posibles') or [] if c.get('origen') == 'foto'}
+        pedido_en_duda = sin_opinion and any(pedidos.get(k) in {'neutral', 'contradice'}
+                                           for k in posibles_foto.union(candidatos))
         if faltan_hallazgos or pedido_en_duda:
             return dict(resultado, criterio='pedidos_explicitos',
                         motivo='La foto no permite corroborar el pedido vecinal.')

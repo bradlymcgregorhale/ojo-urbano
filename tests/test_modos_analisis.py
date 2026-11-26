@@ -1013,6 +1013,36 @@ class ApiModos(unittest.TestCase):
                 self.assertEqual(salida['solicitudes_sugeridas']['servicios'], servicios)
                 self.assertEqual(salida['consumo_api']['intentos'], 3)
 
+    def test_prueba_la_vidriera_en_duda_no_respalda_el_pedido_de_venta(self):
+        foto = ('foto.jpg', self.foto, 'image/jpeg')
+        venta, vereda = 'manteros', 'reparacion_vereda'
+        for mixto in (False, True):
+            def responder(req, *_):
+                lectura = {'confirmadas': [], 'dudosas': []}
+                if json.loads(req.data)['model'] == 't/decision':
+                    lectura['dudosas'] = [{'key': venta, 'evidencia': 'Muestras en la vidriera.'}]
+                    lectura['pedidos'] = [{'key': venta, 'respaldo': 'compatible'}]
+                    if mixto:
+                        lectura['confirmadas'] = [{'key': vereda, 'evidencia': 'Faltan baldosas.'}]
+                        lectura['pedidos'].append({'key': vereda, 'respaldo': 'compatible'})
+                return {'usage': {'cost': .001}, 'choices': [
+                    {'finish_reason': 'stop', 'message': {'content': json.dumps(lectura)}}]}
+
+            contexto = 'Vendedor ambulante' + (' y vereda rota' if mixto else '')
+            with (self.subTest(mixto=mixto), patch.object(self.S, 'CACHE_MAX', 0),
+                  patch.object(V, '_pedir_http', side_effect=responder)):
+                r = self.cliente.post('/clasificar', files={'file': foto},
+                                      data={'modo': 'prueba', 'contexto': contexto})
+                self.assertEqual(r.status_code, 200, r.text)
+                salida = r.json()
+                respaldos = {p['key']: p['respaldo_visual'] for p in salida['categorias_contexto']}
+                self.assertEqual(respaldos[venta], 'neutral')
+                self.assertIn(venta, salida['en_duda'])
+                self.assertEqual(salida['foto_valida_estado'], 'corresponde' if mixto else 'sin_opinion')
+                propuesta = salida['solicitudes_sugeridas']
+                self.assertEqual(propuesta['criterio'], 'pedidos_explicitos')
+                self.assertEqual(propuesta['servicios'], [vereda] if mixto else [])
+
     def test_prueba_pide_describir_el_paso_si_hay_indicios_de_obra(self):
         from prueba_completo import _decision
         claves = ('retiro_escombros', 'obstruccion')
