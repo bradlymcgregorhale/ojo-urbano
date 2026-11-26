@@ -27,6 +27,11 @@ RECUENTO = ('Si detectás una pila candidata de retiro_escombros, aunque el mate
             'si se distinguen como unidades. Excluí bolsones de izado y residuos aparte. Usá 0 si '
             'sólo hay material suelto, null si no podés contar. Marcá bolsas_adicionales_posibles '
             'si el solapamiento o el encuadre podría ocultar otras. Sin pila candidata, devolvé ambos campos null.')
+RECUENTO_ALCANCE = (
+    'En sacos_portables_o_suelto, contá sólo las bolsas portables de esa pila, incluidas las parcialmente visibles '
+    'que se distingan como unidades. Excluí bolsones y residuos aparte. Usá bolsas_visibles=0 y '
+    'bolsas_adicionales_posibles=false para material suelto. Marcá bolsas_adicionales_posibles si podrían quedar '
+    'bolsas ocultas. Si no podés contar o es otra presentación, devolvé ambos campos null.')
 RESIDUOS_BOLSON = ('Marcá solo_residuos_del_bolson como true si los residuos están dentro de un bolsón de izado '
                   'y afuera sólo hay restos aislados o nada. Un volante aislado no justifica recolección. '
                   'Usá false si ves residuos comunes descartados aparte y null si no hay bolsón o no lo podés distinguir.')
@@ -62,10 +67,11 @@ _LECTURA = _objeto({campo: {'type': 'array', 'items': _HALLAZGO}
                    for campo in ('confirmadas', 'dudosas')})
 _MONTAJE_CUBIERTA = {'type': ['string', 'null'], 'enum': [*sorted(ESTADOS_CUBIERTA), None]}
 _LECTURA_CONTENEDORES = _objeto({**_LECTURA['properties'], 'montaje_cubierta': _MONTAJE_CUBIERTA})
+_CAMPOS_RECUENTO = {'bolsas_visibles': {'type': ['integer', 'null']},
+                  'bolsas_adicionales_posibles': {'type': ['boolean', 'null']}}
 _LECTURA_CON_RECUENTO = _objeto({
     **_LECTURA['properties'],
-    'bolsas_visibles': {'type': ['integer', 'null']},
-    'bolsas_adicionales_posibles': {'type': ['boolean', 'null']},
+    **_CAMPOS_RECUENTO,
     'solo_residuos_del_bolson': {'type': ['boolean', 'null']},
     'fragmentos_del_propio_cordon': {'type': ['boolean', 'null']},
 })
@@ -84,6 +90,7 @@ _LECTURA_CON_PEDIDOS = _objeto({
 _REGLAS_PEDIDOS = cargar_prompt('prueba/pedidos')
 _ALCANCE = _objeto({**{k: {'type': 'string', 'enum': list(v)}
                       for k, v in ESTADOS_ALCANCE.items()}, 'evidencia': _TEXTO})
+_ALCANCE_CON_RECUENTO = _objeto({**_ALCANCE['properties'], **_CAMPOS_RECUENTO})
 
 
 def _normalizar(valor, permitidas):
@@ -109,12 +116,23 @@ def _alcance(valor):
     return valor
 
 
-def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, contexto=''):
+def _leer_recuento(valor):
+    cuenta = valor.get('bolsas_visibles')
+    tapadas = valor.get('bolsas_adicionales_posibles')
+    if type(cuenta) is int and 0 <= cuenta <= 999:
+        return cuenta, tapadas if isinstance(tapadas, bool) else None
+    return None
+
+
+def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, contexto='', contar_alcance=False):
     nombre = 'prueba_' + etapa
     try:
         schema = _ALCANCE if permitidas is None else {
             'retiros': _LECTURA_CON_RECUENTO, 'contenedores': _LECTURA_CONTENEDORES, 'decision': _LECTURA_FINAL,
         }.get(etapa, _LECTURA)
+        if contar_alcance:
+            schema = _ALCANCE_CON_RECUENTO
+            texto += '\n' + RECUENTO_ALCANCE
         if etapa in ('retiros', 'decision'):
             texto += '\n' + RECUENTO + '\n' + RESIDUOS_BOLSON + '\n' + FRAGMENTOS_CORDON
         if etapa in ('contenedores', 'decision'):
@@ -137,12 +155,10 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, cont
         if permitidas is None:
             return _alcance(valor)
         lectura = _normalizar(valor, permitidas)
-        cuenta = valor.get('bolsas_visibles')
-        tapadas = valor.get('bolsas_adicionales_posibles')
         if (etapa in ('retiros', 'decision')
                 and any('retiro_escombros' in lectura[k] for k in ('confirmadas', 'dudosas'))
-                and type(cuenta) is int and 0 <= cuenta <= 999):
-            lectura['recuento'] = (cuenta, tapadas if isinstance(tapadas, bool) else None)
+                and (recuento := _leer_recuento(valor)) is not None):
+            lectura['recuento'] = recuento
         if etapa in ('retiros', 'decision'):
             for clave in ('solo_residuos_del_bolson', 'fragmentos_del_propio_cordon'):
                 respuesta = valor.get(clave)
@@ -267,8 +283,8 @@ def _respaldo_alcance_escombros(lecturas):
     return None
 
 
-def _recuento(retiros, final):
-    votos = [r['recuento'] for r in (retiros, final) if 'recuento' in r]
+def _recuento(*lecturas):
+    votos = [voto for voto in lecturas if voto is not None]
     if not votos:
         return None
     minimo = min(n for n, _ in votos)
@@ -386,16 +402,23 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
         if tipos is not None:
             fuentes = {k: v for k, v in fuentes.items() if k not in TIPOS}
             fuentes.update({k: [luna] for k in tipos['confirmadas']})
+    conteos_previos = retiros.get('recuento'), final.get('recuento')
+    recuento = _recuento(*conteos_previos)
     if (not solo_fragmentos and 'retiro_escombros' not in fuentes
             and scores.get('retiro_escombros', 0) >= .98
             and (local.get('escombros_mixtos') or 0) >= .95
             and modos.caben_apoyos('prueba_alcance', 'prueba_alcance')):
+        contar_alcance = None in conteos_previos
         alcances = V._map_modelos((luna, apoyo),
-            lambda modelo: _leer(modelo, TEXTOS['alcance'], foto, 'alcance'))
+            lambda modelo: _leer(modelo, TEXTOS['alcance'], foto, 'alcance', contar_alcance=contar_alcance))
         if all(r is not V._FALLO_MODELO for r in alcances):
             respaldo = _respaldo_alcance_escombros(alcances)
             if respaldo == 'compatible':
                 fuentes['retiro_escombros'] = ['modelo_local', luna, apoyo]
+                if contar_alcance:
+                    conteos_alcance = tuple(_leer_recuento(r) for r in alcances)
+                    if None not in conteos_alcance:
+                        recuento = _recuento(*conteos_alcance)
             elif respaldo == 'neutral':
                 dudas.setdefault('retiro_escombros', 'No se pudo corroborar el contenido de las bolsas.')
                 if 'retiro_escombros' in pedidos:
@@ -422,7 +445,7 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
             and ocupacion in inicio.get('confirmadas', {})):
         modelo['respaldo_previo_ocupacion'] = True
     if 'retiro_escombros' in fuentes:
-        modelo['recuento_escombros'] = _recuento(retiros, final)
+        modelo['recuento_escombros'] = recuento
     if 'retiro_muebles' in fuentes:
         modelo['objetos'] = final.get('objetos', [])
     return fuentes, {k: e for k, e in dudas.items() if k not in fuentes}, modelo

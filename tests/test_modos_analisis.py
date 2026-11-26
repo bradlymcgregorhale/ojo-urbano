@@ -918,6 +918,50 @@ class ApiModos(unittest.TestCase):
                 self.assertEqual(salida['en_duda'], [] if confirmado else [clave])
                 self.assertEqual(salida['categorias_contexto'][0]['respaldo_visual'], 'compatible' if confirmado else 'neutral')
 
+    def test_prueba_cuenta_bolsas_con_los_dos_apoyos_de_alcance_que_confirman_el_retiro(self):
+        clave = 'retiro_escombros'
+        local = {'predichas': [], 'gravedad': {}, 'escombros_mixtos': .99,
+                 'probabilidades': [{'key': clave, 'score': .99}]}
+        foto = {'file': ('foto.jpg', self.foto, 'image/jpeg')}
+        for primer, segundo, medida in (
+                ((5, False), (6, True), (5, False)),
+                ((0, False), (0, False), (0, True)),
+                ((0, False), (5, False), None),
+                ((5, False), (None, None), None)):
+            etapas = []
+
+            def responder(modelo, mensajes, **opciones):
+                etapa = opciones['etapa']
+                etapas.append(etapa)
+                if etapa != 'prueba_alcance':
+                    return '{"confirmadas":[],"dudosas":[]}'
+                self.assertIn('bolsas_visibles', opciones['esquema']['properties'])
+                self.assertIn('Excluí bolsones', mensajes[0]['content'])
+                numero, tapadas = primer if modelo == 't/dirigidos' else segundo
+                return json.dumps({'ubicacion': 'publica', 'presentacion': 'sacos_portables_o_suelto',
+                                   'material': 'obra_visible', 'residuos_comunes_aparte': 'si',
+                                   'evidencia': 'Pila de obra junto al cordón.',
+                                   'bolsas_visibles': numero, 'bolsas_adicionales_posibles': tapadas})
+
+            with (self.subTest(primer=primer, segundo=segundo), patch.object(self.S, 'CACHE_MAX', 0),
+                  patch.object(self.S, 'clasificar_local', return_value=local),
+                  patch.object(V, '_llamar', side_effect=responder)):
+                r = self.cliente.post('/clasificar', files=foto, data={'modo': 'prueba'})
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertCountEqual(etapas, ['prueba_inicio', 'prueba_retiros', 'prueba_decision'] + ['prueba_alcance'] * 2)
+            salida = r.json()
+            [problema] = salida['problemas']
+            self.assertEqual(problema['key'], clave)
+            if medida is None:
+                self.assertNotIn('verificacion_escombros', salida)
+                self.assertIsNone(problema['bolsas'])
+            else:
+                minimo, completo = medida
+                recuento = salida['verificacion_escombros']
+                self.assertEqual((recuento['bolsas_minimo'], recuento['bolsas_recuento_completo'],
+                                  recuento['bolsas_fuentes']), (minimo, completo, 2))
+                self.assertEqual(problema['bolsas'], minimo if completo else None)
+
     def test_prueba_distingue_evidencia_de_la_escena(self):
         import prueba_completo as P
         for poda, piso, comunes, esperadas in (
