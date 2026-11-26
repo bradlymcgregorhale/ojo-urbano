@@ -7,6 +7,7 @@ import datetime as dt
 import importlib.metadata
 import importlib
 import json
+import math
 import os
 import re
 import sys
@@ -14,7 +15,8 @@ import threading
 import time
 import types
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import ExitStack
+from contextlib import ExitStack, redirect_stderr
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
@@ -22,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from eval.vision import run as R
 from eval.vision import dataset as D
+from eval.vision import consumo as C
 from PIL import Image
 
 TRIAGE = ['green-TC03772', 'r4-T008', 'r4-T017', 'r4-T050', 'r4-T109',
@@ -160,17 +163,19 @@ def _leer_respuesta_prueba(respuesta):
     return datos
 
 
-def _esperar_trabajo_prueba(client, respuesta):
+def _esperar_trabajo_prueba(client, respuesta, *, medicion=None):
     estado = _leer_respuesta_prueba(respuesta)
     trabajo = estado.get('trabajo')
     pedido = (estado.get('consumo_api') or {}).get('pedido')
     if respuesta.status_code != 202 or not trabajo or not pedido:
         raise ValueError('La cola no devolvió un trabajo nuevo con su pedido de consumo.')
-    limite = time.monotonic() + 10
+    if medicion is not None:
+        medicion.guardar_respuesta(estado)
+    limite = time.monotonic() + (medicion.espera if medicion is not None else 10)
     while estado['estado'] in ('en_cola', 'procesando') and time.monotonic() < limite:
         estado = _leer_respuesta_prueba(client.get('/trabajos/', params={'id': trabajo}))
         if estado['estado'] in ('en_cola', 'procesando'):
-            time.sleep(.02)
+            time.sleep(.5 if medicion is not None else .02)
     if estado['estado'] != 'listo':
         raise ValueError(f"El trabajo no terminó listo ({estado['estado']}): {estado.get('detail', '')}")
     resultado = estado['resultado']
@@ -179,21 +184,34 @@ def _esperar_trabajo_prueba(client, respuesta):
     return resultado
 
 
-def evaluate_prueba(case, private, identity, server, respuestas, *, ruta='clasificar'):
+def evaluate_prueba(case, private, identity, server, respuestas, *, ruta='clasificar', medicion=None):
     from fastapi.testclient import TestClient
 
     row = evaluation_row(case)
-    row.update(cost_usd=0, requests=[], response={'source': 'archivo'}, ruta_prueba=ruta)
+    fuente = 'live' if medicion is not None else 'archivo'
+    row.update(cost_usd=0, requests=[], response={'source': fuente}, ruta_prueba=ruta)
     lock = threading.Lock()
+    pedir_http = R.V._pedir_http
 
-    def contestar(pedido, *_):
+    def contestar(pedido, *tiempos):
         cuerpo = json.loads(pedido.data)
         huella = R.fingerprint({'endpoint': pedido.full_url, 'body': cuerpo})
+        evento = {'request_hash': huella, 'model_requested': cuerpo['model']}
+        if medicion is not None:
+            costo_foto = R.V._costo_foto.get()
+            evento.update(source=fuente, pedido=costo_foto['id'] if costo_foto else None)
+            with lock:
+                row['requests'].append(evento)
+                medicion.anotar_intento(evento, 'iniciado')
+            respuesta = pedir_http(pedido, *tiempos)
+            with lock:
+                evento['raw'] = respuesta
+                medicion.anotar_intento(evento, 'recibido')
+            return respuesta
         guardada = respuestas.get(huella)
         with lock:
-            row['requests'].append({'request_hash': huella, 'model_requested': cuerpo['model'],
-                                    'source': 'archivo' if guardada is not None else 'missing',
-                                    'raw': guardada})
+            row['requests'].append(evento | {'source': 'archivo' if guardada is not None else 'missing',
+                                             'raw': guardada})
         if guardada is None:
             raise FileNotFoundError('Falta la respuesta archivada de ' + huella)
         return copy.deepcopy(guardada)
@@ -206,16 +224,17 @@ def evaluate_prueba(case, private, identity, server, respuestas, *, ruta='clasif
         headers = {'x-api-token': server.API_TOKEN} if server.API_TOKEN else {}
         with patch.object(server, 'clasificar_local', side_effect=lambda _: copy.deepcopy(local['prediction'])), \
                 patch.multiple(server, CACHE_MAX=0, RATE_LIMITE=0), patch.object(server, '_hay_cuota', return_value=True), \
-                patch.object(R.V, 'api_key', return_value='reproduccion-sin-red'), \
-                patch.object(R.V, 'OPENROUTER_LOG_USO', False), \
-                patch.object(R.V, '_pedir_http', side_effect=contestar), \
+                patch.object(R.V, 'OPENROUTER_LOG_USO', medicion is not None), \
+                patch.object(R.V, '_pedir_http', side_effect=contestar), ExitStack() as configuracion, \
                 ThreadPoolExecutor(max_workers=1) as pool, patch.object(server, '_pool', pool), \
                 TestClient(server.app, headers=headers) as client:
+            if medicion is None:
+                configuracion.enter_context(patch.object(R.V, 'api_key', return_value='reproduccion-sin-red'))
             # El pool termina antes de retirar el transporte de archivo, incluso si la consulta vence.
             endpoint = '/trabajos/' if ruta == 'trabajos' else '/clasificar'
             respuesta = client.post(endpoint, params={'verificar': '1'}, data={
                 'modo': 'prueba', 'contexto': case.get('context', '')}, files={'file': ('foto.jpg', raw, 'image/jpeg')})
-            public = (_esperar_trabajo_prueba(client, respuesta) if ruta == 'trabajos'
+            public = (_esperar_trabajo_prueba(client, respuesta, medicion=medicion) if ruta == 'trabajos'
                       else _leer_respuesta_prueba(respuesta))
         row.update(prediction=public, modo=public.get('modo'), modo_version=public.get('modo_version'))
         if any(r['source'] == 'missing' for r in row['requests']):
@@ -231,6 +250,66 @@ def evaluate_prueba(case, private, identity, server, respuestas, *, ruta='clasif
     except Exception as error:
         row.update(status='error', error=str(error)[:300])
     return row
+
+
+class MedicionPrueba:
+    def __init__(self, output, presupuesto, version, ruta, espera):
+        self.uso = output.with_suffix('.uso.jsonl')
+        self.intentos = output.with_suffix('.intentos.jsonl')
+        self.manifiesto = output.with_suffix('.consumo.json')
+        self.presupuesto = Decimal(str(presupuesto))
+        self.version, self.ruta, self.espera = version, ruta, espera
+        self.costo = Decimal(0)
+        self.incierto, self.detener, self.consultas = False, False, 0
+        self.datos = {'presupuesto_usd': str(self.presupuesto), 'casos': []}
+        if any(p.exists() for p in (output.with_suffix('.html'), output.with_suffix('.comparison.json'),
+                                   self.manifiesto, self.uso, self.intentos)):
+            raise FileExistsError('La medición requiere archivos de salida nuevos.')
+        # El manifiesto se reserva antes de enviar fotos, incluso si dos procesos eligen el mismo nombre.
+        with self.manifiesto.open('x', encoding='utf-8') as archivo:
+            json.dump(self.datos, archivo)
+        self.uso.touch(exist_ok=False)
+        self.intentos.touch(exist_ok=False)
+
+    def admite_foto(self):
+        return not self.detener and self.costo + C.TOPE <= self.presupuesto
+
+    def guardar_respuesta(self, respuesta):
+        self.caso['respuestas'] = [respuesta]
+        D.write_json(self.manifiesto, self.datos)
+
+    def anotar_intento(self, evento, estado):
+        with self.intentos.open('a', encoding='utf-8') as archivo:
+            archivo.write(R.canonical(evento | {'estado': estado, 'caso': self.caso['id']}) + '\n')
+
+    def medir(self, case, private, identity, server):
+        self.caso = {'id': case['id'], 'entrada': self.ruta, 'modo': 'prueba',
+                     'modo_version': self.version, 'esperado': case['expected']}
+        if 'recuento_esperado' in case:
+            self.caso['recuento_esperado'] = case['recuento_esperado']
+        self.datos['casos'].append(self.caso)
+        self.guardar_respuesta(None)
+        with self.uso.open('a', encoding='utf-8') as archivo, redirect_stderr(archivo):
+            row = evaluate_prueba(case, private, identity, server, None, ruta=self.ruta, medicion=self)
+        public = row.get('prediction')
+        if public is not None:
+            self.guardar_respuesta(public)
+        elif self.caso['respuestas'] == [None]:
+            pedidos = {r['pedido'] for r in row['requests'] if r['pedido']}
+            if len(pedidos) == 1:
+                self.guardar_respuesta({'modo': 'prueba', 'modo_version': self.version,
+                                        'consumo_api': {'pedido': pedidos.pop(), 'intentos': None}})
+        resumen, detalle = C.conciliar(self.datos['casos'], C.leer_uso([self.uso]))
+        actual = detalle[-1]
+        row['cost_usd'] = float(Decimal(actual['costo_conocido_usd']))
+        row['consumo_facturado'] = actual
+        self.costo = sum((Decimal(r['costo_conocido_usd']) for r in detalle), Decimal(0))
+        self.consultas += len(row['requests'])
+        limites = (public or {}).get('analisis_limitaciones', [])
+        self.incierto = bool(resumen['casos_con_consumo_pendiente']) or (public or {}).get('costo_api_completo') is not True
+        self.detener = (self.incierto or not row['requests'] or actual['supera_tope']
+                        or 'reserva_api_excedida' in limites)
+        return row
 
 
 def load_prueba_responses(path, baseline):
@@ -355,7 +434,7 @@ def main(argv=None):
     parser.add_argument('--ids', nargs='+')
     parser.add_argument('--live', action='store_true')
     parser.add_argument('--allow-initial-live', action='store_true')
-    parser.add_argument('--budget', type=float, default=0.5)
+    parser.add_argument('--budget', type=float)
     parser.add_argument('--reserve', type=float, default=0.03)
     parser.add_argument('--out', type=Path)
     parser.add_argument('--baseline', type=Path, help='Fail on new discrepancies against this recorded run')
@@ -363,11 +442,21 @@ def main(argv=None):
     parser.add_argument('--modo', choices=['alto', 'prueba'], default='alto')
     parser.add_argument('--respuestas-prueba', type=Path, help='Respuestas de OpenRouter guardadas por huella exacta')
     parser.add_argument('--ruta-prueba', choices=['clasificar', 'trabajos'],
-                        help='Ruta de Completo (prueba) a reproducir. Por defecto, clasificar.')
+                        help='Ruta de Completo (prueba) a evaluar. Por defecto, clasificar.')
     args = parser.parse_args(argv)
     prueba = args.modo == 'prueba'
-    if prueba and (args.live or args.initial_fixture):
-        parser.error('La reproducción de prueba usa exclusivamente respuestas archivadas.')
+    facturada = prueba and args.live
+    if prueba and (args.initial_fixture or args.allow_initial_live):
+        parser.error('Completo (prueba) evalúa todas las etapas de la foto.')
+    if facturada:
+        if args.command != 'run' or not args.ids or args.budget is None or args.respuestas_prueba:
+            parser.error('La medición facturada requiere run, --ids y --budget explícitos.')
+        if not math.isfinite(args.budget) or Decimal(str(args.budget)) < C.TOPE:
+            parser.error('El presupuesto de la medición debe cubrir al menos USD 0,01.')
+        if args.out and args.out.suffix != '.json':
+            parser.error('La salida de la medición debe terminar en .json.')
+        os.umask(0o077)
+    presupuesto = args.budget if args.budget is not None else 0.5
     if args.respuestas_prueba and not prueba:
         parser.error('--respuestas-prueba requiere --modo prueba.')
     if args.ruta_prueba and (not prueba or args.command != 'run'):
@@ -381,7 +470,11 @@ def main(argv=None):
     if baseline and baseline.get('modo', 'alto') != args.modo:
         parser.error('La referencia corresponde a otro modo de análisis.')
     try:
-        respuestas = load_prueba_responses(args.respuestas_prueba, baseline) if prueba else None
+        base_facturada = prueba and not facturada and (baseline or {}).get('evidence_policy') == 'lecturas-nuevas'
+        respuestas = (load_prueba_responses(args.respuestas_prueba, None if base_facturada else baseline)
+                      if prueba and not facturada else None)
+        respuestas_por_caso = ({r['case']: load_prueba_responses(None, {'rows': [r]}) for r in baseline['rows']}
+                               if base_facturada else {})
     except (ValueError, KeyError, TypeError, OSError) as error:
         parser.error(str(error))
     ids = args.ids or ([r['case'] for r in baseline['rows']] if baseline else TRIAGE)
@@ -390,6 +483,8 @@ def main(argv=None):
     unknown = set(ids) - {a for c in cases for a in c['aliases']}
     if unknown:
         parser.error('Unknown or unscorable case IDs: ' + ', '.join(sorted(unknown)))
+    if facturada and len({c['id'] for c in cases}) != len(cases):
+        parser.error('El lote contiene IDs de caso repetidos.')
     if args.allow_initial_live and not args.live:
         parser.error('--allow-initial-live requires --live')
     fixture = (json.loads(args.initial_fixture.read_text()) if args.initial_fixture
@@ -418,8 +513,8 @@ def main(argv=None):
         parser.error('Output exists; preserve the earlier report.')
     output.parent.mkdir(parents=True, exist_ok=True)
     server = load_server()
-    transport = R.Transport(args.private / 'cache', live=args.live, budget=args.budget, reserve=args.reserve,
-                            journal=output.with_suffix('.attempts.jsonl'))
+    transport = (R.Transport(args.private / 'cache', live=args.live, budget=presupuesto, reserve=args.reserve,
+                             journal=output.with_suffix('.attempts.jsonl')) if not facturada else None)
     if baseline and not args.live and not prueba:
         freeze_evidence(transport, baseline)
     code = {p: D.digest((ROOT / p).read_bytes()) for p in ['servidor.py', 'verificador.py', 'politica_escombros.py']}
@@ -433,25 +528,47 @@ def main(argv=None):
               'configuration': {name: getattr(server, name) for name in (
                   'FUSION_ESCOMBROS', 'FUSION_ESCOMBROS_UMBRAL', 'FUSION_ESCOMBROS_RECO_BAJA',
                   'FUSION_ESCOMBROS_UMBRAL_RESCATE', 'FUSION_ESCOMBROS_RECO_RESCATE')},
-              'rows': [], 'cost_usd': 0, 'budget_usd': args.budget, 'summary': {}}
+              'rows': [], 'cost_usd': 0, 'budget_usd': presupuesto, 'summary': {}}
     report['modo'] = args.modo
+    medicion = None
     if prueba:
         perfil = server.PERFILES['prueba']
         report.update(modo_version=perfil.version, models=list(perfil.verificadores), arbiter=perfil.arbitro,
-                      evidence_policy='archivo-por-huella', budget_usd=0,
+                      evidence_policy='lecturas-nuevas' if facturada else 'archivo-por-huella',
+                      budget_usd=presupuesto if facturada else 0,
                       ruta_prueba=args.ruta_prueba or 'clasificar')
+        if facturada:
+            if perfil.motivo or not getattr(perfil, 'reservas_prueba', None):
+                parser.error('La medición requiere un perfil disponible con PRUEBA_RESERVAS_USD.')
+            try:
+                medicion = MedicionPrueba(output, presupuesto, perfil.version, report['ruta_prueba'],
+                                           server.TRABAJO_ESPERA + server.TECHO_TRABAJO + 30)
+            except OSError as error:
+                parser.error(str(error))
     for case in cases:
-        if prueba:
-            row = evaluate_prueba(case, args.private, identity, server, respuestas, ruta=report['ruta_prueba'])
+        if medicion is not None:
+            if not medicion.admite_foto():
+                break
+            try:
+                row = medicion.medir(case, args.private, identity, server)
+            except (ValueError, OSError) as error:
+                print('No se pudo conciliar la medición. ' + str(error), file=sys.stderr)
+                return 2
+        elif prueba:
+            evidencia = respuestas | respuestas_por_caso.get(case['id'], {})
+            row = evaluate_prueba(case, args.private, identity, server, evidencia, ruta=report['ruta_prueba'])
         else:
             row = evaluate(case, args.private, identity, server, transport, args.allow_initial_live, fixture)
         report['rows'].append(row)
-        report['cost_usd'] = float(transport.meter.spent)
-        report['billing_uncertain'] = transport.meter.unresolved
-        report['requests_made'] = transport.meter.calls
+        report['cost_usd'] = float(medicion.costo if medicion is not None else transport.meter.spent)
+        report['billing_uncertain'] = medicion.incierto if medicion is not None else transport.meter.unresolved
+        report['requests_made'] = medicion.consultas if medicion is not None else transport.meter.calls
         report['summary'] = R.summarize(report['rows'])
         report['summary']['planned_model_cases'] = len(cases)
         report['summary']['complete'] &= len(report['rows']) == len(cases)
+        if medicion is not None:
+            report['casos_sin_procesar'] = [c['id'] for c in cases[len(report['rows']):]]
+            report['summary']['complete'] &= not medicion.detener
         R.write_report(output, report)
         print(f'{case["id"]}: {row["status"]}; spent US${report["cost_usd"]:.6f}', flush=True)
     print('Report: ' + str(output))
@@ -462,6 +579,8 @@ def main(argv=None):
         R.write_report(output, report)
         D.write_json(output.with_suffix('.comparison.json'), comparison)
         print(json.dumps(comparison, ensure_ascii=False, indent=2))
+        if medicion is not None and (medicion.detener or report['casos_sin_procesar']):
+            return 2
         return 2 if comparison['incomparable'] else 1 if comparison['regressions'] else 0
     return 2 if not report['summary']['complete'] else 1 if report['summary']['counts'].get('fail') else 0
 
