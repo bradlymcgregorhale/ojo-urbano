@@ -585,6 +585,50 @@ class ApiModos(unittest.TestCase):
                 respaldo = {p['key']: p['respaldo_visual'] for p in salida['categorias_contexto']}
                 self.assertEqual(respaldo['recoleccion'], 'contradice' if excluir else 'compatible')
 
+    def test_prueba_excluye_los_fragmentos_del_cordon_con_dos_lecturas(self):
+        archivos = {'file': ('foto.jpg', self.foto, 'image/jpeg')}
+        datos = {'modo': 'prueba', 'contexto': 'Reparación de cordón y retiro de escombros'}
+        local = {'predichas': [], 'gravedad': {}, 'escombros_mixtos': .99,
+                 'probabilidades': [{'key': 'retiro_escombros', 'score': .99}]}
+        for dirigida, final, cordon in ((True, True, True), (False, False, True), (True, False, True),
+                                       (True, None, True), ('true', True, True), (True, True, False)):
+            with self.subTest(dirigida=dirigida, final=final, cordon=cordon):
+                etapas = []
+                excluir = dirigida is True and final is True and cordon
+
+                def responder(modelo, mensajes, **opciones):
+                    etapa = opciones['etapa']
+                    etapas.append(etapa)
+                    clave = 'fragmentos_del_propio_cordon'
+                    dirigida_o_final = etapa in ('prueba_retiros', 'prueba_decision')
+                    self.assertEqual(clave in opciones['esquema']['required'], dirigida_o_final)
+                    valor = {'confirmadas': [], 'dudosas': []}
+                    if dirigida_o_final:
+                        self.assertIn('acopio independiente', mensajes[0]['content'])
+                        valor[clave] = dirigida if etapa == 'prueba_retiros' else final
+                    if etapa == 'prueba_decision':
+                        valor['confirmadas'] = [{'key': 'retiro_escombros', 'evidencia': 'Cascote en el suelo.'}]
+                        if cordon:
+                            valor['confirmadas'].append({'key': 'reparacion_cordon', 'evidencia': 'Falta un tramo.'})
+                        valor['pedidos'] = [{'key': p['key'], 'respaldo': 'compatible'} for p in valor['confirmadas']]
+                    return json.dumps(valor)
+
+                with (patch.object(self.S, 'CACHE_MAX', 0),
+                      patch.object(self.S, 'clasificar_local', return_value=local),
+                      patch.object(V, '_llamar', side_effect=responder)):
+                    r = self.cliente.post('/clasificar', files=archivos, data=datos)
+                self.assertEqual(r.status_code, 200, r.text)
+                self.assertCountEqual(etapas, ['prueba_inicio', 'prueba_retiros', 'prueba_decision'])
+                salida = r.json()
+                claves = {p['key'] for p in salida['problemas']}
+                self.assertEqual('reparacion_cordon' in claves, cordon)
+                self.assertEqual('retiro_escombros' in claves, not excluir)
+                self.assertEqual(set(salida['solicitudes_sugeridas']['candidatos']), claves)
+                respaldo = {p['key']: p['respaldo_visual'] for p in salida['categorias_contexto']}
+                self.assertEqual(respaldo['retiro_escombros'], 'contradice' if excluir else 'compatible')
+                pendiente = cordon and not excluir and (dirigida, final) != (False, False)
+                self.assertEqual('corroboracion_insuficiente' in salida['analisis_limitaciones'], pendiente)
+
     def test_prueba_distingue_evidencia_de_la_escena(self):
         import prueba_completo as P
         for poda, piso, comunes, esperadas in (

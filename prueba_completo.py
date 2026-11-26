@@ -28,6 +28,9 @@ RECUENTO = ('Si detectás una pila candidata de retiro_escombros, aunque el mate
 RESIDUOS_BOLSON = ('Marcá solo_residuos_del_bolson como true si los residuos están dentro de un bolsón de izado '
                   'y afuera sólo hay restos aislados o nada. Un volante aislado no justifica recolección. '
                   'Usá false si ves residuos comunes descartados aparte y null si no hay bolsón o no lo podés distinguir.')
+FRAGMENTOS_CORDON = ('Marcá fragmentos_del_propio_cordon como true si los únicos restos minerales '
+                    'son piezas que encajan con el faltante o la fractura del cordón. La cercanía '
+                    'no alcanza. Usá false si ves un acopio independiente y null si no se distingue la relación.')
 OBJETOS = ('Si confirmás retiro_muebles, enumerá en objetos hasta ocho voluminosos descartados que se '
            'distingan en la foto. Usá nombres cortos, por ejemplo "lavarropas", "armario" o "silla plástica". '
            'Excluí el contenedor, los objetos en uso y lo que no se distingue. Si no confirmás retiro_muebles '
@@ -54,6 +57,7 @@ _LECTURA_CON_RECUENTO = _objeto({
     'bolsas_visibles': {'type': ['integer', 'null']},
     'bolsas_adicionales_posibles': {'type': ['boolean', 'null']},
     'solo_residuos_del_bolson': {'type': ['boolean', 'null']},
+    'fragmentos_del_propio_cordon': {'type': ['boolean', 'null']},
 })
 _LECTURA_FINAL = _objeto({
     **_LECTURA_CON_RECUENTO['properties'],
@@ -101,7 +105,7 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, cont
             'retiros': _LECTURA_CON_RECUENTO, 'decision': _LECTURA_FINAL,
         }.get(etapa, _LECTURA)
         if etapa in ('retiros', 'decision'):
-            texto += '\n' + RECUENTO + '\n' + RESIDUOS_BOLSON
+            texto += '\n' + RECUENTO + '\n' + RESIDUOS_BOLSON + '\n' + FRAGMENTOS_CORDON
         if etapa == 'decision':
             texto += '\n' + OBJETOS
             if contexto:
@@ -126,8 +130,11 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, cont
                 and any('retiro_escombros' in lectura[k] for k in ('confirmadas', 'dudosas'))
                 and type(cuenta) is int and 0 <= cuenta <= 999):
             lectura['recuento'] = (cuenta, tapadas if isinstance(tapadas, bool) else None)
-        if etapa in ('retiros', 'decision') and valor.get('solo_residuos_del_bolson') is True:
-            lectura['solo_residuos_del_bolson'] = True
+        if etapa in ('retiros', 'decision'):
+            for clave in ('solo_residuos_del_bolson', 'fragmentos_del_propio_cordon'):
+                respuesta = valor.get(clave)
+                if isinstance(respuesta, bool):
+                    lectura[clave] = respuesta
         if etapa == 'decision' and 'retiro_muebles' in lectura['confirmadas']:
             lectura['objetos'] = V._objetos_lista(valor.get('objetos')) or []
         if contexto:
@@ -290,12 +297,16 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
     if final is None:
         return {}, {}, None
     confirmadas, dudas = final['confirmadas'], final['dudosas']
-    if retiros.get('solo_residuos_del_bolson') and final.get('solo_residuos_del_bolson'):
-        confirmadas.pop('recoleccion', None)
-        dudas.pop('recoleccion', None)
-        pedidos = final.get('pedidos') or {}
-        if 'recoleccion' in pedidos:
-            pedidos['recoleccion'] = 'contradice'
+    solo_bolson = retiros.get('solo_residuos_del_bolson') and final.get('solo_residuos_del_bolson')
+    votos_fragmentos = tuple(lectura.get('fragmentos_del_propio_cordon') for lectura in (retiros, final))
+    solo_fragmentos = 'reparacion_cordon' in confirmadas and votos_fragmentos == (True, True)
+    pedidos = final.get('pedidos', {})
+    for clave, excluir in (('recoleccion', solo_bolson), ('retiro_escombros', solo_fragmentos)):
+        if excluir:
+            confirmadas.pop(clave, None)
+            dudas.pop(clave, None)
+            if clave in pedidos:
+                pedidos[clave] = 'contradice'
     fuentes = {k: [sol] for k in confirmadas}
     tipo_actual = set(confirmadas).intersection(TIPOS)
     ranking = sorted(((scores.get(k, 0), k) for k in TIPOS), reverse=True)
@@ -311,13 +322,16 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
         if tipos is not None:
             fuentes = {k: v for k, v in fuentes.items() if k not in TIPOS}
             fuentes.update({k: [luna] for k in tipos['confirmadas']})
-    if ('retiro_escombros' not in fuentes and scores.get('retiro_escombros', 0) >= .98
+    if (not solo_fragmentos and 'retiro_escombros' not in fuentes
+            and scores.get('retiro_escombros', 0) >= .98
             and (local.get('escombros_mixtos') or 0) >= .95
             and modos.caben_apoyos('prueba_alcance', 'prueba_alcance')):
         alcances = V._map_modelos((luna, apoyo),
             lambda modelo: _leer(modelo, TEXTOS['alcance'], foto, 'alcance'))
         if all(r is not V._FALLO_MODELO for r in alcances) and _escombro_elegible(alcances):
             fuentes['retiro_escombros'] = ['modelo_local', luna, apoyo]
+    if {'reparacion_cordon', 'retiro_escombros'} <= fuentes.keys() and votos_fragmentos != (False, False):
+        modos.omitir('fragmentos_cordon', ('retiro_escombros',))
     evidencia = confirmadas.get('obstruccion', '').casefold()
     # Conservá el hallazgo cuando la evidencia habla del paso, no sólo de la vereda.
     izado = re.search(
