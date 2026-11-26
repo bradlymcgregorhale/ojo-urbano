@@ -1,4 +1,4 @@
-"""Concilia los cargos por foto a partir de registros de uso de Ojo Urbano."""
+"""Concilia los cargos por foto con el registro de uso y los recibos de OpenRouter."""
 
 import argparse
 from collections import Counter, defaultdict
@@ -18,6 +18,13 @@ def leer_uso(rutas):
                     evento = json.loads(linea, parse_float=Decimal)
                     if evento.get("evento") == "openrouter_uso":
                         yield evento
+
+
+def leer_recibos(rutas):
+    for ruta in rutas:
+        with ruta.open(encoding="utf-8") as archivo:
+            contenido = json.load(archivo, parse_float=Decimal)
+        yield from contenido if isinstance(contenido, list) else (contenido,)
 
 
 def _importe(valor):
@@ -94,7 +101,22 @@ def _validar(casos):
     return fichas, pedidos
 
 
-def _cargos(eventos, pedidos):
+def _importes_recibos(recibos):
+    importes = {}
+    for recibo in recibos:
+        datos = recibo.get("data") if isinstance(recibo, dict) else None
+        if not isinstance(datos, dict):
+            raise ValueError("El recibo debe contener los datos de una generación")
+        generacion = datos.get("id")
+        monto = _importe(datos.get("total_cost"))
+        if not _identificador(generacion) or monto is None:
+            raise ValueError("El recibo requiere ID de generación e importe válido")
+        if importes.setdefault(generacion, monto) != monto:
+            raise ValueError("Un ID de generación tiene recibos con importes distintos")
+    return importes
+
+
+def _cargos(eventos, pedidos, recibos):
     intentos = defaultdict(set)
     cargos = defaultdict(dict)
     pendientes = set()
@@ -115,6 +137,11 @@ def _cargos(eventos, pedidos):
             intentos[pedido].add((generacion, etapa, numero))
         else:
             pendientes.add(pedido)
+        recibo = recibos.get(generacion)
+        if recibo is not None:
+            if monto is not None and monto != recibo:
+                raise ValueError("El importe del recibo difiere del registro de uso")
+            monto = recibo
         if monto is None:
             pendientes.add(pedido)
             continue
@@ -140,9 +167,10 @@ def _diferencias(caso):
     return sorted(errores(set(etiquetas), referencia))
 
 
-def conciliar(casos, eventos):
+def conciliar(casos, eventos, recibos=()):
     fichas, pedidos = _validar(casos)
-    intentos, cargos, pendientes = _cargos(eventos, pedidos)
+    importes_recibos = _importes_recibos(recibos)
+    intentos, cargos, pendientes = _cargos(eventos, pedidos, importes_recibos)
     detalle = []
     resumen = Counter(dict.fromkeys((
         "casos", "casos_conciliados", "casos_con_consumo_pendiente", "casos_sobre_el_tope",
@@ -159,6 +187,7 @@ def conciliar(casos, eventos):
             registros.append({
                 "pedido": pedido, "intentos_esperados": esperados, "intentos_identificados": observados,
                 "generaciones_con_importe": len(cargos[pedido]), "costo_conocido_usd": str(subtotal),
+                "generaciones_con_recibo": len(cargos[pedido].keys() & importes_recibos.keys()),
                 "conciliado": observados == esperados and pedido not in pendientes,
             })
             costo += subtotal
@@ -187,11 +216,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--casos", required=True, type=Path, help="Manifiesto privado de la ejecución")
     parser.add_argument("--uso", required=True, action="append", type=Path, help="Log de uso (repetible)")
+    parser.add_argument("--recibos", action="append", type=Path, default=[],
+                        help="Respuesta JSON de /generation o lista de respuestas (repetible)")
     parser.add_argument("--detalle", required=True, type=Path, help="Archivo privado nuevo para el detalle")
     args = parser.parse_args()
     try:
         casos = json.loads(args.casos.read_text(encoding="utf-8"))["casos"]
-        resumen, detalle = conciliar(casos, leer_uso(args.uso))
+        resumen, detalle = conciliar(casos, leer_uso(args.uso), leer_recibos(args.recibos))
         with open(args.detalle, "x", encoding="utf-8",
                   opener=lambda ruta, flags: os.open(ruta, flags, 0o600)) as archivo:
             json.dump(detalle, archivo, ensure_ascii=False, indent=2)
