@@ -145,12 +145,13 @@ El servicio está escrito en Python.
 Si el texto pide ocupación de la vereda o del espacio público y apunta a un local comercial,
 `reclamo_foto` devuelve un `estado` de `compatible`, `no_corresponde` o `sin_evidencia`.
 En `servicios` aparecen `ocupacion_comercial` cuando un local ocupa la vereda con mercadería
-ofrecida a la venta o equipamiento que usa el comercio (`118001`),
+ofrecida a la venta (`118001`),
 `obstruccion` cuando hay una barrera que ocupa el paso (`118020`), o ambos si se
 trata de elementos distintos. La foto compatible también propone los servicios en
 `solicitudes_sugeridas` para confirmar. Si falta respaldo de ocupación, `reclamo_foto.servicios`
-queda vacío. En Completo (prueba), un pedido mixto puede conservar otros servicios solicitados
-que la foto sí respalda. Sin pedido de ocupación, el análisis sigue usando las señales de la foto.
+queda vacío. Completo (prueba) también reconoce el equipamiento que usa el comercio sobre
+la vereda. Si el pedido es mixto, conserva los otros servicios que la foto respalda.
+Sin pedido de ocupación, el análisis sigue usando las señales de la foto.
 
 Recibe `multipart/form-data` con estos campos:
 

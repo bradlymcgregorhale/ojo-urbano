@@ -41,15 +41,6 @@ def mercaderia_visible(valor):
     return nombre
 
 
-def equipamiento_visible(valor):
-    nombre = mercaderia_visible(valor)
-    if nombre and not re.match(r"^(?:(?:una?|el|la|los|las)\s+)?"
-                               r"(?:cartel(?:es)?|pizarras?|caballetes?|cajon(?:es)?)\b",
-                               _normalizar(nombre)):
-        return nombre
-    return None
-
-
 def mercaderia_en_interior(*descripciones):
     return any(not ubicacion.group("negado")
                for texto in descripciones if isinstance(texto, str)
@@ -91,10 +82,9 @@ def aplicar(publica, contexto):
         ocupaciones_visibles &= {c.get("key") for c in publica["categorias_contexto"]
                                 if c.get("respaldo_visual") == "compatible"}
     foto_rechazada = (publica.get("evaluacion_foto") or {}).get("rechazada")
-    indicio_comercial = any(
+    indicio_de_venta = any(
         c.get("key") == _TIPO and not c.get("anulada_por")
-        and (mercaderia_visible(c.get("mercaderia_visible"))
-             or equipamiento_visible(c.get("equipamiento_visible")))
+        and mercaderia_visible(c.get("mercaderia_visible"))
         for modelo in publica.get("modelos", []) for c in modelo.get("categorias", [])
     )
     solo_contenedor = (bool((problemas | elementos) & _CONTENEDORES)
@@ -112,7 +102,7 @@ def aplicar(publica, contexto):
         estado, motivo = "sin_evidencia", "En la foto no se alcanza a ver la ocupación de la vereda."
     elif solo_contenedor:
         estado, motivo = "no_corresponde", "La foto muestra un contenedor. No se ve la ocupación reportada."
-    elif indicio_comercial:
+    elif indicio_de_venta:
         servicios = [_TIPO]
         estado = "compatible"
         motivo = "Lo que se ve en la vereda es compatible con el pedido de ocupación."
