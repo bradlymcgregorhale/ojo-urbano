@@ -173,12 +173,12 @@ def leer_chapas(img, lectores=None, *, lectura_completa=False):
     """Para atribuir una chapa entre varios recortes, exige completar todas las consultas."""
     nombres = _nombres_lectores(lectores)
     detecciones = detectar(img)
-    consultas = ('leer_chapa',) * len(nombres)
+    modelos = tuple(nombres)
     varias = False
-    if lectura_completa and consultas:
+    if lectura_completa and modelos:
         aptas = sum(det["caja"][2] - det["caja"][0] >= ANCHO_MINIMO for det in detecciones)
         varias = aptas > 1
-        if varias and not modos.caben_apoyos(*(consultas * aptas)):
+        if varias and not modos.caben_apoyos(lectores_chapa=modelos * aptas):
             return []
     salida = []
     for det in detecciones:
@@ -195,7 +195,7 @@ def leer_chapas(img, lectores=None, *, lectura_completa=False):
         local = leer_local(rec)
         chapa["lecturas"]["ocr_local"] = local["patente"]
         chapa["ocr_local"] = {"lectura": local["lectura"], "confianza": local["confianza"]}
-        if consultas and modos.caben_apoyos(*consultas):
+        if modelos and modos.caben_apoyos(lectores_chapa=modelos):
             with concurrent.futures.ThreadPoolExecutor(len(nombres)) as pool:
                 vistas = V._map_con_contexto(pool, lambda m: leer_vlm(m, rec), nombres)
             if varias and _LECTURA_FALLIDA in vistas:
