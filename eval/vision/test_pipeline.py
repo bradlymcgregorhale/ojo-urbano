@@ -228,17 +228,27 @@ class PipelineTests(unittest.TestCase):
         self.server.RATE_LIMITE = 60
         self.server.API_TOKEN = 'test-only-token'
         solicitud = Request('https://openrouter.example/chat/completions', data=b'{"model":"lector"}')
+        guardado = []
 
         @self.server.app.post('/clasificar', status_code=502)
         async def clasificar():
             R.V.costo_reset()
             dato = R.V._pedir_http(solicitud, 10, 20)
             R.V._registrar_uso('lector', 'prueba_inicio', None, 1, P.time.monotonic(), dato)
+            guardado.append(json.loads(medicion.manifiesto.read_text())['casos'])
             return {'detail': 'Se perdió la respuesta'}
 
         medicion = P.MedicionPrueba(self.root / 'lote.json', .02, 'version-prueba', 'clasificar', 5)
         self.assertTrue(medicion.admite_foto())
-        with patch.object(R.V, '_pedir_http', return_value={'id': 'gen-sintetica', 'usage': {'cost': .003}}):
+
+        def proveedor(*_):
+            [caso] = json.loads(medicion.manifiesto.read_text())['casos']
+            [respuesta] = caso['respuestas']
+            esperado = {'pedido': R.V._costo_foto.get()['id'], 'intentos': None}
+            self.assertEqual(respuesta['consumo_api'], esperado)
+            return {'id': 'gen-sintetica', 'usage': {'cost': .003}}
+
+        with patch.object(R.V, '_pedir_http', side_effect=proveedor):
             row = medicion.medir(self.case, self.root, self.identity, self.server)
         consumo = row['consumo_facturado']
         self.assertEqual(row['status'], 'error')
@@ -249,6 +259,9 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual([i['estado'] for i in intentos], ['iniciado', 'recibido'])
         self.assertEqual({i['pedido'] for i in intentos}, {consumo['pedidos'][0]['pedido']})
         self.assertEqual(consumo['pedidos'][0]['intentos_esperados'], None)
+        [casos] = guardado
+        _, [recuperado] = P.C.conciliar(casos, P.C.leer_uso([medicion.uso]))
+        self.assertEqual(recuperado, consumo)
         with self.assertRaises(FileExistsError):
             P.MedicionPrueba(self.root / 'lote.json', .02, 'version-prueba', 'clasificar', 5)
 
@@ -259,9 +272,14 @@ class PipelineTests(unittest.TestCase):
         medicion = P.MedicionPrueba(self.root / 'lote.json', .02, 'version-prueba', 'trabajos', 5)
         aceptado = {'trabajo': 'trabajo-enviado', 'estado': 'en_cola', 'modo': 'prueba',
                     'modo_version': 'version-prueba', 'consumo_api': {'pedido': 'pedido-aceptado', 'intentos': None}}
+        solicitud = Request('https://openrouter.example/chat/completions', data=b'{"model":"lector"}')
 
         @self.server.app.post('/trabajos/', status_code=202)
         async def crear():
+            with R.V.modos.usar(self.server.PERFILES['prueba'], pedido_consumo='pedido-aceptado'):
+                R.V.costo_reset()
+                dato = R.V._pedir_http(solicitud, 10, 20)
+                R.V._registrar_uso('lector', 'prueba_inicio', None, 1, P.time.monotonic(), dato)
             return aceptado
 
         @self.server.app.get('/trabajos/', status_code=404)
@@ -270,10 +288,12 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(guardada, [aceptado])
             return {'detail': 'Se perdió el trabajo'}
 
-        row = medicion.medir(self.case, self.root, self.identity, self.server)
+        with patch.object(R.V, '_pedir_http', return_value={'id': 'gen-sintetica', 'usage': {'cost': .002}}):
+            row = medicion.medir(self.case, self.root, self.identity, self.server)
         self.assertEqual(row['status'], 'error')
         self.assertEqual(json.loads(medicion.manifiesto.read_text())['casos'][0]['respuestas'], [aceptado])
         self.assertEqual(row['consumo_facturado']['pedidos'][0]['pedido'], 'pedido-aceptado')
+        self.assertEqual(row['consumo_facturado']['costo_conocido_usd'], '0.002')
         self.assertFalse(medicion.admite_foto())
 
     def test_deliberate_uncertainty_is_scored_as_missing_not_a_transport_error(self):

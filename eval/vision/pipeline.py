@@ -271,6 +271,7 @@ class MedicionPrueba:
         self.costo = Decimal(0)
         self.incierto, self.detener, self.consultas = False, False, 0
         self.datos = {'presupuesto_usd': str(self.presupuesto), 'casos': []}
+        self._manifiesto_lock = threading.Lock()
         if any(p.exists() for p in (output.with_suffix('.html'), output.with_suffix('.comparison.json'),
                                    self.manifiesto, self.uso, self.intentos)):
             raise FileExistsError('La medición requiere archivos de salida nuevos.')
@@ -283,11 +284,20 @@ class MedicionPrueba:
     def admite_foto(self):
         return not self.detener and self.costo + C.TOPE <= self.presupuesto
 
-    def guardar_respuesta(self, respuesta):
-        self.caso['respuestas'] = [respuesta]
-        D.write_json(self.manifiesto, self.datos)
+    def guardar_respuesta(self, respuesta, *, provisional=False):
+        with self._manifiesto_lock:
+            if provisional and self.caso['respuestas'] != [None]:
+                return
+            self.caso['respuestas'] = [respuesta]
+            D.write_json(self.manifiesto, self.datos)
 
     def anotar_intento(self, evento, estado):
+        if estado == 'iniciado' and evento['pedido']:
+            # Vinculá el gasto al caso antes de enviarlo. Un 202 de la cola
+            # puede llegar en paralelo y conserva prioridad sobre esta traza.
+            self.guardar_respuesta({'modo': 'prueba', 'modo_version': self.version,
+                                    'consumo_api': {'pedido': evento['pedido'], 'intentos': None}},
+                                   provisional=True)
         with self.intentos.open('a', encoding='utf-8') as archivo:
             archivo.write(R.canonical(evento | {'estado': estado, 'caso': self.caso['id']}) + '\n')
 
@@ -303,11 +313,6 @@ class MedicionPrueba:
         public = row.get('prediction')
         if public is not None:
             self.guardar_respuesta(public)
-        elif self.caso['respuestas'] == [None]:
-            pedidos = {r['pedido'] for r in row['requests'] if r['pedido']}
-            if len(pedidos) == 1:
-                self.guardar_respuesta({'modo': 'prueba', 'modo_version': self.version,
-                                        'consumo_api': {'pedido': pedidos.pop(), 'intentos': None}})
         resumen, detalle = C.conciliar(self.datos['casos'], C.leer_uso([self.uso]))
         actual = detalle[-1]
         row['cost_usd'] = float(Decimal(actual['costo_conocido_usd']))
