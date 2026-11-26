@@ -6,6 +6,9 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
+from urllib.request import Request
+
+from fastapi import FastAPI, Form, Header, UploadFile
 
 from eval.vision import pipeline as P
 from eval.vision import run as R
@@ -50,6 +53,50 @@ class PipelineTests(unittest.TestCase):
         R.D.write_json(path, record)
         with self.assertRaises(R.NotAvailable):
             P.read_local(self.root, self.case, self.identity)
+
+    def test_replay_prueba_scores_only_exact_archived_http_requests(self):
+        self.server.app = FastAPI()
+        self.server.CACHE_MAX = 10
+        self.server.RATE_LIMITE = 60
+        self.server.API_TOKEN = 'test-only-token'
+        url = 'https://openrouter.example/chat/completions'
+        cuerpo = {'model': 'lector', 'response_format': {'type': 'json_schema'}}
+        resultado = dict(self.public, modo='prueba', modo_version='version-prueba', analisis_estado='completo',
+                         problemas=[{'key': 'recoleccion'}], hay_problema=True, hay_reclamo=True)
+
+        @self.server.app.post('/clasificar')
+        async def clasificar(file: UploadFile, modo: str = Form(), contexto: str = Form(''), x_api_token: str = Header()):
+            self.assertEqual(modo, 'prueba')
+            self.assertEqual(x_api_token, self.server.API_TOKEN)
+            self.assertEqual(self.server.RATE_LIMITE, 0)
+            self.assertEqual((await file.read()), (self.root / self.case['photo']).read_bytes())
+            solicitud = Request(url, data=json.dumps(cuerpo | {'contexto': contexto}).encode())
+            try:
+                R.V._pedir_http(solicitud, 10, 20)
+            except FileNotFoundError:
+                return dict(resultado, analisis_estado='parcial')
+            return resultado
+
+        huella = R.fingerprint({'endpoint': url, 'body': cuerpo | {'contexto': ''}})
+        archivadas = {huella: {'usage': {'cost': .003}}}
+        row = P.evaluate_prueba(self.case, self.root, self.identity, self.server, archivadas)
+        self.assertEqual((row['status'], row['modo_version'], row['cost_usd']), ('pass', 'version-prueba', 0))
+        self.assertEqual(self.server.RATE_LIMITE, 60)
+        self.assertNotIn(self.server.API_TOKEN, json.dumps(row))
+        self.assertEqual(row['requests'][0]['raw'], archivadas[huella])
+        distinto = dict(self.case, context='Otro pedido')
+        row = P.evaluate_prueba(distinto, self.root, self.identity, self.server, archivadas)
+        self.assertEqual((row['status'], row['requests'][0]['source']), ('uncached', 'missing'))
+        self.assertNotEqual(row['requests'][0]['request_hash'], huella)
+        self.assertNotIn('predicted', row)
+
+    def test_replay_prueba_rejects_conflicting_responses_for_the_same_request(self):
+        huella = 'c' * 64
+        path = self.root / 'respuestas.json'
+        path.write_text(json.dumps({'respuestas': {huella: {'id': 'primera'}}}))
+        baseline = {'rows': [{'requests': [{'request_hash': huella, 'raw': {'id': 'segunda'}}]}]}
+        with self.assertRaisesRegex(ValueError, 'respuestas distintas'):
+            P.load_prueba_responses(path, baseline)
 
     def test_deliberate_uncertainty_is_scored_as_missing_not_a_transport_error(self):
         row = P.evaluate(self.case, self.root, self.identity, self.server,

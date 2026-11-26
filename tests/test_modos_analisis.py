@@ -340,11 +340,13 @@ class ApiModos(unittest.TestCase):
                     self.assertNotIn('objetos', salida['elementos_detectados'][0])
 
     def test_prueba_publica_recuento_sin_agregar_llamadas(self):
-        for dirigida, final, tapadas, minimo, exacto in (
-            (5, 5, False, 5, True), (6, 7, False, 6, False),
-            (5, 5, True, 5, False), (5, None, False, 5, False),
-            (5, True, False, 5, False), (0, 0, False, 0, True),
-            (None, 6, False, 6, False), (None, None, False, None, False),
+        for dirigida, final, tapadas, minimo, exacto, bolsas in (
+            (5, 5, False, 5, True, 5), (6, 7, False, 6, False, None),
+            (5, 5, True, 5, False, None), (5, None, False, 5, False, None),
+            (5, True, False, 5, False, None), (0, 0, False, 0, True, 0),
+            (0, None, False, None, False, None), (None, 6, False, 6, False, None),
+            (None, None, False, None, False, None), (15, 15, False, 15, True, 15),
+            (18, 18, False, 18, True, None),
         ):
             with self.subTest(dirigida=dirigida, final=final, tapadas=tapadas):
                 llamadas = []
@@ -372,7 +374,7 @@ class ApiModos(unittest.TestCase):
                 self.assertCountEqual(llamadas, ['prueba_inicio', 'prueba_retiros', 'prueba_decision'])
                 salida = r.json()
                 self.assertEqual([(p['key'], p['bolsas']) for p in salida['problemas']],
-                                 [('retiro_escombros', minimo if exacto and minimo else None)])
+                                 [('retiro_escombros', bolsas)])
                 if minimo is None:
                     self.assertNotIn('verificacion_escombros', salida)
                 else:

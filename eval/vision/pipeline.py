@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sys
+import threading
 import types
 from contextlib import ExitStack
 from pathlib import Path
@@ -141,13 +142,92 @@ def contract_issues(public):
     return issues
 
 
-def evaluate(case, private, identity, server, transport, allow_initial_live=False, initial_fixture=None):
-    row = {'case': case['id'], 'aliases': case['aliases'], 'model': 'final-api', 'stage': 'pipeline',
+def evaluation_row(case):
+    return {'case': case['id'], 'aliases': case['aliases'], 'model': 'final-api', 'stage': 'pipeline',
            'tags': case['tags'], 'known_status': case['status'], 'expected': case['expected'],
            'label_hash': R.fingerprint(case['expected']), 'photo_sha256': case['sha256'],
-           'context_hash': R.fingerprint(case.get('context', '')), 'photo': case['photo']}
-    row.update(notes=case.get('notes', []), uncertain_labels=case.get('uncertain_labels', []),
-               review_updates=case.get('review_updates', []))
+           'context_hash': R.fingerprint(case.get('context', '')), 'photo': case['photo'],
+           'notes': case.get('notes', []), 'uncertain_labels': case.get('uncertain_labels', []),
+           'review_updates': case.get('review_updates', [])}
+
+
+def evaluate_prueba(case, private, identity, server, respuestas):
+    from fastapi.testclient import TestClient
+
+    row = evaluation_row(case)
+    row.update(cost_usd=0, requests=[], response={'source': 'archivo'})
+    lock = threading.Lock()
+
+    def contestar(pedido, *_):
+        cuerpo = json.loads(pedido.data)
+        huella = R.fingerprint({'endpoint': pedido.full_url, 'body': cuerpo})
+        guardada = respuestas.get(huella)
+        with lock:
+            row['requests'].append({'request_hash': huella, 'model_requested': cuerpo['model'],
+                                    'source': 'archivo' if guardada is not None else 'missing',
+                                    'raw': guardada})
+        if guardada is None:
+            raise FileNotFoundError('Falta la respuesta archivada de ' + huella)
+        return copy.deepcopy(guardada)
+
+    try:
+        raw = verified_photo(private, case)
+        local = read_local(private, case, identity)
+        row['local_hash'] = R.fingerprint(local['prediction'])
+        headers = {'x-api-token': server.API_TOKEN} if server.API_TOKEN else {}
+        with patch.object(server, 'clasificar_local', side_effect=lambda _: copy.deepcopy(local['prediction'])), \
+                patch.multiple(server, CACHE_MAX=0, RATE_LIMITE=0), patch.object(server, '_hay_cuota', return_value=True), \
+                patch.object(R.V, 'api_key', return_value='reproduccion-sin-red'), \
+                patch.object(R.V, 'OPENROUTER_LOG_USO', False), \
+                patch.object(R.V, '_pedir_http', side_effect=contestar), TestClient(server.app, headers=headers) as client:
+            respuesta = client.post('/clasificar?verificar=1', data={
+                'modo': 'prueba', 'contexto': case.get('context', '')}, files={'file': ('foto.jpg', raw, 'image/jpeg')})
+        if not respuesta.is_success:
+            row.update(status='error', error=f'HTTP {respuesta.status_code}: {respuesta.json().get("detail", "")}',
+                       modo='prueba', modo_version=server.PERFILES['prueba'].version)
+            return row
+        public = respuesta.json()
+        row.update(prediction=public, modo=public.get('modo'), modo_version=public.get('modo_version'))
+        if any(r['source'] == 'missing' for r in row['requests']):
+            row.update(status='uncached', error='Faltan respuestas para las huellas indicadas.')
+        elif not row['requests'] or public.get('analisis_estado') != 'completo':
+            row.update(status='error', error='El análisis publicado quedó incompleto.')
+        else:
+            row.update(R.assess(case, {'categorias': public['problemas'] + public['elementos_detectados']}))
+            row['contract_issues'] = contract_issues(public)
+            row['status'] = 'fail' if row['missing'] or row['unexpected'] or row['contract_issues'] else 'pass'
+    except R.NotAvailable as error:
+        row.update(status='uncached', error=str(error))
+    except Exception as error:
+        row.update(status='error', error=str(error)[:300])
+    return row
+
+
+def load_prueba_responses(path, baseline):
+    archivadas = {}
+
+    def guardar(huella, respuesta):
+        if not re.fullmatch(r'[0-9a-f]{64}', huella) or not isinstance(respuesta, dict):
+            raise ValueError('Se espera el JSON original de cada respuesta con su huella SHA-256.')
+        if huella in archivadas and archivadas[huella] != respuesta:
+            raise ValueError('Una huella tiene respuestas distintas en los archivos.')
+        archivadas[huella] = respuesta
+
+    for row in (baseline or {}).get('rows', []):
+        for evento in row['requests']:
+            if evento.get('raw') is not None:
+                guardar(evento['request_hash'], evento['raw'])
+    if path:
+        nuevas = json.loads(path.read_text())['respuestas']
+        if not isinstance(nuevas, dict):
+            raise ValueError('Se espera un objeto respuestas con los JSON originales por huella.')
+        for huella, respuesta in nuevas.items():
+            guardar(huella, respuesta)
+    return archivadas
+
+
+def evaluate(case, private, identity, server, transport, allow_initial_live=False, initial_fixture=None):
+    row = evaluation_row(case)
     start = len(transport.events)
     paid_before = transport.meter.spent
     original_map = R.V._map_modelos
@@ -250,13 +330,26 @@ def main(argv=None):
     parser.add_argument('--out', type=Path)
     parser.add_argument('--baseline', type=Path, help='Fail on new discrepancies against this recorded run')
     parser.add_argument('--initial-fixture', type=Path, help='Explicit recorded first-pass votes for one reported case')
+    parser.add_argument('--modo', choices=['alto', 'prueba'], default='alto')
+    parser.add_argument('--respuestas-prueba', type=Path, help='Respuestas de OpenRouter guardadas por huella exacta')
     args = parser.parse_args(argv)
+    prueba = args.modo == 'prueba'
+    if prueba and (args.live or args.initial_fixture):
+        parser.error('La reproducción de prueba usa exclusivamente respuestas archivadas.')
+    if args.respuestas_prueba and not prueba:
+        parser.error('--respuestas-prueba requiere --modo prueba.')
     R.load_env()
     if 'servidor' not in sys.modules:
         # Configuration constants are evaluated when verificador is imported.
         # Reload after .env so CLI checks use the server's actual settings.
         importlib.reload(R.V)
     baseline = json.loads(args.baseline.read_text()) if args.baseline else None
+    if baseline and baseline.get('modo', 'alto') != args.modo:
+        parser.error('La referencia corresponde a otro modo de análisis.')
+    try:
+        respuestas = load_prueba_responses(args.respuestas_prueba, baseline) if prueba else None
+    except (ValueError, KeyError, TypeError, OSError) as error:
+        parser.error(str(error))
     ids = args.ids or ([r['case'] for r in baseline['rows']] if baseline else TRIAGE)
     manifest = json.loads((args.private / 'cases.json').read_text())
     cases = R.select(manifest['cases'], 'all', ids=ids)
@@ -293,7 +386,7 @@ def main(argv=None):
     server = load_server()
     transport = R.Transport(args.private / 'cache', live=args.live, budget=args.budget, reserve=args.reserve,
                             journal=output.with_suffix('.attempts.jsonl'))
-    if baseline and not args.live:
+    if baseline and not args.live and not prueba:
         freeze_evidence(transport, baseline)
     code = {p: D.digest((ROOT / p).read_bytes()) for p in ['servidor.py', 'verificador.py', 'politica_escombros.py']}
     code['politica_escombros.py'] = D.digest(Path(server.politica_escombros.__file__).read_bytes())
@@ -307,8 +400,16 @@ def main(argv=None):
                   'FUSION_ESCOMBROS', 'FUSION_ESCOMBROS_UMBRAL', 'FUSION_ESCOMBROS_RECO_BAJA',
                   'FUSION_ESCOMBROS_UMBRAL_RESCATE', 'FUSION_ESCOMBROS_RECO_RESCATE')},
               'rows': [], 'cost_usd': 0, 'budget_usd': args.budget, 'summary': {}}
+    report['modo'] = args.modo
+    if prueba:
+        perfil = server.PERFILES['prueba']
+        report.update(modo_version=perfil.version, models=list(perfil.verificadores), arbiter=perfil.arbitro,
+                      evidence_policy='archivo-por-huella', budget_usd=0)
     for case in cases:
-        row = evaluate(case, args.private, identity, server, transport, args.allow_initial_live, fixture)
+        if prueba:
+            row = evaluate_prueba(case, args.private, identity, server, respuestas)
+        else:
+            row = evaluate(case, args.private, identity, server, transport, args.allow_initial_live, fixture)
         report['rows'].append(row)
         report['cost_usd'] = float(transport.meter.spent)
         report['billing_uncertain'] = transport.meter.unresolved
