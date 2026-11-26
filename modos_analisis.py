@@ -19,7 +19,8 @@ IDENTIFICADOR = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.:-]+$')
 _PROVEEDOR_OPENROUTER = re.compile(r'[a-z0-9-]+(?:/[a-z0-9-]+)*')
 _TOPE_PRUEBA = Decimal('0.01')
 _DECISION_PRUEBA = 'prueba_decision'
-_ETAPAS_PRUEBA = {_DECISION_PRUEBA, 'prueba_inicio', 'prueba_retiros', 'prueba_contenedores',
+ETAPAS_BASE_PRUEBA = (_DECISION_PRUEBA, 'prueba_inicio', 'prueba_retiros')
+_ETAPAS_PRUEBA = {*ETAPAS_BASE_PRUEBA, 'prueba_contenedores',
                  'prueba_tipos', 'prueba_alcance', 'rama_desprendida', 'leer_chapa'}
 
 
@@ -63,6 +64,7 @@ class Perfil:
     motivo: str | None = None
     reservas_prueba: MappingProxyType | None = None
     proveedor_prueba: str | MappingProxyType | None = None
+    saldo_prueba: Decimal = _TOPE_PRUEBA
 
     def proveedor_para(self, etapa):
         if etapa == 'leer_chapa':
@@ -92,7 +94,7 @@ def _leer_reservas_prueba(texto):
     reservas = {etapa: Decimal(str(valor)) for etapa, valor in valores.items()}
     if any(not v.is_finite() or not 0 < v <= _TOPE_PRUEBA for v in reservas.values()):
         raise ValueError('Reserva fuera del rango de costo por foto')
-    if sum(reservas[k] for k in (_DECISION_PRUEBA, 'prueba_inicio', 'prueba_retiros')) > _TOPE_PRUEBA:
+    if sum(reservas[k] for k in ETAPAS_BASE_PRUEBA) > _TOPE_PRUEBA:
         raise ValueError('Las lecturas principales no caben en el presupuesto')
     return MappingProxyType(reservas)
 
@@ -246,7 +248,7 @@ def _caben(r, etapas):
     reservas = r.perfil.reservas_prueba
     decision = reservas[_DECISION_PRUEBA] if r.decision_pendiente and _DECISION_PRUEBA not in etapas else 0
     if all(e in reservas for e in etapas) and (
-            r.costo + r.reservado + decision + sum(reservas[e] for e in etapas) <= _TOPE_PRUEBA):
+            r.costo + r.reservado + decision + sum(reservas[e] for e in etapas) <= r.perfil.saldo_prueba):
         return True
     r.limites_costo.add('presupuesto_api_insuficiente')
     return False
@@ -301,7 +303,7 @@ def liquidar_consulta(reserva, uso):
         r.costo += monto
         if monto > reserva:
             r.limites_costo.add('reserva_api_excedida')
-        if r.costo > _TOPE_PRUEBA:
+        if r.costo > r.perfil.saldo_prueba:
             r.limites_costo.add('tope_api_excedido')
 
 

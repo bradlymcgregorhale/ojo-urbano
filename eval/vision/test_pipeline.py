@@ -8,6 +8,7 @@ import threading
 import types
 import unittest
 from contextlib import redirect_stderr
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -316,6 +317,34 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(salida.exception.code, 2)
         self.assertIn('un solo envío de cada archivo', stderr.getvalue())
         cargar.assert_not_called()
+
+    def test_medicion_rechaza_consumo_anterior_pendiente_o_sin_saldo_por_huella(self):
+        (self.root / 'cases.json').write_text(json.dumps({'cases': [self.case]}))
+        detalle = self.root / 'previo.json'
+        for conciliada, importe, mensaje in ((False, '0.001', 'sigue pendiente'),
+                                              (True, '0.01', 'ya agotó el tope')):
+            with self.subTest(conciliada=conciliada):
+                detalle.write_text(json.dumps([{'id': 'otro-id', 'foto_sha256': self.case['sha256'],
+                                               'foto_conciliada': conciliada, 'foto_costo_conocido_usd': importe}]))
+                with (patch.object(R, 'load_env'), patch.object(P.importlib, 'reload'),
+                      patch.object(P, 'load_server') as cargar, redirect_stderr(io.StringIO()) as stderr,
+                      self.assertRaises(SystemExit) as salida):
+                    P.main(['run', '--private', str(self.root), '--ids', self.case['id'], '--modo', 'prueba',
+                            '--live', '--budget', '0.02', '--consumo-previo', str(detalle)])
+                self.assertEqual(salida.exception.code, 2)
+                self.assertIn(mensaje, stderr.getvalue())
+                cargar.assert_not_called()
+
+    def test_consumo_previo_con_repeticiones_de_la_misma_foto_no_se_suma_dos_veces(self):
+        fila = {'foto_sha256': self.case['sha256'], 'foto_conciliada': True, 'foto_costo_conocido_usd': '0.002'}
+        detalle = self.root / 'previo.json'
+        detalle.write_text(json.dumps([fila, fila | {'entrada': 'otra'}]))
+        previos, huella = P.cargar_consumo_previo(detalle)
+        self.assertEqual(previos, {self.case['sha256']: (Decimal('0.002'), True)})
+        self.assertEqual(huella, P.D.digest(detalle.read_bytes()))
+        detalle.write_text(json.dumps([fila, fila | {'foto_costo_conocido_usd': '0.001'}]))
+        with self.assertRaisesRegex(ValueError, 'totales anteriores incompatibles'):
+            P.cargar_consumo_previo(detalle)
 
     def test_prueba_registra_la_regresion_del_respaldo_sin_cambiar_las_categorias(self):
         self.server.app = FastAPI()

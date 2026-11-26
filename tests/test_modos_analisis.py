@@ -3,6 +3,7 @@ import concurrent.futures
 import asyncio
 from contextlib import ExitStack
 from dataclasses import replace
+from decimal import Decimal
 import io
 import json
 import sys
@@ -38,6 +39,15 @@ def perfiles():
 
 
 class Configuracion(unittest.TestCase):
+    def test_saldo_restante_de_la_foto_limita_la_reserva_del_mismo_perfil(self):
+        perfil = perfil_con_reservas()
+        for saldo, espera_apoyo in ((Decimal('.01'), True), (Decimal('.0095'), False)):
+            with self.subTest(saldo=saldo), M.usar(replace(perfil, saldo_prueba=saldo)):
+                for etapa in M.ETAPAS_BASE_PRUEBA:
+                    reserva = M.reservar_consulta(etapa)
+                    M.liquidar_consulta(reserva, {'cost': float(reserva)})
+                self.assertEqual(M.caben_apoyos('rama_desprendida'), espera_apoyo)
+
     def test_reservas_incompletas_o_inviables_deshabilitan_solo_prueba(self):
         base = {'VERIFICADORES_PRUEBA': 't/decision,t/dirigidos,t/alcance'}
         sin_reservas = M.cargar(V, {}, base)

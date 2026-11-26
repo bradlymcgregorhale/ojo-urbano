@@ -16,6 +16,7 @@ import time
 import types
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack, redirect_stderr
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
@@ -252,6 +253,9 @@ def evaluate_prueba(case, private, identity, server, respuestas, *, ruta='clasif
                 TestClient(server.app, headers=headers) as client:
             if medicion is None:
                 configuracion.enter_context(patch.object(R.V, 'api_key', return_value='reproduccion-sin-red'))
+            elif (saldo := medicion.saldo_foto(case)) < C.TOPE:
+                perfil = replace(server.PERFILES['prueba'], saldo_prueba=saldo)
+                configuracion.enter_context(patch.object(server, 'PERFILES', dict(server.PERFILES) | {'prueba': perfil}))
             # El pool termina antes de retirar el transporte de archivo, incluso si la consulta vence.
             endpoint = '/trabajos/' if ruta == 'trabajos' else '/clasificar'
             respuesta = client.post(endpoint, params={'verificar': '1'}, data={
@@ -293,8 +297,27 @@ def evaluate_prueba(case, private, identity, server, respuestas, *, ruta='clasif
     return row
 
 
+def cargar_consumo_previo(ruta):
+    raw = ruta.read_bytes()
+    filas = json.loads(raw)
+    if not isinstance(filas, list) or not filas:
+        raise ValueError('El consumo previo requiere el detalle de una conciliación con huellas.')
+    previos = {}
+    for fila in filas:
+        huella = fila.get('foto_sha256') if isinstance(fila, dict) else None
+        if not isinstance(huella, str) or not re.fullmatch(r'[0-9a-f]{64}', huella):
+            raise ValueError('Cada entrada del consumo previo requiere foto_sha256.')
+        conciliada = fila.get('foto_conciliada')
+        importe = Decimal(str(fila['foto_costo_conocido_usd']))
+        if type(conciliada) is not bool or not importe.is_finite() or importe < 0:
+            raise ValueError('El consumo previo requiere un importe válido y el estado por foto.')
+        if previos.setdefault(huella, (importe, conciliada)) != (importe, conciliada):
+            raise ValueError('Una foto tiene totales anteriores incompatibles.')
+    return previos, D.digest(raw)
+
+
 class MedicionPrueba:
-    def __init__(self, output, presupuesto, version, ruta, espera):
+    def __init__(self, output, presupuesto, version, ruta, espera, *, previos=None, huella_previa=None):
         self.uso = output.with_suffix('.uso.jsonl')
         self.intentos = output.with_suffix('.intentos.jsonl')
         self.manifiesto = output.with_suffix('.consumo.json')
@@ -303,6 +326,9 @@ class MedicionPrueba:
         self.costo = Decimal(0)
         self.incierto, self.detener, self.consultas = False, False, 0
         self.datos = {'presupuesto_usd': str(self.presupuesto), 'casos': []}
+        self.previos = previos or {}
+        if huella_previa is not None:
+            self.datos['consumo_previo_sha256'] = huella_previa
         self._manifiesto_lock = threading.Lock()
         if any(p.exists() for p in (output.with_suffix('.html'), output.with_suffix('.comparison.json'),
                                    self.manifiesto, self.uso, self.intentos)):
@@ -313,8 +339,12 @@ class MedicionPrueba:
         self.uso.touch(exist_ok=False)
         self.intentos.touch(exist_ok=False)
 
-    def admite_foto(self):
-        return not self.detener and self.costo + C.TOPE <= self.presupuesto
+    def saldo_foto(self, caso):
+        return C.TOPE - self.previos.get(caso['sha256'], Decimal(0))
+
+    def admite_foto(self, caso=None):
+        saldo = C.TOPE if caso is None else self.saldo_foto(caso)
+        return not self.detener and self.costo + saldo <= self.presupuesto
 
     def guardar_respuesta(self, respuesta, *, provisional=False):
         with self._manifiesto_lock:
@@ -352,12 +382,17 @@ class MedicionPrueba:
         resumen, detalle = C.conciliar(self.datos['casos'], C.leer_uso([self.uso]))
         actual = detalle[-1]
         row['cost_usd'] = float(Decimal(actual['costo_conocido_usd']))
+        previo = self.previos.get(case['sha256'], Decimal(0))
+        acumulado = previo + Decimal(actual['costo_conocido_usd'])
+        if case['sha256'] in self.previos:
+            actual.update(costo_previo_usd=str(previo), costo_acumulado_foto_usd=str(acumulado),
+                          supera_tope_acumulado=acumulado > C.TOPE)
         row['consumo_facturado'] = actual
         self.costo = sum((Decimal(r['costo_conocido_usd']) for r in detalle), Decimal(0))
         self.consultas += len(row['requests'])
         limites = (public or {}).get('analisis_limitaciones', [])
         self.incierto = bool(resumen['casos_con_consumo_pendiente']) or (public or {}).get('costo_api_completo') is not True
-        self.detener = (self.incierto or not row['requests'] or actual['supera_tope']
+        self.detener = (self.incierto or not row['requests'] or acumulado > C.TOPE
                         or 'reserva_api_excedida' in limites)
         return row
 
@@ -493,9 +528,12 @@ def main(argv=None):
     parser.add_argument('--respuestas-prueba', type=Path, help='Respuestas de OpenRouter guardadas por huella exacta')
     parser.add_argument('--ruta-prueba', choices=['clasificar', 'trabajos'],
                         help='Ruta de Completo (prueba) a evaluar. Por defecto, clasificar.')
+    parser.add_argument('--consumo-previo', type=Path, help='Detalle conciliado de los intentos anteriores por foto.')
     args = parser.parse_args(argv)
     prueba = args.modo == 'prueba'
     facturada = prueba and args.live
+    if args.consumo_previo and not facturada:
+        parser.error('--consumo-previo requiere una medición facturada de Completo (prueba).')
     if prueba and (args.initial_fixture or args.allow_initial_live):
         parser.error('Completo (prueba) evalúa todas las etapas de la foto.')
     if facturada:
@@ -552,6 +590,21 @@ def main(argv=None):
         parser.error('El lote contiene IDs de caso repetidos.')
     if facturada and len({c['sha256'] for c in cases if isinstance(c.get('sha256'), str)}) != len(cases):
         parser.error('El lote facturado requiere una huella por foto y un solo envío de cada archivo.')
+    previos, huella_previa = {}, None
+    if args.consumo_previo:
+        try:
+            historial, huella_previa = cargar_consumo_previo(args.consumo_previo)
+        except (OSError, TypeError, ValueError, KeyError, ArithmeticError) as error:
+            parser.error(f'Consumo previo inválido. {error}')
+        for caso in cases:
+            if caso['sha256'] not in historial:
+                continue
+            importe, conciliada = historial[caso['sha256']]
+            if not conciliada:
+                parser.error(f'{caso["id"]}: el consumo anterior de esta foto sigue pendiente.')
+            if importe >= C.TOPE:
+                parser.error(f'{caso["id"]}: la foto ya agotó el tope de USD 0,01.')
+            previos[caso['sha256']] = importe
     if args.allow_initial_live and not args.live:
         parser.error('--allow-initial-live requires --live')
     fixture = (json.loads(args.initial_fixture.read_text()) if args.initial_fixture
@@ -614,14 +667,21 @@ def main(argv=None):
         if facturada:
             if perfil.motivo or not getattr(perfil, 'reservas_prueba', None):
                 parser.error('La medición requiere un perfil disponible con PRUEBA_RESERVAS_USD.')
+            if huella_previa is not None:
+                minimo = sum(perfil.reservas_prueba[k] for k in server.modos.ETAPAS_BASE_PRUEBA)
+                for caso in cases:
+                    if minimo + previos.get(caso['sha256'], Decimal(0)) > C.TOPE:
+                        parser.error(f'{caso["id"]}: las lecturas base no caben en el saldo de la foto.')
+                report['consumo_previo_sha256'] = huella_previa
             try:
                 medicion = MedicionPrueba(output, presupuesto, perfil.version, report['ruta_prueba'],
-                                           server.TRABAJO_ESPERA + server.TECHO_TRABAJO + 30)
+                                           server.TRABAJO_ESPERA + server.TECHO_TRABAJO + 30,
+                                           previos=previos, huella_previa=huella_previa)
             except OSError as error:
                 parser.error(str(error))
     for case in cases:
         if medicion is not None:
-            if not medicion.admite_foto():
+            if not medicion.admite_foto(case):
                 break
             try:
                 row = medicion.medir(case, args.private, identity, server)
