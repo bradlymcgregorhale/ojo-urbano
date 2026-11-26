@@ -9,7 +9,7 @@ from pathlib import Path
 
 from eval.vision.centavo import TOPE, errores
 
-_RANGO_BOLSAS = {"bolsas": 15, "bolsas_minimo": None}
+_RANGO_BOLSAS = {"bolsas": 15, "bolsas_minimo": None, "bolsas_fuentes": 2}
 _CAMPO_COMPLETO = "bolsas_recuento_completo"
 _RESPALDOS = ("compatible", "neutral", "contradice")
 _ESTADOS_RECLAMO = ("compatible", "sin_evidencia", "no_corresponde")
@@ -110,7 +110,7 @@ def medidas_bolsas(resultado):
     if escombros is None:
         return {}
     revision = resultado.get("verificacion_escombros") or {}
-    medidas = {k: revision[k] for k in ("bolsas_minimo", _CAMPO_COMPLETO) if k in revision}
+    medidas = {k: revision[k] for k in ("bolsas_minimo", _CAMPO_COMPLETO, "bolsas_fuentes") if k in revision}
     if "bolsas" in escombros:
         medidas["bolsas"] = escombros["bolsas"]
     return medidas

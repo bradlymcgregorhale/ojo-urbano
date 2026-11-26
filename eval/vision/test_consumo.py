@@ -120,6 +120,17 @@ class PruebaConsumo(unittest.TestCase):
                 self.assertEqual(foto["diferencias_recuento"], diferencias)
                 self.assertEqual(foto["recuento_observado"], revision | {"bolsas": None})
 
+    def test_recuento_exige_dos_fuentes_si_la_referencia_lo_pide(self):
+        problema = {"key": "retiro_escombros", "bolsas": None}
+        esperado = {"bolsas_minimo": 5, "bolsas_fuentes": 2}
+        for campos, diferencias in (({}, ["bolsas_fuentes"]), ({"bolsas_fuentes": 1}, ["bolsas_fuentes"]),
+                                    ({"bolsas_fuentes": 2}, [])):
+            with self.subTest(campos=campos):
+                revision = {"bolsas_minimo": 5, "bolsas_recuento_completo": False, **campos}
+                [foto] = conciliar([caso_con_recuento(esperado, problema, revision)], [uso("web", "g", .009)])[1]
+                self.assertEqual(foto["diferencias_recuento"], diferencias)
+                self.assertEqual(foto["diferencias"], [])
+
     def test_recuento_sin_analisis_verificado_no_se_puntua(self):
         problema = {"key": "retiro_escombros", "bolsas": None}
         datos = caso_con_recuento({"bolsas": None}, problema, verificacion_activa=False)

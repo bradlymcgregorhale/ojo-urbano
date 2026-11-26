@@ -208,7 +208,7 @@ def _recuento(retiros, final):
     exacto = votos == [(minimo, False)] * 2
     if minimo == 0 and not exacto:
         return None
-    return {'bolsas_minimo': minimo, 'bolsas_recuento_completo': exacto}
+    return {'bolsas_minimo': minimo, 'bolsas_recuento_completo': exacto, 'bolsas_fuentes': len(votos)}
 
 
 def _excluir_indicios_insuficientes(fuentes, confirmadas):
