@@ -102,16 +102,25 @@ def aplicar(publica, contexto):
         publica["categorias_contexto"] = [*(publica.get("categorias_contexto") or []), categoria]
     publica["hay_reclamo"] = True
     compatible = bool(servicios)
+    adicionales = []
+    propuesta = publica.get("solicitudes_sugeridas") or {}
+    if (publica.get("modo") == "prueba" and publica.get("foto_valida") is True
+            and propuesta.get("estado") in {"propuesta", "pendiente"}):
+        otros_candidatos = set(propuesta.get("candidatos", [])) - _SERVICIOS.keys()
+        adicionales = [c for c in publica.get("categorias_contexto", [])
+                       if c.get("respaldo_visual") == "compatible" and c.get("key") in otros_candidatos]
+    sugeridos = list(dict.fromkeys([*servicios, *(c["key"] for c in adicionales)]))
     publica["solicitudes_sugeridas"] = {
-        "estado": "propuesta" if compatible else "requiere_contexto",
-        "servicios": servicios,
-        "candidatos": servicios or [_TIPO],
+        "estado": "propuesta" if sugeridos else "requiere_contexto",
+        "servicios": sugeridos,
+        "candidatos": sugeridos or [_TIPO],
         "requiere_confirmacion": True,
-        "motivo": motivo,
+        "motivo": "Revisá los servicios solicitados que respalda la foto." if adicionales else motivo,
     }
     publica["conclusion"] = {
         "estado": "por_texto",
-        "categorias": [{"key": key, "nombre": _SERVICIOS[key][1]} for key in servicios or [_TIPO]],
+        "categorias": ([{"key": key, "nombre": _SERVICIOS[key][1]} for key in servicios or [_TIPO]]
+                       + [{"key": c["key"], "nombre": c["nombre"]} for c in adicionales]),
         "requiere_revision": not compatible or any(key not in problemas for key in servicios),
         "texto": motivo,
     }
