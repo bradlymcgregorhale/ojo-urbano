@@ -2578,7 +2578,8 @@ def _verificar_uno(modelo, data_url, categorias, contexto=""):
             if c["key"] in categorias and c["key"] not in {v["key"] for v in vistas}:
                 if c["key"] in {"ocupacion_comercial", "manteros"}:
                     producto = contexto_ocupacion.mercaderia_visible(c.get("mercaderia_visible"))
-                    if not producto:
+                    if not producto or (c["key"] == "manteros" and contexto_ocupacion.mercaderia_en_interior(
+                            producto, c.get("evidencia"))):
                         continue
                     c["mercaderia_visible"] = producto
                 c["evidencia"] = _texto_limpio(c.get("evidencia"), EVID_MAX)
