@@ -337,7 +337,7 @@ class MedicionPrueba:
 
     def medir(self, case, private, identity, server):
         self.caso = {'id': case['id'], 'entrada': self.ruta, 'modo': 'prueba',
-                     'modo_version': self.version, 'esperado': case['expected']}
+                     'modo_version': self.version, 'foto_sha256': case['sha256'], 'esperado': case['expected']}
         if 'recuento_esperado' in case:
             self.caso['recuento_esperado'] = case['recuento_esperado']
         if 'contexto_esperado' in case:
@@ -550,6 +550,8 @@ def main(argv=None):
                 parser.error('principal_esperado debe ser un servicio confirmado o indeterminado.')
     if facturada and len({c['id'] for c in cases}) != len(cases):
         parser.error('El lote contiene IDs de caso repetidos.')
+    if facturada and len({c['sha256'] for c in cases if isinstance(c.get('sha256'), str)}) != len(cases):
+        parser.error('El lote facturado requiere una huella por foto y un solo envío de cada archivo.')
     if args.allow_initial_live and not args.live:
         parser.error('--allow-initial-live requires --live')
     fixture = (json.loads(args.initial_fixture.read_text()) if args.initial_fixture

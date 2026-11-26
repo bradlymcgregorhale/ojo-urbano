@@ -304,6 +304,19 @@ class PipelineTests(unittest.TestCase):
                 cargar.assert_not_called()
                 self.assertFalse(salida.with_suffix('.consumo.json').exists())
 
+    def test_medicion_rechaza_los_mismos_bytes_con_otro_id_antes_de_enviar(self):
+        segundo = self.case | {'id': 'segundo', 'aliases': ['segundo'], 'photo': 'segunda.jpg'}
+        (self.root / segundo['photo']).write_bytes((self.root / self.case['photo']).read_bytes())
+        (self.root / 'cases.json').write_text(json.dumps({'cases': [self.case, segundo]}))
+        with (patch.object(R, 'load_env'), patch.object(P.importlib, 'reload'),
+              patch.object(P, 'load_server') as cargar, redirect_stderr(io.StringIO()) as stderr,
+              self.assertRaises(SystemExit) as salida):
+            P.main(['run', '--private', str(self.root), '--ids', self.case['id'], 'segundo',
+                    '--modo', 'prueba', '--live', '--budget', '0.02'])
+        self.assertEqual(salida.exception.code, 2)
+        self.assertIn('un solo envío de cada archivo', stderr.getvalue())
+        cargar.assert_not_called()
+
     def test_prueba_registra_la_regresion_del_respaldo_sin_cambiar_las_categorias(self):
         self.server.app = FastAPI()
         self.server.CACHE_MAX = self.server.RATE_LIMITE = 0
@@ -395,6 +408,7 @@ class PipelineTests(unittest.TestCase):
             [caso] = json.loads(medicion.manifiesto.read_text())['casos']
             [respuesta] = caso['respuestas']
             esperado = {'pedido': R.V._costo_foto.get()['id'], 'intentos': None}
+            self.assertEqual(caso['foto_sha256'], self.case['sha256'])
             self.assertEqual(respuesta['consumo_api'], esperado)
             return {'id': 'gen-sintetica', 'usage': {'cost': .003}}
 

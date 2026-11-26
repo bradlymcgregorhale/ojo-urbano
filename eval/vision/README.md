@@ -22,6 +22,8 @@ python -m eval.vision.centavo --evidencia "$EVIDENCIA_VISION" \
 
 En una evaluación con cargos, guardá un manifiesto privado `{"casos": [...]}`. Por cada foto y recorrido (`entrada`, por ejemplo `ojo_urbano` o `bacollab`), anotá un `id` del banco, `modo`, `modo_version` y la referencia en `esperado`. Usá `true` o `false` sólo en etiquetas revisadas. Las dudas pueden quedar en `null`.
 
+El evaluador facturado guarda `foto_sha256` con la huella SHA-256 de los bytes enviados. Para conciliar varias corridas, incluí en el mismo manifiesto sus entradas y respuestas con esa huella verificada. Las entradas de una misma ruta y versión se reúnen en `respuestas`, en orden. El informe conserva la evaluación por recorrido y suma el costo de la foto entre rutas, IDs y versiones. `fotos_sobre_el_tope` cuenta las fotos con más de USD 0,01 de gasto conocido y `maximo_conciliado_usd` toma el total de cada foto con todos sus intentos conciliados. Para los manifiestos anteriores sin huella se conserva la conciliación por recorrido.
+
 Si revisaste el recuento de bolsas, agregá `recuento_esperado` al caso con sólo los campos revisados. Podés exigir `{"bolsas": 0}` para material suelto o `{"bolsas": null, "bolsas_minimo": [5, null], "bolsas_recuento_completo": false}` para un recuento abierto de al menos cinco. Un intervalo cerrado como `[12, 15]` incluye ambos extremos. Un campo omitido queda sin evaluar. El informe compara esos campos de la última respuesta verificada, mantiene las diferencias de recuento separadas de las categorías y deja el recuento pendiente si falta la respuesta.
 
 En Completo (prueba), agregá `"bolsas_fuentes": 2` a `recuento_esperado` si también necesitás que dos lectores respalden el mínimo. Una respuesta anterior que omite el campo queda sin acreditar ese requisito.
@@ -30,7 +32,7 @@ En `respuestas`, incluí en orden los JSON devueltos por Completo (prueba) para 
 
 En la carga web, guardá el JSON final de `/trabajos/`. Si falta el resultado, conservá el último estado del trabajo. Bacollab guarda el JSON de `/clasificar/` en `image_api_calls.response_text`. Incluí `null` si un envío se cortó sin devolver el JSON. Eso deja la conciliación pendiente incluso si otro envío terminó. Corré ambos recorridos con `CACHE_MAX=0` en una instancia de evaluación para que cada uno ejecute el análisis.
 
-Si guardaste una respuesta de caché, incluí el resultado identificado por `consumo_api.origen_cache` en el mismo caso. El informe registra cero intentos para la copia y cuenta el cargo del original una sola vez. Si el origen falta o pertenece a otro recorrido, el costo de ese caso queda pendiente.
+Si guardaste una respuesta de caché, incluí el resultado identificado por `consumo_api.origen_cache` en el mismo caso o en otra entrada con la misma huella, modo y versión. El informe registra cero intentos para la copia y cuenta el cargo del original una sola vez. Si falta ese origen, el costo queda pendiente.
 
 Si una tarjeta web queda con consumo pendiente, descargá el JSON. Cuando figure `trabajo_aceptado`, usá ese objeto como respuesta del caso. Conserva el pedido de consumo y la versión de modo. Si figura `consumo_pendiente` sin `trabajo_aceptado`, usá `null` como respuesta. Los intentos quedan pendientes hasta conciliarlos con el registro de uso.
 
