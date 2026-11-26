@@ -176,7 +176,7 @@ def evaluate_prueba(case, private, identity, server, respuestas):
         row['local_hash'] = R.fingerprint(local['prediction'])
         headers = {'x-api-token': server.API_TOKEN} if server.API_TOKEN else {}
         with patch.object(server, 'clasificar_local', side_effect=lambda _: copy.deepcopy(local['prediction'])), \
-                patch.object(server, 'CACHE_MAX', 0), patch.object(server, '_hay_cuota', return_value=True), \
+                patch.multiple(server, CACHE_MAX=0, RATE_LIMITE=0), patch.object(server, '_hay_cuota', return_value=True), \
                 patch.object(R.V, 'api_key', return_value='reproduccion-sin-red'), \
                 patch.object(R.V, 'OPENROUTER_LOG_USO', False), \
                 patch.object(R.V, '_pedir_http', side_effect=contestar), TestClient(server.app, headers=headers) as client:

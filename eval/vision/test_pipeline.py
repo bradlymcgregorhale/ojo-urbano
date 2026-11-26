@@ -57,6 +57,7 @@ class PipelineTests(unittest.TestCase):
     def test_replay_prueba_scores_only_exact_archived_http_requests(self):
         self.server.app = FastAPI()
         self.server.CACHE_MAX = 10
+        self.server.RATE_LIMITE = 60
         self.server.API_TOKEN = 'test-only-token'
         url = 'https://openrouter.example/chat/completions'
         cuerpo = {'model': 'lector', 'response_format': {'type': 'json_schema'}}
@@ -67,6 +68,7 @@ class PipelineTests(unittest.TestCase):
         async def clasificar(file: UploadFile, modo: str = Form(), contexto: str = Form(''), x_api_token: str = Header()):
             self.assertEqual(modo, 'prueba')
             self.assertEqual(x_api_token, self.server.API_TOKEN)
+            self.assertEqual(self.server.RATE_LIMITE, 0)
             self.assertEqual((await file.read()), (self.root / self.case['photo']).read_bytes())
             solicitud = Request(url, data=json.dumps(cuerpo | {'contexto': contexto}).encode())
             try:
@@ -79,6 +81,7 @@ class PipelineTests(unittest.TestCase):
         archivadas = {huella: {'usage': {'cost': .003}}}
         row = P.evaluate_prueba(self.case, self.root, self.identity, self.server, archivadas)
         self.assertEqual((row['status'], row['modo_version'], row['cost_usd']), ('pass', 'version-prueba', 0))
+        self.assertEqual(self.server.RATE_LIMITE, 60)
         self.assertNotIn(self.server.API_TOKEN, json.dumps(row))
         self.assertEqual(row['requests'][0]['raw'], archivadas[huella])
         distinto = dict(self.case, context='Otro pedido')
