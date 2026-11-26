@@ -182,6 +182,28 @@ class ContextoOcupacionTest(unittest.TestCase):
         self.assertEqual(resultado["solicitudes_sugeridas"]["servicios"], [])
         self.assertTrue(resultado["hay_reclamo"])
 
+    def test_la_barrera_solo_se_propone_si_respalda_el_otro_pedido_explicito(self):
+        ocupacion = {"key": "ocupacion_comercial", "nombre": "Ocupación comercial"}
+        retiro = {"key": "retiro_muebles", "nombre": "Retiro de muebles"}
+        obstruccion = {"key": "obstruccion", "nombre": "Obstrucción"}
+        for pedida in (False, True):
+            with self.subTest(pedida=pedida):
+                contexto = [ocupacion | {"respaldo_visual": "contradice"},
+                            retiro | {"respaldo_visual": "compatible"}]
+                if pedida:
+                    contexto.append(obstruccion | {"respaldo_visual": "compatible"})
+                salida = {"modo": "prueba", "analisis_estado": "completo", "foto_valida": True,
+                          "problemas": [ocupacion, retiro, obstruccion],
+                          "categorias_contexto": contexto}
+                salida["solicitudes_sugeridas"] = prioridad.proponer_solicitudes(salida)
+                texto = "Ocupación comercial y retiro de muebles"
+                if pedida:
+                    texto += " y obstrucción por una barrera aparte"
+                contexto_ocupacion.aplicar(salida, texto)
+                self.assertEqual(salida["reclamo_foto"]["estado"], "compatible" if pedida else "no_corresponde")
+                servicios = ["obstruccion", "retiro_muebles"] if pedida else ["retiro_muebles"]
+                self.assertEqual(salida["solicitudes_sugeridas"]["servicios"], servicios)
+
 
 if __name__ == "__main__":
     unittest.main()

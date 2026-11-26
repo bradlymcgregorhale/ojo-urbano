@@ -80,6 +80,14 @@ def aplicar(publica, contexto):
     elementos = {c.get("key") for c in publica.get("elementos_detectados", [])}
     respaldos = {c.get("respaldo_visual") for c in publica.get("categorias_contexto", [])
                  if c.get("key") == _TIPO or str(c.get("codigo")) == _SERVICIOS[_TIPO][0]}
+    sin_respaldo_ocupacion = (pedido_mixto and "compatible" not in respaldos
+                             and bool(respaldos & {"contradice", "neutral"}))
+    ocupaciones_visibles = problemas & _SERVICIOS.keys()
+    if barrera_para_el_pedido:
+        ocupaciones_visibles.add(_OBSTRUCCION)
+    if sin_respaldo_ocupacion:
+        ocupaciones_visibles &= {c.get("key") for c in publica["categorias_contexto"]
+                                if c.get("respaldo_visual") == "compatible"}
     foto_rechazada = (publica.get("evaluacion_foto") or {}).get("rechazada")
     indicio_comercial = any(
         c.get("key") == _TIPO and not c.get("anulada_por")
@@ -92,12 +100,14 @@ def aplicar(publica, contexto):
     servicios = []
     if foto_rechazada:
         estado, motivo = "sin_evidencia", "La foto no permite ver bien el lugar del reclamo."
-    elif problemas & _SERVICIOS.keys() or barrera_para_el_pedido:
-        servicios = [key for key in _SERVICIOS if key in problemas
-                     or (key == _OBSTRUCCION and barrera_para_el_pedido)]
+    elif ocupaciones_visibles:
+        servicios = [key for key in _SERVICIOS if key in ocupaciones_visibles]
         estado, motivo = "compatible", "La foto muestra qué ocupa la vereda."
-    elif publica.get("foto_valida") is False or ("contradice" in respaldos and _TIPO not in problemas):
+    elif (publica.get("foto_valida") is False
+          or ("contradice" in respaldos and (sin_respaldo_ocupacion or _TIPO not in problemas))):
         estado, motivo = "no_corresponde", "La foto no coincide con el pedido de ocupación de la vereda."
+    elif sin_respaldo_ocupacion:
+        estado, motivo = "sin_evidencia", "En la foto no se alcanza a ver la ocupación de la vereda."
     elif solo_contenedor:
         estado, motivo = "no_corresponde", "La foto muestra un contenedor. No se ve la ocupación reportada."
     elif indicio_comercial:

@@ -1047,19 +1047,22 @@ class ApiModos(unittest.TestCase):
 
         foto = ('foto.jpg', self.foto, 'image/jpeg')
         datos = {'modo': 'prueba', 'contexto': 'Ocupación comercial y baldosas rotas'}
-        for respaldo, estado, esperados in (
-            ('compatible', 'compatible', ['ocupacion_comercial', 'reparacion_vereda']),
-            ('contradice', 'no_corresponde', ['reparacion_vereda']),
+        for respaldo, ocupacion_vista, estado, esperados in (
+            ('compatible', True, 'compatible', ['ocupacion_comercial', 'reparacion_vereda']),
+            ('contradice', False, 'no_corresponde', ['reparacion_vereda']),
+            ('contradice', True, 'no_corresponde', ['reparacion_vereda']),
+            ('neutral', True, 'sin_evidencia', ['reparacion_vereda']),
         ):
-            with self.subTest(respaldo=respaldo):
+            with self.subTest(respaldo=respaldo, ocupacion_vista=ocupacion_vista):
                 def responder(req, *_):
                     contenido = {'confirmadas': [], 'dudosas': []}
                     if json.loads(req.data)['model'] == 't/decision':
                         contenido['confirmadas'] = [
                             {'key': 'reparacion_vereda', 'evidencia': 'Faltan baldosas.'},
                             {'key': 'retiro_muebles', 'evidencia': 'Silla descartada en otro sector.'}]
-                        if respaldo == 'compatible':
-                            contenido['confirmadas'].append({'key': 'ocupacion_comercial', 'evidencia': 'Ropa exhibida.'})
+                        if ocupacion_vista:
+                            ropa = 'Ropa exhibida.' if respaldo == 'compatible' else 'Ropa de otro comercio.'
+                            contenido['confirmadas'].append({'key': 'ocupacion_comercial', 'evidencia': ropa})
                         contenido['pedidos'] = [{'key': 'ocupacion_comercial', 'respaldo': respaldo},
                                                 {'key': 'reparacion_vereda', 'respaldo': 'compatible'}]
                     return {'usage': {'cost': .001}, 'choices': [
@@ -1080,7 +1083,11 @@ class ApiModos(unittest.TestCase):
                 for respuesta in (r.json(), trabajo['resultado']):
                     self.assertEqual(respuesta['reclamo_foto']['estado'], estado)
                     self.assertEqual(respuesta['solicitudes_sugeridas']['servicios'], esperados)
-                    self.assertIn('retiro_muebles', [p['key'] for p in respuesta['problemas']])
+                    hallazgos = {p['key'] for p in respuesta['problemas']}
+                    self.assertIn('retiro_muebles', hallazgos)
+                    self.assertEqual('ocupacion_comercial' in hallazgos, ocupacion_vista)
+                    pedidos = {p['key']: p['respaldo_visual'] for p in respuesta['categorias_contexto']}
+                    self.assertEqual(pedidos['ocupacion_comercial'], respaldo)
 
     def test_ultimo_campo_escalar_y_no_archivo(self):
         r = self.cliente.post('/clasificar', files=[('file', ('foto.jpg', self.foto)),
