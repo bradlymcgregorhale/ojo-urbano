@@ -25,6 +25,9 @@ RECUENTO = ('Si detectás una pila candidata de retiro_escombros, aunque el mate
             'si se distinguen como unidades. Excluí bolsones de izado y residuos aparte. Usá 0 si '
             'sólo hay material suelto, null si no podés contar. Marcá bolsas_adicionales_posibles '
             'si el solapamiento o el encuadre podría ocultar otras. Sin pila candidata, devolvé ambos campos null.')
+RESIDUOS_BOLSON = ('Marcá solo_residuos_del_bolson como true si los residuos están dentro de un bolsón de izado '
+                  'y afuera sólo hay restos aislados o nada. Un volante aislado no justifica recolección. '
+                  'Usá false si ves residuos comunes descartados aparte y null si no hay bolsón o no lo podés distinguir.')
 OBJETOS = ('Si confirmás retiro_muebles, enumerá en objetos hasta ocho voluminosos descartados que se '
            'distingan en la foto. Usá nombres cortos, por ejemplo "lavarropas", "armario" o "silla plástica". '
            'Excluí el contenedor, los objetos en uso y lo que no se distingue. Si no confirmás retiro_muebles '
@@ -50,6 +53,7 @@ _LECTURA_CON_RECUENTO = _objeto({
     **_LECTURA['properties'],
     'bolsas_visibles': {'type': ['integer', 'null']},
     'bolsas_adicionales_posibles': {'type': ['boolean', 'null']},
+    'solo_residuos_del_bolson': {'type': ['boolean', 'null']},
 })
 _LECTURA_FINAL = _objeto({
     **_LECTURA_CON_RECUENTO['properties'],
@@ -97,7 +101,7 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, cont
             'retiros': _LECTURA_CON_RECUENTO, 'decision': _LECTURA_FINAL,
         }.get(etapa, _LECTURA)
         if etapa in ('retiros', 'decision'):
-            texto += '\n' + RECUENTO
+            texto += '\n' + RECUENTO + '\n' + RESIDUOS_BOLSON
         if etapa == 'decision':
             texto += '\n' + OBJETOS
             if contexto:
@@ -122,6 +126,8 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, cont
                 and any('retiro_escombros' in lectura[k] for k in ('confirmadas', 'dudosas'))
                 and type(cuenta) is int and 0 <= cuenta <= 999):
             lectura['recuento'] = (cuenta, tapadas if isinstance(tapadas, bool) else None)
+        if etapa in ('retiros', 'decision') and valor.get('solo_residuos_del_bolson') is True:
+            lectura['solo_residuos_del_bolson'] = True
         if etapa == 'decision' and 'retiro_muebles' in lectura['confirmadas']:
             lectura['objetos'] = V._objetos_lista(valor.get('objetos')) or []
         if contexto:
@@ -284,6 +290,12 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
     if final is None:
         return {}, {}, None
     confirmadas, dudas = final['confirmadas'], final['dudosas']
+    if retiros.get('solo_residuos_del_bolson') and final.get('solo_residuos_del_bolson'):
+        confirmadas.pop('recoleccion', None)
+        dudas.pop('recoleccion', None)
+        pedidos = final.get('pedidos') or {}
+        if 'recoleccion' in pedidos:
+            pedidos['recoleccion'] = 'contradice'
     fuentes = {k: [sol] for k in confirmadas}
     tipo_actual = set(confirmadas).intersection(TIPOS)
     ranking = sorted(((scores.get(k, 0), k) for k in TIPOS), reverse=True)

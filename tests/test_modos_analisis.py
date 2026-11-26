@@ -546,6 +546,45 @@ class ApiModos(unittest.TestCase):
                     self.assertEqual(salida['verificacion_escombros']['bolsas_minimo'], minimo)
                     self.assertIs(salida['verificacion_escombros']['bolsas_recuento_completo'], exacto)
 
+    def test_prueba_excluye_recoleccion_si_ambas_lecturas_ubican_los_residuos_en_el_bolson(self):
+        datos = {'modo': 'prueba', 'contexto': 'Recolección de basura y barrido de la vereda'}
+        archivos = {'file': ('foto.jpg', self.foto, 'image/jpeg')}
+        for dirigida, final in ((True, True), (True, False), (False, True), (True, None), (None, None), (1, True)):
+            with self.subTest(dirigida=dirigida, final=final):
+                llamadas = []
+                excluir = dirigida is True and final is True
+
+                def responder(modelo, mensajes, **opciones):
+                    etapa = opciones['etapa']
+                    llamadas.append(etapa)
+                    esquema = opciones['esquema']
+                    usa_bolson = etapa in ('prueba_retiros', 'prueba_decision')
+                    self.assertEqual('solo_residuos_del_bolson' in esquema['required'], usa_bolson)
+                    valor = {'confirmadas': [], 'dudosas': []}
+                    if usa_bolson:
+                        self.assertIn('volante aislado', mensajes[0]['content'])
+                        valor['solo_residuos_del_bolson'] = dirigida if etapa == 'prueba_retiros' else final
+                    if etapa == 'prueba_decision':
+                        valor['confirmadas'] = [
+                            {'key': 'recoleccion', 'evidencia': 'Restos visibles cerca de un bolsón de izado.'},
+                            {'key': 'barrido', 'evidencia': 'Tierra acumulada sobre la vereda.'},
+                        ]
+                        valor['pedidos'] = [{'key': k, 'respaldo': 'compatible'} for k in ('recoleccion', 'barrido')]
+                    return json.dumps(valor)
+
+                with patch.object(self.S, 'CACHE_MAX', 0), patch.object(V, '_llamar', side_effect=responder):
+                    r = self.cliente.post('/clasificar', files=archivos, data=datos)
+                self.assertEqual(r.status_code, 200, r.text)
+                self.assertCountEqual(llamadas, ['prueba_inicio', 'prueba_retiros', 'prueba_decision'])
+                salida = r.json()
+                esperados = {'barrido'} if excluir else {'recoleccion', 'barrido'}
+                self.assertEqual({p['key'] for p in salida['problemas']}, esperados)
+                propuesta = salida['solicitudes_sugeridas']
+                self.assertEqual(set(propuesta['candidatos']), esperados)
+                self.assertEqual(propuesta['servicios'], ['barrido'] if excluir else [])
+                respaldo = {p['key']: p['respaldo_visual'] for p in salida['categorias_contexto']}
+                self.assertEqual(respaldo['recoleccion'], 'contradice' if excluir else 'compatible')
+
     def test_prueba_distingue_evidencia_de_la_escena(self):
         import prueba_completo as P
         for poda, piso, comunes, esperadas in (
