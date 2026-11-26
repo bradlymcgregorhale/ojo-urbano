@@ -207,17 +207,19 @@ def proponer_solicitudes(publica):
             or (publica.get('contexto_visual') or {}).get('suficiente') is False):
         return dict(resultado, estado='requiere_contexto',
                     motivo='Falta confirmar la ubicación o el alcance antes de elegir servicios.')
+    limpieza = {'barrido', 'recoleccion'}
+    pedidos_respaldados = []
     if (publica.get('modo') == 'prueba' and publica.get('analisis_estado') == 'completo'
             and publica.get('foto_valida') is True):
         pedidos = {c['key']: c.get('respaldo_visual') for c in publica.get('categorias_contexto') or []
                    if c.get('key')}
-        # Barrido y recolección pueden describir los mismos residuos. Conservá
-        # la selección habitual, incluso si la revisión de un bolsón no coincide.
-        if len(pedidos) > 1 and not {'barrido', 'recoleccion'} <= pedidos.keys():
-            servicios = [k for k, respaldo in pedidos.items() if respaldo == 'compatible' and k in candidatos]
-            if servicios:
-                return dict(resultado, estado='propuesta', servicios=servicios, criterio='pedidos_explicitos',
-                            motivo='Revisá los servicios solicitados que respalda la foto.')
+        if len(pedidos) > 1:
+            pedidos_respaldados = [k for k, respaldo in pedidos.items()
+                                  if respaldo == 'compatible' and k in candidatos]
+            # Este par puede describir los mismos residuos. Si no hay otro
+            # pedido respaldado, conservá la selección habitual.
+            if limpieza <= pedidos.keys() and not set(pedidos_respaldados) - limpieza:
+                pedidos_respaldados = []
     if elegido not in candidatos:
         elegido = None
     if elegido and principal.get('criterio') == 'pedido_explicito':
@@ -239,8 +241,13 @@ def proponer_solicitudes(publica):
         elif len(candidatos) == 1:
             servicios, motivo = candidatos, 'Es el único servicio confirmado.'
         else:
-            return dict(resultado, motivo='Hay varios hallazgos; falta elegir qué servicios solicitar.')
-    return dict(resultado, estado='propuesta', servicios=servicios, motivo=motivo)
+            servicios, motivo = [], 'Hay varios hallazgos; falta elegir qué servicios solicitar.'
+    if pedidos_respaldados:
+        if limpieza <= set(pedidos_respaldados):
+            pedidos_respaldados = [k for k in pedidos_respaldados if k not in limpieza or k in servicios]
+        return dict(resultado, estado='propuesta', servicios=pedidos_respaldados, criterio='pedidos_explicitos',
+                    motivo='Revisá los servicios solicitados que respalda la foto.')
+    return dict(resultado, estado='propuesta' if servicios else 'pendiente', servicios=servicios, motivo=motivo)
 
 
 def ajustar_descripcion(publica, verificadores, auditorias=()):

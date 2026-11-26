@@ -24,6 +24,29 @@ class PrioridadTest(unittest.TestCase):
                 self.assertEqual(sin_contexto['estado'], 'requiere_contexto')
                 self.assertEqual(sin_contexto['servicios'], [])
 
+    def test_la_duda_entre_barrido_y_recoleccion_no_quita_otro_pedido(self):
+        barrido, recoleccion, cordon = 'barrido', 'recoleccion', 'reparacion_cordon'
+        for principal, respaldo_barrido, esperados in (
+            (barrido, 'compatible', [barrido, cordon]),
+            (barrido, 'contradice', [recoleccion, cordon]),
+            (None, 'compatible', [cordon]),
+        ):
+            with self.subTest(principal=principal, respaldo_barrido=respaldo_barrido):
+                publica = {'modo': 'prueba', 'analisis_estado': 'completo', 'foto_valida': True,
+                           'problemas': [{'key': k} for k in (barrido, recoleccion, cordon)],
+                           'problema_principal': {'key': principal, 'estado': 'seleccionado'},
+                           'categorias_contexto': [
+                               {'key': barrido, 'respaldo_visual': respaldo_barrido},
+                               {'key': recoleccion, 'respaldo_visual': 'compatible'},
+                               {'key': cordon, 'respaldo_visual': 'compatible'}]}
+                propuesta = P.proponer_solicitudes(publica)
+                self.assertEqual(propuesta['servicios'], esperados)
+                self.assertEqual(propuesta['criterio'], 'pedidos_explicitos')
+                self.assertEqual(propuesta['candidatos'], [barrido, recoleccion, cordon])
+                solo_limpieza = dict(publica, categorias_contexto=publica['categorias_contexto'][:2])
+                self.assertEqual(P.proponer_solicitudes(solo_limpieza),
+                                 P.proponer_solicitudes(dict(solo_limpieza, modo='alto')))
+
     def test_solicitudes_multiples_sin_cambiar_hallazgos(self):
         r = {'problemas': [{'key': k} for k in ['retiro_escombros', 'retiro_muebles', 'recoleccion']],
              'problema_principal': {'key': 'retiro_muebles', 'estado': 'seleccionado', 'criterio': 'escena'}}
