@@ -283,7 +283,15 @@ def _recuento(*lecturas):
     return {'bolsas_minimo': minimo, 'bolsas_recuento_completo': exacto, 'bolsas_fuentes': len(votos)}
 
 
-def _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos):
+_BOLSAS = re.compile(r'\b(?:bolsas?|sacos?)\b')
+_CONTENIDO_NO_VISIBLE = re.compile(
+    r'\b(?:contenido (?:oculto|ambiguo|indeterminado)|no se distingue (?:que residuos|el contenido))\b')
+_RESIDUOS_COMUNES_APARTE = re.compile(
+    r'\b(?:separad[ao]s?|aparte|cart[oó]n|cartones|cajas?|envoltorios?|'
+    r'comida|envases?|papeles?|botellas?)\b')
+
+
+def _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos, retiros):
     if mercaderia_en_interior(confirmadas.get('manteros')):
         fuentes.pop('manteros', None)
         if 'manteros' in pedidos:
@@ -303,6 +311,14 @@ def _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos):
             and not re.search(r'\b(?:separad[ao]s?|aparte|cart[oó]n|cartones|cajas?|envoltorios?|'
                               r'comida|envases?|papeles?|botellas?)\b', comunes)):
         fuentes.pop('recoleccion', None)
+    duda_retiros = V._norm_texto(retiros.get('dudosas', {}).get('recoleccion', ''))
+    if ('recoleccion' in fuentes and _BOLSAS.search(comunes)
+            and not _RESIDUOS_COMUNES_APARTE.search(comunes)
+            and _BOLSAS.search(duda_retiros) and _CONTENIDO_NO_VISIBLE.search(duda_retiros)):
+        fuentes.pop('recoleccion')
+        dudas.setdefault('recoleccion', 'No se distingue el contenido. ¿Qué hay en las bolsas?')
+        if pedidos.get('recoleccion') == 'compatible':
+            pedidos['recoleccion'] = 'neutral'
 
 
 def clasificar(img, local, categorias, modelos, *, contexto=''):
@@ -402,7 +418,7 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
             and any(k in evidencia for k in ('sacos', 'bolsas', 'pila', 'tubos', 'bolson', 'bolsón'))
             and not any(k in evidencia for k in ('barrera', 'valla', 'cartel', 'anclad', 'colocad'))):
         fuentes.pop('obstruccion', None)
-    _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos)
+    _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos, retiros)
     modelo = {'modelo': sol, 'ok': True,
               'categorias': [{'key': k, 'evidencia': e} for k, e in confirmadas.items()]}
     if 'pedidos' in final:
