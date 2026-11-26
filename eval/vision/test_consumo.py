@@ -176,6 +176,40 @@ class PruebaConsumo(unittest.TestCase):
         self.assertIsNone(foto["recuento_observado"])
         self.assertEqual(resumen["casos_sin_puntuar_recuento"], 1)
 
+    def test_un_analisis_parcial_no_acredita_etiquetas_o_recuento_aunque_coincidan(self):
+        problema = {"key": "retiro_escombros", "bolsas": 0}
+        datos = caso_con_recuento({"bolsas": 0}, problema, analisis_estado="parcial", verificacion_activa=True)
+        resumen, [foto] = conciliar([datos], [uso("web", "g", .009)])
+        self.assertIsNone(foto["diferencias"])
+        self.assertIsNone(foto["diferencias_recuento"])
+        self.assertIsNone(foto["recuento_observado"])
+        self.assertEqual(resumen["casos_sin_puntuar"], 1)
+        self.assertEqual(resumen["casos_sin_puntuar_recuento"], 1)
+        self.assertTrue(foto["conciliado"])
+        self.assertEqual(foto["costo_conocido_usd"], "0.009")
+
+    def test_etiquetas_recuento_y_respaldo_usan_la_misma_respuesta_completa(self):
+        problema = {"key": "retiro_escombros", "bolsas": 0}
+        respaldo = {"key": "retiro_escombros", "respaldo_visual": "compatible"}
+        datos = caso_con_recuento({"bolsas": 0}, problema, analisis_estado="completo",
+                                  categorias_contexto=[respaldo], verificacion_activa=True)
+        datos["contexto_esperado"] = {"categorias_contexto": {"retiro_escombros": "compatible"}}
+        original, = datos["respuestas"]
+        for estado, activa in (("parcial", True), ("sin_verificacion", False), ("completo", False)):
+            with self.subTest(estado=estado, activa=activa):
+                incompleta = original | {"problemas": [], "categorias_contexto": [],
+                                         "analisis_estado": estado, "verificacion_activa": activa,
+                                         "consumo_api": {"pedido": "segundo", "intentos": int(activa)}}
+                eventos = [uso("web", "g1", .009)]
+                if activa:
+                    eventos.append(uso("segundo", "g2", .001))
+                caso = datos | {"respuestas": [original, incompleta]}
+                [foto] = conciliar([caso], eventos)[1]
+                self.assertEqual(foto["diferencias"], [])
+                self.assertEqual(foto["diferencias_recuento"], [])
+                self.assertEqual(foto["diferencias_contexto"], [])
+                self.assertEqual(foto["costo_conocido_usd"], "0.010" if activa else "0.009")
+
     def test_respaldos_y_servicios_se_puntuan_aparte_del_costo_y_las_etiquetas(self):
         esperado = {"categorias_contexto": {"retiro_muebles": "neutral", "ocupacion_comercial": None},
                     "solicitudes_sugeridas": ["reparacion_vereda", "barrido"], "reclamo_foto_estado": None}
@@ -204,7 +238,7 @@ class PruebaConsumo(unittest.TestCase):
             with self.subTest(diferencias=diferencias):
                 caso = base | {"contexto_esperado": esperado, "respuestas": [{"resultado": resultado}]}
                 resumen, [foto] = conciliar([caso], [uso("web", "g", .009)])
-                self.assertEqual(foto["diferencias"], [])
+                self.assertEqual(foto["diferencias"], None if resultado.get("analisis_estado") == "parcial" else [])
                 self.assertEqual(foto["costo_conocido_usd"], "0.009")
                 self.assertEqual(foto["diferencias_contexto"], diferencias)
                 self.assertEqual(resumen["casos_sin_puntuar_contexto"], int(diferencias is None))
