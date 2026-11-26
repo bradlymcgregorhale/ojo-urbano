@@ -22,6 +22,8 @@ python -m eval.vision.centavo --evidencia "$EVIDENCIA_VISION" \
 
 En una evaluación con cargos, guardá un manifiesto privado `{"casos": [...]}`. Por cada foto y recorrido (`entrada`, por ejemplo `ojo_urbano` o `bacollab`), anotá un `id` del banco, `modo`, `modo_version` y la referencia en `esperado`. Usá `true` o `false` sólo en etiquetas revisadas. Las dudas pueden quedar en `null`.
 
+El evaluador facturado guarda `foto_sha256` con la huella SHA-256 de los bytes enviados. Para conciliar varias corridas, incluí en el mismo manifiesto sus entradas y respuestas con esa huella verificada. Las entradas de una misma ruta y versión se reúnen en `respuestas`, en orden. El informe conserva la evaluación por recorrido y suma el costo de la foto entre rutas, IDs y versiones. `fotos_sobre_el_tope` cuenta las fotos con más de USD 0,01 de gasto conocido y `maximo_conciliado_usd` toma el total de cada foto con todos sus intentos conciliados. Para los manifiestos anteriores sin huella se conserva la conciliación por recorrido.
+
 Si revisaste el recuento de bolsas, agregá `recuento_esperado` al caso con sólo los campos revisados. Podés exigir `{"bolsas": 0}` para material suelto o `{"bolsas": null, "bolsas_minimo": [5, null], "bolsas_recuento_completo": false}` para un recuento abierto de al menos cinco. Un intervalo cerrado como `[12, 15]` incluye ambos extremos. Un campo omitido queda sin evaluar. El informe compara esos campos de la última respuesta verificada, mantiene las diferencias de recuento separadas de las categorías y deja el recuento pendiente si falta la respuesta.
 
 En Completo (prueba), agregá `"bolsas_fuentes": 2` a `recuento_esperado` si también necesitás que dos lectores respalden el mínimo. Una respuesta anterior que omite el campo queda sin acreditar ese requisito.
@@ -30,9 +32,9 @@ En `respuestas`, incluí en orden los JSON devueltos por Completo (prueba) para 
 
 En la carga web, guardá el JSON final de `/trabajos/`. Si falta el resultado, conservá el último estado del trabajo. Bacollab guarda el JSON de `/clasificar/` en `image_api_calls.response_text`. Incluí `null` si un envío se cortó sin devolver el JSON. Eso deja la conciliación pendiente incluso si otro envío terminó. Corré ambos recorridos con `CACHE_MAX=0` en una instancia de evaluación para que cada uno ejecute el análisis.
 
-Si guardaste una respuesta de caché, incluí el resultado identificado por `consumo_api.origen_cache` en el mismo caso. El informe registra cero intentos para la copia y cuenta el cargo del original una sola vez. Si el origen falta o pertenece a otro recorrido, el costo de ese caso queda pendiente.
+Si guardaste una respuesta de caché, incluí el resultado identificado por `consumo_api.origen_cache` en el mismo caso o en otra entrada con la misma huella, modo y versión. El informe registra cero intentos para la copia y cuenta el cargo del original una sola vez. Si falta ese origen, el costo queda pendiente.
 
-Si una tarjeta web queda con consumo pendiente, descargá el JSON. Cuando figure `trabajo_aceptado`, usá ese objeto como respuesta del caso. Conserva el pedido de consumo y la versión de modo. Si figura `consumo_pendiente` sin `trabajo_aceptado`, usá `null` como respuesta. Los intentos quedan pendientes hasta conciliarlos con el registro de uso.
+Si una tarjeta web queda con consumo pendiente, descargá el JSON. Usá su `resultado` si está presente, aunque sea parcial. Si el resultado no llegó, usá `trabajo_aceptado`, que conserva el pedido de consumo y la versión de modo. Si faltan ambos, usá `null`. La tarjeta de Completo (prueba) conserva la descarga y deja el nuevo análisis pendiente de conciliación.
 
 Para respuestas anteriores a `consumo_api`, podés armar `pedidos` y `etiquetas` a mano en lugar de `respuestas`. En `pedidos` vinculá cada ID del log con su número de intentos. Usá `null` si todavía no se pudo confirmar ese número. En `etiquetas` usá las claves confirmadas, `[]` si no hubo ninguna o `null` si falta el resultado.
 
@@ -114,7 +116,9 @@ Usá `--ruta-prueba clasificar` para la consulta directa con el contexto del cas
 
 El evaluador guarda cada caso y lo vincula con su pedido antes de la primera consulta al proveedor. Si se corta la ejecución, podés recuperar los cargos conocidos y dejar pendiente el total de intentos. Junto al informe quedan `.consumo.json`, `.uso.jsonl` y `.intentos.jsonl` en la carpeta privada. Los dos primeros se pueden pasar a `eval.vision.consumo`. El tercero registra las huellas y respuestas del proveedor. Podés reproducir las respuestas de un informe facturado con `--baseline`, sin usar `--live`.
 
-Cada foto requiere USD 0,01 disponibles del presupuesto del lote. El saldo se actualiza con los importes registrados. Si falta conciliar un cargo, si el proveedor supera una reserva o si queda menos de un centavo, la medición se detiene y el informe identifica los casos pendientes. La reserva se calcula antes de la consulta. El importe real sólo se conoce al recibir la respuesta. Después de una interrupción, revisá el manifiesto y el registro de intentos antes de iniciar otra medición.
+Cada foto nueva requiere USD 0,01 disponibles del presupuesto del lote. El saldo se actualiza con los importes registrados. Si falta conciliar un cargo, el proveedor supera una reserva o se agota el saldo del lote, la medición se detiene y el informe identifica los casos pendientes. La reserva se calcula antes de la consulta. El importe real sólo se conoce al recibir la respuesta.
+
+Para volver a medir una foto, conciliá primero todos sus intentos previos con `eval.vision.consumo` y pasá el archivo de `--detalle` en `--consumo-previo`. La medición busca la huella de los bytes enviados y resta el gasto anterior del centavo disponible. Si falta conciliar un importe o las lecturas base no entran en ese saldo, frena antes de enviar la foto. El informe conserva la huella del detalle previo y registra por separado el cargo nuevo y el acumulado. Para la conciliación siguiente, reuní los manifiestos y logs de todos los intentos.
 
 Para capturar nuevas predicciones locales y completar peticiones pendientes:
 
