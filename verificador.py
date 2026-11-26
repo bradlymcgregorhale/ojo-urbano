@@ -4274,7 +4274,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
     varias_claves = len(con_vehiculo) > 1
     if varias_claves:
         # Las claves describen infracciones. Para compartir la chapa hace falta
-        # ubicar un solo recorte en la foto, incluso si los lectores ya coinciden.
+        # un solo recorte que alcance el ancho mínimo, aunque los lectores ya coincidan.
         patente_escena = None
     if patente_escena is None and vistos_vehiculo and len(lecturas_totales) <= 1:
         leida = _leer_patente(img, solo_recorte=varias_claves)

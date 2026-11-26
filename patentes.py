@@ -161,11 +161,13 @@ def _nombre(modelo):
 
 
 def leer_chapas(img, lectores=None, *, solo_una=False):
-    """Todas las chapas detectadas en la foto, cada una con sus lecturas."""
+    """Lee las detecciones. Con solo_una, exige una única caja con ancho suficiente."""
     lectores = list(dict.fromkeys(LECTORES if lectores is None else lectores))
     detecciones = detectar(img)
-    if solo_una and len(detecciones) != 1:
-        return []
+    if solo_una:
+        detecciones = [det for det in detecciones if det["caja"][2] - det["caja"][0] >= ANCHO_MINIMO]
+        if len(detecciones) != 1:
+            return []
     salida = []
     for det in detecciones:
         x1, y1, x2, y2 = det["caja"]

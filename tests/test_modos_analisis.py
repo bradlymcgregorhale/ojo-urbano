@@ -290,12 +290,15 @@ class ApiModos(unittest.TestCase):
 
         claves = ('vehiculo_abandonado', 'vehiculo_mal_estacionado')
         una = [{'caja': [2, 4, 20, 14], 'confianza': .9}]
+        chica = [{'caja': [4, 16, 18, 23], 'confianza': .95}]
         otra = [{'caja': [4, 16, 19, 23], 'confianza': .8}]
         ocr = {'patente': 'A123BCD', 'lectura': 'A123BCD', 'confianza': .9}
         lector_chapa = 't/chapa'
         for cajas, lectura, esperado, consultas_chapa in (
                 (una, 'A123BCD', 'A123BCD', 1),
                 (una, 'A128BCD', None, 1),
+                (chica, 'A123BCD', None, 0),
+                (chica + una, 'A123BCD', 'A123BCD', 1),
                 (una + otra, 'A123BCD', None, 0)):
             with self.subTest(cajas=len(cajas), lectura=lectura):
                 self.llamadas.clear()
@@ -312,7 +315,7 @@ class ApiModos(unittest.TestCase):
                     return {'usage': {'cost': .001, 'total_tokens': 10}, 'choices': [
                         {'finish_reason': 'stop', 'message': {'content': json.dumps(contenido)}}]}
 
-                with (patch.multiple(patentes, LECTORES=(lector_chapa,), ANCHO_MINIMO=1),
+                with (patch.multiple(patentes, LECTORES=(lector_chapa,), ANCHO_MINIMO=15),
                       patch.object(patentes, 'disponible', return_value=True),
                       patch.object(patentes, 'detectar', return_value=cajas),
                       patch.object(patentes, 'leer_local', return_value=ocr),
