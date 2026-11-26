@@ -522,12 +522,13 @@ def main(argv=None):
     if prueba:
         for caso in cases:
             try:
+                C.validar_etiquetas_esperadas(caso['expected'])
                 if 'contexto_esperado' in caso:
                     C.validar_contexto_esperado(caso['contexto_esperado'])
                 if 'recuento_esperado' in caso:
                     C.diferencias_recuento(caso['recuento_esperado'], None)
             except ValueError as error:
-                parser.error(str(error))
+                parser.error(f"{caso['id']}: {error}")
             principal = caso.get('principal_esperado')
             if principal is not None and (
                     not isinstance(principal, str) or principal not in regresiones.SERVICIOS | {'indeterminado'}

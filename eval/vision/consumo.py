@@ -264,14 +264,18 @@ def _cargos(eventos, pedidos, recibos):
     return intentos, cargos, pendientes, minimos_sin_generacion
 
 
-def _diferencias(caso):
-    referencia = caso.get("esperado", {})
-    etiquetas = caso.get("etiquetas")
+def validar_etiquetas_esperadas(referencia):
     if not isinstance(referencia, dict) or any(
         not _identificador(k) or (v is not None and type(v) is not bool)
         for k, v in referencia.items()
     ):
         raise ValueError("La referencia debe tener etiquetas true, false o null")
+
+
+def _diferencias(caso):
+    referencia = caso.get("esperado", {})
+    etiquetas = caso.get("etiquetas")
+    validar_etiquetas_esperadas(referencia)
     if etiquetas is not None and (not isinstance(etiquetas, list)
                                   or any(not _identificador(k) for k in etiquetas)):
         raise ValueError("Las etiquetas de la respuesta deben ser una lista o null")
