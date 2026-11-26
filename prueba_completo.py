@@ -39,10 +39,11 @@ OBJETOS = ('Si confirmás retiro_muebles, enumerá en objetos hasta ocho volumin
            'Excluí el contenedor, los objetos en uso y lo que no se distingue. En objeto_cant contá cada pieza '
            'visible una vez, hasta 15. Usá null si no podés contar o no confirmás retiro_muebles. Si no podés '
            'identificar ningún objeto o no confirmás el retiro, devolvé objetos=[].')
+MATERIALES_OBRA = ('obra_visible', 'obra_por_presentacion')
 ESTADOS_ALCANCE = {
     'ubicacion': ('publica', 'privada', 'indeterminada'),
     'presentacion': ('sacos_portables_o_suelto', 'solo_bolson_izado', 'sin_pila', 'indeterminada'),
-    'material': ('obra_visible', 'tapado_o_ambiguo', 'incompatible_visible', 'indeterminado'),
+    'material': (*MATERIALES_OBRA, 'tapado_o_ambiguo', 'incompatible_visible', 'indeterminado'),
     'residuos_comunes_aparte': ('si', 'no', 'indeterminado'),
 }
 
@@ -265,11 +266,18 @@ def _decision(lecturas, scores, claves):
     return texto
 
 
-def _escombro_elegible(lecturas):
-    return all(r is not None and r['ubicacion'] == 'publica'
+def _respaldo_alcance_escombros(lecturas):
+    if not all(r is not None and r['ubicacion'] == 'publica'
                and r['presentacion'] == 'sacos_portables_o_suelto'
-               and r['material'] in {'obra_visible', 'tapado_o_ambiguo'}
-               and r['residuos_comunes_aparte'] == 'si' for r in lecturas)
+               and r['residuos_comunes_aparte'] == 'si' for r in lecturas):
+        return None
+    materiales = {r['material'] for r in lecturas}
+    obra = set(MATERIALES_OBRA)
+    if materiales <= obra:
+        return 'compatible'
+    if materiales <= obra | {'tapado_o_ambiguo'}:
+        return 'neutral'
+    return None
 
 
 def _recuento(*lecturas):
@@ -399,8 +407,13 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
         alcances = V._map_modelos((luna, apoyo),
             lambda modelo: _leer(modelo, TEXTOS['alcance'], foto, 'alcance', contar_alcance=falta_conteo))
         if all(isinstance(r, dict) for r in alcances):
-            if _escombro_elegible(alcances):
+            respaldo = _respaldo_alcance_escombros(alcances)
+            if respaldo == 'compatible':
                 fuentes['retiro_escombros'] = ['modelo_local', luna, apoyo]
+            elif respaldo == 'neutral':
+                dudas.setdefault('retiro_escombros', 'No se distingue el contenido. ¿Qué hay en las bolsas?')
+                if 'retiro_escombros' in pedidos:
+                    pedidos['retiro_escombros'] = respaldo
             pila_corroborada = luna != apoyo and all(r.get('ubicacion') == 'publica'
                 and r.get('presentacion') == 'sacos_portables_o_suelto' for r in alcances)
             if falta_conteo and pila_corroborada:

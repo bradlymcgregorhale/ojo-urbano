@@ -739,6 +739,47 @@ class ApiModos(unittest.TestCase):
                 for problema in problemas:
                     self.assertEqual(problema['bolsas'], minimo if completo else None)
 
+    def test_prueba_el_alcance_deja_en_duda_el_material_no_corrobado(self):
+        clave = 'retiro_escombros'
+        local = {'predichas': [], 'gravedad': {}, 'escombros_mixtos': .99,
+                 'probabilidades': [{'key': clave, 'score': .99}]}
+        datos = {'modo': 'prueba', 'contexto': 'Pido retiro de escombros'}
+        archivos = {'file': ('foto.jpg', self.foto, 'image/jpeg')}
+        for materiales, confirmado in (
+                (('tapado_o_ambiguo', 'tapado_o_ambiguo'), False),
+                (('obra_visible', 'tapado_o_ambiguo'), False),
+                (('obra_visible', 'obra_por_presentacion'), True),
+                (('obra_por_presentacion', 'obra_por_presentacion'), True)):
+            with self.subTest(materiales=materiales):
+                etapas = []
+
+                def responder(modelo, mensajes, **opciones):
+                    etapa = opciones['etapa']
+                    etapas.append(etapa)
+                    valor = {'confirmadas': [], 'dudosas': []}
+                    if etapa == 'prueba_alcance':
+                        self.assertIn('dos señales externas distintas', mensajes[0]['content'])
+                        self.assertIn('obra_por_presentacion', opciones['esquema']['properties']['material']['enum'])
+                        valor = {'ubicacion': 'publica', 'presentacion': 'sacos_portables_o_suelto',
+                                 'material': materiales[0 if modelo == 't/dirigidos' else 1],
+                                 'residuos_comunes_aparte': 'si', 'evidencia': 'Un grupo de sacos junto a la vereda.'}
+                    elif etapa == 'prueba_decision':
+                        valor['confirmadas'] = [{'key': 'recoleccion', 'evidencia': 'Envases aparte de los sacos.'}]
+                        valor['pedidos'] = [{'key': clave, 'respaldo': 'compatible'}]
+                    return json.dumps(valor)
+
+                with (patch.object(self.S, 'CACHE_MAX', 0),
+                      patch.object(self.S, 'clasificar_local', return_value=local),
+                      patch.object(V, '_llamar', side_effect=responder)):
+                    r = self.cliente.post('/clasificar', files=archivos, data=datos)
+                self.assertEqual(r.status_code, 200, r.text)
+                self.assertCountEqual(etapas, ['prueba_inicio', 'prueba_retiros', 'prueba_decision'] + ['prueba_alcance'] * 2)
+                salida = r.json()
+                hallazgos = {p['key'] for p in salida['problemas']}
+                self.assertEqual(hallazgos, {'recoleccion', clave} if confirmado else {'recoleccion'})
+                self.assertEqual(salida['en_duda'], [] if confirmado else [clave])
+                self.assertEqual(salida['categorias_contexto'][0]['respaldo_visual'], 'compatible' if confirmado else 'neutral')
+
     def test_prueba_distingue_evidencia_de_la_escena(self):
         import prueba_completo as P
         for poda, piso, comunes, esperadas in (
