@@ -58,3 +58,16 @@ class GeometriaCordon(unittest.TestCase):
             for r in [dict(base, foto_valida=False), {'problemas': [{'key': R.KEY, 'origen': 'contexto_vecinal'}]}, {'problemas': []}]:
                 self.assertEqual(R.revisar(None, r), r)
             red.assert_not_called()
+
+    def test_desempate_exige_una_pieza_con_respaldo_de_tres_modelos_distintos(self):
+        base = revision(['rotura_estructural', 'rotura_estructural', 'desgaste_superficial'])
+        cuarto = {'modelo': R.MODELO_DESEMPATE, 'decision': 'pieza_desplazada',
+                  'prueba_fisica': 'Un bloque entero quedó corrido hacia la cuneta.'}
+        for positivo in ('pieza_desplazada', 'seccion_perdida'):
+            self.assertEqual(R.decidir(dict(base, desempate=dict(cuarto, decision=positivo))), 'confirmado')
+        for cambio in [{'modelo': R.MODELOS[0]}, {'decision': 'sin_obra'}, {'fallo': True},
+                       {'decision': 'indeterminado'}, {'prueba_fisica': ' '}]:
+            self.assertEqual(R.decidir(dict(base, desempate=cuarto | cambio)), 'revision')
+        self.assertEqual(R.decidir(dict(base, fallo=True, desempate=cuarto)), 'revision')
+        base['lecturas'][0]['pieza'] = 'vereda'
+        self.assertEqual(R.decidir(dict(base, desempate=cuarto)), 'revision')
