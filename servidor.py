@@ -579,10 +579,11 @@ def _calidad_segura(img):
         return None
 
 
-def _procesar_prueba(img, local, perfil, verificar):
+def _procesar_prueba(img, local, perfil, verificar, contexto):
     confirmadas, dudas, lector = {}, {}, None
     if verificar:
-        confirmadas, dudas, lector = prueba_completo.clasificar(img, local, CATEGORIAS, perfil.verificadores)
+        confirmadas, dudas, lector = prueba_completo.clasificar(
+            img, local, CATEGORIAS, perfil.verificadores, contexto=contexto)
     elementos, problemas = [], []
     for key, fuentes in confirmadas.items():
         entrada = {'key': key, 'nombre': nombre_de(key), 'fuentes': fuentes, 'gravedad': None}
@@ -594,7 +595,8 @@ def _procesar_prueba(img, local, perfil, verificar):
     salida = {'version': VERSION_API,
               'problemas': problemas, 'elementos_detectados': elementos,
               'posibles': posibles, 'en_duda': list(dudas), 'categorias_contexto': [],
-              'descartados_por_foto': [], 'foto_valida': None, 'foto_valida_estado': 'sin_contexto',
+              'descartados_por_foto': [], 'foto_valida': None,
+              'foto_valida_estado': 'no_evaluado' if contexto else 'sin_contexto',
               'descripcion': ', '.join(c['nombre'] for c in problemas) or None,
               'calidad_foto': _calidad_segura(img), 'detalle': {'modelo_local': local,
                   'verificacion': {'activa': lector is not None,
@@ -608,9 +610,31 @@ def _procesar_prueba(img, local, perfil, verificar):
                 if problema['key'] == 'retiro_escombros':
                     problema['bolsas'] = minimo
     salida = revision_ramas.revisar(img, salida, perfil)
+    if contexto and lector is not None:
+        _pedidos_prueba(salida, lector.get('pedidos', {}))
     salida.update(verificador.costo_total(con_estado=True, con_traza=True))
     salida.update(verificador.tokens_total(desglose=True))
     return modos.completar(salida)
+
+
+def _pedidos_prueba(salida, pedidos):
+    vistas = {p['key'] for p in salida['problemas']}
+    salida['categorias_contexto'] = [
+        {'key': clave, 'nombre': nombre_de(clave), 'fuentes': 1,
+         'respaldo_visual': 'compatible' if clave in vistas else respaldo}
+        for clave, respaldo in pedidos.items()
+    ]
+    respaldos = {c['respaldo_visual'] for c in salida['categorias_contexto']}
+    if 'compatible' in respaldos:
+        salida['foto_valida'], salida['foto_valida_estado'] = True, 'corresponde'
+    elif respaldos == {'contradice'}:
+        salida['foto_valida'], salida['foto_valida_estado'] = False, 'no_corresponde'
+        salida['descartados_por_foto'] = [dict(p, motivo_descarte='la foto no corresponde a lo que se pidió')
+                                         for p in salida['problemas']]
+        salida['problemas'] = []
+        salida['descripcion'] = None
+    else:
+        salida['foto_valida_estado'] = 'sin_opinion'
 
 
 def procesar(datos, contexto, verificar):
@@ -627,7 +651,7 @@ def procesar(datos, contexto, verificar):
 
     perfil = modos.perfil_actual()
     if perfil and perfil.modo == 'prueba':
-        return _procesar_prueba(img, local, perfil, activar and verificador.disponible())
+        return _procesar_prueba(img, local, perfil, activar and verificador.disponible(), contexto)
 
     if activar and verificador.disponible():
         veri = verificador.verificar(img, CATEGORIAS, local, contexto)
@@ -1369,8 +1393,8 @@ async def _perfil_formulario(request, *, admite_prueba=False):
     valor = formulario.get("modo", "alto")
     if not isinstance(valor, str) or valor not in modos.NOMBRES:
         raise HTTPException(422, "Elegí un modo válido. Si lo omitís se usa Completo.")
-    if valor == 'prueba' and (not admite_prueba or str(formulario.get('contexto') or '').strip()):
-        raise HTTPException(422, "Completo (prueba) admite una foto sin comentario.")
+    if valor == 'prueba' and not admite_prueba:
+        raise HTTPException(422, "Completo (prueba) está disponible para clasificar fotos.")
     perfil = PERFILES[valor]
     if perfil.motivo:
         raise HTTPException(503, "El modo elegido no está disponible: " + perfil.motivo + ".")
@@ -1380,7 +1404,7 @@ async def _perfil_formulario(request, *, admite_prueba=False):
 @app.post("/clasificar")
 async def clasificar(request: Request, file: UploadFile = File(...),
                      verificar: str = "auto", contexto: str = Form(""),
-                     modo: Any = Form("alto", description="Modo de análisis: bajo, medio o alto.")):
+                     modo: Any = Form("alto", description="Modo de análisis: bajo, medio, alto o prueba.")):
     perfil = await _perfil_formulario(request, admite_prueba=True)
     datos = await _leer_acotado(file)
     contexto = (contexto or "").strip()[:CONTEXTO_MAX]
@@ -1789,7 +1813,7 @@ async def _correr_trabajo(t):
 @app.post("/trabajos/")
 async def crear_trabajo(request: Request, file: UploadFile = File(...),
                         verificar: str = "auto", contexto: str = Form(""),
-                     modo: Any = Form("alto", description="Modo de análisis: bajo, medio o alto.")):
+                        modo: Any = Form("alto", description="Modo de análisis: bajo, medio, alto o prueba.")):
     perfil = await _perfil_formulario(request, admite_prueba=True)
     datos = await _leer_acotado(file)
     contexto = (contexto or "").strip()[:CONTEXTO_MAX]
@@ -2116,7 +2140,7 @@ PAGINA = r"""<!DOCTYPE html>
         </select>
       </div>
       <p id="modo-ayuda">Las fotos empiezan en Completo (prueba), que evalúa categorías y muestra el costo de la API.
-        Si agregás un comentario, elegí otro modo antes de analizar. Completo puede costar más.</p>
+        Completo puede costar más.</p>
       <p id="modo-estado" role="status" aria-live="polite"></p>
     </div>
   </section>
@@ -2158,7 +2182,7 @@ PAGINA = r"""<!DOCTYPE html>
           <code class="ruta" data-ep="clasificar"></code>
           <div class="epdesc">Una foto, esperando el resultado en la misma conexión (25-60 s).
             multipart/form-data con <b>file</b> (JPG/PNG/WEBP, máx. 10 MB), <b>contexto</b> opcional
-            (máx. 2000 caracteres) y <b>modo</b>: bajo, medio o alto (predeterminado). Ocupado: <code>503</code> con <b>Retry-After</b>.</div></div>
+            (máx. 2000 caracteres) y <b>modo</b>: bajo, medio, alto (predeterminado) o prueba. Ocupado: <code>503</code> con <b>Retry-After</b>.</div></div>
         <div class="ep1"><span class="met met-post">POST</span>
           <code class="ruta" data-ep="trabajos"></code>
           <div class="epdesc">Mismos campos, respuesta inmediata: <code>202 {"trabajo": id, "estado":
@@ -2303,7 +2327,7 @@ while t["estado"] not in ("listo", "error"):
 print(t.get("resultado") or t)`,
  js:`const fd = new FormData();
 fd.append("file", fileInput.files[0]);
-fd.append("modo", "alto"); // bajo, medio o alto
+fd.append("modo", "alto"); // bajo, medio, alto o prueba
 fd.append("contexto", "vidrios rotos en la vereda"); // opcional, por foto
 let t = await (await fetch("${T}", { method: "POST", body: fd })).json();
 while (t.estado !== "listo" && t.estado !== "error") {
