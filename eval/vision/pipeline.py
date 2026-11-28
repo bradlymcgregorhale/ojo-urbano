@@ -20,6 +20,7 @@ from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -217,7 +218,15 @@ def evaluate_prueba(case, private, identity, server, respuestas, *, ruta='clasif
             with lock:
                 row['requests'].append(evento)
                 medicion.anotar_intento(evento, 'iniciado')
-            respuesta = pedir_http(pedido, *tiempos)
+            try:
+                respuesta = pedir_http(pedido, *tiempos)
+            except (OSError, ValueError) as error:
+                fallo = {'error': type(error).__name__}
+                if isinstance(error, HTTPError):
+                    fallo['http_status'] = error.code
+                with lock:
+                    medicion.anotar_intento(evento | fallo, 'fallido')
+                raise
             with lock:
                 evento['raw'] = respuesta
                 medicion.anotar_intento(evento, 'recibido')
@@ -352,7 +361,9 @@ class MedicionPrueba:
                                     'consumo_api': {'pedido': evento['pedido'], 'intentos': None}},
                                    provisional=True)
         with self.intentos.open('a', encoding='utf-8') as archivo:
-            archivo.write(R.canonical(evento | {'estado': estado, 'caso': self.caso['id']}) + '\n')
+            registro = {'estado': estado, 'caso': self.caso['id'],
+                        'registrado_en_utc': dt.datetime.now(dt.timezone.utc).isoformat()}
+            archivo.write(R.canonical(evento | registro) + '\n')
 
     def medir(self, case, private, identity, server):
         self.caso = {'id': case['id'], 'entrada': self.ruta, 'modo': 'prueba',

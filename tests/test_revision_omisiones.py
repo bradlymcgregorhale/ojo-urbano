@@ -217,6 +217,19 @@ class OmisionesTest(unittest.TestCase):
                                                  objeto('b', 'venta_ambulante', 'venta')]})
         self.assertEqual([c['key'] for c in comercio], ['manteros'])
 
+    def test_venta_afuera_aunque_la_descripcion_niegue_la_vidriera(self):
+        for ubicacion, evidencia, visible in (
+            ('sobre una manta en la vereda', 'Peras en exhibición, no en la vidriera.', True),
+            ('sobre una manta en la vereda', 'Las peras no están detrás del vidrio.', True),
+            ('frente al local', 'La caja no está en la vidriera. Las peras sí están detrás del vidrio.', False),
+            ('en la vidriera', 'Peras alineadas dentro del local.', False),
+        ):
+            with self.subTest(evidencia=evidencia):
+                hallazgo = {'tipo': 'venta_ambulante', 'uso': 'venta', 'objeto': 'caja de peras',
+                            'mercaderia_visible': 'peras', 'ubicacion': ubicacion, 'evidencia': evidencia}
+                filtrados = R.interpretar_objetos({'hallazgos': [hallazgo]})['hallazgos']
+                self.assertEqual(bool(filtrados), visible)
+
     def test_dos_ausencias_sin_usable_y_un_usable_veta(self):
         lecturas = [{'modelo': 'a', 'montaje': 'ausente'}, {'modelo': 'b', 'montaje': 'suelto_adentro'},
                     {'modelo': 'c', 'montaje': 'indeterminado'}]

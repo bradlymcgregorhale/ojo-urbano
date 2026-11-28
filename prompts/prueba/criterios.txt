@@ -1,5 +1,5 @@
 retiro_escombros: pila de cascote o bolsas con señales físicas de obra que se corroboren; el estampado o el color solo no prueba el contenido.
-retiro_muebles: voluminosos enteros descartados, incluidos tubos, tablas, placas o marcos; un objeto entero no es cascote.
+retiro_muebles: voluminosos descartados, incluidas tapas de telgopor, placas rígidas y piezas urbanas sueltas. Excluí elementos todavía fijos o en uso.
 retiro_poda: vegetación cortada y descartada o una rama grande desprendida en el suelo, no brotes vivos ni unas pocas hojas caídas.
 recoleccion: residuos domésticos descartados que justifican su propio retiro; no dupliques la misma pila ni cuentes unos papeles dispersos.
 barrido: acumulación notable de suciedad liviana; unas pocas hojas o papeles dispersos no alcanzan.
@@ -10,5 +10,6 @@ contenedor_humedos_lateral: cuerpo negro con postes o apoyos laterales de izado 
 contenedor_humedos_bilateral: contenedor de húmedos con diseño gris de carga bilateral y herrajes visibles; no supongas un segundo recipiente.
 contenedor_secos: verde de reciclables; el color de un recipiente no se deduce del reflejo ni de la tapa de otro.
 reparacion_vereda: rotura física de baldosas o pavimento peatonal, sin confundir grietas de la calzada.
+reparacion_cordon: identificá un quiebre, hundimiento accidental o faltante del borde contra la calzada. Una separación con el pavimento detrás del cordón, desgaste menor o un rebaje de acceso no bastan. Si no distinguís el daño del diseño o del pavimento, dejalo en dudosas. Evaluá barrido por separado.
 plantacion_arbol: plantera o cazuela vacía y abierta en la vereda, sin árbol, donde debería haber uno; un árbol enfermo o dañado no es esta categoría.
 obstruccion: obstáculo que impide o desvía el paso; no dupliques la categoría de retiro por un objeto que deja paso suficiente.

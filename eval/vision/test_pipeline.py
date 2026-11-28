@@ -1,5 +1,6 @@
 """Free regression checks for final-result evaluation and incomplete evidence."""
 import concurrent.futures
+import datetime as dt
 import io
 import json
 import tempfile
@@ -10,6 +11,7 @@ from contextlib import redirect_stderr
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import HTTPError
 from urllib.request import Request
 
 from fastapi import FastAPI, Form, Header, UploadFile
@@ -455,6 +457,47 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(recuperado, consumo)
         with self.assertRaises(FileExistsError):
             P.MedicionPrueba(self.root / 'lote.json', .02, 'version-prueba', 'clasificar', 5)
+
+    def test_medicion_registra_la_hora_utc_de_un_rechazo_sin_id(self):
+        self.server.app = FastAPI()
+        self.server.CACHE_MAX = self.server.RATE_LIMITE = 0
+        self.server.API_TOKEN = ''
+        solicitud = Request('https://openrouter.example/chat/completions', data=b'{"model":"lector"}')
+        medicion = P.MedicionPrueba(self.root / 'lote.json', .02, 'version-prueba', 'clasificar', 5)
+        antes_de_enviar = []
+
+        @self.server.app.post('/clasificar/', status_code=502)
+        async def clasificar():
+            R.V.costo_reset()
+            try:
+                R.V._pedir_http(solicitud, 10, 20)
+            except HTTPError as error:
+                R.V._registrar_uso('lector', 'prueba_inicio', None, 1, P.time.monotonic(), error=error)
+            return {'detail': 'Sin respuesta del lector'}
+
+        def proveedor(*_):
+            antes_de_enviar.extend(json.loads(l) for l in medicion.intentos.read_text().splitlines())
+            raise HTTPError(solicitud.full_url, 429, 'detalle privado', {'X-Detalle': 'privado'}, io.BytesIO(b'cuerpo privado'))
+
+        inicio = dt.datetime.now(dt.timezone.utc)
+        with patch.object(R.V, '_pedir_http', side_effect=proveedor):
+            row = medicion.medir(self.case, self.root, self.identity, self.server)
+        self.assertFalse(row['consumo_facturado']['conciliado'])
+        self.assertFalse(medicion.admite_foto())
+        [iniciado] = antes_de_enviar
+        self.assertEqual(iniciado['estado'], 'iniciado')
+        self.assertLessEqual(inicio, dt.datetime.fromisoformat(iniciado['registrado_en_utc']))
+        datos = medicion.intentos.read_text()
+        self.assertNotIn('privado', datos)
+        primero, ultimo = [json.loads(l) for l in datos.splitlines()]
+        self.assertEqual([primero['estado'], ultimo['estado']], ['iniciado', 'fallido'])
+        self.assertEqual(primero['request_hash'], ultimo['request_hash'])
+        self.assertEqual(primero['pedido'], ultimo['pedido'])
+        self.assertEqual(ultimo['http_status'], 429)
+        self.assertNotIn('raw', ultimo)
+        marcas = [dt.datetime.fromisoformat(i['registrado_en_utc']) for i in (primero, ultimo)]
+        self.assertEqual(marcas, sorted(marcas))
+        self.assertTrue(all(m.utcoffset() == dt.timedelta(0) for m in marcas))
 
     def test_medicion_guarda_la_aceptacion_antes_de_consultar_la_cola(self):
         self.server.app = FastAPI()

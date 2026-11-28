@@ -46,6 +46,8 @@ Usá un log capturado con `OPENROUTER_LOG_USO=1` y repetí `--uso` si abarca má
 
 Si ya guardaste los recibos de OpenRouter, agregá `--recibos "$archivo"`. Usá el JSON de [Get generation](https://openrouter.ai/docs/api/api-reference/generations/get-generation) o una lista de esas respuestas. Podés repetir la opción. El informe cruza `data.id` y `data.total_cost` con el intento identificado en el log y completa el importe si faltaba. El detalle cuenta cuántas generaciones tienen recibo. Sin un ID vinculado, el intento sigue pendiente. Si dos importes difieren para la misma generación, la herramienta devuelve un error para que se pueda revisar la diferencia. No hace consultas de red.
 
+Si un rechazo HTTP trae `X-Generation-Id` o `X-Request-Id`, el registro de uso conserva los identificadores válidos. El importe queda pendiente hasta incorporar el recibo.
+
 Si una línea trae importe sin ID de generación pero identifica el pedido, modelo, etapa e intento, el informe conserva el mínimo adicional en `costo_sin_generacion_usd`. Evita sumar dos veces los importes que pueden venir de copias del mismo intento. El pedido sigue pendiente de conciliación.
 
 ## Comprobación de regresiones del resultado final
@@ -114,7 +116,7 @@ Una vez definido el presupuesto, usá la candidata con `PRUEBA_RESERVAS_USD` con
 
 Usá `--ruta-prueba clasificar` para la consulta directa con el contexto del caso. La medición cubre las rutas de la API. Para verificar la pantalla y los borradores, repetí los controles en el navegador y en una cola aislada de Bacollab dentro del presupuesto acordado.
 
-El evaluador guarda cada caso y lo vincula con su pedido antes de la primera consulta al proveedor. Si se corta la ejecución, podés recuperar los cargos conocidos y dejar pendiente el total de intentos. Junto al informe quedan `.consumo.json`, `.uso.jsonl` y `.intentos.jsonl` en la carpeta privada. Los dos primeros se pueden pasar a `eval.vision.consumo`. El tercero registra las huellas y respuestas del proveedor. Podés reproducir las respuestas de un informe facturado con `--baseline`, sin usar `--live`.
+El evaluador guarda cada caso y lo vincula con su pedido antes de la primera consulta al proveedor. Si se corta la ejecución, podés recuperar los cargos conocidos y dejar pendiente el total de intentos. Junto al informe quedan `.consumo.json`, `.uso.jsonl` y `.intentos.jsonl` en la carpeta privada. Los dos primeros se pueden pasar a `eval.vision.consumo`. El tercero registra la huella y la hora UTC al enviar y al recibir cada intento. Si falla el transporte, guarda el tipo de error y el estado HTTP cuando está disponible. Podés reproducir las respuestas de un informe facturado con `--baseline`, sin usar `--live`.
 
 Cada foto nueva requiere USD 0,01 disponibles del presupuesto del lote. El saldo se actualiza con los importes registrados. Si falta conciliar un cargo, el proveedor supera una reserva o se agota el saldo del lote, la medición se detiene y el informe identifica los casos pendientes. La reserva se calcula antes de la consulta. El importe real sólo se conoce al recibir la respuesta.
 

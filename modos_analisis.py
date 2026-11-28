@@ -16,6 +16,7 @@ from types import MappingProxyType
 NOMBRES = {'bajo': 'Económico', 'medio': 'Equilibrado', 'alto': 'Completo',
            'prueba': 'Completo (prueba)'}
 IDENTIFICADOR = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.:-]+$')
+_PROVEEDOR_OPENROUTER = re.compile(r'[a-z0-9-]+(?:/[a-z0-9-]+)*')
 _TOPE_PRUEBA = Decimal('0.01')
 _DECISION_PRUEBA = 'prueba_decision'
 ETAPAS_BASE_PRUEBA = (_DECISION_PRUEBA, 'prueba_inicio', 'prueba_retiros')
@@ -62,7 +63,15 @@ class Perfil:
     version: str
     motivo: str | None = None
     reservas_prueba: MappingProxyType | None = None
+    proveedor_prueba: str | MappingProxyType | None = None
     saldo_prueba: Decimal = _TOPE_PRUEBA
+
+    def proveedor_para(self, etapa):
+        if etapa == 'leer_chapa':
+            return None
+        if isinstance(self.proveedor_prueba, MappingProxyType):
+            return self.proveedor_prueba.get(etapa, self.proveedor_prueba['predeterminado'])
+        return self.proveedor_prueba
 
     def metadatos(self):
         return {'modo': self.modo, 'modo_version': self.version}
@@ -76,12 +85,31 @@ def _leer_reservas_prueba(texto):
     valores = json.loads(texto, parse_float=Decimal)
     if not isinstance(valores, dict) or valores.keys() != _ETAPAS_PRUEBA:
         raise ValueError('Faltan reservas para el modo de prueba')
+    chapas = valores['leer_chapa']
+    if isinstance(chapas, dict):
+        if not chapas or any(not IDENTIFICADOR.fullmatch(modelo) for modelo in chapas):
+            raise ValueError('Lectores inválidos en las reservas de chapa')
+        del valores['leer_chapa']
+        valores.update({f'leer_chapa:{modelo}': importe for modelo, importe in chapas.items()})
     reservas = {etapa: Decimal(str(valor)) for etapa, valor in valores.items()}
     if any(not v.is_finite() or not 0 < v <= _TOPE_PRUEBA for v in reservas.values()):
         raise ValueError('Reserva fuera del rango de costo por foto')
     if sum(reservas[k] for k in ETAPAS_BASE_PRUEBA) > _TOPE_PRUEBA:
         raise ValueError('Las lecturas principales no caben en el presupuesto')
     return MappingProxyType(reservas)
+
+
+def _leer_proveedor_prueba(texto):
+    if _PROVEEDOR_OPENROUTER.fullmatch(texto):
+        return texto
+    valores = json.loads(texto)
+    etapas = {etapa for etapa in _ETAPAS_PRUEBA if etapa.startswith('prueba_')}
+    if (not isinstance(valores, dict) or 'predeterminado' not in valores
+            or valores.keys() - (etapas | {'predeterminado'})
+            or any(not isinstance(v, str) or not _PROVEEDOR_OPENROUTER.fullmatch(v)
+                   for v in valores.values())):
+        raise ValueError('Proveedores de prueba inválidos')
+    return MappingProxyType(valores)
 
 
 def cargar(verificador, opciones_servidor, entorno=None):
@@ -110,6 +138,7 @@ def cargar(verificador, opciones_servidor, entorno=None):
         nombre = 'VERIFICADORES_' + modo.upper()
         motivo = None
         reservas = None
+        proveedor = None
         if nombre in env:
             modelos = tuple(m.strip() for m in env[nombre].split(','))
             if (len(modelos) != cantidad or len(set(modelos)) != cantidad
@@ -123,6 +152,13 @@ def cargar(verificador, opciones_servidor, entorno=None):
             try:
                 reservas = _leer_reservas_prueba(env['PRUEBA_RESERVAS_USD'])
             except (ArithmeticError, ValueError, TypeError):
+                motivo = 'configuracion_invalida'
+        if modo == 'prueba' and (texto := env.get('PRUEBA_PROVEEDOR_OPENROUTER')):
+            try:
+                if reservas is None:
+                    raise ValueError('Faltan las reservas para fijar el proveedor')
+                proveedor = _leer_proveedor_prueba(texto)
+            except (TypeError, ValueError):
                 motivo = 'configuracion_invalida'
         arbitro = '' if modo in {'bajo', 'prueba'} else verificador.ARBITRO
         foto = bool(modo == 'alto' and verificador.ARBITRO_VE_FOTO)
@@ -149,8 +185,11 @@ def cargar(verificador, opciones_servidor, entorno=None):
             datos.append(hashlib.sha256((raiz / 'prueba_completo.py').read_bytes()).hexdigest())
             if reservas is not None:
                 datos.append({k: str(v.normalize()) for k, v in reservas.items()})
+            if proveedor:
+                datos.append(dict(proveedor) if isinstance(proveedor, MappingProxyType) else proveedor)
         version = hashlib.sha256(json.dumps(datos, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:24]
-        perfiles[modo] = Perfil(modo, modelos, arbitro, foto, confirma, especialista, version, motivo, reservas)
+        perfiles[modo] = Perfil(modo, modelos, arbitro, foto, confirma, especialista, version, motivo, reservas,
+                               proveedor)
     return MappingProxyType(perfiles)
 
 
@@ -215,22 +254,32 @@ def _caben(r, etapas):
     return False
 
 
-def caben_apoyos(*etapas):
+def _clave_reserva(reservas, etapa, modelo):
+    if etapa == 'leer_chapa' and etapa not in reservas:
+        return f'leer_chapa:{modelo}'
+    return etapa
+
+
+def caben_apoyos(*etapas, lectores_chapa=()):
     if not con_reservas():
         return True
     r = _actual.get()
     with r.lock:
-        return _caben(r, etapas)
+        reservas = r.perfil.reservas_prueba
+        chapas = tuple(_clave_reserva(reservas, 'leer_chapa', modelo) for modelo in lectores_chapa)
+        return _caben(r, etapas + chapas)
 
 
-def reservar_consulta(etapa):
+def reservar_consulta(etapa, *, modelo=None):
     if not con_reservas():
         return None
     r = _actual.get()
     with r.lock:
-        if not _caben(r, (etapa,)):
+        reservas = r.perfil.reservas_prueba
+        clave = _clave_reserva(reservas, etapa, modelo)
+        if not _caben(r, (clave,)):
             raise ConsultaSinSaldo('Saldo insuficiente o pendiente para la consulta')
-        reserva = r.perfil.reservas_prueba[etapa]
+        reserva = reservas[clave]
         r.reservado += reserva
         if etapa == _DECISION_PRUEBA:
             r.decision_pendiente = False
