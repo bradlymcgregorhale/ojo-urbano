@@ -1,5 +1,7 @@
 """Intervención principal sin cambiar clasificación, gravedad ni predominante (#48)."""
 
+import revision_ramas
+
 CATEGORIAS_OBJETO = {'retiro_muebles', 'retiro_poda', 'retiro_escombros', 'recoleccion'}
 
 
@@ -208,7 +210,12 @@ def proponer_solicitudes(publica):
     pedidos_respaldados = []
     pedidos = {c['key']: c.get('respaldo_visual') for c in publica.get('categorias_contexto') or []
                if c.get('key')} if publica.get('modo') == 'prueba' else {}
-    if pedidos and publica.get('analisis_estado') == 'completo':
+    # La revisión de una rama sólo puede cambiar poda, arbolado u obstrucción.
+    parcial_independiente = (publica.get('analisis_estado') == 'parcial'
+                             and 'solo_revision_ramas_pendiente' in (publica.get('analisis_limitaciones') or [])
+                             and revision_ramas.RETIRO not in pedidos
+                             and pedidos.keys().isdisjoint(revision_ramas.ALTERNATIVAS))
+    if pedidos and (publica.get('analisis_estado') == 'completo' or parcial_independiente):
         corresponde = publica.get('foto_valida') is True
         sin_opinion = publica.get('foto_valida_estado') == 'sin_opinion'
         if corresponde and pedidos:
