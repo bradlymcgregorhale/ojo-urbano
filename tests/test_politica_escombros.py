@@ -55,9 +55,19 @@ class PoliticaTest(unittest.TestCase):
 
     def test_bolsas_opacas_no_quitan_recoleccion_corroborada(self):
         r, revision = self.opacas([categoria('recoleccion')])
+        for lectura in revision['revisiones']:
+            lectura['residuos_comunes_independientes'] = 'si'
         r['posibles'] = [categoria()]
         nuevo = P.aplicar(r, revision, self.cats)
         self.assertEqual(nuevo['problemas'], r['problemas'])
+
+    def test_pila_opaca_sin_residuos_aparte_conserva_el_voluminoso(self):
+        r, revision = self.opacas([categoria('recoleccion'), categoria('retiro_muebles')])
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertEqual([p['key'] for p in nuevo['problemas']], ['retiro_muebles'])
+        self.assertIn('recoleccion', nuevo['en_duda'])
+        self.assertTrue(nuevo['verificacion_escombros']['requiere_revision'])
+        self.assertIn('¿Qué hay en las bolsas?', nuevo['descripcion'])
 
     def test_material_oculto_no_reescribe_confirmacion_visual_sin_fusion_local(self):
         r, revision = self.opacas([categoria()])
@@ -149,6 +159,20 @@ class PoliticaTest(unittest.TestCase):
         self.assertIn(P.KEY, nuevo['en_duda'])
         self.assertTrue(nuevo['verificacion_escombros']['requiere_revision'])
         self.assertFalse(nuevo['verificacion_escombros']['requiere_nueva_foto'])
+
+    def test_pila_opaca_no_restaura_recoleccion_sin_residuos_independientes(self):
+        r, revision = self.opacas([dict(categoria(), reclasificado_por='modelo_local'),
+                                   categoria('reparacion_vereda')])
+        r['posibles'] = [categoria('recoleccion')]
+        r['detalle']['verificacion']['confirmadas'] = [categoria('recoleccion')]
+        for lector in r['detalle']['verificacion']['verificadores']:
+            lector['categorias'][0]['evidencia'] = 'Bolsas opacas agrupadas al pie del árbol.'
+
+        nuevo = P.aplicar(r, revision, self.cats)
+
+        self.assertEqual([c['key'] for c in nuevo['problemas']], ['reparacion_vereda'])
+        self.assertIn(P.KEY, nuevo['en_duda'])
+        self.assertTrue(nuevo['verificacion_escombros']['requiere_revision'])
 
     def test_fallo_de_un_lector_no_confirma_escombros_por_fusion_local(self):
         r, revision = self.opacas([dict(categoria(), reclasificado_por='modelo_local')])

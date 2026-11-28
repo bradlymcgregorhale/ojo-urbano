@@ -510,6 +510,7 @@ def aplicar(salida, revision, categorias):
                 and revision.get('estado') == 'apto'
                 and not revision.get('afirmacion_explicita')
                 and not revision.get('material_contradictorio')
+                and not (consenso_opaco and _sin_recoleccion_independiente(salida, revision))
                 and len(_respaldo_visual(salida, 'recoleccion')) >= 2
                 and not any(c.get('key') == 'recoleccion' for c in r['problemas'])):
             r['problemas'].append(copy.deepcopy(previa))
@@ -518,6 +519,21 @@ def aplicar(salida, revision, categorias):
             diagnostico.anotar('conservar_basura_publica', ['recoleccion'])
         otros = [c['nombre'] for c in r['problemas']]
         r['descripcion'] = motivo + (" Otros hallazgos: " + "; ".join(otros) + "." if otros else "")
+    revisar_recoleccion_opaca = False
+    if (consenso_opaco and not any(es_escombros(c) for c in r['problemas'])
+            and _sin_recoleccion_independiente(salida, revision)):
+        reco = next((c for c in r['problemas'] if c.get('key') == 'recoleccion'), None)
+        if reco:
+            motivo = 'No se distingue el contenido. ¿Qué hay en las bolsas?'
+            revisar_recoleccion_opaca = True
+            r['problemas'].remove(reco)
+            r['posibles'] = [c for c in r['posibles'] if c.get('key') != 'recoleccion']
+            r['posibles'].append(dict(reco, gravedad=None, origen='foto', arbitro=None, motivo=motivo))
+            if 'recoleccion' not in r['en_duda']:
+                r['en_duda'].append('recoleccion')
+            veri.setdefault('fuentes_en_duda', {})['recoleccion'] = list(reco.get('fuentes') or [])
+            diagnostico.anotar('recoleccion_pendiente_por_material', ['recoleccion'])
+            r['descripcion'] = ' '.join([motivo, *(c['nombre'] + '.' for c in r['problemas'])])
     escombros = [c for c in r['problemas'] if es_escombros(c)]
     escombros_corroborados = escombros and (revision.get('material_visible_confirmado') is True
         or any(len(_respaldo_visual(salida, c.get('key'))) >= 2 for c in escombros))
@@ -555,7 +571,7 @@ def aplicar(salida, revision, categorias):
                     r['descripcion'] += ' El recuento total queda por confirmar.'
                 if revision.get('material_visible_confirmado') is not True:
                     r['descripcion'] += ' El contenido de las bolsas no se distingue por completo.'
-    if revisar_material or lector_pendiente or material_oculto:
+    if revisar_material or lector_pendiente or material_oculto or revisar_recoleccion_opaca:
         r['verificacion_escombros']['requiere_revision'] = True
     r["hay_problema"] = bool(r["problemas"])
     r["hay_reclamo"] = bool(r["problemas"] or r["categorias_contexto"])

@@ -39,10 +39,11 @@ OBJETOS = ('Si confirmás retiro_muebles, enumerá en objetos hasta ocho volumin
            'Excluí el contenedor, los objetos en uso y lo que no se distingue. En objeto_cant contá cada pieza '
            'visible una vez, hasta 15. Usá null si no podés contar o no confirmás retiro_muebles. Si no podés '
            'identificar ningún objeto o no confirmás el retiro, devolvé objetos=[].')
+MATERIALES_OBRA = ('obra_visible', 'obra_por_presentacion')
 ESTADOS_ALCANCE = {
     'ubicacion': ('publica', 'privada', 'indeterminada'),
     'presentacion': ('sacos_portables_o_suelto', 'solo_bolson_izado', 'sin_pila', 'indeterminada'),
-    'material': ('obra_visible', 'tapado_o_ambiguo', 'incompatible_visible', 'indeterminado'),
+    'material': (*MATERIALES_OBRA, 'tapado_o_ambiguo', 'incompatible_visible', 'indeterminado'),
     'residuos_comunes_aparte': ('si', 'no', 'indeterminado'),
 }
 
@@ -62,6 +63,7 @@ _LECTURA_CON_RECUENTO = _objeto({
     **_LECTURA['properties'],
     **_CAMPOS_RECUENTO,
     'solo_residuos_del_bolson': {'type': ['boolean', 'null']},
+    'solo_bolsas_opacas': {'type': ['boolean', 'null']},
 })
 _LECTURA_FINAL = _objeto({
     **_LECTURA_CON_RECUENTO['properties'],
@@ -136,6 +138,10 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, cont
             schema = _ALCANCE_CON_RECUENTO
             texto += '\n' + RECUENTO_ALCANCE
         if etapa in ('retiros', 'decision'):
+            texto += (' En solo_bolsas_opacas indicá true si hay una pila de bolsas chicas cerradas sin '
+                      'contenido identificable ni basura doméstica reconocible aparte. Un papel aislado o '
+                      'un voluminoso aparte no identifican el contenido de la pila. Indicá false si hay '
+                      'material identificable o basura independiente, y null si no hay pila candidata.')
             texto += '\n' + RECUENTO + '\n' + RESIDUOS_BOLSON
         if etapa == 'decision':
             texto += '\n' + OBJETOS
@@ -163,6 +169,8 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, cont
             lectura['objetos'] = V._objetos_lista(valor.get('objetos')) or lectura.get('objetos', [])
             cantidad = valor.get('objeto_cant')
             lectura['objeto_cant'] = V._cuenta_1_a_15(cantidad) if type(cantidad) is int else None
+        if isinstance(valor.get('solo_bolsas_opacas'), bool):
+            lectura['solo_bolsas_opacas'] = valor['solo_bolsas_opacas']
         bolson = valor.get('solo_residuos_del_bolson')
         if etapa in ('retiros', 'decision') and isinstance(bolson, bool):
             lectura['solo_residuos_del_bolson'] = bolson
@@ -265,11 +273,18 @@ def _decision(lecturas, scores, claves):
     return texto
 
 
-def _escombro_elegible(lecturas):
-    return all(r is not None and r['ubicacion'] == 'publica'
+def _respaldo_alcance_escombros(lecturas):
+    if not all(r is not None and r['ubicacion'] == 'publica'
                and r['presentacion'] == 'sacos_portables_o_suelto'
-               and r['material'] in {'obra_visible', 'tapado_o_ambiguo'}
-               and r['residuos_comunes_aparte'] == 'si' for r in lecturas)
+               and r['residuos_comunes_aparte'] == 'si' for r in lecturas):
+        return None
+    materiales = {r['material'] for r in lecturas}
+    obra = set(MATERIALES_OBRA)
+    if materiales <= obra:
+        return 'compatible'
+    if materiales <= obra | {'tapado_o_ambiguo'}:
+        return 'neutral'
+    return None
 
 
 def _recuento(*lecturas):
@@ -283,7 +298,15 @@ def _recuento(*lecturas):
     return {'bolsas_minimo': minimo, 'bolsas_recuento_completo': exacto, 'bolsas_fuentes': len(votos)}
 
 
-def _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos):
+_BOLSAS = re.compile(r'\b(?:bolsas?|sacos?)\b')
+_CONTENIDO_NO_VISIBLE = re.compile(
+    r'\b(?:contenido (?:oculto|ambiguo|indeterminado)|no se distingue (?:que residuos|el contenido))\b')
+_RESIDUOS_COMUNES_APARTE = re.compile(
+    r'\b(?:separad[ao]s?|aparte|cart[oó]n|cartones|cajas?|envoltorios?|'
+    r'comida|envases?|papeles?|botellas?)\b')
+
+
+def _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos, retiros, solo_opacas=None):
     if mercaderia_en_interior(confirmadas.get('manteros')):
         fuentes.pop('manteros', None)
         if 'manteros' in pedidos:
@@ -303,6 +326,14 @@ def _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos):
             and not re.search(r'\b(?:separad[ao]s?|aparte|cart[oó]n|cartones|cajas?|envoltorios?|'
                               r'comida|envases?|papeles?|botellas?)\b', comunes)):
         fuentes.pop('recoleccion', None)
+    duda_retiros = V._norm_texto(retiros.get('dudosas', {}).get('recoleccion', ''))
+    if ('recoleccion' in fuentes and _BOLSAS.search(comunes)
+            and not _RESIDUOS_COMUNES_APARTE.search(comunes)
+            and (solo_opacas is True or _BOLSAS.search(duda_retiros) and _CONTENIDO_NO_VISIBLE.search(duda_retiros))):
+        fuentes.pop('recoleccion')
+        dudas.setdefault('recoleccion', 'No se distingue el contenido. ¿Qué hay en las bolsas?')
+        if pedidos.get('recoleccion') == 'compatible':
+            pedidos['recoleccion'] = 'neutral'
 
 
 def clasificar(img, local, categorias, modelos, *, contexto=''):
@@ -383,8 +414,13 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
         alcances = V._map_modelos((luna, apoyo),
             lambda modelo: _leer(modelo, TEXTOS['alcance'], foto, 'alcance', contar_alcance=falta_conteo))
         if all(isinstance(r, dict) for r in alcances):
-            if _escombro_elegible(alcances):
+            respaldo = _respaldo_alcance_escombros(alcances)
+            if respaldo == 'compatible':
                 fuentes['retiro_escombros'] = ['modelo_local', luna, apoyo]
+            elif respaldo == 'neutral':
+                dudas.setdefault('retiro_escombros', 'No se distingue el contenido. ¿Qué hay en las bolsas?')
+                if 'retiro_escombros' in pedidos:
+                    pedidos['retiro_escombros'] = respaldo
             pila_corroborada = luna != apoyo and all(r.get('ubicacion') == 'publica'
                 and r.get('presentacion') == 'sacos_portables_o_suelto' for r in alcances)
             if falta_conteo and pila_corroborada:
@@ -402,7 +438,9 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
             and any(k in evidencia for k in ('sacos', 'bolsas', 'pila', 'tubos', 'bolson', 'bolsón'))
             and not any(k in evidencia for k in ('barrera', 'valla', 'cartel', 'anclad', 'colocad'))):
         fuentes.pop('obstruccion', None)
-    _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos)
+    votos_opacas = (retiros.get('solo_bolsas_opacas'), final.get('solo_bolsas_opacas'))
+    _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos, retiros,
+                                    solo_opacas=True in votos_opacas and False not in votos_opacas)
     modelo = {'modelo': sol, 'ok': True,
               'categorias': [{'key': k, 'evidencia': e} for k, e in confirmadas.items()]}
     if 'pedidos' in final:
