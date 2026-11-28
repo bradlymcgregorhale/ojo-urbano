@@ -90,7 +90,7 @@ GRAV_MAX = 5
 # vecino pide algo aunque la foto no lo confirme"; el contexto del vecino no
 # se devuelve nunca; ?verificar=0 responde degradado en vez de publicar el
 # modelo local. Ver README, "Cambios de contrato".
-VERSION_API = "11"
+VERSION_API = "12"
 CONTENEDORES_ESPECIALISTA = bool(especialista_contenedores.MODELO) and (
     os.environ.get("CONTENEDORES_ESPECIALISTA", "0").lower() in ("1", "true", "si"))
 
@@ -589,6 +589,7 @@ def _procesar_prueba(img, local, perfil, verificar, contexto):
         entrada = {'key': key, 'nombre': nombre_de(key), 'fuentes': fuentes, 'gravedad': None}
         if key == 'retiro_muebles':
             entrada['objetos'] = lector.get('objetos', [])
+            entrada['objeto_cant'] = lector.get('objeto_cant')
         (elementos if key in verificador.PRESENCIA else problemas).append(entrada)
     posibles = [{'key': k, 'nombre': nombre_de(k), 'fuentes': [perfil.verificadores[0]],
                  'origen': 'foto', 'motivo': e} for k, e in dudas.items()]
@@ -2227,8 +2228,7 @@ PAGINA = r"""<!DOCTYPE html>
       <div class="apinota"><b>Detalle de los problemas confirmados.</b> Solo <code>problemas[]</code>
         incluye los campos de retiro: <code>retiro_escombros.bolsas</code> (1 a 15, 0 para material suelto corroborado en Completo (prueba), o null);
         <code>retiro_muebles.objeto_tipo</code>, <code>objeto_tam</code> (chico o grande),
-        <code>objeto_cant</code> (1 a 15 o null) y <code>objetos</code> (hasta 8 descripciones);
-        <code>retiro_objetos.elemento</code> (tipo de elemento o null). Estos nombres de categoría
+        <code>objeto_cant</code> (1 a 15 o null) y <code>objetos</code> (hasta 8 descripciones). Estos nombres de categoría
         corresponden al <code>key</code> de cada problema; los campos están en ese mismo objeto.
         <code>patente</code> se conserva cuando corresponde. Los detalles de retiro no se incluyen
         en <code>posibles</code> ni en <code>descartados_por_foto</code>.</div>
@@ -2729,7 +2729,6 @@ function renderProblema(c,revisionEscombros){
     electronica:'electrónica',colchon:'colchón',somier:'somier',sillon:'sillón',silla:'silla',mesa:'mesa',
     placard:'placard',estanteria:'estantería',puertas:'puertas',ventanas:'ventanas',maderas:'maderas',
     cajas:'cajas',alfombra:'alfombra',sanitario:'sanitario',vidrios:'vidrios',chatarra:'chatarra',bidones:'bidones',otros:'otros'};
-  const elementos={cemento:'cemento',canos:'caños',bolardos:'bolardos',bancos:'bancos',relojes:'relojes',carteles:'carteles'};
   const cantidad=v=>Number.isInteger(v)&&v>=1&&v<=15?String(v):'sin contar';
   const etiqueta=(mapa,v)=>Object.hasOwn(mapa,v)?mapa[v]:'sin identificar';
   const datos=[];
@@ -2752,7 +2751,6 @@ function renderProblema(c,revisionEscombros){
     if(Array.isArray(c.objetos)&&c.objetos.length)
       campos.push('Objetos: '+c.objetos.filter(v=>typeof v==='string').slice(0,8).join(', '));
   }
-  if(c.key==='retiro_objetos')campos.push('Elemento: '+etiqueta(elementos,c.elemento));
   return `<div class="minicat"><b>${esc(c.nombre||c.key)}</b>`+
     (datos.length?`<span>${esc(datos.join(' · '))}</span>`:'')+
     campos.map(t=>`<div class="campo">${esc(t)}</div>`).join('')+'</div>';
