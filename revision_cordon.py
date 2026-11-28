@@ -16,6 +16,37 @@ ESTADOS = {'rotura_estructural', 'diseno_funcional', 'desgaste_superficial', 'sa
 PIEZAS = {'cordon', 'cuneta_calzada', 'vereda', 'no_identificable'}
 
 
+MODELO_DESEMPATE = 'openai/gpt-6.2-sol'
+DECISIONES_FISICAS = ('pieza_desplazada', 'seccion_perdida', 'sin_obra', 'indeterminado')
+ESQUEMA_FISICO = {
+    'type': 'object',
+    'properties': {'prueba_fisica': {'type': 'string'},
+                   'decision': {'type': 'string', 'enum': list(DECISIONES_FISICAS)}},
+    'required': ['prueba_fisica', 'decision'], 'additionalProperties': False,
+}
+
+
+def roturas_del_cordon(lecturas):
+    return sum(v['estado'] == 'rotura_estructural' and v['pieza'] == 'cordon' for v in lecturas)
+
+
+def consultar_desempate(img):
+    import verificador as V
+    ancho, alto = img.size
+    banda = img.crop((0, int(alto * .40), ancho, alto))
+    vistas = [{'type': 'image_url', 'image_url': {'url': V._imagen_data_url(vista, lado=1400)}}
+              for vista in (img, banda)]
+    mensajes = [{'role': 'system', 'content': cargar_prompt('dirigidos/cordon_desempate')},
+                {'role': 'user', 'content': vistas}]
+    respuesta = V._extraer_json(V._llamar(MODELO_DESEMPATE, mensajes, max_tokens=950, intentos=1,
+                                           etapa='cordon_desempate', esquema=ESQUEMA_FISICO, esfuerzo='medium'))
+    decision = respuesta.get('decision')
+    evidencia = respuesta.get('prueba_fisica')
+    if decision not in DECISIONES_FISICAS or not isinstance(evidencia, str) or not evidencia.strip():
+        raise ValueError('Desempate sin evidencia física del cordón')
+    return {'modelo': MODELO_DESEMPATE, 'decision': decision, 'prueba_fisica': evidencia.strip()[:500]}
+
+
 def interpretar(valor):
     if (not isinstance(valor, dict) or not isinstance(valor.get('estado'), str)
             or valor['estado'] not in ESTADOS or not isinstance(valor.get('pieza'), str)
@@ -53,7 +84,15 @@ def consultar(img):
             max_tokens=1000, etapa='cordon_geometria')))
     resultados = V._map_modelos(modelos, uno)
     lecturas = [dict(modelo=m, **v) for m, v in zip(modelos, resultados) if v is not V._FALLO_MODELO]
-    return {'lecturas': lecturas, 'fallo': len(lecturas) != 3}
+    revision = {'lecturas': lecturas, 'fallo': len(lecturas) != 3}
+    if (not revision['fallo'] and roturas_del_cordon(lecturas) == 2
+            and MODELO_DESEMPATE not in modelos and MODELO_DESEMPATE in V.modelos_activos()):
+        try:
+            revision['desempate'] = consultar_desempate(img)
+        except Exception:
+            modos.fallo('cordon_desempate')
+            revision['desempate'] = {'modelo': MODELO_DESEMPATE, 'fallo': True}
+    return revision
 
 
 def decidir(revision):
@@ -67,7 +106,14 @@ def decidir(revision):
         lecturas = [interpretar(v) for v in lecturas]
     except ValueError:
         return 'revision'
-    if all(v['estado'] == 'rotura_estructural' and v['pieza'] == 'cordon' for v in lecturas):
+    roturas = roturas_del_cordon(lecturas)
+    desempate = revision.get('desempate') or {}
+    if roturas == 3:
+        return 'confirmado'
+    if (roturas == 2 and isinstance(desempate, dict) and not desempate.get('fallo')
+            and desempate.get('modelo') == MODELO_DESEMPATE and MODELO_DESEMPATE not in modelos
+            and desempate.get('decision') in ('pieza_desplazada', 'seccion_perdida')
+            and isinstance(desempate.get('prueba_fisica'), str) and desempate['prueba_fisica'].strip()):
         return 'confirmado'
     if all(v['estado'] in {'diseno_funcional', 'desgaste_superficial', 'sano'}
            and v['pieza'] == 'cordon' for v in lecturas):
