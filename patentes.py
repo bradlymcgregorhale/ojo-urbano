@@ -141,7 +141,8 @@ def leer_vlm(modelo, rec, escena=None):
                      "ambas incidencias al mismo. Informá la lectura de la chapa por separado.")
     contenido.append({"type": "text", "text": consigna})
     try:
-        respuesta = V._llamar(modelo, [{"role": "user", "content": contenido}], max_tokens=400, etapa="leer_chapa")
+        limite = 1000 if escena and not modos.con_reservas() else 400
+        respuesta = V._llamar(modelo, [{"role": "user", "content": contenido}], max_tokens=limite, etapa="leer_chapa")
         datos = V._extraer_json(respuesta)
         patente = V._patente_normalizada(datos["patente"])
         return (patente, datos.get("mismo_vehiculo") is True) if escena else patente
@@ -217,8 +218,8 @@ def leer_chapas(img, lectores=None, *, lectura_completa=False, atribuir_dos=Fals
                 modos.fallo('leer_chapa')
                 return []
             if atribuir_dos:
-                chapa["mismo_vehiculo"] = all(
-                    vista is not _LECTURA_FALLIDA and vista[1] for vista in vistas)
+                opiniones = [vista[1] for vista in vistas if vista is not _LECTURA_FALLIDA]
+                chapa["mismo_vehiculo"] = bool(opiniones) and all(opiniones)
                 vistas = [vista[0] if vista is not _LECTURA_FALLIDA else vista for vista in vistas]
             chapa["lecturas"].update(
                 (nombre, None if vista is _LECTURA_FALLIDA else vista)
