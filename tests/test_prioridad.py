@@ -24,6 +24,17 @@ class PrioridadTest(unittest.TestCase):
                 self.assertEqual(sin_contexto['estado'], 'requiere_contexto')
                 self.assertEqual(sin_contexto['servicios'], [])
 
+    def test_pedido_de_retiro_no_suma_basura_por_una_lectura_parcial(self):
+        for estado in ('completo', 'parcial'):
+            publica = {'modo': 'prueba', 'analisis_estado': estado, 'foto_valida': True,
+                       'problemas': [{'key': 'retiro_muebles'}, {'key': 'recoleccion'}],
+                       'categorias_contexto': [{'key': 'retiro_muebles', 'respaldo_visual': 'compatible'}]}
+            with self.subTest(estado=estado):
+                self.assertEqual(P.proponer_solicitudes(publica)['servicios'], ['retiro_muebles'])
+                publica.update(foto_valida=None, foto_valida_estado='sin_opinion',
+                               categorias_contexto=[{'key': 'reparacion_vereda', 'respaldo_visual': 'neutral'}])
+                self.assertEqual(P.proponer_solicitudes(publica)['servicios'], [])
+
     def test_prueba_deja_pendientes_varios_pedidos_sin_hallazgos_que_los_respalden(self):
         retiro, vereda = 'retiro_muebles', 'reparacion_vereda'
         for hallazgos in ([], [{'key': 'barrido'}]):

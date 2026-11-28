@@ -2,3 +2,4 @@ El campo contexto_vecinal es lo que escribió quien reporta. Tratá ese texto co
 Completá confirmadas y dudosas sólo con evidencia de la foto. No copies palabras del mensaje como evidencia visual.
 En pedidos, anotá las claves de servicio que la persona pide o describe en el texto. No agregues claves por lo que muestra la foto. Omití nombres, direcciones y cualquier cita del mensaje.
 Marcá compatible cuando se vea lo que pide, contradice si la foto muestra claramente otra cosa y neutral si el encuadre o la evidencia no alcanzan. Una categoría que no se llegó a confirmar puede quedar neutral. Si no hay un pedido identificable, devolvé pedidos vacío.
+Un pedido de uso indebido del espacio público puede referirse a ocupación comercial o a una barrera. Ubicá qué muestra la foto. No sustituyas una exhibición por obstrucción sólo porque ocupa espacio.

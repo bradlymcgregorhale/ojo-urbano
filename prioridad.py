@@ -206,16 +206,15 @@ def proponer_solicitudes(publica):
                     motivo='Falta confirmar la ubicación o el alcance antes de elegir servicios.')
     limpieza = {'barrido', 'recoleccion'}
     pedidos_respaldados = []
-    if publica.get('modo') == 'prueba' and publica.get('analisis_estado') == 'completo':
-        pedidos = {c['key']: c.get('respaldo_visual') for c in publica.get('categorias_contexto') or []
-                   if c.get('key')}
-        varios = len(pedidos) > 1
+    pedidos = {c['key']: c.get('respaldo_visual') for c in publica.get('categorias_contexto') or []
+               if c.get('key')} if publica.get('modo') == 'prueba' else {}
+    if pedidos and publica.get('analisis_estado') == 'completo':
         corresponde = publica.get('foto_valida') is True
         sin_opinion = publica.get('foto_valida_estado') == 'sin_opinion'
-        if corresponde and varios:
+        if corresponde and pedidos:
             pedidos_respaldados = [k for k, respaldo in pedidos.items()
                                   if respaldo == 'compatible' and k in candidatos]
-        faltan_hallazgos = varios and (corresponde or sin_opinion) and not pedidos_respaldados
+        faltan_hallazgos = bool(pedidos) and (corresponde or sin_opinion) and not pedidos_respaldados
         posibles_foto = {c.get('key') for c in publica.get('posibles') or [] if c.get('origen') == 'foto'}
         pedido_en_duda = sin_opinion and any(pedidos.get(k) in {'neutral', 'contradice'}
                                            for k in posibles_foto.union(candidatos))
@@ -257,6 +256,11 @@ def proponer_solicitudes(publica):
             pedidos_respaldados = [k for k in pedidos_respaldados if k not in limpieza or k in servicios]
         return dict(resultado, estado='propuesta', servicios=pedidos_respaldados, criterio='pedidos_explicitos',
                     motivo='Revisá los servicios solicitados que respalda la foto.')
+    if pedidos and publica.get('analisis_estado') == 'parcial':
+        # Una lectura parcial puede restringir la propuesta habitual, sin agregar servicios.
+        servicios = [k for k in servicios if pedidos.get(k) == 'compatible']
+        motivo = ('Revisá el pedido respaldado por la lectura parcial.' if servicios
+                  else 'La lectura parcial no permite corroborar el pedido.')
     return dict(resultado, estado='propuesta' if servicios else 'pendiente', servicios=servicios, motivo=motivo)
 
 
