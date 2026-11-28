@@ -106,6 +106,16 @@ class PoliticaTest(unittest.TestCase):
         self.assertTrue(nuevo['verificacion_escombros']['bolsas_recuento_completo'])
         self.assertIsNone(nuevo['problemas'][0]['bolsas'])
 
+    def test_cero_bolsas_en_material_suelto_con_ubicacion_en_disputa(self):
+        r, revision = self.opacas([categoria()])
+        revision['estado'] = 'indeterminado'
+        for v in revision['revisiones']:
+            v.update(bolsas_visibles=0, bolsas_adicionales_posibles=False)
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertEqual(nuevo['verificacion_escombros']['bolsas_minimo'], 0)
+        self.assertTrue(nuevo['verificacion_escombros']['bolsas_recuento_completo'])
+        self.assertNotIn(P.KEY, [c['key'] for c in nuevo['problemas']])
+
     def test_material_opaco_no_confirma_fusion_local_con_un_solo_testigo(self):
         r, revision = self.opacas([categoria(fuentes=['modelo_local', 'm1']),
                                   categoria('retiro_muebles')])

@@ -375,15 +375,19 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
             fuentes.update({k: [luna] for k in tipos['confirmadas']})
     conteos_previos = retiros.get('recuento'), final.get('recuento')
     recuento = _recuento(*conteos_previos)
+    pila_corroborada = False
     if ('retiro_escombros' not in fuentes and scores.get('retiro_escombros', 0) >= .98
             and (local.get('escombros_mixtos') or 0) >= .95
             and modos.caben_apoyos('prueba_alcance', 'prueba_alcance')):
-        contar_alcance = None in conteos_previos
+        falta_conteo = None in conteos_previos
         alcances = V._map_modelos((luna, apoyo),
-            lambda modelo: _leer(modelo, TEXTOS['alcance'], foto, 'alcance', contar_alcance=contar_alcance))
-        if all(r is not V._FALLO_MODELO for r in alcances) and _escombro_elegible(alcances):
-            fuentes['retiro_escombros'] = ['modelo_local', luna, apoyo]
-            if contar_alcance:
+            lambda modelo: _leer(modelo, TEXTOS['alcance'], foto, 'alcance', contar_alcance=falta_conteo))
+        if all(isinstance(r, dict) for r in alcances):
+            if _escombro_elegible(alcances):
+                fuentes['retiro_escombros'] = ['modelo_local', luna, apoyo]
+            pila_corroborada = luna != apoyo and all(r.get('ubicacion') == 'publica'
+                and r.get('presentacion') == 'sacos_portables_o_suelto' for r in alcances)
+            if falta_conteo and pila_corroborada:
                 conteos_alcance = tuple(_leer_recuento(r) for r in alcances)
                 if None not in conteos_alcance:
                     recuento = _recuento(*conteos_alcance)
@@ -406,7 +410,7 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
     if (sol != luna and pedidos.get(ocupacion) == 'compatible' and ocupacion in dudas
             and ocupacion in inicio.get('confirmadas', {})):
         modelo['respaldo_previo_ocupacion'] = True
-    if 'retiro_escombros' in fuentes:
+    if 'retiro_escombros' in fuentes or (pila_corroborada and recuento and recuento['bolsas_fuentes'] >= 2):
         modelo['recuento_escombros'] = recuento
     if 'retiro_muebles' in fuentes:
         modelo['objetos'] = final.get('objetos', [])

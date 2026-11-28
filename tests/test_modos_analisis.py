@@ -663,16 +663,18 @@ class ApiModos(unittest.TestCase):
                     self.assertEqual(salida['verificacion_escombros']['bolsas_fuentes'],
                                      sum(type(cuenta) is int for cuenta in (dirigida, final)))
 
-    def test_prueba_cuenta_bolsas_con_los_dos_apoyos_de_alcance_que_confirman_el_retiro(self):
+    def test_prueba_separa_recuento_de_alcance_y_servicio(self):
         clave = 'retiro_escombros'
         local = {'predichas': [], 'gravedad': {}, 'escombros_mixtos': .99,
                  'probabilidades': [{'key': clave, 'score': .99}]}
         foto = {'file': ('foto.jpg', self.foto, 'image/jpeg')}
-        for primer, segundo, medida in (
-                ((5, False), (6, True), (5, False)),
-                ((0, False), (0, False), (0, True)),
-                ((0, False), (5, False), None),
-                ((5, False), (None, None), None)):
+        for primer, segundo, medida, residuos_aparte, publica in (
+                ((5, False), (6, True), (5, False), True, True),
+                ((0, False), (0, False), (0, True), True, True),
+                ((0, False), (5, False), None, True, True),
+                ((5, False), (None, None), None, True, True),
+                ((5, True), (7, True), (5, False), False, True),
+                ((5, True), (7, True), None, False, False)):
             etapas = []
 
             def responder(modelo, mensajes, **opciones):
@@ -683,8 +685,8 @@ class ApiModos(unittest.TestCase):
                 self.assertIn('bolsas_visibles', opciones['esquema']['properties'])
                 self.assertIn('Excluí bolsones', mensajes[0]['content'])
                 numero, tapadas = primer if modelo == 't/dirigidos' else segundo
-                return json.dumps({'ubicacion': 'publica', 'presentacion': 'sacos_portables_o_suelto',
-                                   'material': 'obra_visible', 'residuos_comunes_aparte': 'si',
+                return json.dumps({'ubicacion': 'publica' if publica else 'privada', 'presentacion': 'sacos_portables_o_suelto',
+                                   'material': 'obra_visible', 'residuos_comunes_aparte': 'si' if residuos_aparte else 'no',
                                    'evidencia': 'Pila de obra junto al cordón.',
                                    'bolsas_visibles': numero, 'bolsas_adicionales_posibles': tapadas})
 
@@ -695,17 +697,18 @@ class ApiModos(unittest.TestCase):
             self.assertEqual(r.status_code, 200, r.text)
             self.assertCountEqual(etapas, ['prueba_inicio', 'prueba_retiros', 'prueba_decision'] + ['prueba_alcance'] * 2)
             salida = r.json()
-            [problema] = salida['problemas']
-            self.assertEqual(problema['key'], clave)
+            problemas = [p for p in salida['problemas'] if p['key'] == clave]
+            self.assertEqual(len(problemas), int(residuos_aparte and publica))
             if medida is None:
                 self.assertNotIn('verificacion_escombros', salida)
-                self.assertIsNone(problema['bolsas'])
+                self.assertTrue(all(p['bolsas'] is None for p in problemas))
             else:
                 minimo, completo = medida
                 recuento = salida['verificacion_escombros']
                 self.assertEqual((recuento['bolsas_minimo'], recuento['bolsas_recuento_completo'],
                                   recuento['bolsas_fuentes']), (minimo, completo, 2))
-                self.assertEqual(problema['bolsas'], minimo if completo else None)
+                for problema in problemas:
+                    self.assertEqual(problema['bolsas'], minimo if completo else None)
 
     def test_prueba_distingue_evidencia_de_la_escena(self):
         import prueba_completo as P
