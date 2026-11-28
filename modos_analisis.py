@@ -355,6 +355,11 @@ def completar(salida):
         estado = 'parcial' if incompleto else 'completo'
     if fallo_tecnico:
         limites.append('etapa_fallida')
+        if (p.modo == 'prueba' and veri.get('revision_ramas_fallo')
+                and r.fallos <= {'rama_desprendida', 'respuesta_dirigida'}
+                and not r.limites_costo and not _fallos_en(datos_fallos)
+                and not veri.get('ruteo_contexto_fallo') and not arbitraje_pendiente):
+            limites.append('solo_revision_ramas_pendiente')
     if arbitraje_pendiente:
         limites.append('revision_pendiente')
     if veri.get('ruteo_contexto_fallo'):

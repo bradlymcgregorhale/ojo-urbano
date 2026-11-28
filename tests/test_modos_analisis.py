@@ -39,6 +39,18 @@ def perfiles():
 
 
 class Configuracion(unittest.TestCase):
+    def test_se_identifica_si_la_unica_falla_es_la_revision_de_ramas(self):
+        perfil = perfiles()['prueba']
+        for extra in (None, 'prueba_inicio'):
+            with self.subTest(extra=extra), M.usar(perfil):
+                M.fallo('rama_desprendida')
+                M.fallo('respuesta_dirigida')
+                if extra:
+                    M.fallo(extra)
+                salida = M.completar({'detalle': {'verificacion': {'activa': True, 'revision_ramas_fallo': True}}})
+                self.assertEqual(salida['analisis_estado'], 'parcial')
+                self.assertEqual('solo_revision_ramas_pendiente' in salida['analisis_limitaciones'], extra is None)
+
     def test_respaldo_de_retiro_conserva_la_clave_canonica(self):
         import prueba_completo as P
 
@@ -359,6 +371,29 @@ class ApiModos(unittest.TestCase):
         self.assertEqual(salida['revision_ramas']['descartadas'], ['problemas_arbolado', 'obstruccion'])
         self.assertEqual(salida['costo_api'], .004)
         self.assertTrue(salida['costo_api_completo'])
+
+    def test_la_revision_truncada_de_una_rama_no_descarta_el_pedido_de_vereda(self):
+        muebles, vereda = 'retiro_muebles', 'reparacion_vereda'
+        pedido = 'Retiren el colchón y reparen las baldosas rotas.'
+        hallazgos = [(muebles, 'Colchón descartado.'), (vereda, 'Baldosas partidas y sueltas.'),
+                     ('retiro_poda', 'Ramas cortadas.'), ('obstruccion', 'Una rama obstruye el paso.')]
+
+        def http(req, *_):
+            esquema = json.loads(req.data)['response_format']['json_schema']['schema']['properties']
+            final = 'length' if 'rama_desprendida' in esquema else 'stop'
+            items = hallazgos if 'objetos' in esquema or 'bolsas_visibles' not in esquema else hallazgos[:1]
+            datos = {'confirmadas': [{'key': k, 'evidencia': e} for k, e in items], 'dudosas': [],
+                     'pedidos': [{'key': k, 'respaldo': 'compatible'} for k in (muebles, vereda)],
+                     'objetos': ['colchón']}
+            return {'usage': {'cost': .001, 'total_tokens': 10}, 'choices': [
+                {'finish_reason': final, 'message': {'content': json.dumps(datos)}}]}
+
+        with patch.object(V, '_pedir_http', side_effect=http):
+            salida = self.cliente.post('/clasificar', files={'file': ('foto.jpg', self.foto, 'image/jpeg')},
+                                       data={'modo': 'prueba', 'contexto': pedido}).json()
+        self.assertEqual(salida['analisis_estado'], 'parcial')
+        self.assertIn('solo_revision_ramas_pendiente', salida['analisis_limitaciones'])
+        self.assertEqual(salida['solicitudes_sugeridas']['servicios'], [muebles, vereda])
 
     def test_prueba_informa_si_falta_el_costo_de_una_consulta(self):
         original = V._pedir_http
