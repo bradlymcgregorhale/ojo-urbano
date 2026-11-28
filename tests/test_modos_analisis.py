@@ -710,6 +710,236 @@ class ApiModos(unittest.TestCase):
                 self.assertEqual(set(fuentes), esperado)
                 self.assertEqual(leer.call_count, 3)
 
+    def test_prueba_la_vidriera_no_respalda_el_pedido_de_venta_ambulante(self):
+        interior = 'Muestras alineadas en la vidriera del local.'
+        exterior = 'Puesto de peras en la vereda frente a la vidriera.'
+        vereda = {'key': 'reparacion_vereda', 'evidencia': 'Varias baldosas rotas.'}
+        casos = [(interior, [], 'contradice', []),
+                 (interior, [vereda], 'contradice', ['reparacion_vereda']),
+                 (exterior, [], 'compatible', ['manteros']),
+                 ('Puesto de peras en la vereda, no en la vidriera.', [], 'compatible', ['manteros'])]
+        for evidencia, adicionales, respaldo, servicios in casos:
+            def responder(req, *_):
+                lectura = {'confirmadas': [], 'dudosas': []}
+                if json.loads(req.data)['model'] == 't/decision':
+                    lectura['confirmadas'] = [{'key': 'manteros', 'evidencia': evidencia}, *adicionales]
+                    lectura['pedidos'] = [
+                        {'key': hallazgo['key'], 'respaldo': 'compatible'}
+                        for hallazgo in lectura['confirmadas']]
+                return {'usage': {'cost': .001}, 'choices': [
+                    {'finish_reason': 'stop', 'message': {'content': json.dumps(lectura)}}]}
+
+            contexto = 'Vendedor ambulante y vereda rota' if adicionales else 'Vendedor ambulante'
+            with (self.subTest(evidencia=evidencia, adicionales=bool(adicionales)),
+                  patch.object(self.S, 'CACHE_MAX', 0), patch.object(V, '_pedir_http', side_effect=responder)):
+                r = self.cliente.post('/clasificar', files={'file': ('foto.jpg', self.foto, 'image/jpeg')},
+                                      data={'modo': 'prueba', 'contexto': contexto})
+                self.assertEqual(r.status_code, 200, r.text)
+                salida = r.json()
+                estados = {c['key']: c['respaldo_visual'] for c in salida['categorias_contexto']}
+                self.assertEqual(estados['manteros'], respaldo)
+                self.assertEqual(salida['foto_valida'], bool(servicios))
+                self.assertEqual([p['key'] for p in salida['problemas']], servicios)
+                self.assertEqual(salida['solicitudes_sugeridas']['servicios'], servicios)
+                self.assertEqual(salida['consumo_api']['intentos'], 3)
+
+    def test_prueba_la_vidriera_en_duda_no_respalda_el_pedido_de_venta(self):
+        foto = ('foto.jpg', self.foto, 'image/jpeg')
+        venta, vereda = 'manteros', 'reparacion_vereda'
+        for mixto in (False, True):
+            def responder(req, *_):
+                lectura = {'confirmadas': [], 'dudosas': []}
+                if json.loads(req.data)['model'] == 't/decision':
+                    lectura['dudosas'] = [{'key': venta, 'evidencia': 'Muestras en la vidriera.'}]
+                    lectura['pedidos'] = [{'key': venta, 'respaldo': 'compatible'}]
+                    if mixto:
+                        lectura['confirmadas'] = [{'key': vereda, 'evidencia': 'Faltan baldosas.'}]
+                        lectura['pedidos'].append({'key': vereda, 'respaldo': 'compatible'})
+                return {'usage': {'cost': .001}, 'choices': [
+                    {'finish_reason': 'stop', 'message': {'content': json.dumps(lectura)}}]}
+
+            contexto = 'Vendedor ambulante' + (' y vereda rota' if mixto else '')
+            with (self.subTest(mixto=mixto), patch.object(self.S, 'CACHE_MAX', 0),
+                  patch.object(V, '_pedir_http', side_effect=responder)):
+                r = self.cliente.post('/clasificar', files={'file': foto},
+                                      data={'modo': 'prueba', 'contexto': contexto})
+                self.assertEqual(r.status_code, 200, r.text)
+                salida = r.json()
+                respaldos = {p['key']: p['respaldo_visual'] for p in salida['categorias_contexto']}
+                self.assertEqual(respaldos[venta], 'neutral')
+                self.assertIn(venta, salida['en_duda'])
+                self.assertEqual(salida['foto_valida_estado'], 'corresponde' if mixto else 'sin_opinion')
+                propuesta = salida['solicitudes_sugeridas']
+                self.assertEqual(propuesta['criterio'], 'pedidos_explicitos')
+                self.assertEqual(propuesta['servicios'], [vereda] if mixto else [])
+
+    def test_prueba_un_hallazgo_de_la_misma_categoria_no_cambia_el_respaldo_del_pedido(self):
+        foto = ('foto.jpg', self.foto, 'image/jpeg')
+        retiro, vereda = 'retiro_muebles', 'reparacion_vereda'
+        casos = (
+            ('contradice', True, True, [retiro, vereda], [], [vereda]),
+            ('neutral', True, True, [retiro, vereda], [], [vereda]),
+            ('compatible', True, True, [retiro, vereda], [], [retiro, vereda]),
+            ('contradice', False, False, [], [retiro], []),
+            ('neutral', False, None, [retiro], [], []),
+        )
+        for respaldo, mixto, validez, hallazgos, descartados, servicios in casos:
+            with self.subTest(respaldo=respaldo, mixto=mixto):
+                objeto = 'ropero' if respaldo == 'compatible' else 'heladera blanca'
+                contexto = f'Retiro de {objeto}' + (' y reparación de baldosas' if mixto else '')
+
+                def responder(req, *_):
+                    lectura = {'confirmadas': [], 'dudosas': []}
+                    if json.loads(req.data)['model'] == 't/decision':
+                        lectura['confirmadas'] = [{'key': retiro, 'evidencia': 'Ropero descartado.'}]
+                        lectura['pedidos'] = [{'key': retiro, 'respaldo': respaldo}]
+                        if mixto:
+                            lectura['confirmadas'].append({'key': vereda, 'evidencia': 'Faltan baldosas.'})
+                            lectura['pedidos'].append({'key': vereda, 'respaldo': 'compatible'})
+                    return {'usage': {'cost': .001}, 'choices': [
+                        {'finish_reason': 'stop', 'message': {'content': json.dumps(lectura)}}]}
+
+                with patch.object(self.S, 'CACHE_MAX', 0), patch.object(V, '_pedir_http', side_effect=responder):
+                    r = self.cliente.post('/clasificar', files={'file': foto},
+                                          data={'modo': 'prueba', 'contexto': contexto})
+                self.assertEqual(r.status_code, 200, r.text)
+                salida = r.json()
+                self.assertEqual(salida['categorias_contexto'][0]['respaldo_visual'], respaldo)
+                self.assertIs(salida['foto_valida'], validez)
+                self.assertEqual([p['key'] for p in salida['problemas']], hallazgos)
+                self.assertEqual([p['key'] for p in salida['descartados_por_foto']], descartados)
+                self.assertEqual(salida['solicitudes_sugeridas']['servicios'], servicios)
+                if validez is None:
+                    self.assertEqual(salida['foto_valida_estado'], 'sin_opinion')
+                    self.assertEqual(salida['solicitudes_sugeridas']['estado'], 'pendiente')
+                    self.assertEqual(salida['solicitudes_sugeridas']['criterio'], 'pedidos_explicitos')
+
+    def test_prueba_considera_la_lectura_previa_para_el_pedido_de_ocupacion(self):
+        ocupacion = {'key': 'ocupacion_comercial', 'evidencia': 'Sillas y ropa exhibidas frente al local.'}
+        muebles = {'key': 'retiro_muebles', 'evidencia': 'Sillón junto al cordón.'}
+        foto = ('foto.jpg', self.foto, 'image/jpeg')
+        casos = (
+            (True, True, 'compatible', ['ocupacion_comercial']),
+            (False, True, 'compatible', []),
+            (True, False, 'compatible', []),
+            (True, True, 'neutral', []),
+            (True, True, None, ['retiro_muebles']),
+        )
+        for previa, duda, respaldo, servicios in casos:
+            with self.subTest(previa=previa, duda=duda, respaldo=respaldo):
+                def responder(req, *_):
+                    cuerpo = json.loads(req.data)
+                    inicial = 'Aclaraciones para esta escena' in cuerpo['messages'][0]['content']
+                    lectura = {'confirmadas': [ocupacion] if previa and inicial else [], 'dudosas': []}
+                    if cuerpo['model'] == 't/decision':
+                        lectura['confirmadas'] = [muebles]
+                        lectura['dudosas'] = [ocupacion] if duda else []
+                        if respaldo:
+                            lectura['pedidos'] = [{'key': 'ocupacion_comercial', 'respaldo': respaldo}]
+                    return {'usage': {'cost': .001}, 'choices': [
+                        {'finish_reason': 'stop', 'message': {'content': json.dumps(lectura)}}]}
+
+                texto = 'Uso indebido del espacio público' if respaldo else ''
+                with patch.object(self.S, 'CACHE_MAX', 0), patch.object(V, '_pedir_http', side_effect=responder):
+                    r = self.cliente.post('/clasificar', files={'file': foto},
+                                          data={'modo': 'prueba', 'contexto': texto})
+                self.assertEqual(r.status_code, 200, r.text)
+                salida = r.json()
+                self.assertEqual(salida['analisis_estado'], 'completo')
+                self.assertEqual([p['key'] for p in salida['problemas']], ['retiro_muebles'])
+                self.assertEqual('ocupacion_comercial' in salida['en_duda'], duda)
+                self.assertEqual(salida['solicitudes_sugeridas']['servicios'], servicios)
+                if servicios == ['ocupacion_comercial']:
+                    self.assertEqual(salida['reclamo_foto']['codigo'], '118001')
+                    self.assertTrue(salida['solicitudes_sugeridas']['requiere_confirmacion'])
+                    self.assertTrue(salida['conclusion']['requiere_revision'])
+
+    def test_prueba_pide_evidencia_separada_para_sumar_obstruccion_a_ocupacion(self):
+        foto = ('foto.jpg', self.foto, 'image/jpeg')
+        datos = {'modo': 'prueba', 'contexto': 'Ocupación de la vereda por local comercial'}
+        ocupacion, obstruccion = 'ocupacion_comercial', 'obstruccion'
+        equipo = 'La máquina de garra del local ocupa parte del paso.'
+        barrera = 'Una pizarra separada impide el paso junto al cordón.'
+        casos = (
+            (equipo.lower(), None, [ocupacion], [obstruccion], 'neutral'),
+            ('Un cartel y varias sillas ocupan parte del paso.', 'dudosas', [ocupacion], [obstruccion], 'neutral'),
+            (barrera, None, [ocupacion, obstruccion], [], 'compatible'),
+            (barrera, 'confirmadas', [ocupacion, obstruccion], [], 'compatible'),
+        )
+        for evidencia, inicio, servicios, dudas, respaldo in casos:
+            with self.subTest(evidencia=evidencia, inicio=inicio):
+                def responder(req, *_):
+                    cuerpo = json.loads(req.data)
+                    lectura = {'confirmadas': [], 'dudosas': []}
+                    if cuerpo['model'] == 't/decision':
+                        lectura['confirmadas'] = [{'key': ocupacion, 'evidencia': equipo},
+                                                  {'key': obstruccion, 'evidencia': evidencia}]
+                        lectura['pedidos'] = [{'key': k, 'respaldo': 'compatible'} for k in (ocupacion, obstruccion)]
+                    elif inicio and 'Claves válidas' in cuerpo['messages'][0]['content']:
+                        lectura[inicio] = [{'key': obstruccion, 'evidencia': evidencia}]
+                    return {'usage': {'cost': .001}, 'choices': [
+                        {'finish_reason': 'stop', 'message': {'content': json.dumps(lectura)}}]}
+
+                with patch.object(self.S, 'CACHE_MAX', 0), patch.object(V, '_pedir_http', side_effect=responder):
+                    respuesta = self.cliente.post('/clasificar/', files={'file': foto}, data=datos)
+                self.assertEqual(respuesta.status_code, 200, respuesta.text)
+                salida = respuesta.json()
+                self.assertEqual(salida['solicitudes_sugeridas']['servicios'], servicios)
+                self.assertEqual(salida['en_duda'], dudas)
+                self.assertEqual({c['key']: c['respaldo_visual'] for c in salida['categorias_contexto']},
+                                 {ocupacion: 'compatible', obstruccion: respaldo})
+
+    def test_clasificar_acepta_multipart_con_barra_final_sin_redirigir(self):
+        archivos = {'file': ('foto.jpg', self.foto, 'image/jpeg')}
+        for ruta in ('/clasificar', '/clasificar/'):
+            respuesta = self.cliente.post(ruta, params={'verificar': '0'}, data={'modo': 'prueba'},
+                                          files=archivos, follow_redirects=False)
+            self.assertEqual(respuesta.status_code, 200)
+            self.assertEqual(respuesta.json()['modo'], 'prueba')
+        self.assertEqual(self.llamadas, [])
+
+    def test_prueba_distingue_exclusion_y_duda_de_recoleccion_junto_al_bolson(self):
+        datos = {'modo': 'prueba', 'contexto': 'Recolección de basura y barrido de la vereda'}
+        archivos = {'file': ('foto.jpg', self.foto, 'image/jpeg')}
+        for dirigida, final in ((True, True), (True, False), (False, True), (True, None), (None, True),
+                                (False, False), (None, None), (1, True)):
+            with self.subTest(dirigida=dirigida, final=final):
+                llamadas = []
+                votos_dentro = sum(voto is True for voto in (dirigida, final))
+
+                def responder(modelo, mensajes, **opciones):
+                    etapa = opciones['etapa']
+                    llamadas.append(etapa)
+                    esquema = opciones['esquema']
+                    usa_bolson = etapa in ('prueba_retiros', 'prueba_decision')
+                    self.assertEqual('solo_residuos_del_bolson' in esquema['required'], usa_bolson)
+                    valor = {'confirmadas': [], 'dudosas': []}
+                    if usa_bolson:
+                        self.assertIn('volante aislado', mensajes[0]['content'])
+                        valor['solo_residuos_del_bolson'] = dirigida if etapa == 'prueba_retiros' else final
+                    if etapa == 'prueba_decision':
+                        valor['confirmadas'] = [
+                            {'key': 'recoleccion', 'evidencia': 'Restos visibles cerca de un bolsón de izado.'},
+                            {'key': 'barrido', 'evidencia': 'Tierra acumulada sobre la vereda.'},
+                        ]
+                        valor['pedidos'] = [{'key': k, 'respaldo': 'compatible'} for k in ('recoleccion', 'barrido')]
+                    return json.dumps(valor)
+
+                with patch.object(self.S, 'CACHE_MAX', 0), patch.object(V, '_llamar', side_effect=responder):
+                    r = self.cliente.post('/clasificar', files=archivos, data=datos)
+                self.assertEqual(r.status_code, 200, r.text)
+                self.assertCountEqual(llamadas, ['prueba_inicio', 'prueba_retiros', 'prueba_decision'])
+                salida = r.json()
+                esperados = {'barrido'} if votos_dentro else {'recoleccion', 'barrido'}
+                self.assertEqual({p['key'] for p in salida['problemas']}, esperados)
+                self.assertEqual(salida['en_duda'], ['recoleccion'] if votos_dentro == 1 else [])
+                propuesta = salida['solicitudes_sugeridas']
+                self.assertEqual(set(propuesta['candidatos']), esperados)
+                self.assertEqual(propuesta['servicios'], ['barrido'] if votos_dentro else [])
+                self.assertEqual(propuesta.get('criterio'), 'pedidos_explicitos' if votos_dentro == 1 else None)
+                respaldo = {p['key']: p['respaldo_visual'] for p in salida['categorias_contexto']}
+                self.assertEqual(respaldo['recoleccion'], ('compatible', 'neutral', 'contradice')[votos_dentro])
+
     def test_prueba_pide_describir_el_paso_si_hay_indicios_de_obra(self):
         from prueba_completo import _decision
         claves = ('retiro_escombros', 'obstruccion')
@@ -768,13 +998,126 @@ class ApiModos(unittest.TestCase):
                          V._clave_cache_prompt(b['model'], b['messages']))
         self.assertNotEqual(a, b)
 
-    def test_prueba_rechaza_contexto_y_otros_usos_antes_de_llamar(self):
+    def test_prueba_separa_el_texto_vecinal_de_los_hallazgos(self):
+        foto = ('foto.jpg', self.foto, 'image/jpeg')
+        pedido = 'Hay baldosas rotas'
+
+        def responder(req, *_):
+            cuerpo = json.loads(req.data)
+            self.llamadas.append(cuerpo)
+            es_decision = cuerpo['model'] == 't/decision'
+            contenido = {'confirmadas': [{'key': 'retiro_muebles', 'evidencia': 'Silla descartada.'}],
+                         'dudosas': []}
+            propiedades = cuerpo['response_format']['json_schema']['schema']['properties']
+            self.assertEqual('pedidos' in propiedades, es_decision)
+            self.assertNotIn(pedido, cuerpo['messages'][0]['content'])
+            self.assertEqual(pedido in json.dumps(cuerpo['messages'][1]), es_decision)
+            if es_decision:
+                datos = [json.loads(p['text']) for p in cuerpo['messages'][1]['content'] if p['type'] == 'text']
+                self.assertEqual(datos[0], {'contexto_vecinal': pedido})
+                self.assertEqual(datos[1], {'observaciones_previas': [
+                    {'key': 'retiro_muebles', 'estado': 'confirmadas', 'evidencia': 'Silla descartada.'}]})
+                contenido['pedidos'] = [{'key': 'reparacion_vereda', 'respaldo': 'contradice'}]
+            return {'usage': {'cost': .001, 'total_tokens': 15}, 'choices': [
+                {'finish_reason': 'stop', 'message': {'content': json.dumps(contenido)}}]}
+
+        datos = {'modo': 'prueba', 'contexto': pedido}
+        with patch.object(V, '_pedir_http', side_effect=responder):
+            r = self.cliente.post('/clasificar', files={'file': foto}, data=datos)
+            self.assertEqual(r.status_code, 200, r.text)
+            salida = r.json()
+            self.assertEqual(salida['foto_valida_estado'], 'no_corresponde')
+            self.assertIs(salida['foto_valida'], False)
+            self.assertEqual(salida['problemas'], [])
+            self.assertEqual([p['key'] for p in salida['descartados_por_foto']], ['retiro_muebles'])
+            self.assertEqual([p['key'] for p in salida['categorias_contexto']], ['reparacion_vereda'])
+            self.assertEqual(salida['costo_api'], .003)
+            self.assertTrue(salida['costo_api_completo'])
+            cache = self.cliente.post('/trabajos', files={'file': foto}, data=datos).json()['resultado']
+            traza = cache.pop('consumo_api')
+            self.assertEqual(traza['intentos'], 0)
+            self.assertEqual(traza['origen_cache'], salida.pop('consumo_api')['pedido'])
+            self.assertEqual(cache, salida)
+        self.assertEqual(len(self.llamadas), 3)
+
+    def test_prueba_rechaza_otros_usos_antes_de_llamar(self):
         f = ('foto.jpg', self.foto, 'image/jpeg')
-        self.assertEqual(self.cliente.post('/trabajos', files={'file': f},
-            data={'modo': 'prueba', 'contexto': 'Comentario'}).status_code, 422)
         self.assertEqual(self.cliente.post('/comparar', files={'file_a': f, 'file_b': f},
             data={'modo': 'prueba'}).status_code, 422)
         self.assertEqual(self.llamadas, [])
+
+    def test_prueba_conserva_el_pedido_de_ocupacion_y_distingue_otra_foto(self):
+        foto = ('foto.jpg', self.foto, 'image/jpeg')
+        datos = {'modo': 'prueba', 'contexto': 'Uso indebido del espacio público'}
+        for clave, evidencia, respaldo, estado, servicios in (
+            ('ocupacion_comercial', 'Ropa exhibida por el local en la vereda.',
+             'compatible', 'compatible', ['ocupacion_comercial']),
+            ('contenedor_desbordado', 'Bolsas que salen del contenedor lleno.',
+             'contradice', 'no_corresponde', []),
+        ):
+            with self.subTest(clave=clave):
+                def responder(req, *_):
+                    cuerpo = json.loads(req.data)
+                    contenido = {'confirmadas': [], 'dudosas': []}
+                    if cuerpo['model'] == 't/decision':
+                        contenido['confirmadas'] = [{'key': clave, 'evidencia': evidencia}]
+                        contenido['pedidos'] = [{'key': 'ocupacion_comercial', 'respaldo': respaldo}]
+                    return {'usage': {'cost': .001, 'total_tokens': 15}, 'choices': [
+                        {'finish_reason': 'stop', 'message': {'content': json.dumps(contenido)}}]}
+
+                with patch.object(self.S, '_cache', __import__('collections').OrderedDict()), \
+                        patch.object(V, '_pedir_http', side_effect=responder):
+                    r = self.cliente.post('/clasificar', files={'file': foto}, data=datos)
+                self.assertEqual(r.status_code, 200, r.text)
+                self.assertEqual(r.json()['reclamo_foto']['estado'], estado)
+                self.assertEqual(r.json()['solicitudes_sugeridas']['servicios'], servicios)
+
+    def test_prueba_conserva_la_vereda_pedida_junto_con_la_revision_de_ocupacion(self):
+        from time import monotonic, sleep
+
+        foto = ('foto.jpg', self.foto, 'image/jpeg')
+        datos = {'modo': 'prueba', 'contexto': 'Ocupación comercial y baldosas rotas'}
+        for respaldo, ocupacion_vista, estado, esperados in (
+            ('compatible', True, 'compatible', ['ocupacion_comercial', 'reparacion_vereda']),
+            ('contradice', False, 'no_corresponde', ['reparacion_vereda']),
+            ('contradice', True, 'no_corresponde', ['reparacion_vereda']),
+            ('neutral', True, 'sin_evidencia', ['reparacion_vereda']),
+        ):
+            with self.subTest(respaldo=respaldo, ocupacion_vista=ocupacion_vista):
+                def responder(req, *_):
+                    contenido = {'confirmadas': [], 'dudosas': []}
+                    if json.loads(req.data)['model'] == 't/decision':
+                        contenido['confirmadas'] = [
+                            {'key': 'reparacion_vereda', 'evidencia': 'Faltan baldosas.'},
+                            {'key': 'retiro_muebles', 'evidencia': 'Silla descartada en otro sector.'}]
+                        if ocupacion_vista:
+                            ropa = 'Ropa exhibida.' if respaldo == 'compatible' else 'Ropa de otro comercio.'
+                            contenido['confirmadas'].append({'key': 'ocupacion_comercial', 'evidencia': ropa})
+                        contenido['pedidos'] = [{'key': 'ocupacion_comercial', 'respaldo': respaldo},
+                                                {'key': 'reparacion_vereda', 'respaldo': 'compatible'}]
+                    return {'usage': {'cost': .001}, 'choices': [
+                        {'finish_reason': 'stop', 'message': {'content': json.dumps(contenido)}}]}
+                with patch.object(self.S, 'CACHE_MAX', 0), \
+                        patch.object(V, '_pedir_http', side_effect=responder):
+                    r = self.cliente.post('/clasificar', files={'file': foto}, data=datos)
+                    self.assertEqual(r.status_code, 200, r.text)
+                    inicio = self.cliente.post('/trabajos', files={'file': foto}, data=datos)
+                    self.assertEqual(inicio.status_code, 202, inicio.text)
+                    ruta = '/trabajos/' + inicio.json()['trabajo']
+                    limite = monotonic() + 3
+                    trabajo = self.cliente.get(ruta).json()
+                    while trabajo['estado'] in ('en_cola', 'procesando') and monotonic() < limite:
+                        sleep(.01)
+                        trabajo = self.cliente.get(ruta).json()
+                    self.assertEqual(trabajo['estado'], 'listo', trabajo)
+                for respuesta in (r.json(), trabajo['resultado']):
+                    self.assertEqual(respuesta['reclamo_foto']['estado'], estado)
+                    self.assertEqual(respuesta['solicitudes_sugeridas']['servicios'], esperados)
+                    hallazgos = {p['key'] for p in respuesta['problemas']}
+                    self.assertIn('retiro_muebles', hallazgos)
+                    self.assertEqual('ocupacion_comercial' in hallazgos, ocupacion_vista)
+                    pedidos = {p['key']: p['respaldo_visual'] for p in respuesta['categorias_contexto']}
+                    self.assertEqual(pedidos['ocupacion_comercial'], respaldo)
 
     def test_ultimo_campo_escalar_y_no_archivo(self):
         r = self.cliente.post('/clasificar', files=[('file', ('foto.jpg', self.foto)),

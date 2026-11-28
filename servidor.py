@@ -579,10 +579,11 @@ def _calidad_segura(img):
         return None
 
 
-def _procesar_prueba(img, local, perfil, verificar):
+def _procesar_prueba(img, local, perfil, verificar, contexto):
     confirmadas, dudas, lector = {}, {}, None
     if verificar:
-        confirmadas, dudas, lector = prueba_completo.clasificar(img, local, CATEGORIAS, perfil.verificadores)
+        confirmadas, dudas, lector = prueba_completo.clasificar(
+            img, local, CATEGORIAS, perfil.verificadores, contexto=contexto)
     elementos, problemas = [], []
     for key, fuentes in confirmadas.items():
         entrada = {'key': key, 'nombre': nombre_de(key), 'fuentes': fuentes, 'gravedad': None}
@@ -594,7 +595,8 @@ def _procesar_prueba(img, local, perfil, verificar):
     salida = {'version': VERSION_API,
               'problemas': problemas, 'elementos_detectados': elementos,
               'posibles': posibles, 'en_duda': list(dudas), 'categorias_contexto': [],
-              'descartados_por_foto': [], 'foto_valida': None, 'foto_valida_estado': 'sin_contexto',
+              'descartados_por_foto': [], 'foto_valida': None,
+              'foto_valida_estado': 'no_evaluado' if contexto else 'sin_contexto',
               'descripcion': ', '.join(c['nombre'] for c in problemas) or None,
               'calidad_foto': _calidad_segura(img), 'detalle': {'modelo_local': local,
                   'verificacion': {'activa': lector is not None,
@@ -608,6 +610,8 @@ def _procesar_prueba(img, local, perfil, verificar):
                 if problema['key'] == 'retiro_escombros':
                     problema['bolsas'] = minimo
     salida = revision_ramas.revisar(img, salida, perfil)
+    if contexto and lector is not None:
+        _pedidos_prueba(salida, lector.get('pedidos', {}))
     vehiculos = [p for p in salida['problemas'] if p['key'] in verificador.PATENTE_KEYS]
     if vehiculos:
         patente = verificador._leer_patente(img, solo_recorte=True)
@@ -617,6 +621,24 @@ def _procesar_prueba(img, local, perfil, verificar):
     salida.update(verificador.costo_total(con_estado=True, con_traza=True))
     salida.update(verificador.tokens_total(desglose=True))
     return modos.completar(salida)
+
+
+def _pedidos_prueba(salida, pedidos):
+    salida['categorias_contexto'] = [
+        {'key': clave, 'nombre': nombre_de(clave), 'fuentes': 1, 'respaldo_visual': respaldo}
+        for clave, respaldo in pedidos.items()
+    ]
+    respaldos = {c['respaldo_visual'] for c in salida['categorias_contexto']}
+    if 'compatible' in respaldos:
+        salida['foto_valida'], salida['foto_valida_estado'] = True, 'corresponde'
+    elif respaldos == {'contradice'}:
+        salida['foto_valida'], salida['foto_valida_estado'] = False, 'no_corresponde'
+        salida['descartados_por_foto'] = [dict(p, motivo_descarte='la foto no corresponde a lo que se pidió')
+                                         for p in salida['problemas']]
+        salida['problemas'] = []
+        salida['descripcion'] = None
+    else:
+        salida['foto_valida_estado'] = 'sin_opinion'
 
 
 def procesar(datos, contexto, verificar):
@@ -633,7 +655,7 @@ def procesar(datos, contexto, verificar):
 
     perfil = modos.perfil_actual()
     if perfil and perfil.modo == 'prueba':
-        return _procesar_prueba(img, local, perfil, activar and verificador.disponible())
+        return _procesar_prueba(img, local, perfil, activar and verificador.disponible(), contexto)
 
     if activar and verificador.disponible():
         veri = verificador.verificar(img, CATEGORIAS, local, contexto)
@@ -1195,7 +1217,8 @@ def _publica(r, contexto=""):
     pub['conclusion'] = _conclusion(pub)
     if pub['conclusion']['estado'] == 'preliminar':
         pub['descripcion'] = pub['conclusion']['texto']
-    contexto_ocupacion.aplicar(pub, contexto)
+    contexto_ocupacion.aplicar(pub, contexto, respaldo_previo=any(
+        v.get("respaldo_previo_ocupacion") for v in (veri.get("verificadores") or [])))
     return pub
 
 
@@ -1375,8 +1398,8 @@ async def _perfil_formulario(request, *, admite_prueba=False):
     valor = formulario.get("modo", "alto")
     if not isinstance(valor, str) or valor not in modos.NOMBRES:
         raise HTTPException(422, "Elegí un modo válido. Si lo omitís se usa Completo.")
-    if valor == 'prueba' and (not admite_prueba or str(formulario.get('contexto') or '').strip()):
-        raise HTTPException(422, "Completo (prueba) admite una foto sin comentario.")
+    if valor == 'prueba' and not admite_prueba:
+        raise HTTPException(422, "Completo (prueba) está disponible para clasificar fotos.")
     perfil = PERFILES[valor]
     if perfil.motivo:
         raise HTTPException(503, "El modo elegido no está disponible: " + perfil.motivo + ".")
@@ -1384,9 +1407,10 @@ async def _perfil_formulario(request, *, admite_prueba=False):
 
 
 @app.post("/clasificar")
+@app.post("/clasificar/", include_in_schema=False)
 async def clasificar(request: Request, file: UploadFile = File(...),
                      verificar: str = "auto", contexto: str = Form(""),
-                     modo: Any = Form("alto", description="Modo de análisis: bajo, medio o alto.")):
+                     modo: Any = Form("alto", description="Modo de análisis: bajo, medio, alto o prueba.")):
     perfil = await _perfil_formulario(request, admite_prueba=True)
     datos = await _leer_acotado(file)
     contexto = (contexto or "").strip()[:CONTEXTO_MAX]
@@ -1795,7 +1819,7 @@ async def _correr_trabajo(t):
 @app.post("/trabajos/")
 async def crear_trabajo(request: Request, file: UploadFile = File(...),
                         verificar: str = "auto", contexto: str = Form(""),
-                     modo: Any = Form("alto", description="Modo de análisis: bajo, medio o alto.")):
+                        modo: Any = Form("alto", description="Modo de análisis: bajo, medio, alto o prueba.")):
     perfil = await _perfil_formulario(request, admite_prueba=True)
     datos = await _leer_acotado(file)
     contexto = (contexto or "").strip()[:CONTEXTO_MAX]
@@ -2122,7 +2146,7 @@ PAGINA = r"""<!DOCTYPE html>
         </select>
       </div>
       <p id="modo-ayuda">Las fotos empiezan en Completo (prueba), que evalúa categorías y muestra el costo de la API.
-        Si agregás un comentario, elegí otro modo antes de analizar. Completo puede costar más.</p>
+        Completo puede costar más.</p>
       <p id="modo-estado" role="status" aria-live="polite"></p>
     </div>
   </section>
@@ -2164,7 +2188,7 @@ PAGINA = r"""<!DOCTYPE html>
           <code class="ruta" data-ep="clasificar"></code>
           <div class="epdesc">Una foto, esperando el resultado en la misma conexión (25-60 s).
             multipart/form-data con <b>file</b> (JPG/PNG/WEBP, máx. 10 MB), <b>contexto</b> opcional
-            (máx. 2000 caracteres) y <b>modo</b>: bajo, medio o alto (predeterminado). Ocupado: <code>503</code> con <b>Retry-After</b>.</div></div>
+            (máx. 2000 caracteres) y <b>modo</b>: bajo, medio, alto (predeterminado) o prueba. Ocupado: <code>503</code> con <b>Retry-After</b>.</div></div>
         <div class="ep1"><span class="met met-post">POST</span>
           <code class="ruta" data-ep="trabajos"></code>
           <div class="epdesc">Mismos campos, respuesta inmediata: <code>202 {"trabajo": id, "estado":
@@ -2252,6 +2276,7 @@ const GRAV={1:'registro',2:'leve',3:'típico',4:'grave',5:'crítico'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const nombresModos={bajo:'Económico',medio:'Equilibrado',alto:'Completo',prueba:'Completo (prueba)'};
 const MODO_DEMO='prueba';
+const contextoLimitado=texto=>Array.from(texto.trim()).slice(0,2000).join('');
 let perfilesModos={};
 const modoBloqueado=modo=>perfilesModos[modo]?.disponible===false;
 function opcionesModos(valor){
@@ -2309,7 +2334,7 @@ while t["estado"] not in ("listo", "error"):
 print(t.get("resultado") or t)`,
  js:`const fd = new FormData();
 fd.append("file", fileInput.files[0]);
-fd.append("modo", "alto"); // bajo, medio o alto
+fd.append("modo", "alto"); // bajo, medio, alto o prueba
 fd.append("contexto", "vidrios rotos en la vereda"); // opcional, por foto
 let t = await (await fetch("${T}", { method: "POST", body: fd })).json();
 while (t.estado !== "listo" && t.estado !== "error") {
@@ -2393,10 +2418,15 @@ function crearTarjeta(it){
   const cuerpo=document.createElement('div');cuerpo.className='tarbody';
   cuerpo.innerHTML=`<div class="tarnombre" title="${esc(it.file.name)}">${esc(it.file.name)}</div><div class="tarres"></div>`;
   const ctxi=document.createElement('input');
-  ctxi.className='ctxfoto';ctxi.type='text';ctxi.maxLength=2000;
+  ctxi.className='ctxfoto';ctxi.type='text';
   ctxi.placeholder='Contá lo que no se ve (opcional)';
   ctxi.setAttribute('aria-label','Contexto de '+it.file.name+' (hasta 2000 caracteres)');
-  ctxi.value=it.ctx;ctxi.oninput=()=>{it.ctx=ctxi.value;};
+  ctxi.value=it.ctx;
+  ctxi.oninput=()=>{
+    const limite=contextoLimitado(ctxi.value);
+    if(limite!==ctxi.value.trim())ctxi.value=limite;
+    it.ctx=ctxi.value;
+  };
   const modo=document.createElement('label');modo.className='modofoto';
   modo.innerHTML=`Modo de esta foto <select data-modo aria-label="Modo de análisis de ${esc(it.file.name)}">${opcionesModos(it.modo)}</select><span class="modo-nota"></span>`;
   modo.querySelector('select').onchange=e=>{if(!it.modoFijo&&it.estado==='espera'){it.modo=e.target.value;pintar(it);}};
@@ -2427,6 +2457,7 @@ function bombear(){
 
 async function enviar(it){
   it.modoFijo=it.modoFijo||it.modo;
+  it.ctx=contextoLimitado(it.ctx);
   const enPrueba=it.modoFijo==='prueba';
   it.estado='enviando';it.nota='';pintar(it);
   await actualizarModos();
@@ -2434,7 +2465,7 @@ async function enviar(it){
     fallar(it,'El modo elegido no está disponible. No se cambió a otro modo.');bombear();return;
   }
   const fd=new FormData();fd.append('file',it.file);fd.append('modo',it.modoFijo);
-  const ctx=(it.ctx||'').trim();if(ctx)fd.append('contexto',ctx.slice(0,2000));
+  if(it.ctx)fd.append('contexto',it.ctx);
   try{
     // techo de subida: con la bomba serializada, una subida colgada
     // frenaría el lote entero; pasado el techo la tarjeta falla (con
