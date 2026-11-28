@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import re
 
+from contexto_ocupacion import mercaderia_en_interior
 import modos_analisis as modos
 from prompts import cargar_prompt
 import verificador as V
@@ -216,6 +217,8 @@ def _recuento(retiros, final):
 
 
 def _excluir_indicios_insuficientes(fuentes, confirmadas):
+    if mercaderia_en_interior(confirmadas.get('manteros')):
+        fuentes.pop('manteros', None)
     piso = confirmadas.get('reparacion_vereda', '').casefold()
     if (re.search(r'\b(?:piso|baldosas?) (?:del balc[oó]n|del interior|del patio privado)\b', piso)
             and not re.search(r'\b(?:vereda|calzada|cord[oó]n|paso peatonal)\b', piso)):
