@@ -167,16 +167,19 @@ class LeerPatenteVerificadorTests(unittest.TestCase):
 
 
 class AtribucionDosIncidenciasTests(unittest.TestCase):
-    def test_dos_lectores_deben_ubicar_la_chapa_en_el_mismo_vehiculo(self):
+    def test_unica_chapa_sin_desacuerdo_de_lectura_ni_de_vehiculo(self):
         import json
         import verificador as V
         img = Image.new('RGB', (360, 160))
         detectadas = [{'caja': [40, 30, 190, 70], 'confianza': .98}]
         local = {'patente': 'A123BCD', 'lectura': 'A123BCD', 'confianza': .99}
-        for otra, compartida in ((True, 'A123BCD'), (False, None), (None, None)):
+        for otra, compartida in ((True, 'A123BCD'), (False, None), (None, None), ('truncada', 'A123BCD')):
             def responder(modelo, mensajes, **opciones):
                 partes = mensajes[0]['content']
                 self.assertEqual([p['type'] for p in partes], ['image_url', 'image_url', 'text'])
+                self.assertEqual(opciones['max_tokens'], 1000)
+                if otra == 'truncada' and modelo == 'v/b':
+                    raise ValueError('Lectura cortada por longitud')
                 return json.dumps({'patente': 'A123BCD', 'mismo_vehiculo': True if modelo == 'v/a' else otra})
             with (self.subTest(otra=otra), mock.patch.object(P, 'disponible', return_value=True),
                   mock.patch.object(P, 'detectar', return_value=detectadas),
