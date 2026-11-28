@@ -31,8 +31,9 @@ RESIDUOS_BOLSON = ('Marcá solo_residuos_del_bolson como true si los residuos es
                   'Usá false si ves residuos comunes descartados aparte y null si no hay bolsón o no lo podés distinguir.')
 OBJETOS = ('Si confirmás retiro_muebles, enumerá en objetos hasta ocho voluminosos descartados que se '
            'distingan en la foto. Usá nombres cortos, por ejemplo "lavarropas", "armario" o "silla plástica". '
-           'Excluí el contenedor, los objetos en uso y lo que no se distingue. Si no confirmás retiro_muebles '
-           'o no podés identificar ningún objeto, devolvé [].')
+           'Excluí el contenedor, los objetos en uso y lo que no se distingue. En objeto_cant contá cada pieza '
+           'visible una vez, hasta 15. Usá null si no podés contar o no confirmás retiro_muebles. Si no podés '
+           'identificar ningún objeto o no confirmás el retiro, devolvé objetos=[].')
 ESTADOS_ALCANCE = {
     'ubicacion': ('publica', 'privada', 'indeterminada'),
     'presentacion': ('sacos_portables_o_suelto', 'solo_bolson_izado', 'sin_pila', 'indeterminada'),
@@ -59,6 +60,7 @@ _LECTURA_CON_RECUENTO = _objeto({
 _LECTURA_FINAL = _objeto({
     **_LECTURA_CON_RECUENTO['properties'],
     'objetos': {'type': 'array', 'items': _TEXTO},
+    'objeto_cant': {'type': ['integer', 'null']},
 })
 _RESPALDOS = ('compatible', 'contradice', 'neutral')
 _LECTURA_CON_PEDIDOS = _objeto({
@@ -73,18 +75,32 @@ _ALCANCE = _objeto({**{k: {'type': 'string', 'enum': list(v)}
 
 
 def _normalizar(valor, permitidas):
-    lecturas = {campo: {} for campo in ('confirmadas', 'dudosas')}
+    if any(not isinstance(valor.get(campo), list) for campo in ESTADOS_LECTURA):
+        raise ValueError('Lectura incompleta')
+    retiro_canonico = any(item.get('key') == 'retiro_muebles'
+                          for campo in ESTADOS_LECTURA for item in valor[campo])
+    lecturas = {campo: {} for campo in ESTADOS_LECTURA}
+    objeto_legado = None
     for campo, entradas in lecturas.items():
-        if not isinstance(valor.get(campo), list):
-            raise ValueError('Lectura incompleta')
         for item in valor[campo]:
             key = item.get('key')
             evidencia = item.get('evidencia')
+            if key == V.RETIRO_OBJETOS_LEGADO:
+                if retiro_canonico or 'retiro_muebles' not in permitidas:
+                    continue
+                objeto = V.retiro_muebles_legado(evidencia)
+                if objeto is None:
+                    continue
+                key = 'retiro_muebles'
+                if campo == 'confirmadas' and objeto_legado is None:
+                    objeto_legado = objeto
             if key not in permitidas or not isinstance(evidencia, str) or not evidencia.strip():
                 raise ValueError('Hallazgo fuera de alcance')
             entradas.setdefault(key, V._texto_limpio(evidencia, V.EVID_MAX))
     for key in lecturas['confirmadas'].keys() & lecturas['dudosas'].keys():
         del lecturas['confirmadas'][key]
+    if 'retiro_muebles' in lecturas['confirmadas'] and objeto_legado:
+        lecturas['objetos'] = [objeto_legado]
     return lecturas
 
 
@@ -128,7 +144,9 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, cont
                 and type(cuenta) is int and 0 <= cuenta <= 999):
             lectura['recuento'] = (cuenta, tapadas if isinstance(tapadas, bool) else None)
         if etapa == 'decision' and 'retiro_muebles' in lectura['confirmadas']:
-            lectura['objetos'] = V._objetos_lista(valor.get('objetos')) or []
+            lectura['objetos'] = V._objetos_lista(valor.get('objetos')) or lectura.get('objetos', [])
+            cantidad = valor.get('objeto_cant')
+            lectura['objeto_cant'] = V._cuenta_1_a_15(cantidad) if type(cantidad) is int else None
         bolson = valor.get('solo_residuos_del_bolson')
         if etapa in ('retiros', 'decision') and isinstance(bolson, bool):
             lectura['solo_residuos_del_bolson'] = bolson
@@ -138,12 +156,11 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, cont
                 modos.fallo('pedido_vecinal')
             else:
                 lectura['pedidos'] = {}
-                for pedido in pedidos:
-                    if not isinstance(pedido, dict):
-                        continue
+                validos = [p for p in pedidos if isinstance(p, dict) and p.get('respaldo') in _RESPALDOS]
+                for pedido in V.preferir_retiro_canonico(validos):
                     clave, respaldo = pedido.get('key'), pedido.get('respaldo')
-                    if isinstance(clave, str) and clave in permitidas and clave not in V.PRESENCIA \
-                            and respaldo in _RESPALDOS:
+                    clave = V.clave_contexto_retiro(clave, contexto)
+                    if isinstance(clave, str) and clave in permitidas and clave not in V.PRESENCIA:
                         anterior = lectura['pedidos'].get(clave, respaldo)
                         lectura['pedidos'][clave] = respaldo if anterior == respaldo else 'neutral'
         return lectura
@@ -370,4 +387,5 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
         modelo['recuento_escombros'] = _recuento(retiros, final)
     if 'retiro_muebles' in fuentes:
         modelo['objetos'] = final.get('objetos', [])
+        modelo['objeto_cant'] = final.get('objeto_cant')
     return fuentes, {k: e for k, e in dudas.items() if k not in fuentes}, modelo

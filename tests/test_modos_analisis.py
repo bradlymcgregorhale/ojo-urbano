@@ -39,6 +39,33 @@ def perfiles():
 
 
 class Configuracion(unittest.TestCase):
+    def test_respaldo_de_retiro_conserva_la_clave_canonica(self):
+        import prueba_completo as P
+
+        categorias = {'retiro_muebles': {'nombre': 'Retiro de residuos voluminosos'}}
+        contexto = 'Hay un caño grueso tirado en la vereda.'
+        legado = {'key': 'retiro_objetos', 'respaldo': 'compatible', 'motivo': 'Hay un voluminoso.'}
+        actual = {'key': 'retiro_muebles', 'respaldo': 'contradice', 'motivo': 'Se ve un ropero.'}
+        esperado = {'key': 'retiro_muebles', 'respaldo': 'contradice'}
+
+        for pedidos in ([legado, actual], [actual, legado]):
+            with self.subTest(pedidos=pedidos):
+                datos = {'categorias_contexto': pedidos, 'categorias': []}
+                with patch.object(V, '_llamar', return_value=json.dumps(datos)):
+                    veredicto = V._verificar_uno('simulado', '', categorias, contexto)
+                self.assertEqual(veredicto['categorias_contexto'], [esperado])
+
+                datos = {'confirmadas': [], 'dudosas': [], 'pedidos': pedidos}
+                with patch.object(V, '_llamar', return_value=json.dumps(datos)):
+                    lectura = P._leer('simulado', 'texto', [], 'decision', categorias, contexto=contexto)
+                self.assertEqual(lectura['pedidos'], {'retiro_muebles': 'contradice'})
+
+                with patch.object(V, 'ARBITRO', 'simulado'), \
+                        patch.object(V, '_llamar', return_value=json.dumps({'categorias': pedidos})):
+                    ruteo = V._clasificar_contexto(contexto, categorias)
+                self.assertEqual([(c['key'], c['motivo']) for c in ruteo],
+                                 [('retiro_muebles', 'Se ve un ropero.')])
+
     def test_saldo_restante_de_la_foto_limita_la_reserva_del_mismo_perfil(self):
         perfil = perfil_con_reservas()
         for saldo, espera_apoyo in ((Decimal('.01'), True), (Decimal('.0095'), False)):
@@ -474,6 +501,88 @@ class ApiModos(unittest.TestCase):
                     self.assertEqual(salida['problemas'], [])
                     self.assertEqual(salida['elementos_detectados'][0]['key'], clave)
                     self.assertNotIn('objetos', salida['elementos_detectados'][0])
+
+    def test_voluminosos_tienen_una_sola_clave_por_ruta_y_modo(self):
+        from time import monotonic, sleep
+
+        anterior = 'retiro_objetos'
+        actual = 'retiro_muebles'
+        municipal = '1645729658238'
+        rubrica = V._prompt_sistema(self.S.CATEGORIAS)
+        transporte = V._pedir_http.side_effect
+        contexto = 'Hay un caño grueso tirado en la vereda.'
+        poda = {'key': 'retiro_poda', 'evidencia': 'Ramas cortadas apiladas sobre la vereda.'}
+        legado = {'key': anterior, 'evidencia': 'Caño grueso, suelto y tirado.', 'elemento': 'canos'}
+        canonico = {'key': actual, 'evidencia': 'Caño grueso descartado en la vereda.',
+                    'objetos': ['caño de hierro'], 'objeto_cant': 1}
+        casos = (([legado], ['Caño grueso']), ([legado, canonico], ['caño de hierro']),
+                 ([{'key': anterior, 'evidencia': 'Poste anclado todavía en uso.'}], []))
+
+        for modo, perfil in self.ps.items():
+            vieja = replace(perfil, version='version-anterior')
+            self.S._cache[M.identidad(self.foto, '', True, vieja)] = {'version': '11', 'key': anterior}
+            for lectura, nombres in casos:
+                for texto in ('', contexto):
+                    with self.subTest(modo=modo, lectura=lectura, con_texto=bool(texto)):
+                        def responder(req, *_):
+                            datos = json.loads(req.data)
+                            sistema = datos['messages'][0]['content']
+                            if datos.get('response_format'):
+                                self.assertNotIn(anterior, sistema)
+                                hallazgos = [{k: c[k] for k in ('key', 'evidencia')} for c in [*lectura, poda]]
+                                valor = {'confirmadas': hallazgos, 'dudosas': [],
+                                         'objetos': canonico['objetos'] if canonico in lectura else [],
+                                         'objeto_cant': 1 if canonico in lectura else None,
+                                         'pedidos': [{'key': anterior, 'respaldo': 'neutral'}]}
+                            elif sistema == rubrica:
+                                valor = {'categorias': [*lectura, poda], 'foto_corresponde': True,
+                                         'categorias_contexto': [{'codigo': municipal}, {'key': anterior}]}
+                            else:
+                                return transporte(req)
+                            return {'usage': {'cost': .0001}, 'choices': [{'finish_reason': 'stop',
+                                'message': {'content': json.dumps(valor)}}]}
+
+                        def enviar(ruta):
+                            return self.cliente.post(ruta, files={'file': ('foto.jpg', self.foto, 'image/jpeg')},
+                                                     data={'modo': modo, 'contexto': texto})
+
+                        probabilidades = {poda['key']: .9}
+                        if nombres:
+                            probabilidades[actual] = .9
+                        predichas = [{'key': k, 'score': s} for k, s in probabilidades.items()]
+                        with (patch.object(self.S, 'CACHE_MAX', 0),
+                              patch.object(self.S, 'clasificar_local', return_value={
+                                  'predichas': predichas, 'probabilidades': predichas, 'gravedad': {}}),
+                              patch.object(V, 'SEGUNDA_MIRADA_VOLUMINOSO', False),
+                              patch.object(V, '_pedir_http', side_effect=responder)):
+                            directo = enviar('/clasificar/')
+                            self.assertEqual(directo.status_code, 200, directo.text)
+                            inicio = enviar('/trabajos/')
+                            self.assertEqual(inicio.status_code, 202, inicio.text)
+                            ruta = '/trabajos/' + inicio.json()['trabajo']
+                            vence = monotonic() + 3
+                            trabajo = self.cliente.get(ruta).json()
+                            while trabajo['estado'] in ('en_cola', 'procesando') and monotonic() < vence:
+                                sleep(.01)
+                                trabajo = self.cliente.get(ruta).json()
+                            self.assertEqual(trabajo['estado'], 'listo', trabajo)
+
+                        for resultado in (directo.json(), trabajo['resultado']):
+                            self.assertEqual(resultado['version'], '12')
+                            self.assertEqual(resultado['modo_version'], perfil.version)
+                            serializado = json.dumps(resultado)
+                            self.assertNotIn(anterior, serializado)
+                            self.assertNotIn(municipal, serializado)
+                            hallados = [c for c in resultado['problemas'] if c['key'] == actual]
+                            self.assertEqual(len(hallados), bool(nombres), resultado['problemas'])
+                            if nombres:
+                                self.assertEqual(hallados[0]['objetos'], nombres)
+                                self.assertNotIn('elemento', hallados[0])
+                                if canonico in lectura:
+                                    self.assertEqual(hallados[0]['objeto_cant'], 1)
+                            self.assertIn(poda['key'], {c['key'] for c in resultado['problemas']})
+        self.assertNotIn(anterior, self.cliente.get('/salud').text)
+        self.assertNotIn(anterior, self.cliente.get('/').text)
 
     def test_prueba_publica_recuento_sin_agregar_llamadas(self):
         for dirigida, final, tapadas, minimo, exacto, bolsas in (

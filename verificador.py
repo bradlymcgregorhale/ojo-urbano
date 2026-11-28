@@ -118,8 +118,9 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # contexto vecinal a CUALQUIER tipo de reporte, no solo a las categorías
 # visuales). Generado desde el backend público de BA Colaborativa.
 try:
-    PRESTACIONES = json.loads(
+    PRESTACIONES = [p for p in json.loads(
         (Path(__file__).resolve().parent / "prestaciones.json").read_text())
+        if p["codigo"] != "1645729658238"]  # Objetos en desuso, retirado del catálogo activo.
 except OSError:
     PRESTACIONES = []
 _PRESTACIONES_POR_CODIGO = {p["codigo"]: p for p in PRESTACIONES}
@@ -168,13 +169,10 @@ FOLD = {
     # pliega a tapa_vereda y los modelos de visión deciden el subtipo real
     "nivelacion_tapa": "tapa_vereda",
 }
-# Pliegues SOLO para el clasificador local (#204): su clase retiro_objetos se
-# entrenó con fotos filadas por vecinos bajo ese trámite, que en la práctica
-# son voluminosos comunes. Ese puntaje sigue sumando a retiro_muebles; la
-# categoría retiro_objetos (mobiliario urbano o saliente anclado en desuso)
-# es solo de los modelos de visión y se confirma con dos lectores, como las
-# demás sin voto local.
-FOLD_LOCAL = {**FOLD, "retiro_objetos": "retiro_muebles"}
+# El clasificador local se entrenó con voluminosos bajo ambas etiquetas. Las
+# lecturas de visión que todavía usen la clave vieja exigen evidencia de descarte.
+RETIRO_OBJETOS_LEGADO = "retiro_objetos"
+FOLD_LOCAL = {**FOLD, RETIRO_OBJETOS_LEGADO: "retiro_muebles"}
 
 # Claves de PRESENCIA: indican que un contenedor se ve en la foto, no que haya
 # un problema. No cuentan para sin_problema ni para la gravedad máxima.
@@ -1174,29 +1172,49 @@ def _objeto_tam(valor):
     return tam if tam in ("chico", "grande") else None
 
 
-# Elemento en desuso (#204): opción cerrada del formulario de la Ciudad.
-ELEMENTOS_OBJETOS = ("cemento", "canos", "bolardos", "bancos", "relojes", "carteles")
-_ELEMENTO_ALIAS = {
-    "cano": "canos", "canos": "canos", "tubo": "canos", "tubos": "canos", "perno": "canos",
-    "pernos": "canos", "gancho": "canos", "ganchos": "canos", "anclaje": "canos",
-    "anclajes": "canos", "poste": "cemento", "postes": "cemento", "hormigon": "cemento",
-    "concreto": "cemento", "piedra": "cemento", "bolardo": "bolardos", "banco": "bancos",
-    "reloj": "relojes", "cartel": "carteles", "carteleria": "carteles",
-}
+_VOLUMINOSO_LEGADO = re.compile(
+    r"\b(tapa de telgopor|panel(?:es)? (?:rigid[oa]s?|grues[oa]s?)|"
+    r"(?:canos?|tubos?|tablas?|cartel(?:es)?) (?:larg[oa]s?|grues[oa]s?|grandes?|voluminos[oa]s?)|"
+    r"postes?(?: de (?:cemento|hormigon|metal|madera))?|bolardos?|"
+    r"bancos?|colchon(?:es)?|muebles?|armarios?|heladeras?|lavarropas|sillon(?:es)?|"
+    r"electrodomesticos?|(?:objetos?|piezas?) voluminos[oa]s?)\b")
+_DESCARTE_LEGADO = re.compile(
+    r"(?:[ ,]+(?:viej[ao]s?|suelt[oa]s?|caid[oa]s?|desmontad[oa]s?|"
+    r"rot[oa]s?|y)){0,4}[ ,]+(?:descartad|abandonad|desechad|tirad)[oa]s?\b")
+_OBJETO_TODAVIA_INSTALADO = re.compile(
+    r"\b(?:fij[oa]s?|instalad[oa]s?|anclad[oa]s?|empotrad[oa]s?|en uso|"
+    r"sin descartar|no (?:esta[n]? |parece[n]? )?(?:descartad|abandonad|desechad|tirad)[oa]s?)\b")
 
 
-def _elemento(valor):
-    if not isinstance(valor, str):
+def retiro_muebles_legado(evidencia):
+    """Acepta la clave vieja cuando el texto describe un objeto grande descartado."""
+    if not isinstance(evidencia, str):
         return None
-    e = _norm_texto(valor).strip().split()
-    e = e[0] if e else ""
-    e = _ELEMENTO_ALIAS.get(e, e)
-    return e if e in ELEMENTOS_OBJETOS else None
+    for frase in re.split(r"[.;!?\n]", evidencia):
+        texto = _norm_texto(frase)
+        objeto = _VOLUMINOSO_LEGADO.search(texto)
+        if (objeto and _DESCARTE_LEGADO.match(texto, objeto.end())
+                and not _OBJETO_TODAVIA_INSTALADO.search(texto)):
+            return frase[objeto.start():objeto.end()]
+    return None
+
+
+def clave_contexto_retiro(clave, contexto):
+    if clave == RETIRO_OBJETOS_LEGADO and retiro_muebles_legado(contexto):
+        return "retiro_muebles"
+    return clave
+
+
+def preferir_retiro_canonico(entradas):
+    """Conserva el respaldo de retiro_muebles si el lector usa ambas claves."""
+    pares = [(c.get("key") if isinstance(c, dict) else c, c) for c in entradas]
+    if any(clave == "retiro_muebles" for clave, _ in pares):
+        return [c for clave, c in pares if clave != RETIRO_OBJETOS_LEGADO]
+    return entradas
 
 
 CAMPOS_POR_CLAVE = {
     "retiro_escombros": {"bolsas": _cuenta_1_a_15},
-    "retiro_objetos": {"elemento": _elemento},
     "retiro_muebles": {"objeto_tipo": _objeto_tipo, "objeto_tam": _objeto_tam,
                        "objeto_cant": _cuenta_1_a_15},
 }
@@ -2582,11 +2600,19 @@ def _verificar_uno(modelo, data_url, categorias, contexto=""):
         ], etapa="verificar_uno")
         veredicto = _extraer_json(contenido)
         vistas = []
-        for c in veredicto.get("categorias", []):
-            if not isinstance(c, dict):
-                continue
-            c["key"] = FOLD.get(c.get("key"), c.get("key"))
+        lecturas = [c for c in veredicto.get("categorias", []) if isinstance(c, dict)]
+        retiro_canonico = any(FOLD.get(c.get("key"), c.get("key")) == "retiro_muebles" for c in lecturas)
+        for c in lecturas:
+            clave = c.get("key")
+            if clave == RETIRO_OBJETOS_LEGADO:
+                objeto = retiro_muebles_legado(c.get("evidencia"))
+                if retiro_canonico or objeto is None:
+                    continue
+                c["objetos"] = [objeto]
+                clave = "retiro_muebles"
+            c["key"] = FOLD.get(clave, clave)
             if c["key"] in categorias and c["key"] not in {v["key"] for v in vistas}:
+                c.pop("elemento", None)
                 if c["key"] in {"ocupacion_comercial", "manteros"}:
                     producto = contexto_ocupacion.mercaderia_visible(c.get("mercaderia_visible"))
                     if not producto or (c["key"] == "manteros" and contexto_ocupacion.mercaderia_en_interior(
@@ -2613,7 +2639,7 @@ def _verificar_uno(modelo, data_url, categorias, contexto=""):
                 _campos_validos(c)
                 vistas.append(c)
         ctx_cats = []
-        for item in veredicto.get("categorias_contexto") or []:
+        for item in preferir_retiro_canonico(veredicto.get("categorias_contexto") or []):
             # tolera claves sueltas (formato viejo), {key, respaldo} o
             # {codigo, respaldo} para prestaciones del catálogo completo
             respaldo = "neutral"
@@ -2632,7 +2658,7 @@ def _verificar_uno(modelo, data_url, categorias, contexto=""):
                 continue
             else:
                 continue
-            k = FOLD.get(k, k)
+            k = clave_contexto_retiro(FOLD.get(k, k), contexto)
             if isinstance(k, str) and k in categorias and k != "sin_problema" \
                     and k not in [c.get("key") for c in ctx_cats]:
                 ctx_cats.append({"key": k, "respaldo": respaldo})
@@ -2899,10 +2925,9 @@ def _clasificar_contexto(contexto, categorias):
         # acá, un corte de OpenRouter quedaría cacheado como "no hay problema".
         return None
     salida, vistas = [], set()
-    for c in data.get("categorias", []) or []:
-        if not isinstance(c, dict):
-            continue
-        k = FOLD.get(c.get("key"), c.get("key"))
+    lecturas = [c for c in (data.get("categorias") or []) if isinstance(c, dict)]
+    for c in preferir_retiro_canonico(lecturas):
+        k = clave_contexto_retiro(FOLD.get(c.get("key"), c.get("key")), contexto)
         if k in categorias and k != "sin_problema" and k not in vistas \
                 and k not in PRESENCIA:
             vistas.add(k)
