@@ -24,6 +24,18 @@ class PrioridadTest(unittest.TestCase):
                 self.assertEqual(sin_contexto['estado'], 'requiere_contexto')
                 self.assertEqual(sin_contexto['servicios'], [])
 
+    def test_una_revision_de_ramas_pendiente_no_oculta_dos_pedidos_independientes(self):
+        pedidos = ['retiro_muebles', 'reparacion_vereda']
+        foto = {'modo': 'prueba', 'analisis_estado': 'parcial', 'foto_valida': True,
+                'analisis_limitaciones': ['etapa_fallida', 'solo_revision_ramas_pendiente'],
+                'problemas': [{'key': k} for k in (*pedidos, 'retiro_poda', 'obstruccion')],
+                'categorias_contexto': [{'key': k, 'respaldo_visual': 'compatible'} for k in pedidos]}
+        self.assertEqual(P.proponer_solicitudes(foto)['servicios'], pedidos)
+        for depende in ('obstruccion', 'retiro_poda', 'problemas_arbolado'):
+            with self.subTest(depende=depende):
+                contexto = [*foto['categorias_contexto'], {'key': depende, 'respaldo_visual': 'compatible'}]
+                self.assertNotIn('criterio', P.proponer_solicitudes(dict(foto, categorias_contexto=contexto)))
+
     def test_pedido_de_retiro_no_suma_basura_por_una_lectura_parcial(self):
         for estado in ('completo', 'parcial'):
             publica = {'modo': 'prueba', 'analisis_estado': estado, 'foto_valida': True,
