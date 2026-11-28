@@ -10,4 +10,5 @@ contenedor_humedos_lateral: cuerpo negro con postes o apoyos laterales de izado 
 contenedor_humedos_bilateral: contenedor de húmedos con diseño gris de carga bilateral y herrajes visibles; no supongas un segundo recipiente.
 contenedor_secos: verde de reciclables; el color de un recipiente no se deduce del reflejo ni de la tapa de otro.
 reparacion_vereda: rotura física de baldosas o pavimento peatonal, sin confundir grietas de la calzada.
+plantacion_arbol: plantera o cazuela vacía y abierta en la vereda, sin árbol, donde debería haber uno; un árbol enfermo o dañado no es esta categoría.
 obstruccion: obstáculo que impide o desvía el paso; no dupliques la categoría de retiro por un objeto que deja paso suficiente.

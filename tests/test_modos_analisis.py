@@ -572,6 +572,17 @@ class ApiModos(unittest.TestCase):
         self.assertIn('nombrá las asas', _decision([], {'retiro_escombros': .85}, claves))
         self.assertNotIn('nombrá las asas', _decision([], {'retiro_escombros': .05}, claves))
 
+    def test_prueba_incluye_la_cazuela_vacia_en_los_criterios(self):
+        from prueba_completo import _decision, _inicio
+        claves = ('plantacion_arbol', 'reparacion_vereda', 'reparacion_cordon')
+        decision = _decision([], {}, claves)
+        self.assertIn('plantera o cazuela vacía y abierta', decision)
+        self.assertIn('un árbol enfermo o dañado no es esta categoría', decision)
+        self.assertIn('El borde construido de la cazuela no es una rotura de vereda', decision)
+        self.assertIn('una separación con el pavimento detrás del cordón', decision)
+        inicio = _inicio({}, claves)
+        self.assertIn('plantacion_arbol: plantera o cazuela vacía y abierta', inicio)
+
     def test_prueba_pasa_las_observaciones_previas_como_datos(self):
         decisiones = []
         for color in ('azul', 'verde', None):
