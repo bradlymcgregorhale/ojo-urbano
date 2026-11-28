@@ -25,6 +25,7 @@ import types
 import urllib.error
 import urllib.request
 from pathlib import Path
+from unittest.mock import patch
 
 AQUI = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AQUI))
@@ -1404,6 +1405,32 @@ V._llamar = _mock_dos_claves
 r = V.verificar(_Img(), CATS, SIN_LOCAL, "")
 check("la discrepancia anula también si viene bajo la otra clave de vehículo",
       all("patente" not in c for c in r["confirmadas"]))
+
+
+def _mock_moto_con_dos_incidencias(modelo, mensajes, **k):
+    return json.dumps({"categorias": [
+        {"key": clave, "gravedad": 4, "evidencia": "Moto encadenada sobre la vereda"}
+        for clave in sorted(V.PATENTE_KEYS)
+    ], "sin_problema": False, "descripcion": "Una moto.", "categorias_contexto": []})
+
+
+V._llamar = _mock_moto_con_dos_incidencias
+import patentes as _patentes_219
+for _chapas, _esperada in (
+    ([{"patente": "A123BCD", "legible": True}], "A123BCD"),
+    ([{"patente": "A123BCD", "legible": True}, {"patente": "ABC123", "legible": True}], None),
+    ([{"patente": "A123BCD", "legible": True}, {"patente": None, "legible": False}], None),
+):
+    with patch.object(_patentes_219, "disponible", return_value=True), \
+            patch.object(_patentes_219, "leer_chapas", return_value=_chapas) as _lectura_219:
+        r = V.verificar(_Img(), CATS, SIN_LOCAL, "moto abandonada")
+    _problemas_219 = S._publica({"problemas": r["confirmadas"]})["problemas"]
+    check("dos claves de vehículo requieren una chapa legible por recorte" if _esperada
+          else "dos recortes dejan las dos claves sin atribución",
+          _lectura_219.call_count == 1 and r.get("patente") == _esperada
+          and {p["key"] for p in _problemas_219} == V.PATENTE_KEYS
+          and all(p.get("patente") == _esperada for p in _problemas_219))
+
 V.VERIFICADORES = ["vlm/uno", "vlm/dos"]
 
 
@@ -2992,7 +3019,6 @@ print("[prompts] archivos, plantillas y texto enviado")
 import hashlib
 import subprocess
 import tempfile
-from unittest.mock import patch
 import prompts as P
 
 _huellas = json.loads((AQUI / "prompts" / "huellas.json").read_text(encoding="utf-8"))
