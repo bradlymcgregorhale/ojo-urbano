@@ -2785,6 +2785,11 @@ function renderResultado(d){
   if(revisionMaterial)estados.push('Tipo de residuos pendiente de revisión');
   if(estados.length)resumen+='<div class="estados">'+estados.map(t=>`<span class="estado">${esc(t)}</span>`).join('')+'</div>';
   if(aviso)resumen+=`<div class="tardesc">${esc(aviso)}</div>`;
+  const revisionBolsas=d.verificacion_escombros;
+  if(!probs.some(p=>p.key==='retiro_escombros')&&Number.isInteger(revisionBolsas?.bolsas_minimo)){
+    const prefijo=revisionBolsas.bolsas_recuento_completo?'':'al menos ';
+    resumen+='<div class="tardesc">Bolsas visibles en la pila: '+prefijo+revisionBolsas.bolsas_minimo+'.</div>';
+  }
   if(probs.length)resumen+='<div class="minicats">'+probs.map(c=>renderProblema(c,d.verificacion_escombros)).join('')+'</div>';
   const cc=d.categorias_contexto||[];
   const respaldos=d.modo==='prueba'?{
