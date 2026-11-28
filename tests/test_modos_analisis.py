@@ -600,7 +600,7 @@ class ApiModos(unittest.TestCase):
                         lectura = next(votos_externos)
                         if lectura == 'respuesta_inutilizable':
                             fin = 'length'
-                        contenido = {} if lectura == 'sin_campo_patente' else {'patente': lectura}
+                        contenido = {} if lectura == 'sin_campo_patente' else {'patente': lectura, 'mismo_vehiculo': True}
                     else:
                         hallazgos = [{'key': k, 'evidencia': 'Una moto junto al poste.'} for k in claves]
                         contenido = {'confirmadas': hallazgos if cuerpo['model'] == 't/decision' else [],

@@ -1419,9 +1419,10 @@ def _mock_moto_con_dos_incidencias(modelo, mensajes, **k):
 V._llamar = _mock_moto_con_dos_incidencias
 import patentes as _patentes_219
 for _chapas, _esperada in (
-    ([{"patente": "A123BCD", "legible": True}], "A123BCD"),
-    ([{"patente": "A123BCD", "legible": True}, {"patente": "ABC123", "legible": True}], None),
-    ([{"patente": "A123BCD", "legible": True}, {"patente": None, "legible": False}], "A123BCD"),
+    ([{"patente": "A123BCD", "legible": True, "mismo_vehiculo": True}], "A123BCD"),
+    ([{"patente": "A123BCD", "legible": True, "mismo_vehiculo": True}, {"patente": "ABC123", "legible": True, "mismo_vehiculo": True}], None),
+    ([{"patente": "A123BCD", "legible": True, "mismo_vehiculo": True}, {"patente": None, "legible": False}], "A123BCD"),
+    ([{"patente": "A123BCD", "legible": True, "mismo_vehiculo": False}], None),
 ):
     with patch.object(_patentes_219, "disponible", return_value=True), \
             patch.object(_patentes_219, "leer_chapas", return_value=_chapas) as _lectura_219:

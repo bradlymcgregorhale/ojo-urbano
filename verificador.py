@@ -1341,7 +1341,7 @@ def _patente_normalizada(texto):
 
 
 @modos.minimo_fuentes(2, None, ())
-def _leer_patente(img, *, solo_recorte=False):
+def _leer_patente(img, *, solo_recorte=False, atribuir_dos=False):
     """Segunda pasada, solo para la patente: la foto a mayor resolución
     (LADO_PATENTE) a hasta tres verificadores EN PARALELO, con un prompt
     que mira únicamente la chapa del vehículo infractor. Publica solo con
@@ -1357,9 +1357,13 @@ def _leer_patente(img, *, solo_recorte=False):
     try:
         import patentes
         if patentes.disponible():
-            chapas = patentes.leer_chapas(img, lectura_completa=solo_recorte)
+            chapas = patentes.leer_chapas(img, lectura_completa=solo_recorte, atribuir_dos=atribuir_dos)
             legibles = {c["patente"] for c in chapas if c.get("legible")}
-            return next(iter(legibles)) if len(legibles) == 1 else None
+            if len(legibles) != 1:
+                return None
+            if atribuir_dos and not all(c.get("mismo_vehiculo") for c in chapas if c.get("legible")):
+                return None
+            return next(iter(legibles))
     except ImportError:
         pass
     if solo_recorte:
@@ -4312,7 +4316,7 @@ def verificar(img, categorias, prediccion_local, contexto=""):
         # comprobar que sólo se pudo corroborar una entre todos los recortes.
         patente_escena = None
     if patente_escena is None and vistos_vehiculo and len(lecturas_totales) <= 1:
-        leida = _leer_patente(img, solo_recorte=varias_claves)
+        leida = _leer_patente(img, solo_recorte=varias_claves, atribuir_dos=varias_claves)
         if leida and (not lecturas_totales or leida in lecturas_totales):
             patente_escena = leida
     if patente_escena:

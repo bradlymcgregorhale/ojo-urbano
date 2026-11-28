@@ -28,7 +28,7 @@ from pathlib import Path
 
 import modos_analisis as modos
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 import verificador as V
 from prompts import _PROMPT_LEER_CHAPA
@@ -128,18 +128,31 @@ def leer_local(rec):
             "lectura": texto or None, "confianza": round(conf, 3)}
 
 
-def leer_vlm(modelo, rec):
-    """Distingue una chapa que no se pudo leer de una consulta fallida."""
+def leer_vlm(modelo, rec, escena=None):
+    """Con una escena marcada, comprueba también a qué vehículo corresponde el recorte."""
+    contenido = [{"type": "image_url", "image_url": {"url": V._imagen_data_url(rec, lado=ANCHO_RECORTE)}}]
+    consigna = _PROMPT_LEER_CHAPA
+    if escena:
+        contenido.append({"type": "image_url", "image_url": {"url": escena}})
+        consigna += (" La segunda imagen muestra la foto entera. El rectángulo marca la chapa del primer "
+                     "recorte. Agregá al JSON la propiedad mismo_vehiculo. Las dos incidencias ya se evaluaron. "
+                     "Indicá true si la chapa marcada pertenece al único vehículo protagonista. Indicá false si las "
+                     "incidencias corresponden a vehículos distintos o la chapa es de otro. Usá null si no podés atribuir "
+                     "ambas incidencias al mismo. Informá la lectura de la chapa por separado.")
+    contenido.append({"type": "text", "text": consigna})
     try:
-        contenido = V._llamar(modelo, [
-            {"role": "user", "content": [
-                {"type": "image_url", "image_url": {"url": V._imagen_data_url(rec, lado=ANCHO_RECORTE)}},
-                {"type": "text", "text": _PROMPT_LEER_CHAPA},
-            ]},
-        ], max_tokens=400, etapa="leer_chapa")
-        return V._patente_normalizada(V._extraer_json(contenido)["patente"])
+        respuesta = V._llamar(modelo, [{"role": "user", "content": contenido}], max_tokens=400, etapa="leer_chapa")
+        datos = V._extraer_json(respuesta)
+        patente = V._patente_normalizada(datos["patente"])
+        return (patente, datos.get("mismo_vehiculo") is True) if escena else patente
     except _ERRORES_LECTOR:
         return _LECTURA_FALLIDA
+
+
+def _escena_marcada(img, caja):
+    vista = img.convert("RGB")
+    ImageDraw.Draw(vista).rectangle(caja, outline="yellow", width=max(2, max(vista.size) // 300))
+    return V._imagen_data_url(vista, lado=960)
 
 
 def votar(lecturas):
@@ -169,7 +182,7 @@ def _nombres_lectores(lectores):
             for modelo, nombre in nombres.items()}
 
 
-def leer_chapas(img, lectores=None, *, lectura_completa=False):
+def leer_chapas(img, lectores=None, *, lectura_completa=False, atribuir_dos=False):
     """Para atribuir una chapa entre varios recortes, exige completar todas las consultas."""
     nombres = _nombres_lectores(lectores)
     detecciones = detectar(img)
@@ -196,11 +209,17 @@ def leer_chapas(img, lectores=None, *, lectura_completa=False):
         chapa["lecturas"]["ocr_local"] = local["patente"]
         chapa["ocr_local"] = {"lectura": local["lectura"], "confianza": local["confianza"]}
         if modelos and modos.caben_apoyos(lectores_chapa=modelos):
+            escena = _escena_marcada(img, det["caja"]) if atribuir_dos else None
             with concurrent.futures.ThreadPoolExecutor(len(nombres)) as pool:
-                vistas = V._map_con_contexto(pool, lambda m: leer_vlm(m, rec), nombres)
+                vistas = V._map_con_contexto(pool, lambda m: leer_vlm(m, rec, escena) if escena
+                                             else leer_vlm(m, rec), nombres)
             if varias and _LECTURA_FALLIDA in vistas:
                 modos.fallo('leer_chapa')
                 return []
+            if atribuir_dos:
+                chapa["mismo_vehiculo"] = all(
+                    vista is not _LECTURA_FALLIDA and vista[1] for vista in vistas)
+                vistas = [vista[0] if vista is not _LECTURA_FALLIDA else vista for vista in vistas]
             chapa["lecturas"].update(
                 (nombre, None if vista is _LECTURA_FALLIDA else vista)
                 for nombre, vista in zip(nombres.values(), vistas))

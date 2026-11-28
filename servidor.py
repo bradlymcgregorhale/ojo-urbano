@@ -615,7 +615,7 @@ def _procesar_prueba(img, local, perfil, verificar, contexto):
         _pedidos_prueba(salida, lector.get('pedidos', {}))
     vehiculos = [p for p in salida['problemas'] if p['key'] in verificador.PATENTE_KEYS]
     if vehiculos:
-        patente = verificador._leer_patente(img, solo_recorte=True)
+        patente = verificador._leer_patente(img, solo_recorte=True, atribuir_dos=len(vehiculos) > 1)
         if patente:
             for problema in vehiculos:
                 problema['patente'] = patente
