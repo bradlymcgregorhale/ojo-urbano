@@ -76,6 +76,12 @@ def _leer_reservas_prueba(texto):
     valores = json.loads(texto, parse_float=Decimal)
     if not isinstance(valores, dict) or valores.keys() != _ETAPAS_PRUEBA:
         raise ValueError('Faltan reservas para el modo de prueba')
+    chapas = valores['leer_chapa']
+    if isinstance(chapas, dict):
+        if not chapas or any(not IDENTIFICADOR.fullmatch(modelo) for modelo in chapas):
+            raise ValueError('Lectores inválidos en las reservas de chapa')
+        del valores['leer_chapa']
+        valores.update({f'leer_chapa:{modelo}': importe for modelo, importe in chapas.items()})
     reservas = {etapa: Decimal(str(valor)) for etapa, valor in valores.items()}
     if any(not v.is_finite() or not 0 < v <= _TOPE_PRUEBA for v in reservas.values()):
         raise ValueError('Reserva fuera del rango de costo por foto')
@@ -215,22 +221,32 @@ def _caben(r, etapas):
     return False
 
 
-def caben_apoyos(*etapas):
+def _clave_reserva(reservas, etapa, modelo):
+    if etapa == 'leer_chapa' and etapa not in reservas:
+        return f'leer_chapa:{modelo}'
+    return etapa
+
+
+def caben_apoyos(*etapas, lectores_chapa=()):
     if not con_reservas():
         return True
     r = _actual.get()
     with r.lock:
-        return _caben(r, etapas)
+        reservas = r.perfil.reservas_prueba
+        chapas = tuple(_clave_reserva(reservas, 'leer_chapa', modelo) for modelo in lectores_chapa)
+        return _caben(r, etapas + chapas)
 
 
-def reservar_consulta(etapa):
+def reservar_consulta(etapa, *, modelo=None):
     if not con_reservas():
         return None
     r = _actual.get()
     with r.lock:
-        if not _caben(r, (etapa,)):
+        reservas = r.perfil.reservas_prueba
+        clave = _clave_reserva(reservas, etapa, modelo)
+        if not _caben(r, (clave,)):
             raise ConsultaSinSaldo('Saldo insuficiente o pendiente para la consulta')
-        reserva = r.perfil.reservas_prueba[etapa]
+        reserva = reservas[clave]
         r.reservado += reserva
         if etapa == _DECISION_PRUEBA:
             r.decision_pendiente = False
