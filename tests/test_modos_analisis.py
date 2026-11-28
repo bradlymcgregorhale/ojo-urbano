@@ -99,6 +99,60 @@ class Configuracion(unittest.TestCase):
             self.assertEqual(p['prueba'].motivo, 'configuracion_invalida')
             self.assertEqual(p['alto'].version, sin_reservas['alto'].version)
 
+    def test_reserva_por_lector_admite_el_par_y_conserva_los_dos_votos(self):
+        import patentes
+
+        lectores = ('t/chapa-a', 't/chapa-b')
+        importes = {'t/chapa-a': '.0045856', 't/chapa-b': '.00216975'}
+        env = {'VERIFICADORES_PRUEBA': 't/decision,t/dirigidos,t/alcance'}
+        img = Image.new('RGB', (180, 60))
+        detecciones = [{'caja': [0, 0, 158, 40], 'confianza': .9}]
+        ocr = {'patente': 'A123BCD', 'lectura': 'A123BCD', 'confianza': .9}
+
+        def responder(req, *_):
+            modelo = json.loads(req.data)['model']
+            return {'usage': {'cost': float(importes[modelo])}, 'choices': [
+                {'finish_reason': 'stop', 'message': {'content': '{"patente":"A123BCD"}'}}]}
+
+        for lectura, esperadas in (('.0045856', 0), (importes, 2), ({lectores[0]: importes[lectores[0]]}, 0)):
+            with self.subTest(reserva_de_chapa=lectura):
+                perfil = M.cargar(V, {}, env | {'PRUEBA_RESERVAS_USD':
+                                               json.dumps(_RESERVAS | {'leer_chapa': lectura})})['prueba']
+                self.assertIsNone(perfil.motivo)
+                with (M.usar(perfil),
+                      patch.object(V, 'api_key', return_value='simulada'),
+                      patch.object(V, '_llamar', _LLAMAR),
+                      patch.object(V, '_pedir_http', side_effect=responder) as transporte,
+                      patch.object(patentes, 'LECTORES', lectores),
+                      patch.object(patentes, 'detectar', return_value=detecciones),
+                      patch.object(patentes, 'leer_local', return_value=ocr)):
+                    reserva = M.reservar_consulta('prueba_decision')
+                    M.liquidar_consulta(reserva, {'cost': .003})
+                    [chapa] = patentes.leer_chapas(img)
+                    salida = M.completar({'detalle': {'verificacion': {'activa': True}}})
+                    self.assertEqual(transporte.call_count, esperadas)
+                    self.assertEqual(chapa['patente'], 'A123BCD' if esperadas else None)
+                    if esperadas:
+                        self.assertEqual(chapa['fuentes'], 3)
+                        self.assertEqual({json.loads(args.args[0].data)['model']
+                                          for args in transporte.call_args_list}, set(lectores))
+                        self.assertNotIn('reserva_api_excedida', salida['analisis_limitaciones'])
+                    else:
+                        self.assertIn('presupuesto_api_insuficiente', salida['analisis_limitaciones'])
+
+    def test_reserva_por_lector_exige_importes_validos_y_cambia_solo_la_huella_de_prueba(self):
+        env = {'VERIFICADORES_PRUEBA': 't/decision,t/dirigidos,t/alcance'}
+        base = M.cargar(V, {}, env | {'PRUEBA_RESERVAS_USD': json.dumps(_RESERVAS)})
+        nueva = M.cargar(V, {}, env | {'PRUEBA_RESERVAS_USD': json.dumps(
+            _RESERVAS | {'leer_chapa': {'t/chapa-a': '.0045', 't/chapa-b': '.0021'}})})
+        self.assertEqual(nueva['alto'].version, base['alto'].version)
+        self.assertNotEqual(nueva['prueba'].version, base['prueba'].version)
+        for valor in ({}, {'chapa-a': '.0045'}, {'t/chapa-a': 'NaN'}, {'t/chapa-a': '.02'}):
+            with self.subTest(valor=valor):
+                p = M.cargar(V, {}, env | {'PRUEBA_RESERVAS_USD': json.dumps(_RESERVAS | {'leer_chapa': valor})})
+                self.assertEqual(p['prueba'].motivo, 'configuracion_invalida')
+                self.assertEqual(p['alto'].version, base['alto'].version)
+
     def test_no_gasta_en_una_lectura_suelta_si_las_dos_lecturas_no_caben(self):
         import patentes
 
@@ -114,6 +168,25 @@ class Configuracion(unittest.TestCase):
             [chapa] = patentes.leer_chapas(img, ['t/chapa-a', 't/chapa-b'])
             lector.assert_not_called()
             self.assertFalse(chapa['legible'])
+            salida = M.completar({'detalle': {'verificacion': {'activa': True}}})
+            self.assertIn('presupuesto_api_insuficiente', salida['analisis_limitaciones'])
+
+    def test_no_empieza_si_el_saldo_alcanza_para_una_sola_chapa(self):
+        import patentes
+
+        img = Image.new('RGB', (360, 60))
+        detecciones = [{'caja': [0, 0, 158, 40], 'confianza': .9},
+                       {'caja': [170, 0, 326, 40], 'confianza': .8}]
+        with (M.usar(perfil_con_reservas()),
+              patch.object(patentes, 'detectar', return_value=detecciones),
+              patch.object(patentes, 'leer_local') as ocr,
+              patch.object(patentes, 'leer_vlm') as lector):
+            reserva = M.reservar_consulta('prueba_decision')
+            M.liquidar_consulta(reserva, {'cost': .007})
+            self.assertEqual(patentes.leer_chapas(img, ['t/chapa-a', 't/chapa-b'],
+                                                lectura_completa=True), [])
+            ocr.assert_not_called()
+            lector.assert_not_called()
             salida = M.completar({'detalle': {'verificacion': {'activa': True}}})
             self.assertIn('presupuesto_api_insuficiente', salida['analisis_limitaciones'])
 
@@ -494,6 +567,62 @@ class ApiModos(unittest.TestCase):
                 self.assertEqual(salida['analisis_estado'], 'parcial')
                 self.assertIs(salida['costo_api_completo'], completo)
                 self.assertIn(limite, salida['analisis_limitaciones'])
+
+    def test_prueba_solo_comparte_una_chapa_corroborada(self):
+        import patentes
+
+        claves = ('vehiculo_abandonado', 'vehiculo_mal_estacionado')
+        una = [{'caja': [2, 4, 20, 14], 'confianza': .9}]
+        chica = [{'caja': [4, 16, 18, 23], 'confianza': .95}]
+        otra = [{'caja': [4, 16, 19, 23], 'confianza': .8}]
+        lector_chapa = 't/chapa'
+        coincide = ('A123BCD', 'A123BCD')
+        for cajas, lecturas, esperado in (
+                (una, (coincide,), 'A123BCD'),
+                (una, (('A123BCD', 'A128BCD'),), None),
+                (chica, (), None),
+                (chica + una, (coincide,), 'A123BCD'),
+                (una + otra, (coincide, (None, None)), 'A123BCD'),
+                (una + otra, (coincide, ('AB123CD', 'AB123CD')), None),
+                (una + otra, (coincide, (None, 'respuesta_inutilizable')), None),
+                (una + otra, (coincide, (None, 'sin_campo_patente')), None)):
+            with self.subTest(cajas=len(cajas), lecturas=lecturas):
+                self.llamadas.clear()
+                votos_ocr = [{'patente': p, 'lectura': p, 'confianza': .9}
+                             for p, _ in lecturas]
+                votos_externos = iter(v for _, v in lecturas)
+
+                def http(req, *_):
+                    cuerpo = json.loads(req.data)
+                    self.llamadas.append(cuerpo['model'])
+                    fin = 'stop'
+                    if cuerpo['model'] == lector_chapa:
+                        lectura = next(votos_externos)
+                        if lectura == 'respuesta_inutilizable':
+                            fin = 'length'
+                        contenido = {} if lectura == 'sin_campo_patente' else {'patente': lectura, 'mismo_vehiculo': True}
+                    else:
+                        hallazgos = [{'key': k, 'evidencia': 'Una moto junto al poste.'} for k in claves]
+                        contenido = {'confirmadas': hallazgos if cuerpo['model'] == 't/decision' else [],
+                                     'dudosas': []}
+                    return {'usage': {'cost': .001, 'total_tokens': 10}, 'choices': [
+                        {'finish_reason': fin, 'message': {'content': json.dumps(contenido)}}]}
+
+                with (patch.multiple(patentes, LECTORES=(lector_chapa,), ANCHO_MINIMO=15),
+                      patch.object(patentes, 'disponible', return_value=True),
+                      patch.object(patentes, 'detectar', return_value=cajas),
+                      patch.object(patentes, 'leer_local', side_effect=votos_ocr),
+                      patch.object(V, '_pedir_http', side_effect=http),
+                      patch.object(self.S, '_cache', __import__('collections').OrderedDict())):
+                    r = self.post('prueba')
+                self.assertEqual(r.status_code, 200, r.text)
+                salida = r.json()
+                self.assertEqual({p['key']: p.get('patente') for p in salida['problemas']},
+                                 dict.fromkeys(claves, esperado))
+                self.assertEqual(self.llamadas.count(lector_chapa), len(lecturas))
+                self.assertAlmostEqual(salida['costo_api'], .003 + .001 * len(lecturas))
+                fallo_recorte = any(v in ('respuesta_inutilizable', 'sin_campo_patente') for _, v in lecturas)
+                self.assertEqual('etapa_fallida' in salida['analisis_limitaciones'], fallo_recorte)
 
     def test_prueba_pide_evidencia_independiente_de_obstruccion_en_un_puesto(self):
         from prueba_completo import _decision

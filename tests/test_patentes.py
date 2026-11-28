@@ -166,6 +166,27 @@ class LeerPatenteVerificadorTests(unittest.TestCase):
         self.assertEqual(len(llamadas), 3)
 
 
+class AtribucionDosIncidenciasTests(unittest.TestCase):
+    def test_dos_lectores_deben_ubicar_la_chapa_en_el_mismo_vehiculo(self):
+        import json
+        import verificador as V
+        img = Image.new('RGB', (360, 160))
+        detectadas = [{'caja': [40, 30, 190, 70], 'confianza': .98}]
+        local = {'patente': 'A123BCD', 'lectura': 'A123BCD', 'confianza': .99}
+        for otra, compartida in ((True, 'A123BCD'), (False, None), (None, None)):
+            def responder(modelo, mensajes, **opciones):
+                partes = mensajes[0]['content']
+                self.assertEqual([p['type'] for p in partes], ['image_url', 'image_url', 'text'])
+                return json.dumps({'patente': 'A123BCD', 'mismo_vehiculo': True if modelo == 'v/a' else otra})
+            with (self.subTest(otra=otra), mock.patch.object(P, 'disponible', return_value=True),
+                  mock.patch.object(P, 'detectar', return_value=detectadas),
+                  mock.patch.object(P, 'LECTORES', ['v/a', 'v/b']),
+                  mock.patch.object(P, 'leer_local', return_value=local),
+                  mock.patch.object(V, '_llamar', side_effect=responder) as lectura):
+                self.assertEqual(V._leer_patente(img, solo_recorte=True, atribuir_dos=True), compartida)
+                self.assertEqual(lectura.call_count, 2)
+
+
 class DisponibleTests(unittest.TestCase):
     def test_sin_onnx_no_esta_disponible(self):
         import builtins

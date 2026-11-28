@@ -613,6 +613,12 @@ def _procesar_prueba(img, local, perfil, verificar, contexto):
     salida = revision_ramas.revisar(img, salida, perfil)
     if contexto and lector is not None:
         _pedidos_prueba(salida, lector.get('pedidos', {}))
+    vehiculos = [p for p in salida['problemas'] if p['key'] in verificador.PATENTE_KEYS]
+    if vehiculos:
+        patente = verificador._leer_patente(img, solo_recorte=True, atribuir_dos=len(vehiculos) > 1)
+        if patente:
+            for problema in vehiculos:
+                problema['patente'] = patente
     salida.update(verificador.costo_total(con_estado=True, con_traza=True))
     salida.update(verificador.tokens_total(desglose=True))
     return modos.completar(salida)
@@ -3015,7 +3021,7 @@ $('#csvbtn').onclick=()=>{
     const d=it.resultado||{};
     const probs=(d.problemas||[]).map(p=>
       (p.key||'')+(p.gravedad?' (g'+p.gravedad+(p.confianza?', '+p.confianza:'')+')':'')).join(' | ');
-    const pat=(d.problemas||[]).map(p=>p.patente).filter(Boolean).join(' | ')||d.patente||'';
+    const pat=[...new Set((d.problemas||[]).map(p=>p.patente).filter(Boolean))].join(' | ')||d.patente||'';
     filas.push([it.file.name,(it.ctx||'').trim(),it.estado,d.hay_problema??'',d.gravedad_maxima??'',d.predominante??'',
       probs,pat,(d.elementos_detectados||[]).map(e=>e.key).join(' | '),
       (d.posibles||[]).map(p=>p.key||p.codigo).join(' | '),(d.en_duda||[]).join(' | '),
