@@ -55,9 +55,19 @@ class PoliticaTest(unittest.TestCase):
 
     def test_bolsas_opacas_no_quitan_recoleccion_corroborada(self):
         r, revision = self.opacas([categoria('recoleccion')])
+        for lectura in revision['revisiones']:
+            lectura['residuos_comunes_independientes'] = 'si'
         r['posibles'] = [categoria()]
         nuevo = P.aplicar(r, revision, self.cats)
         self.assertEqual(nuevo['problemas'], r['problemas'])
+
+    def test_pila_opaca_sin_residuos_aparte_conserva_el_voluminoso(self):
+        r, revision = self.opacas([categoria('recoleccion'), categoria('retiro_muebles')])
+        nuevo = P.aplicar(r, revision, self.cats)
+        self.assertEqual([p['key'] for p in nuevo['problemas']], ['retiro_muebles'])
+        self.assertIn('recoleccion', nuevo['en_duda'])
+        self.assertTrue(nuevo['verificacion_escombros']['requiere_revision'])
+        self.assertIn('¿Qué hay en las bolsas?', nuevo['descripcion'])
 
     def test_material_oculto_no_reescribe_confirmacion_visual_sin_fusion_local(self):
         r, revision = self.opacas([categoria()])

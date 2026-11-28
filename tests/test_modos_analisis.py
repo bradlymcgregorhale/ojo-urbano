@@ -39,6 +39,16 @@ def perfiles():
 
 
 class Configuracion(unittest.TestCase):
+    def test_senal_de_opacidad_no_requiere_una_frase_del_lector(self):
+        from prueba_completo import _excluir_indicios_insuficientes
+        for evidencia, pendiente in (('Bolsas negras junto al contenedor.', True),
+                                    ('Bolsas, cajas y envases fuera del contenedor.', False)):
+            with self.subTest(evidencia=evidencia):
+                fuentes, dudas = {'recoleccion': ['externo']}, {}
+                _excluir_indicios_insuficientes(fuentes, {'recoleccion': evidencia}, dudas, {}, {}, True)
+                self.assertEqual('recoleccion' in dudas, pendiente)
+                self.assertEqual('recoleccion' in fuentes, not pendiente)
+
     def test_bolsas_opacas_sin_respaldo_de_recoleccion_quedan_en_duda(self):
         from prueba_completo import _excluir_indicios_insuficientes
 

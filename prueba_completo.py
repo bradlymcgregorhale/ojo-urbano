@@ -63,6 +63,7 @@ _LECTURA_CON_RECUENTO = _objeto({
     **_LECTURA['properties'],
     **_CAMPOS_RECUENTO,
     'solo_residuos_del_bolson': {'type': ['boolean', 'null']},
+    'solo_bolsas_opacas': {'type': ['boolean', 'null']},
 })
 _LECTURA_FINAL = _objeto({
     **_LECTURA_CON_RECUENTO['properties'],
@@ -137,6 +138,10 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, cont
             schema = _ALCANCE_CON_RECUENTO
             texto += '\n' + RECUENTO_ALCANCE
         if etapa in ('retiros', 'decision'):
+            texto += (' En solo_bolsas_opacas indicá true si hay una pila de bolsas chicas cerradas sin '
+                      'contenido identificable ni basura doméstica reconocible aparte. Un papel aislado o '
+                      'un voluminoso aparte no identifican el contenido de la pila. Indicá false si hay '
+                      'material identificable o basura independiente, y null si no hay pila candidata.')
             texto += '\n' + RECUENTO + '\n' + RESIDUOS_BOLSON
         if etapa == 'decision':
             texto += '\n' + OBJETOS
@@ -164,6 +169,8 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, cont
             lectura['objetos'] = V._objetos_lista(valor.get('objetos')) or lectura.get('objetos', [])
             cantidad = valor.get('objeto_cant')
             lectura['objeto_cant'] = V._cuenta_1_a_15(cantidad) if type(cantidad) is int else None
+        if isinstance(valor.get('solo_bolsas_opacas'), bool):
+            lectura['solo_bolsas_opacas'] = valor['solo_bolsas_opacas']
         bolson = valor.get('solo_residuos_del_bolson')
         if etapa in ('retiros', 'decision') and isinstance(bolson, bool):
             lectura['solo_residuos_del_bolson'] = bolson
@@ -299,7 +306,7 @@ _RESIDUOS_COMUNES_APARTE = re.compile(
     r'comida|envases?|papeles?|botellas?)\b')
 
 
-def _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos, retiros):
+def _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos, retiros, solo_opacas=None):
     if mercaderia_en_interior(confirmadas.get('manteros')):
         fuentes.pop('manteros', None)
         if 'manteros' in pedidos:
@@ -322,7 +329,7 @@ def _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos, retiro
     duda_retiros = V._norm_texto(retiros.get('dudosas', {}).get('recoleccion', ''))
     if ('recoleccion' in fuentes and _BOLSAS.search(comunes)
             and not _RESIDUOS_COMUNES_APARTE.search(comunes)
-            and _BOLSAS.search(duda_retiros) and _CONTENIDO_NO_VISIBLE.search(duda_retiros)):
+            and (solo_opacas is True or _BOLSAS.search(duda_retiros) and _CONTENIDO_NO_VISIBLE.search(duda_retiros))):
         fuentes.pop('recoleccion')
         dudas.setdefault('recoleccion', 'No se distingue el contenido. ¿Qué hay en las bolsas?')
         if pedidos.get('recoleccion') == 'compatible':
@@ -431,7 +438,9 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
             and any(k in evidencia for k in ('sacos', 'bolsas', 'pila', 'tubos', 'bolson', 'bolsón'))
             and not any(k in evidencia for k in ('barrera', 'valla', 'cartel', 'anclad', 'colocad'))):
         fuentes.pop('obstruccion', None)
-    _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos, retiros)
+    votos_opacas = (retiros.get('solo_bolsas_opacas'), final.get('solo_bolsas_opacas'))
+    _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos, retiros,
+                                    solo_opacas=True in votos_opacas and False not in votos_opacas)
     modelo = {'modelo': sol, 'ok': True,
               'categorias': [{'key': k, 'evidencia': e} for k, e in confirmadas.items()]}
     if 'pedidos' in final:
