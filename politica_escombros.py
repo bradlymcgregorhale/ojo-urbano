@@ -535,12 +535,15 @@ def aplicar(salida, revision, categorias):
         "estado": revision.get("estado", "indeterminado"),
         "motivo": motivo, "basado_en_contexto": uso_contexto,
         "requiere_nueva_foto": not apto}
-    if apto and r.get('foto_valida') is not False:
+    if r.get('foto_valida') is not False:
         minimo, exacto = _recuento_bolsas(revision)
-        if minimo is not None:
-            from verificador import _cuenta_1_a_15
+        # La ubicación puede quedar en duda aunque dos lectores vean la misma pila sin bolsas.
+        conteo_observable = apto or (revision.get('estado') == 'indeterminado' and exacto is not None)
+        if conteo_observable and minimo is not None:
             r['verificacion_escombros'].update(bolsas_minimo=minimo,
                                                bolsas_recuento_completo=exacto is not None)
+        if apto and minimo is not None:
+            from verificador import _cuenta_1_a_15
             for c in escombros:
                 c['bolsas'] = _cuenta_1_a_15(exacto)
             if len(escombros) == len(r['problemas']) == 1 and not uso_contexto and minimo:
