@@ -26,6 +26,9 @@ RECUENTO = ('Si detectás una pila candidata de retiro_escombros, aunque el mate
             'si se distinguen como unidades. Excluí bolsones de izado y residuos aparte. Usá 0 si '
             'sólo hay material suelto, null si no podés contar. Marcá bolsas_adicionales_posibles '
             'si el solapamiento o el encuadre podría ocultar otras. Sin pila candidata, devolvé ambos campos null.')
+RESIDUOS_BOLSON = ('Marcá solo_residuos_del_bolson como true si los residuos están dentro de un bolsón de izado '
+                  'y afuera sólo hay restos aislados o nada. Un volante aislado no justifica recolección. '
+                  'Usá false si ves residuos comunes descartados aparte y null si no hay bolsón o no lo podés distinguir.')
 OBJETOS = ('Si confirmás retiro_muebles, enumerá en objetos hasta ocho voluminosos descartados que se '
            'distingan en la foto. Usá nombres cortos, por ejemplo "lavarropas", "armario" o "silla plástica". '
            'Excluí el contenedor, los objetos en uso y lo que no se distingue. Si no confirmás retiro_muebles '
@@ -49,6 +52,7 @@ _LECTURA = _objeto({campo: {'type': 'array', 'items': _HALLAZGO}
                    for campo in ('confirmadas', 'dudosas')})
 _LECTURA_CON_RECUENTO = _objeto({
     **_LECTURA['properties'],
+    'solo_residuos_del_bolson': {'type': ['boolean', 'null']},
     'bolsas_visibles': {'type': ['integer', 'null']},
     'bolsas_adicionales_posibles': {'type': ['boolean', 'null']},
 })
@@ -98,7 +102,7 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, cont
             'retiros': _LECTURA_CON_RECUENTO, 'decision': _LECTURA_FINAL,
         }.get(etapa, _LECTURA)
         if etapa in ('retiros', 'decision'):
-            texto += '\n' + RECUENTO
+            texto += '\n' + RECUENTO + '\n' + RESIDUOS_BOLSON
         if etapa == 'decision':
             texto += '\n' + OBJETOS
             if contexto:
@@ -125,6 +129,9 @@ def _leer(modelo, texto, vistas, etapa, permitidas=None, esfuerzo='low', *, cont
             lectura['recuento'] = (cuenta, tapadas if isinstance(tapadas, bool) else None)
         if etapa == 'decision' and 'retiro_muebles' in lectura['confirmadas']:
             lectura['objetos'] = V._objetos_lista(valor.get('objetos')) or []
+        bolson = valor.get('solo_residuos_del_bolson')
+        if etapa in ('retiros', 'decision') and isinstance(bolson, bool):
+            lectura['solo_residuos_del_bolson'] = bolson
         if contexto:
             pedidos = valor.get('pedidos')
             if not isinstance(pedidos, list):
@@ -243,9 +250,13 @@ def _recuento(retiros, final):
     return {'bolsas_minimo': minimo, 'bolsas_recuento_completo': exacto, 'bolsas_fuentes': len(votos)}
 
 
-def _excluir_indicios_insuficientes(fuentes, confirmadas):
+def _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos):
     if mercaderia_en_interior(confirmadas.get('manteros')):
         fuentes.pop('manteros', None)
+        if 'manteros' in pedidos:
+            pedidos['manteros'] = 'contradice'
+    elif pedidos.get('manteros') == 'compatible' and mercaderia_en_interior(dudas.get('manteros')):
+        pedidos['manteros'] = 'neutral'
     piso = confirmadas.get('reparacion_vereda', '').casefold()
     if (re.search(r'\b(?:piso|baldosas?) (?:del balc[oó]n|del interior|del patio privado)\b', piso)
             and not re.search(r'\b(?:vereda|calzada|cord[oó]n|paso peatonal)\b', piso)):
@@ -281,6 +292,7 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
         with ThreadPoolExecutor(max_workers=len(tareas)) as pool:
             lecturas = V._map_con_contexto(pool, lambda fn: fn(), tareas)
     retiros = lecturas[0] or {}
+    inicio = lecturas[-1] or {}
     previas = [r for r in lecturas if r is not None]
     entrada = foto
     observaciones = _observaciones_previas(previas)
@@ -291,6 +303,28 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
     if final is None:
         return {}, {}, None
     confirmadas, dudas = final['confirmadas'], final['dudosas']
+    pedidos = final.get('pedidos', {})
+    votos_bolson = tuple(lectura.get('solo_residuos_del_bolson') for lectura in (retiros, final))
+    recoleccion = 'recoleccion'
+    if votos_bolson == (True, True):
+        confirmadas.pop(recoleccion, None)
+        dudas.pop(recoleccion, None)
+        if recoleccion in pedidos:
+            pedidos[recoleccion] = 'contradice'
+    elif (votos_bolson.count(True) == 1
+          and (recoleccion in confirmadas or recoleccion in dudas or pedidos.get(recoleccion) == 'compatible')):
+        confirmadas.pop(recoleccion, None)
+        dudas.setdefault(recoleccion, 'Falta corroborar residuos separados del bolsón.')
+        if pedidos.get(recoleccion) == 'compatible':
+            pedidos[recoleccion] = 'neutral'
+    ocupacion, obstruccion = 'ocupacion_comercial', 'obstruccion'
+    if (ocupacion in confirmadas and obstruccion in confirmadas
+            and (obstruccion in inicio.get('dudosas', {})
+                 or V._norm_texto(confirmadas[ocupacion]) == V._norm_texto(confirmadas[obstruccion]))):
+        confirmadas.pop(obstruccion)
+        dudas[obstruccion] = 'Falta corroborar una barrera separada del equipamiento comercial.'
+        if pedidos.get(obstruccion) == 'compatible':
+            pedidos[obstruccion] = 'neutral'
     fuentes = {k: [sol] for k in confirmadas}
     tipo_actual = set(confirmadas).intersection(TIPOS)
     ranking = sorted(((scores.get(k, 0), k) for k in TIPOS), reverse=True)
@@ -324,11 +358,14 @@ def clasificar(img, local, categorias, modelos, *, contexto=''):
             and any(k in evidencia for k in ('sacos', 'bolsas', 'pila', 'tubos', 'bolson', 'bolsón'))
             and not any(k in evidencia for k in ('barrera', 'valla', 'cartel', 'anclad', 'colocad'))):
         fuentes.pop('obstruccion', None)
-    _excluir_indicios_insuficientes(fuentes, confirmadas)
+    _excluir_indicios_insuficientes(fuentes, confirmadas, dudas, pedidos)
     modelo = {'modelo': sol, 'ok': True,
               'categorias': [{'key': k, 'evidencia': e} for k, e in confirmadas.items()]}
     if 'pedidos' in final:
         modelo['pedidos'] = final['pedidos']
+    if (sol != luna and pedidos.get(ocupacion) == 'compatible' and ocupacion in dudas
+            and ocupacion in inicio.get('confirmadas', {})):
+        modelo['respaldo_previo_ocupacion'] = True
     if 'retiro_escombros' in fuentes:
         modelo['recuento_escombros'] = _recuento(retiros, final)
     if 'retiro_muebles' in fuentes:

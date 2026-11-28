@@ -618,10 +618,8 @@ def _procesar_prueba(img, local, perfil, verificar, contexto):
 
 
 def _pedidos_prueba(salida, pedidos):
-    vistas = {p['key'] for p in salida['problemas']}
     salida['categorias_contexto'] = [
-        {'key': clave, 'nombre': nombre_de(clave), 'fuentes': 1,
-         'respaldo_visual': 'compatible' if clave in vistas else respaldo}
+        {'key': clave, 'nombre': nombre_de(clave), 'fuentes': 1, 'respaldo_visual': respaldo}
         for clave, respaldo in pedidos.items()
     ]
     respaldos = {c['respaldo_visual'] for c in salida['categorias_contexto']}
@@ -1213,7 +1211,8 @@ def _publica(r, contexto=""):
     pub['conclusion'] = _conclusion(pub)
     if pub['conclusion']['estado'] == 'preliminar':
         pub['descripcion'] = pub['conclusion']['texto']
-    contexto_ocupacion.aplicar(pub, contexto)
+    contexto_ocupacion.aplicar(pub, contexto, respaldo_previo=any(
+        v.get("respaldo_previo_ocupacion") for v in (veri.get("verificadores") or [])))
     return pub
 
 
@@ -1402,6 +1401,7 @@ async def _perfil_formulario(request, *, admite_prueba=False):
 
 
 @app.post("/clasificar")
+@app.post("/clasificar/", include_in_schema=False)
 async def clasificar(request: Request, file: UploadFile = File(...),
                      verificar: str = "auto", contexto: str = Form(""),
                      modo: Any = Form("alto", description="Modo de análisis: bajo, medio, alto o prueba.")):
@@ -2270,6 +2270,7 @@ const GRAV={1:'registro',2:'leve',3:'típico',4:'grave',5:'crítico'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const nombresModos={bajo:'Económico',medio:'Equilibrado',alto:'Completo',prueba:'Completo (prueba)'};
 const MODO_DEMO='prueba';
+const contextoLimitado=texto=>Array.from(texto.trim()).slice(0,2000).join('');
 let perfilesModos={};
 const modoBloqueado=modo=>perfilesModos[modo]?.disponible===false;
 function opcionesModos(valor){
@@ -2411,10 +2412,15 @@ function crearTarjeta(it){
   const cuerpo=document.createElement('div');cuerpo.className='tarbody';
   cuerpo.innerHTML=`<div class="tarnombre" title="${esc(it.file.name)}">${esc(it.file.name)}</div><div class="tarres"></div>`;
   const ctxi=document.createElement('input');
-  ctxi.className='ctxfoto';ctxi.type='text';ctxi.maxLength=2000;
+  ctxi.className='ctxfoto';ctxi.type='text';
   ctxi.placeholder='Contá lo que no se ve (opcional)';
   ctxi.setAttribute('aria-label','Contexto de '+it.file.name+' (hasta 2000 caracteres)');
-  ctxi.value=it.ctx;ctxi.oninput=()=>{it.ctx=ctxi.value;};
+  ctxi.value=it.ctx;
+  ctxi.oninput=()=>{
+    const limite=contextoLimitado(ctxi.value);
+    if(limite!==ctxi.value.trim())ctxi.value=limite;
+    it.ctx=ctxi.value;
+  };
   const modo=document.createElement('label');modo.className='modofoto';
   modo.innerHTML=`Modo de esta foto <select data-modo aria-label="Modo de análisis de ${esc(it.file.name)}">${opcionesModos(it.modo)}</select><span class="modo-nota"></span>`;
   modo.querySelector('select').onchange=e=>{if(!it.modoFijo&&it.estado==='espera'){it.modo=e.target.value;pintar(it);}};
@@ -2445,6 +2451,7 @@ function bombear(){
 
 async function enviar(it){
   it.modoFijo=it.modoFijo||it.modo;
+  it.ctx=contextoLimitado(it.ctx);
   const enPrueba=it.modoFijo==='prueba';
   it.estado='enviando';it.nota='';pintar(it);
   await actualizarModos();
@@ -2452,7 +2459,7 @@ async function enviar(it){
     fallar(it,'El modo elegido no está disponible. No se cambió a otro modo.');bombear();return;
   }
   const fd=new FormData();fd.append('file',it.file);fd.append('modo',it.modoFijo);
-  const ctx=(it.ctx||'').trim();if(ctx)fd.append('contexto',ctx.slice(0,2000));
+  if(it.ctx)fd.append('contexto',it.ctx);
   try{
     // techo de subida: con la bomba serializada, una subida colgada
     // frenaría el lote entero; pasado el techo la tarjeta falla (con

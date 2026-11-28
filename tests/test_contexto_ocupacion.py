@@ -46,6 +46,27 @@ class ContextoOcupacionTest(unittest.TestCase):
         self.assertEqual(resultado["reclamo_foto"]["servicios"], ["ocupacion_comercial", "obstruccion"])
         self.assertEqual(resultado["problemas"], problemas)
 
+    def test_prueba_reconoce_ep_en_el_pedido_por_local_comercial(self):
+        texto = "Ocupación indebida del EP por local comercial"
+        problemas = [{"key": key, "fuentes": 1} for key in ("ocupacion_comercial", "obstruccion")]
+        resultado = {"modo": "prueba", "problemas": problemas}
+        contexto_ocupacion.aplicar(resultado, texto)
+        self.assertEqual(resultado["reclamo_foto"]["codigo"], "118001")
+        self.assertEqual(resultado["reclamo_foto"]["servicios"], ["ocupacion_comercial", "obstruccion"])
+
+        ajena = {"modo": "prueba", "problemas": [], "foto_valida": False,
+                 "categorias_contexto": [{"key": "ocupacion_comercial", "respaldo_visual": "contradice"}]}
+        contexto_ocupacion.aplicar(ajena, texto)
+        self.assertEqual(ajena["reclamo_foto"]["estado"], "no_corresponde")
+        self.assertEqual(ajena["solicitudes_sugeridas"]["servicios"], [])
+
+        for modo, mensaje in (("alto", texto), ("prueba", "No es " + texto),
+                              ("prueba", "Ocupación indebida del EP por vendedores ambulantes")):
+            with self.subTest(modo=modo, mensaje=mensaje):
+                resultado = {"modo": modo, "problemas": problemas}
+                contexto_ocupacion.aplicar(resultado, mensaje)
+                self.assertNotIn("reclamo_foto", resultado)
+
     def test_propuesta_sin_contexto_conserva_los_dos_servicios(self):
         problemas = [{"key": clave, "fuentes": 2} for clave in ("obstruccion", "ocupacion_comercial")]
         resultado = prioridad.proponer_solicitudes({"problemas": problemas})
@@ -83,6 +104,25 @@ class ContextoOcupacionTest(unittest.TestCase):
                 with patch.object(verificador, "_llamar", return_value=json.dumps({"categorias": [categoria]})):
                     lectura = verificador._verificar_uno("prueba/modelo", "", {clave: {"nombre": clave}})
                 self.assertEqual(lectura["categorias"][0]["mercaderia_visible"], "naranjas y peras")
+
+    def test_la_lectura_habitual_no_pide_equipamiento_como_indicio_de_venta(self):
+        categorias = {clave: {"nombre": clave} for clave in ("ocupacion_comercial", "manteros")}
+        equipo = "Máquina de garra instalada en la vereda junto al kiosco"
+        veredicto = {"categorias": [{"key": clave, "equipamiento_visible": equipo}
+                                   for clave in categorias]}
+        with patch.object(verificador, "_llamar", return_value=json.dumps(veredicto)) as llamar:
+            lectura = verificador._verificar_uno("prueba/modelo", "", categorias)
+        self.assertNotIn("equipamiento_visible", llamar.call_args.args[1][0]["content"])
+        self.assertEqual(lectura["categorias"], [])
+
+    def test_cartel_y_cajones_vacios_no_cuentan_como_equipamiento(self):
+        for equipo in ("Cartel de precios en la vereda", "Cajones de apoyo vacíos", "Pizarra aislada",
+                       "No se ve equipamiento comercial", None):
+            with self.subTest(equipo=equipo):
+                categoria = {"key": "ocupacion_comercial", "equipamiento_visible": equipo}
+                with patch.object(verificador, "_llamar", return_value=json.dumps({"categorias": [categoria]})):
+                    lectura = verificador._verificar_uno("prueba/modelo", "", {"ocupacion_comercial": {}})
+                self.assertEqual(lectura["categorias"], [])
 
     def test_revision_de_objetos_no_recupera_venta_ambulante_sin_productos(self):
         hallazgo = {"tipo": "venta_ambulante", "uso": "venta", "objeto": "pizarra",
@@ -126,12 +166,60 @@ class ContextoOcupacionTest(unittest.TestCase):
                 contexto_ocupacion.aplicar(resultado, texto)
                 self.assertEqual(resultado, MUEBLES)
 
+    def test_pedido_explicito_con_retiro_se_resuelve_en_prueba(self):
+        texto = "Ocupación comercial y retiro de muebles"
+        ocupacion = {"key": "ocupacion_comercial", "nombre": "Ocupación comercial"}
+        retiro = {"key": "retiro_muebles", "nombre": "Retiro de muebles"}
+        for respaldo in ("compatible", "contradice"):
+            with self.subTest(respaldo=respaldo):
+                problemas = [ocupacion, retiro] if respaldo == "compatible" else [retiro]
+                resultado = {"modo": "prueba", "foto_valida": True, "problemas": problemas,
+                             "categorias_contexto": [ocupacion | {"respaldo_visual": respaldo},
+                                                     retiro | {"respaldo_visual": "compatible"}]}
+                resultado["solicitudes_sugeridas"] = prioridad.proponer_solicitudes(resultado)
+                contexto_ocupacion.aplicar(resultado, texto)
+                self.assertEqual(resultado["reclamo_foto"]["estado"],
+                                 "compatible" if respaldo == "compatible" else "no_corresponde")
+                self.assertEqual(resultado["solicitudes_sugeridas"]["servicios"], [p["key"] for p in problemas])
+
+        for modo, pedido, categorias in (
+                ("alto", texto, [ocupacion, retiro]),
+                ("prueba", "No es ocupación comercial. Pido retiro de muebles.", [ocupacion, retiro]),
+                ("prueba", "Ocupación del espacio público y retiro de muebles", [ocupacion, retiro]),
+                ("prueba", texto, [retiro])):
+            with self.subTest(modo=modo, pedido=pedido, categorias=categorias):
+                resultado = {"modo": modo, "categorias_contexto": categorias}
+                contexto_ocupacion.aplicar(resultado, pedido)
+                self.assertNotIn("reclamo_foto", resultado)
+
     def test_falta_de_evidencia_se_distingue_de_foto_distinta(self):
         resultado = {}
         contexto_ocupacion.aplicar(resultado, PEDIDO)
         self.assertEqual(resultado["reclamo_foto"]["estado"], "sin_evidencia")
         self.assertEqual(resultado["solicitudes_sugeridas"]["servicios"], [])
         self.assertTrue(resultado["hay_reclamo"])
+
+    def test_la_barrera_solo_se_propone_si_respalda_el_otro_pedido_explicito(self):
+        ocupacion = {"key": "ocupacion_comercial", "nombre": "Ocupación comercial"}
+        retiro = {"key": "retiro_muebles", "nombre": "Retiro de muebles"}
+        obstruccion = {"key": "obstruccion", "nombre": "Obstrucción"}
+        for pedida in (False, True):
+            with self.subTest(pedida=pedida):
+                contexto = [ocupacion | {"respaldo_visual": "contradice"},
+                            retiro | {"respaldo_visual": "compatible"}]
+                if pedida:
+                    contexto.append(obstruccion | {"respaldo_visual": "compatible"})
+                salida = {"modo": "prueba", "analisis_estado": "completo", "foto_valida": True,
+                          "problemas": [ocupacion, retiro, obstruccion],
+                          "categorias_contexto": contexto}
+                salida["solicitudes_sugeridas"] = prioridad.proponer_solicitudes(salida)
+                texto = "Ocupación comercial y retiro de muebles"
+                if pedida:
+                    texto += " y obstrucción por una barrera aparte"
+                contexto_ocupacion.aplicar(salida, texto)
+                self.assertEqual(salida["reclamo_foto"]["estado"], "compatible" if pedida else "no_corresponde")
+                servicios = ["obstruccion", "retiro_muebles"] if pedida else ["retiro_muebles"]
+                self.assertEqual(salida["solicitudes_sugeridas"]["servicios"], servicios)
 
 
 if __name__ == "__main__":

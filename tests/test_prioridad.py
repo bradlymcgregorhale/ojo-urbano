@@ -5,6 +5,65 @@ import prioridad as P
 
 
 class PrioridadTest(unittest.TestCase):
+    def test_prueba_propone_solo_los_pedidos_confirmados_si_son_varios(self):
+        retiro, vereda = 'retiro_muebles', 'reparacion_vereda'
+        base = {'modo': 'prueba', 'analisis_estado': 'completo', 'foto_valida': True}
+        for respaldo in ('compatible', 'contradice', 'neutral'):
+            with self.subTest(respaldo=respaldo):
+                claves = [retiro, vereda] if respaldo == 'compatible' else [vereda]
+                publica = dict(base, problemas=[{'key': k} for k in [*claves, 'barrido']],
+                               categorias_contexto=[{'key': retiro, 'respaldo_visual': respaldo},
+                                                    {'key': vereda, 'respaldo_visual': 'compatible'}])
+                propuesta = P.proponer_solicitudes(publica)
+                self.assertEqual(propuesta['criterio'], 'pedidos_explicitos')
+                self.assertEqual(propuesta['servicios'], claves)
+                self.assertIn('barrido', propuesta['candidatos'])
+                parcial = P.proponer_solicitudes(dict(publica, analisis_estado='parcial'))
+                self.assertNotIn('criterio', parcial)
+                sin_contexto = P.proponer_solicitudes(dict(publica, contexto_visual={'suficiente': False}))
+                self.assertEqual(sin_contexto['estado'], 'requiere_contexto')
+                self.assertEqual(sin_contexto['servicios'], [])
+
+    def test_prueba_deja_pendientes_varios_pedidos_sin_hallazgos_que_los_respalden(self):
+        retiro, vereda = 'retiro_muebles', 'reparacion_vereda'
+        for hallazgos in ([], [{'key': 'barrido'}]):
+            for respaldo in ('neutral', 'compatible'):
+                with self.subTest(hallazgos=hallazgos, respaldo=respaldo):
+                    corresponde = respaldo == 'compatible'
+                    publica = {'modo': 'prueba', 'analisis_estado': 'completo', 'problemas': hallazgos,
+                               'foto_valida': True if corresponde else None,
+                               'foto_valida_estado': 'corresponde' if corresponde else 'sin_opinion',
+                               'categorias_contexto': [{'key': retiro, 'respaldo_visual': 'neutral'},
+                                                       {'key': vereda, 'respaldo_visual': respaldo}]}
+                    propuesta = P.proponer_solicitudes(publica)
+                    self.assertEqual(propuesta['criterio'], 'pedidos_explicitos')
+                    self.assertEqual(propuesta['estado'], 'pendiente')
+                    self.assertEqual(propuesta['servicios'], [])
+                    self.assertEqual(propuesta['candidatos'], [h['key'] for h in hallazgos])
+
+    def test_la_duda_entre_barrido_y_recoleccion_no_quita_otro_pedido(self):
+        barrido, recoleccion, cordon = 'barrido', 'recoleccion', 'reparacion_cordon'
+        for principal, respaldo_barrido, esperados in (
+            (barrido, 'compatible', [barrido, cordon]),
+            (barrido, 'contradice', [recoleccion, cordon]),
+            (None, 'compatible', [cordon]),
+        ):
+            with self.subTest(principal=principal, respaldo_barrido=respaldo_barrido):
+                publica = {'modo': 'prueba', 'analisis_estado': 'completo', 'foto_valida': True,
+                           'problemas': [{'key': k} for k in (barrido, recoleccion, cordon)],
+                           'problema_principal': {'key': principal, 'estado': 'seleccionado'},
+                           'categorias_contexto': [
+                               {'key': barrido, 'respaldo_visual': respaldo_barrido},
+                               {'key': recoleccion, 'respaldo_visual': 'compatible'},
+                               {'key': cordon, 'respaldo_visual': 'compatible'}]}
+                propuesta = P.proponer_solicitudes(publica)
+                self.assertEqual(propuesta['servicios'], esperados)
+                self.assertEqual(propuesta['criterio'], 'pedidos_explicitos')
+                self.assertEqual(propuesta['candidatos'], [barrido, recoleccion, cordon])
+                solo_limpieza = dict(publica, categorias_contexto=publica['categorias_contexto'][:2])
+                self.assertEqual(P.proponer_solicitudes(solo_limpieza),
+                                 P.proponer_solicitudes(dict(solo_limpieza, modo='alto')))
+
     def test_solicitudes_multiples_sin_cambiar_hallazgos(self):
         r = {'problemas': [{'key': k} for k in ['retiro_escombros', 'retiro_muebles', 'recoleccion']],
              'problema_principal': {'key': 'retiro_muebles', 'estado': 'seleccionado', 'criterio': 'escena'}}
