@@ -141,7 +141,8 @@ def _vistas(img, detalles=False, iluminar=False):
 def _inicio(scores, claves):
     orden = sorted(scores, key=lambda k: (-scores[k], k))
     enfoque = list(dict.fromkeys([k for k in orden if scores[k] >= .35][:7]
-                                + ['recoleccion', 'retiro_muebles', 'retiro_escombros']))
+                                + ['recoleccion', 'retiro_muebles', 'retiro_escombros',
+                                   'plantacion_arbol']))
     if any(k in TIPOS or k.endswith('_contenedor') for k in enfoque):
         enfoque += [k for k in (*TIPOS, 'contenedor_desbordado', 'reparacion_contenedor')
                     if k not in enfoque]
